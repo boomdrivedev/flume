@@ -437,11 +437,13 @@ fn role_agents(agents: &Value, at: &str, directory: &Path) -> Result<RoleAgents,
     })
 }
 
-/// One agents table's settings at `at`, each as written, the mode read as
-/// a declaration's is and the programs' own settings by flume's one
-/// reader of them, a file they name read beside the roles file in
-/// `directory`; `stages` taken where `staged`, and any other key refused
-/// (32, 162, 169, 195; core.30).
+/// One agents table's settings at `at`, each as written, the model and
+/// the effort each a string or a table of programs read by flume's one
+/// reader of them, as a launch's settings are taken, the mode read as a
+/// declaration's is and the programs' own settings by flume's one reader
+/// of them, a file they name read beside the roles file in `directory`;
+/// `stages` taken where `staged`, and any other key refused (32, 162,
+/// 169, 172, 195, 197; core.30).
 fn settings_of(
     table: &Table,
     at: &str,
@@ -459,6 +461,13 @@ fn settings_of(
         return Err(format!("[{at}] {key} is no setting of a role's run: {why}"));
     }
     let entry = Entry { table, at };
+    let per_program = |name: &str| {
+        table
+            .get(name)
+            .map(crate::per_program::read)
+            .transpose()
+            .map_err(|reason| format!("[{at}] {name}: {reason}"))
+    };
     let mode = table
         .get("mode")
         .map(crate::mode::read)
@@ -479,8 +488,8 @@ fn settings_of(
         .unwrap_or_default();
     Ok(Settings {
         program: entry.name("program")?,
-        model: entry.text("model")?,
-        effort: entry.text("effort")?,
+        model: per_program("model")?,
+        effort: per_program("effort")?,
         instructions: entry.text("instructions")?,
         beside: entry.name("beside")?,
         session: entry.name("session")?,
@@ -574,4 +583,61 @@ fn place_of(address: &str, run: &RoleRun) -> String {
         .clone()
         .unwrap_or_else(|| format!("{}-{}", stream_of(address), role_of(address)));
     format!("{}--{name}", run.kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flume_seams::PerProgram;
+
+    /// A role's run's `agents` table as `text` writes it, read as an
+    /// entry's is.
+    fn agents(text: &str) -> Result<RoleAgents, String> {
+        let table: Table = text.parse().expect("TOML");
+        role_agents(
+            &table["agents"],
+            "roles.\"east/planner\".agents",
+            Path::new("/nowhere"),
+        )
+    }
+
+    #[test]
+    fn a_roles_run_gives_a_model_per_program() {
+        // 32, 172, 197, C.7: a role's run's agents give a model and an
+        // effort as a launch's settings do, a name or a table of programs
+        // for every stage and for a stage, each kept as written.
+        let read = agents(
+            "[agents]\nmodel = { agent = \"opus\", other = \"gpt-5.5\" }\n\
+             effort = { agent = \"xhigh\" }\n\
+             [agents.stages.turn]\nmodel = \"sonnet\"\n",
+        )
+        .expect("the agents read");
+        assert_eq!(
+            read.every_stage.model,
+            Some(PerProgram::Programs(BTreeMap::from([
+                ("agent".to_string(), "opus".to_string()),
+                ("other".to_string(), "gpt-5.5".to_string()),
+            ])))
+        );
+        assert_eq!(
+            read.every_stage.effort,
+            Some(PerProgram::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "xhigh".to_string()
+            )])))
+        );
+        assert_eq!(read.stages["turn"].model, Some("sonnet".into()));
+        for text in [
+            "[agents]\nmodel = 3\n",
+            "[agents]\nmodel = {}\n",
+            "[agents.stages.turn]\neffort = { agent = 3 }\n",
+        ] {
+            let refused = agents(text).expect_err(text);
+            assert!(
+                refused.contains("roles.\"east/planner\".agents")
+                    && (refused.contains("model") || refused.contains("effort")),
+                "{text}: {refused}"
+            );
+        }
+    }
 }

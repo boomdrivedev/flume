@@ -2693,6 +2693,7 @@ mod tests {
             folder_trust: None,
             kind: Some(kind.into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 

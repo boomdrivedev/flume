@@ -50,6 +50,20 @@ impl Engine {
             }
             return self.end_foreign(id, &start, &reading);
         }
+        // A start through flume's launcher whose program the terminal reads
+        // in another process than the launcher became is begun otherwise,
+        // not lost: once quiet it is ended and its stage started afresh
+        // (161, S74).
+        if let Some(agent) = self.agent(&start.program) {
+            let folder = self.store.folder(id);
+            if let Some(unsettled) =
+                self.began_otherwise_held(&held, agent.as_ref(), &folder, &start)
+            {
+                if unsettled.process {
+                    return self.read_unsettled(id, index, &start, unsettled);
+                }
+            }
+        }
         let foreign = reading.started == Reading::No || reading.own_record == Reading::No;
         let gone = reading.state == AgentState::Stopped || foreign;
         if gone && !declared.conversation {

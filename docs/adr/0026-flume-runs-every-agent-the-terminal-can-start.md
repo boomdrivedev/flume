@@ -96,3 +96,91 @@ Programs option 2, declaration option 1, start option 2, model option 1, program
 - The herdr profile's `send` waits on `agent prompt` for the turn where the agent's profile reads no received ack, and its `open` accepts every kind in `KINDS`, as it already does.
 - A host with a pool of several programs gains nothing until it writes accounts of them (144); a host that writes none sees no change.
 - Public docs say "every agent program herdr starts", and name the programs as products.
+
+## Amendment, 2026-11-18: how a profile says which parts it builds
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `each-agent-profile-says-which-parts-it-builds`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 93, 170, 171 and 174, C.4's parts row and S73; `crates/flume-seams/src/agent.rs` (`send_back`, `on_quiet`, `reports_windows`, `mode_read_back`, and the defaults of `spent`, `windows`, `carry` and `own`); `crates/flume-core/src/status.rs` and `accounts.rs`; `crates/flume-conformance/src/clauses.rs` (`PROFILES`); the change's design, `openspec/changes/each-agent-profile-says-which-parts-it-builds/design.md`.
+
+### Decision outcome
+
+- **The parts a profile may degrade are the eight flume reads a lesser way today**: spent, windows, send-back, guard, on-quiet, the mode, carry and own settings, in 171's order. Command, started and stop-short are never degraded (C.4). Received, asking, own work, ended and last words join with the common profile's change, which has flume read them from the terminal (171); usage and plan join with the changes that add them to the seam (152, 164). Not taken: every part 171 lists at once, which would have status say flume reads a part from the terminal before it does.
+- **A profile names the parts it builds, and how a degraded part is read is flume's**, one sentence per part on the seam's type, from 171. Not taken: each profile's own words for a degraded part, which 93 and 171 leave to no profile.
+- **A profile that declares nothing builds none**, so no degraded part is read as a built one (170); Claude Code's profile names each of its eight in turn, so a part added later is built for it only by the change that builds it. Not taken: a method every profile must write, or every part built by default.
+- **Whether send-back and on-quiet are offered, windows reported and the mode read back is read from the parts**, no profile answering them itself; the answers that read a record, `spent`, `windows`, `guard`, `carry`, `own` and `reserved`, answer the lesser way for a part not built, which the agent seam's scenarios hold every profile to. Not taken: each profile's own four answers beside its parts.
+- **Status gives the degraded parts alone**, as the agent's `degraded`, each with its part and how it is read, left out where none is (core.14). Not taken: every part, built or degraded.
+- **The clause list builds 174**; 170 to 173 and S71 to S75 stay the common profile's. The statement holds as written: C.4's Claude Code rows each answer from its record, so its table takes no parts row. Not taken: that row on a blueprints branch.
+
+## Amendment, 2026-11-18: how the launcher runs and how its start is read
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `a-program-without-its-own-profile-starts-through-flumes-launcher`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 35, 161, 171 item 1, C.4's common-profile command and started rows, C.5's herdr row and S74; `crates/flume/src/profiles/agent/claude/hook.rs` (`compare`, `began_otherwise`, `settle_detached`), `crates/flume/src/profiles/agent/common.rs`, `crates/flume/src/profiles/terminal/herdr/mod.rs` (`open`, `runs`), `crates/flume-core/src/reading.rs`, `deliver.rs` and `unsettled.rs`; the terminal-profiles spec's "Rex runs only a program that reports its state to it"; the change's design, `openspec/changes/a-program-without-its-own-profile-starts-through-flumes-launcher/design.md`.
+
+### Decision outcome
+
+- **The launcher is `flume ack launched -- <program> [<argument>…]`**, a subcommand of flume's one binary beside `ack started` and `ack received`, in `profiles/agent/launcher.rs`. Not taken: a launcher binary of its own, a second artifact to build and ship with nothing flume's binary lacks; and flume acting as the program when a link named for the kind runs it, which hides the subcommand from its help and from the pane's command line.
+- **It compares as Claude Code's started word does**, each variable's digest keyed by the secret, by one comparison both share, and the program it is to run with the record's, a name found on `PATH` past any file that is the launcher's own binary, since the kind's name in the start's folder leads to the launcher. Not taken: the launcher finding the program itself from the record, which would leave nothing to compare.
+- **Its word is written once**, by create-new, at `launched/<identity>.json` in the place's own folder, naming its process; a second launcher under the start, as a person typing the kind's name in the pane runs, runs nothing. Not taken: a word at every run, which would let a second launcher name a new process as the start's.
+- **It becomes the program by exec, in its own process.** Not taken: the program as its child, which would put it in another process than the word names.
+- **The seams gain only defaults**: the agent seam's `launches` and `launched`, the command's `launcher` words, which a terminal takes whole, the terminal seam's `program_process`, and `Unsettled::process`. Not taken: a richer `started` answer, which every profile and fake would change; and the launcher a part a profile builds, which 174 would let a profile degrade where started is never degraded.
+- **The core reads a launched start in one place**, for a settle, a tell and the stop check alike: started only with the word, the terminal reading the program in the word's process and the agent waiting; begun otherwise where the terminal reads the program in another process, so 161's end and fresh start follow. Not taken: the agent profile asking the terminal, which crosses the seams (core.2); and a check made once at the open, which misses a program run by hand after it (S74).
+- **herdr and the printed command run the launcher; Rex runs none**, since it opens no program but `claude`. Under the printed command, which reads no process, such a start reads unknown; the prompt's argument there (C.4) is left to the change that builds it.
+
+## Amendment, 2026-11-18: how the core holds a launched start once taken
+
+Status: accepted, the direction unchanged. The choices below are the code stage's of the change `a-program-without-its-own-profile-starts-through-flumes-launcher`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's code stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 35, 161 and S74; `crates/flume-core/src/reading.rs` (`Engine::started`, `Engine::began_otherwise`, `Engine::began_otherwise_held`), `end.rs` (`read_end`), `deliver.rs`; `crates/flume/src/profiles/agent/launcher.rs` (`launch`); `crates/flume/src/profiles/terminal/herdr/mod.rs` (`program_process`).
+
+### Decision outcome
+
+- **The agent waiting is read only for a start not yet taken**, one sent no prompt and not begun; a start taken reads started while the terminal reads its program in the word's process, working or not. Not taken: the agent waiting at every reading, which would read a begun agent at work no agent of its start's and end its stage lost.
+- **A begun start is read begun otherwise too**: the reading of a begun stage's end first reads whether its program runs in another process than its launcher became, so a program run again by hand after its prompt is ended once quiet and its stage started afresh, as S74 has it, never read lost; and a reading of another process, once the place holds it, stands for that start at the settles that follow, though the terminal then reads nothing running the program. Not taken: the terminal's reading alone at each settle, which a program between its two processes would turn into a lost stage.
+- **A program the launcher cannot find runs nothing and writes no word**, the launcher saying which. Not taken: a word saying the program differed, which a program found nowhere does not show.
+- **herdr reads a pane gone at its process reading as nothing running the program**, `pane_not_found` or `server_not_running`, as its other operations read a pane gone. Not taken: herdr's words as unknown, which would keep a gone agent's start unknown until the stage's limit.
+
+## Amendment, 2026-11-18: how the core reads an agent from its terminal
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `the-common-profile-reads-an-agent-from-its-terminal`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 31, 38, 89 to 93, 134, 136, 171 items 2 to 11, 174, C.4's common profile, C.5's herdr send and state rows, and S73; herdr 0.9.5's `agent prompt --help` (`--wait` "requires an observed working or blocked state within 5000ms; otherwise it returns agent_prompt_stalled"); `crates/flume-seams/src/agent.rs` (`Part`), `terminal.rs` (`send`), `held.rs` (`StartHeld`); `crates/flume-core/src/reading.rs` (`read_agent`, `state_of`, `read_out`), `deliver.rs`, `acts.rs` (`hand`), `line.rs`, `settle.rs` (`step`), `pending.rs`; the change's design, `openspec/changes/the-common-profile-reads-an-agent-from-its-terminal/design.md`.
+
+### Decision outcome
+
+- **Received, asking, own work, ended and last words join the parts**, before spent, in 171's order, each with how flume reads it from the terminal; Claude Code's profile builds all thirteen, and usage and plan still join with the changes that add them to the seam (152, 164). Not taken: one part standing for the five, which would leave a profile that reads its program's asking but not its own work no way to say so.
+- **The core reads a part a profile does not build from the agent's terminal, in one reading per part**, and asks the profile nothing of it. Not taken: the profile reading the terminal, which crosses the seams (core.2).
+- **A prompt and a tell are sent by a new terminal operation, `send_watching`, which answers whether the terminal saw the turn the sending began**, refused by default naming no terminal; and a reading of the agent working or asking within 60 seconds of the sending counts as the turn seen too, since the agent was read waiting and not asking when it was sent. Not taken: a flag on `send`, which would change every terminal and fake for one profile's need; and the reading alone, which misses a turn that ends between two readings.
+- **Own work is read from the start's held `waiting`, when a settle first and last read the agent waiting**, written by each settle's step for a live start whose profile reads no own work, cleared at any other reading and at every sending, and read by status, the list and a wait without writing it; and a stopped agent's own work reads none. Not taken: a time kept beside the held state (core.16); a reading by status counting as a settle, which 171 does not read; and own work running for a stopped agent, which would keep a start begun otherwise from ever being ended (31, 161).
+- **The place's line reads such an agent's asking from the held `asking_since`**, which the settle writes. Not taken: the line reading the terminal, which a line asked alone and the list may not (core.52).
+- **The clause list builds 171 and S73**; 173, S71 and S72 stay named for the change of a pool's program. The statement holds as written: 171 and C.5's herdr send row already name the watched prompt, so no amendment is made.
+
+## Amendment, 2026-11-18: how a pool's account names a stage's program
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `a-pool-of-several-programs-picks-each-stages-program`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage, and its code stage for the last three choices.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 32 item 8, 144 to 147, 153, 169, 172, 173, 179, 196, 197, 207, 213, S71 and S72; `crates/flume/src/profiles.rs` (`DEFAULT_PROGRAM`, `defaults`); `crates/flume-core/src/settings.rs` (`resolve`, `resolution`, `kind_started`), `accounts.rs` (`PoolRoom`, `choose_account`, `affinity_after`, `pool_runs`), `start.rs` (`claim`), `room.rs` (`Waiting`, `Queue::runs`, `Queue::wants`), `launch.rs` and `acts.rs` (`prompt`); `crates/flume-seams/src/store.rs` (`Affinity`); `crates/flume-conformance/src/clauses.rs` (`PROFILES`, `PLAN`); the change's design, `openspec/changes/a-pool-of-several-programs-picks-each-stages-program/design.md`.
+
+### Decision outcome
+
+- **The account names the program at the layer `account`, and flume's default names one only with no pool** (32 item 8): where only the default names a stage's program and its stream has a pool, the chosen account's program stands in its place, and status gives it from `account`, as it gives the account's variables. Not taken: the program dropped from the engine's defaults and filled at each start with no pool, which would leave status no layer to give; and a new layer, when the program is the account's as its variables are.
+- **The programs that can run a stage are read by the start's own checks**, once for each program of the pool's accounts: a profile binds it, and its mode, model, effort and own settings are taken (173). Not taken: a check of its own beside the start's, which could drift from what a start refuses.
+- **The terminal's start is asked after the choice**, under the chosen account's environment, refusing the stage in its words as for a program a layer names (32, C.5). Not taken: the terminal among what makes an account usable, which 173 does not list and which herdr answers only by a call under each account's environment while the room lock is held.
+- **A stage that names no program takes the affinity's account for the program its last agent ran while it can run the stage, then the strategy's choice over every account that can run it**; the intent moves for that program only where the strategy chose an account of it, and a start on another program moves nothing (147). The affinity holds `last`, written at every start with a pool. Not taken: the affinity's account for every program that can run the stage, which 147 does not say; and the strategy preferring the last program's accounts, when 147 sends the start where 145 chooses.
+- **A conversation goes to no other program**: a stopped, lost or hibernated start's profile is asked whether its conversation carries only where the account chosen runs its program, and otherwise it stays, with words saying so (146, 179, 213). Not taken: asking another program's profile of the conversation.
+- **The queue, the launch and the prompt's preview read the same programs**: a waiting stage's want counts only accounts that can run it, a launch is refused where none can, naming each program and why, and the preview fills with the profile of the account a start would choose now, writing nothing (4, 29, 145; core.8, core.26). Not taken: reading them at the claim alone, which would count a want from accounts that cannot run the stage; and flume's default profile for every preview.
+- **The clause list builds 173 and S71; S72 is named for record 0024's plan stage's change**, beside 163, 164 and S68, since both its halves launch a plan stage; that change also adds the plan to what makes an account able to run a stage that delivers a plan (164, 173). The statement holds as written: 173's plan condition holds for no stage until a stage delivers a plan. Not taken: building the plan part here, which is that change's whole.
+- **`live` is asked of the program of the start whose conversation it is**, at a start that carries or follows a stopped, lost or hibernated conversation and at each settle while a stage waits on that conversation's process, since that program's profile alone reads its sessions (179, 207). Not taken: the program of the account chosen, whose profile would read another program's session as none running.
+- **A stage waiting for an account is filled, before it waits, with the profile of the first program of its pool that can run it**, as the preview is where no account is usable; and a waiting stage whose settings cannot be read holds no programs, so its want is read as before and its claim refuses it (29, 173). Not taken: refusing such a stage ahead of room at the next settle, which would refuse it for a reading the host's configuration may mend before its room comes.
+- **The prompt's preview reads the intent's affinity without removing one past its hour**, which a start's read removes, so the preview writes nothing (119, 147). Not taken: the start's read, which writes.

@@ -313,9 +313,14 @@ and `full`, or a table of programs such as `{ claude = "auto" }`
 ([the mode](/flume/guides/agent-settings/#the-mode)).
 A `mode` that is neither refuses the launch, naming the field.
 
-The effort says how hard the agent's model works on each turn, as its
-program's own word, such as Claude Code's `xhigh`
-([the effort](/flume/guides/agent-settings/#the-effort)). A kind that
+The model is its program's own name, such as Claude Code's `opus`, and
+the effort says how hard the agent's model works on each turn, as its
+program's own word, such as Claude Code's `xhigh`. Each may instead be
+a table of programs, the agent's entry its program's, so a kind whose
+stages may run on more than one program gives each its own, as
+`model = { claude = "opus", codex = "gpt-5.5" }`
+([the model](/flume/guides/agent-settings/#the-model),
+[the effort](/flume/guides/agent-settings/#the-effort)). A kind that
 runs a deep stage harder than the rest gives that stage its own:
 
 ```toml
@@ -326,9 +331,13 @@ deliverables = ["committed:notes/spike.md"]
 agents = [{ effort = "xhigh" }]
 ```
 
-An `effort` that is not a string refuses the launch, naming the field,
-and a word the agent's program does not take refuses it naming the
-word, the stage and the program.
+A `model` or an `effort` that is neither a string nor a table of
+programs whose entries are strings, a table that names no program among
+them, refuses the launch, naming the field. A word the agent's program
+does not take refuses it naming the word, the stage and the program, and
+so does a model, an effort or a mode for a program whose entry names no
+way to give it
+([the program](/flume/guides/agent-settings/#the-program)).
 
 `programs` gives each program's own settings, in that program's own
 words: a settings file the table names, `file`, and keys it gives

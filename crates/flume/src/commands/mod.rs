@@ -224,8 +224,9 @@ enum Command {
         /// One of the plugin's hooks; any other does nothing.
         event: String,
     },
-    /// From an agent flume started: it started, or it received a prompt
-    /// (35, 89, 135).
+    /// From an agent flume started: it started, or it received a prompt;
+    /// or, run by a terminal flume opened in the program's place, its
+    /// launcher, which becomes the program (35, 89, 135, 171, C.4).
     Ack {
         #[command(subcommand)]
         ack: Ack,
@@ -424,6 +425,25 @@ enum Ack {
         #[arg(long)]
         mode: Option<String>,
     },
+    /// Run by a terminal flume opened, in the program's place, under the
+    /// identity and secret its environment names: it checks the start,
+    /// writes its word once and becomes the program in its own process,
+    /// or runs nothing and says why (35, 41, 161, 171, C.4).
+    ///
+    /// It compares each variable the start's record names, by its digest
+    /// keyed by the secret, and the program with the one the record
+    /// names. Where nothing differs it writes its word, naming its
+    /// process, and becomes the program with its arguments, passed whole.
+    /// Where anything differs, a word already stands for the start, or no
+    /// start is under its identity and secret, it runs nothing and exits
+    /// 1; a difference is written in its word, by each variable's name
+    /// alone, and settles the place.
+    Launched {
+        /// The program, by its path or its name, and its arguments, after
+        /// `--`.
+        #[arg(last = true, required = true, value_name = "PROGRAM")]
+        command: Vec<String>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -485,15 +505,17 @@ struct LaunchArgs {
     stall_after: Option<String>,
     /// One setting of every stage's agent, or of one stage's (32): the
     /// field one of program, model, effort, instructions, beside, session,
-    /// mode, keep_open and hibernate_after, `effort` its program's own word
-    /// for how hard its model works, `session` the terminal's session its
-    /// agents open in, the mode one of plan, ask, edits and full, or
-    /// `mode.<program>` for one program's entry of a mode, `keep_open` how
-    /// long the agent is kept open for an answer once it stops short, and
-    /// `hibernate_after` how long a conversation whose kind hibernates it
-    /// may idle before it hibernates, each as `<n>`, `<n>s`, `<n>m` or
-    /// `<n>h`, one time for every program, an hour where no layer gives
-    /// one (107, 162, 169, 197, 198, 212).
+    /// mode, keep_open and hibernate_after, `model` its program's own
+    /// name, or `model.<program>` for one program's entry of a model,
+    /// `effort` its program's own word for how hard its model works, or
+    /// `effort.<program>` for one program's entry of an effort, `session`
+    /// the terminal's session its agents open in, the mode one of plan,
+    /// ask, edits and full, or `mode.<program>` for one program's entry of
+    /// a mode, `keep_open` how long the agent is kept open for an answer
+    /// once it stops short, and `hibernate_after` how long a conversation
+    /// whose kind hibernates it may idle before it hibernates, each as
+    /// `<n>`, `<n>s`, `<n>m` or `<n>h`, one time for every program, an
+    /// hour where no layer gives one (107, 162, 169, 172, 197, 198, 212).
     #[arg(long, value_name = "[STAGE.]FIELD=VALUE")]
     agent: Vec<String>,
     /// The stream the place runs in, one the host's configuration
@@ -576,6 +598,13 @@ where
                 }
                 Ack::Received { digest, mode } => {
                     crate::profiles::ack_received(digest, mode.as_deref(), build)
+                }
+                Ack::Launched { command } => {
+                    return Outcome {
+                        text: format!("refused: {}", crate::profiles::ack_launched(command, build)),
+                        usage: true,
+                        code: 1,
+                    };
                 }
             };
             return match acked {

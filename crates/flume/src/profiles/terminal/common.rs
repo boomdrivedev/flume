@@ -45,6 +45,12 @@ pub struct Running {
 /// script's path among its arguments, a relative one read in its folder;
 /// otherwise what each ran, in words a refusal carries (32; record 0018).
 pub fn runs_program(processes: &[Running], program: &Path) -> Result<(), Vec<String>> {
+    program_process(processes, program).map(|_| ())
+}
+
+/// The first of `processes` that runs `program`, by its id, read as
+/// [`runs_program`] reads it; otherwise what each ran (32, 35, C.5).
+pub fn program_process(processes: &[Running], program: &Path) -> Result<u32, Vec<String>> {
     let wanted = program.canonicalize().unwrap_or_else(|_| program.into());
     let mut ran = vec![];
     for process in processes {
@@ -65,7 +71,7 @@ pub fn runs_program(processes: &[Running], program: &Path) -> Result<(), Vec<Str
             .filter_map(|path| path.canonicalize().ok())
             .any(|path| path == wanted)
         {
-            return Ok(());
+            return Ok(process.pid);
         }
         let cmdline = process
             .cmdline

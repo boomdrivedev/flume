@@ -834,6 +834,7 @@ pub(crate) mod tests {
             counts: None,
             span: None,
             asking_since: None,
+            waiting: None,
         }
     }
 

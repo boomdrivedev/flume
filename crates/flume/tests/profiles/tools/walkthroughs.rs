@@ -101,7 +101,14 @@
 //! through `flume relay`, its first line a screen, the text written to its
 //! input shown on a later screen, its input's close ending it by its
 //! caller, the place's held state unwritten and no file of flume's state
-//! holding what was typed (107, 221, 222, C.5).
+//! holding what was typed (107, 221, 222, C.5); and amp, a program with no
+//! profile of its own, a stand-in in the walk's `bin` under the pinned
+//! herdr, runs in the process flume's launcher became, takes its prompt on
+//! herdr's word that its turn began, and, once herdr reads it idle at two
+//! settles a minute or more apart, status naming received, asking and own
+//! work degraded between them, its fix lands, while a fix asking amp a
+//! model is refused naming it with nothing made (S73; 35, 38, 170, 171,
+//! 172, C.4, C.5).
 
 use super::walk::*;
 use flume::profiles::agent::claude::carry::{UNREACHED, UNREADABLE};
@@ -956,14 +963,15 @@ const NO_CLAUDE: &str = "[streams.default]\npool = \"stand-in\"\n\n[pools.stand-
 
 #[test]
 fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_later_start() {
-    // S81, 4, 32, 145, under the printed command, every stage running
-    // `claude`: a fix launched on a stream whose pool holds only `codex`
-    // accounts is refused naming code, the pool and `claude`, with no
-    // branch and no place made. A change on the stand-in's pool runs
-    // construct, and while construct works the host's configuration leaves
-    // that pool a `codex` account alone; once construct delivers, code is
-    // refused naming the pool and `claude`, with no command printed for it
-    // and the place waiting on its caller's retry. Once the configuration
+    // S81, 4, 32, 145, 173, under the printed command, no stage naming a
+    // program: a fix launched on a stream whose pool holds only `codex`
+    // accounts, whose entry maps no mode, is refused naming code, the pool
+    // and why `codex` cannot run it, with no branch and no place made. A
+    // change on the stand-in's pool runs construct, and while construct
+    // works the host's configuration leaves that pool a `codex` account
+    // alone; once construct delivers, code is refused naming the pool and
+    // why `codex` cannot run it, with no command printed for it and the
+    // place waiting on its caller's retry. Once the configuration
     // is mended, a retry starts code under the stand-in's account, the
     // intent's for `claude`.
     let walk = Walk::new("walk-no-account");
@@ -982,10 +990,10 @@ fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_
     assert!(refused, "the launch was taken: {answer}");
     let reason = answer.to_string();
     assert!(
-        reason.contains("stage code's")
-            && reason.contains("pool elsewhere")
-            && reason.contains("account of claude"),
-        "the refusal names not code, the pool and claude: {reason}"
+        reason.contains("stage `code`")
+            && reason.contains("pool `elsewhere`")
+            && reason.contains("`codex` cannot"),
+        "the refusal names not code, the pool and codex: {reason}"
     );
     assert!(!walk.has_branch("fix/one"), "the fix's branch was made");
     assert_eq!(walk.everything()["places"], json!([]), "a place was made");
@@ -1027,10 +1035,10 @@ fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_
         .as_str()
         .unwrap_or_else(|| panic!("no refusal given: {status}"));
     assert!(
-        words.contains("stage code's")
-            && words.contains("pool stand-in")
-            && words.contains("account of claude"),
-        "the refusal names not code, the pool and claude: {words}"
+        words.contains("stage `code`")
+            && words.contains("pool `stand-in`")
+            && words.contains("`codex` cannot"),
+        "the refusal names not code, the pool and codex: {words}"
     );
     assert_eq!(code["starts"], 0, "{status}");
     assert!(status["agent"].is_null(), "a command was printed: {status}");
@@ -5023,4 +5031,122 @@ fn repository_id(host: &Walk) -> String {
         .output()
         .expect("git runs");
     flume_core::repository_id(String::from_utf8_lossy(&common.stdout).trim())
+}
+
+/// amp as S73's walkthrough runs it: a stand-in that tells herdr it is
+/// idle, reads its prompt with no line limit and ctrl+c read as a key, as
+/// an agent's own input does, keeps each line it read in `log`, and on the
+/// first tells herdr it works, commits `parser.rs` in its place and tells
+/// herdr it is idle again (C.5).
+fn amp_stand_in(log: &Path) -> String {
+    format!(
+        r#"#!/bin/sh
+pane="$HERDR_PANE_ID"
+report() {{
+  env -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_ENV \
+    "$HERDR_BIN_PATH" pane report-agent "$pane" --source flume-test --agent amp --state "$1" >/dev/null 2>&1
+}}
+stty -icanon -isig min 1 2>/dev/null
+report idle
+took=
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> '{log}'
+  if [ -z "$took" ]; then
+    took=1
+    report working
+    sleep 1
+    printf 'fn parse() {{}}\n' > parser.rs
+    git add -A && git -c user.name=amp -c user.email=amp@example.invalid commit --quiet -m 'fix the parser'
+    report idle
+  fi
+done
+"#,
+        log = log.display()
+    )
+}
+
+#[test]
+fn s73_amp_under_herdr_takes_its_prompt_goes_quiet_and_lands() {
+    // S73, the terminal-readings spec's scenario "amp under the pinned
+    // herdr" (35, 38, 170, 171, 172, C.4, C.5): a fix launched with
+    // `--agent program=amp` runs amp under the common profile through
+    // flume's launcher; its prompt is received on herdr's word that the
+    // turn began, its own work read none once herdr reads it idle at two
+    // settles a minute or more apart, and it lands; a fix asking amp a
+    // model is refused naming amp, making nothing.
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+    let host = UnderHerdr::new(
+        Walk::with_its_own_agent("walk-s73"),
+        flume::profiles::terminal::herdr::SESSION,
+    );
+    host.configure("", "");
+    let log = host.repository.scratch.path("amp.log");
+    let amp = host.repository.scratch.path("bin/amp");
+    std::fs::write(&amp, amp_stand_in(&log)).expect("the stand-in for amp");
+    std::fs::set_permissions(&amp, std::fs::Permissions::from_mode(0o755))
+        .expect("the stand-in made runnable");
+    let place = host.launch(
+        "fix@1",
+        "one",
+        &["--brief", "fix the parser", "--agent", "program=amp"],
+    );
+    let status = host.until(&place, "amp took its prompt and is idle", |status| {
+        stage(status, "code")["state"] == "begun"
+            && status["agent"]["state"] == "waiting"
+            && host.repository.scratch.path("amp.log").exists()
+    });
+    assert_eq!(status["agent"]["program"], "amp", "{status}");
+    assert!(
+        status["unsettled"].as_array().is_none_or(Vec::is_empty),
+        "amp read begun otherwise than its start recorded: {status}"
+    );
+    let took = std::fs::read_to_string(&log).expect("what amp read");
+    assert!(took.contains("fix the parser"), "amp read: {took}");
+    host.settle(&place);
+    let between = host.status(&place);
+    assert_eq!(
+        stage(&between, "code")["state"],
+        "begun",
+        "code, a settle after amp went idle: {between}"
+    );
+    let degraded: Vec<&str> = between["agent"]["degraded"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part["part"].as_str())
+        .collect();
+    for part in ["received", "asking", "own_work"] {
+        assert!(
+            degraded.contains(&part),
+            "{part} is not named degraded: {between}"
+        );
+    }
+    std::thread::sleep(Duration::from_secs(61));
+    host.settle(&place);
+    until_landed(&host, &place);
+    assert_eq!(
+        host.on_remote("parser.rs").as_deref(),
+        Some("fn parse() {}\n"),
+        "{}",
+        host.logs()
+    );
+
+    let (answer, refused) = host.flume_ran(&[
+        "launch",
+        "--kind",
+        "fix@1",
+        "--name",
+        "two",
+        "--brief",
+        "fix the printer",
+        "--agent",
+        "program=amp",
+        "--agent",
+        "model=opus",
+    ]);
+    assert!(refused, "a model asked of amp was taken: {answer}");
+    assert!(answer.to_string().contains("amp"), "{answer}");
+    assert!(host.status("fix--two").is_null(), "a place was made");
+    assert!(!host.has_branch("fix/two"), "a branch was made");
 }

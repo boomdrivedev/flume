@@ -1604,11 +1604,44 @@ pub struct AgentStatus {
     /// (56, 197).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<EffortStatus>,
+    /// Its model as its start passed it, with its layer and the program
+    /// whose table entry it took; none where no layer gave one (56, 172).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelStatus>,
+    /// Each part of the agent seam its program's profile does not build,
+    /// in 171's order, with how flume reads it; none where its profile
+    /// builds every part or no profile binds its program (56, 170, 174).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<DegradedPart>,
 }
 
-/// An agent's effort at its start: `word`, as its layer wrote it, and
-/// `layer`, the first of the eight that gave it; `passed`, the value its
-/// profile passed, which takes its program's words as written; `read_back`,
+/// A part of the agent seam an agent's profile does not build: the part,
+/// by its word, and how flume reads it (171, 174).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DegradedPart {
+    pub part: Part,
+    pub read: String,
+}
+
+/// An agent's model at its start: `name`, as its layer wrote it, a table
+/// of programs as written; `layer`, the first of the eight that gave it;
+/// `entry`, the program whose entry of a table it took, none for a name
+/// given whole; and `passed`, the name its command passed, as written
+/// (56, 172).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelStatus {
+    pub name: String,
+    pub layer: Layer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    pub passed: String,
+}
+
+/// An agent's effort at its start: `word`, as its layer wrote it, a table
+/// of programs as written, and `layer`, the first of the eight that gave
+/// it; `entry`, the program whose entry of a table it took, none for a
+/// word given whole; `passed`, the value its profile passed, which takes
+/// its program's words as written; `read_back`,
 /// whether its program read it back, which no profile does; and
 /// `outranked_by`, the variable its program reads over the effort where
 /// the agent's account's environment names it, by its name and never its
@@ -1617,6 +1650,8 @@ pub struct AgentStatus {
 pub struct EffortStatus {
     pub word: String,
     pub layer: Layer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
     pub passed: String,
     pub read_back: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

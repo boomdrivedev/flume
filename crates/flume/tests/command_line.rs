@@ -607,3 +607,66 @@ fn relays_help_names_its_lines_and_no_caller() {
         assert!(!words.contains(caller), "the help names {caller}: {text}");
     }
 }
+
+/// The command-line spec's scenario "launched from outside an agent" (41,
+/// C.4): flume's own binary, run with no start in its environment.
+#[test]
+fn launched_from_outside_an_agent_runs_nothing() {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_flume"));
+    command.args(["ack", "launched", "--", "/bin/echo", "hello"]);
+    for name in ["FLUME_AGENT", "FLUME_SECRET", "FLUME_PLACE", "FLUME_STAGE"] {
+        command.env_remove(name);
+    }
+    let output = command.output().expect("flume runs");
+    let (out, err) = (
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    assert!(!output.status.success(), "it exited 0: {out}{err}");
+    assert_eq!(output.status.code(), Some(1), "{out}{err}");
+    assert!(
+        err.starts_with("refused: ") && err.contains("FLUME_AGENT"),
+        "the refusal names no FLUME_AGENT: {err}"
+    );
+    assert!(
+        !out.contains("hello") && !err.contains("hello"),
+        "the program ran: {out}{err}"
+    );
+}
+
+/// The command-line spec's scenario "launched's help" (C.4; core.35).
+#[test]
+fn launcheds_help() {
+    let world = World::new();
+    let (text, code) = run(&world, &["ack", "--help"]);
+    assert_eq!(code, 0, "{text}");
+    let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    for named in ["started", "received", "launched"] {
+        assert!(
+            text.lines()
+                .any(|line| line.trim_start().starts_with(named)),
+            "the help lists no {named}: {text}"
+        );
+    }
+    for said in [
+        "a terminal flume opened",
+        "in the program's place",
+        "becomes the program",
+    ] {
+        assert!(words.contains(said), "the help says not {said}: {text}");
+    }
+    let (text, code) = run(&world, &["ack", "launched", "--help"]);
+    assert_eq!(code, 0, "{text}");
+    let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    for said in [
+        "a terminal flume opened",
+        "becomes the program",
+        "by its digest keyed by the secret",
+        "runs nothing",
+    ] {
+        assert!(
+            words.contains(said),
+            "launched's help says not {said}: {text}"
+        );
+    }
+}

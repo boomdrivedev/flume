@@ -9,7 +9,8 @@ use super::account_pools::{
     fix_of, home, host, of_the_surfaces, on, pool, pool_at, reads, spent, stops_at_limit,
     two_programs, window, READER, READER_SESSION, UNREACHED,
 };
-use super::agent_effort::effort;
+use super::agent_effort::{effort, efforts};
+use super::agent_model::{model, models};
 use super::agent_modes::{in_mode, in_programs, the_fakes_map};
 use super::agent_settings::{for_every_stage, kept_open};
 use super::base_places::{forecast_conflict, mend_fix, spring, spring_mended};
@@ -18,9 +19,9 @@ use super::open_sessions::{asking, code, stops_short, taken, QUESTION};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{
-    AccountStatus, Act, AddressStatus, AgentStatus, Answer, Cache, EffortStatus, ModeStatus,
-    MoveStatus, PlaceStatus, PoolStatus, ReadingStatus, Retry, SessionAnswer, StandingFound,
-    WaitingOn, Waits, KEEP_OPEN,
+    AccountStatus, Act, AddressStatus, AgentStatus, Answer, Cache, DegradedPart, EffortStatus,
+    ModeStatus, ModelStatus, MoveStatus, PlaceStatus, PoolStatus, ReadingStatus, Retry,
+    SessionAnswer, StandingFound, WaitingOn, Waits, KEEP_OPEN,
 };
 use flume_seams::*;
 
@@ -227,6 +228,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_start_in_another_mode,
         },
         Scenario {
+            name: "status: an agent whose profile offers no send-back, guard or on-quiet and builds every other part gives those three degraded in that order, each with how flume reads it, in the JSON form",
+            cites: &["56", "174"],
+            run: a_profile_that_offers_no_hooks,
+        },
+        Scenario {
+            name: "status: a place whose fake agent reads received, asking, own work, ended and last words from its terminal and builds every other part gives those five degraded, in that order, each with how flume reads it from the terminal",
+            cites: &["56", "171", "174"],
+            run: a_profile_that_reads_the_five_from_its_terminal,
+        },
+        Scenario {
+            name: "status: an agent whose profile builds every part names none degraded, its JSON holding no degraded",
+            cites: &["56", "174"],
+            run: a_profile_that_builds_every_part,
+        },
+        Scenario {
             name: "status: an agent's own settings give each key with its layer and its file, how its profile passed them and that they were not read back, in the JSON form",
             cites: &["S100", "56", "32", "143"],
             run: own_settings_from_three_layers,
@@ -342,6 +358,26 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: no_effort_in_status,
         },
         Scenario {
+            name: "status: a place whose agent took large from --agent model=large gives the model large from launch, no entry and large passed, in the JSON form",
+            cites: &["56", "172"],
+            run: a_model_given_whole,
+        },
+        Scenario {
+            name: "status: a place whose agent took the agent entry of a model's table from host-kind gives the table as written from host-kind, the entry agent and large passed",
+            cites: &["56", "172"],
+            run: a_models_table_entry,
+        },
+        Scenario {
+            name: "status: a place whose agent's settings give no model gives none, its JSON form holding no model for the agent beyond its settings'",
+            cites: &["56", "172"],
+            run: no_model_in_status,
+        },
+        Scenario {
+            name: "status: a place whose agent took the agent entry of an effort's table from kind gives the table as written from kind, the entry agent and high passed",
+            cites: &["56", "197"],
+            run: an_efforts_table_entry,
+        },
+        Scenario {
             name: "status: a base place whose first fix is live gives the kind of its fixes with where it came from, its bound, the forecast held in conflict with when it was read, and the fix live, waiting on its places with the fix on its branch, and no forecast is asked for the status",
             cites: &["56", "58", "203"],
             run: a_base_place_whose_first_fix_is_live,
@@ -375,6 +411,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: A place of a run: status of a fix's place gives no checkouts, its JSON holding no checkouts and no other field changed",
             cites: &["56", "61"],
             run: a_place_of_a_run_gives_no_checkouts,
+        },
+        Scenario {
+            name: "status: A review on the account's program: status of a place whose review names no program and started on other-1 from the strategy gives its program other from account, its account other-1 from the strategy, in the JSON form",
+            cites: &["56", "173"],
+            run: a_review_on_the_accounts_program,
         },
     ]
 }
@@ -840,6 +881,129 @@ fn a_mode_not_read_back(_: &()) -> Outcome {
         json["mode"]["read_back"].clone(),
         serde_json::json!(false),
         "read_back in the JSON form"
+    );
+    Ok(())
+}
+
+/// The fake scripted to build every part: reading its mode back, carrying
+/// a conversation and taking own settings beside the parts a new fake
+/// builds (174).
+fn building_every_part(world: &World) {
+    world.agent.read_mode_back();
+    world.agent.carry_to(
+        flume_fakes::FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.take_own();
+}
+
+/// The place-status spec's scenario "A profile that offers no hooks" (56,
+/// 174).
+fn a_profile_that_offers_no_hooks(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    world.agent.no_send_back();
+    world.agent.no_guard();
+    world.agent.no_on_quiet();
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    ensure_eq!(
+        agent.degraded,
+        [Part::SendBack, Part::Guard, Part::OnQuiet]
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
+        "the agent's degraded parts"
+    );
+    ensure_eq!(
+        json["degraded"].clone(),
+        serde_json::json!([
+            {
+                "part": "send_back",
+                "read": "not offered, so it may go quiet with its deliverable missing"
+            },
+            {
+                "part": "guard",
+                "read": "not offered, so nothing refuses its submitting, merging or pushing its place's branch"
+            },
+            {
+                "part": "on_quiet",
+                "read": "not offered, so the host's watch, or a command where none keeps watch, settles its place"
+            }
+        ]),
+        "degraded in the JSON form"
+    );
+    Ok(())
+}
+
+/// The place-status spec's scenario "A profile that reads the five from
+/// its terminal" (56, 171, 174).
+fn a_profile_that_reads_the_five_from_its_terminal(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    world
+        .agent
+        .reads_from_its_terminal(&flume_fakes::FakeAgent::FROM_TERMINAL);
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    let five = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+    ];
+    ensure_eq!(
+        agent.degraded,
+        five.map(|part| DegradedPart {
+            part,
+            read: part.read().into(),
+        })
+        .to_vec(),
+        "the agent's degraded parts"
+    );
+    ensure_eq!(
+        json["degraded"].clone(),
+        serde_json::json!([
+            {
+                "part": "received",
+                "read": "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds"
+            },
+            {
+                "part": "asking",
+                "read": "read from the terminal, asking while it reads the agent waiting on a question"
+            },
+            {
+                "part": "own_work",
+                "read": "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then"
+            },
+            {
+                "part": "ended",
+                "read": "read from the terminal, ended once it reads the agent stopped"
+            },
+            {
+                "part": "last_words",
+                "read": "read from the terminal, what it shows of the agent"
+            }
+        ]),
+        "degraded in the JSON form"
+    );
+    Ok(())
+}
+
+/// The place-status spec's scenario "A profile that builds every part"
+/// (56, 174; core.14).
+fn a_profile_that_builds_every_part(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    ensure_eq!(agent.degraded, vec![], "the agent's degraded parts");
+    ensure!(
+        json.get("degraded").is_none(),
+        "the JSON form holds degraded: {}",
+        json["degraded"]
     );
     Ok(())
 }
@@ -2797,6 +2961,7 @@ fn an_effort_from_the_launch(_: &()) -> Outcome {
         Some(EffortStatus {
             word: "xhigh".into(),
             layer: Layer::Launch,
+            entry: None,
             passed: "xhigh".into(),
             read_back: false,
             outranked_by: None,
@@ -2831,6 +2996,7 @@ fn an_effort_outranked_by_the_account(_: &()) -> Outcome {
         Some(EffortStatus {
             word: "high".into(),
             layer: Layer::HostKind,
+            entry: None,
             passed: "high".into(),
             read_back: false,
             outranked_by: Some(EFFORT_VARIABLE.into()),
@@ -2869,6 +3035,109 @@ fn no_effort_in_status(_: &()) -> Outcome {
     ensure!(
         !json.to_string().contains(EFFORT_VALUE),
         "the variable's value in status: {json}"
+    );
+    Ok(())
+}
+
+fn a_model_given_whole(_: &()) -> Outcome {
+    let world = World::new();
+    let mut fix = launch("fix", "one", Some("mend it"));
+    fix.every_stage = model("large");
+    let (agent, json) = effort_in_status(&world, &fix)?;
+    ensure_eq!(
+        agent.model,
+        Some(ModelStatus {
+            name: "large".into(),
+            layer: Layer::Launch,
+            entry: None,
+            passed: "large".into(),
+        }),
+        "the agent's model"
+    );
+    ensure_eq!(
+        json["model"].clone(),
+        serde_json::json!({"name": "large", "layer": "launch", "passed": "large"}),
+        "the model in the JSON form"
+    );
+    Ok(())
+}
+
+fn a_models_table_entry(_: &()) -> Outcome {
+    let world = World::new();
+    world.host.set_settings(
+        None,
+        "fix",
+        for_every_stage(models(&[("agent", "large"), ("other", "small")])?),
+    );
+    let (agent, json) = effort_in_status(&world, &launch("fix", "one", Some("mend it")))?;
+    let written = r#"{ agent = "large", other = "small" }"#;
+    ensure_eq!(
+        agent.model,
+        Some(ModelStatus {
+            name: written.into(),
+            layer: Layer::HostKind,
+            entry: Some("agent".into()),
+            passed: "large".into(),
+        }),
+        "the agent's model"
+    );
+    ensure_eq!(
+        (json["model"].clone(), json["settings"]["model"].clone()),
+        (
+            serde_json::json!({"name": written, "layer": "host-kind", "entry": "agent", "passed": "large"}),
+            serde_json::json!({"agent": "large", "other": "small"})
+        ),
+        "the model in the JSON form, the table as written in its settings"
+    );
+    Ok(())
+}
+
+fn no_model_in_status(_: &()) -> Outcome {
+    let world = World::new();
+    let (agent, json) = effort_in_status(&world, &launch("fix", "one", Some("mend it")))?;
+    ensure_eq!(agent.model, None, "the agent's model");
+    ensure_eq!(
+        agent.settings.settings.model,
+        None,
+        "the model its settings give"
+    );
+    ensure!(
+        json.get("model").is_none()
+            && json["settings"]["model"].is_null()
+            && json["settings"]["from"].get("model").is_none(),
+        "a model in the JSON form beyond its settings': {json}"
+    );
+    Ok(())
+}
+
+fn an_efforts_table_entry(_: &()) -> Outcome {
+    let world = World::new();
+    world.agent.take_efforts(&["low", "high"]);
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![super::agent_modes::fix_kind(for_every_stage(efforts(&[
+            ("agent", "high"),
+            ("other", "max"),
+        ])?))?],
+    );
+    let (agent, json) = effort_in_status(&world, &launch("fix", "one", Some("mend it")))?;
+    let written = r#"{ agent = "high", other = "max" }"#;
+    ensure_eq!(
+        agent.effort,
+        Some(EffortStatus {
+            word: written.into(),
+            layer: Layer::Kind,
+            entry: Some("agent".into()),
+            passed: "high".into(),
+            read_back: false,
+            outranked_by: None,
+        }),
+        "the agent's effort"
+    );
+    ensure_eq!(
+        json["effort"]["entry"].clone(),
+        serde_json::json!("agent"),
+        "the entry in the JSON form"
     );
     Ok(())
 }
@@ -3366,5 +3635,57 @@ fn a_place_of_a_run_gives_no_checkouts(_: &()) -> Outcome {
         "a fix's JSON holds checkouts"
     );
     ensure_eq!(json["branch"], "fix/one", "a fix's branch");
+    Ok(())
+}
+
+/// The place-status spec's scenario "A review on the account's program":
+/// a fill-first pool of other-1, of `other`, and agent-1, and the kind
+/// `look`, whose one stage, review, names no program, so its review starts
+/// on other-1 from the strategy and its account names its program (56,
+/// 173; core.30).
+fn a_review_on_the_accounts_program(_: &()) -> Outcome {
+    let world = World::new();
+    world.resolver.bind_agent("other", world.agent.clone());
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![
+            Account {
+                program: "other".into(),
+                ..account("other-1", None)
+            },
+            account("agent-1", None),
+        ],
+    );
+    world.host.set_host_pool(Some("work"));
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![kind(
+            "look",
+            false,
+            vec![stage("review", Some(Deliverable::Commits), "{{brief}}")],
+        )],
+    );
+    let id = of_the_surfaces(&world, "look", "a", None)?;
+    let status = world.status(&id)?;
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure_eq!(
+        (
+            json["agent"]["stage"].as_str(),
+            json["agent"]["program"].as_str(),
+            json["agent"]["settings"]["from"]["program"].clone(),
+            json["agent"]["account"]["name"].as_str(),
+            json["agent"]["account"]["from"].as_str(),
+        ),
+        (
+            Some("review"),
+            Some("other"),
+            serde_json::json!({"layer": "account", "value": "other"}),
+            Some("other-1"),
+            Some("strategy")
+        ),
+        "the review's agent, its program and its account in the JSON form"
+    );
     Ok(())
 }
