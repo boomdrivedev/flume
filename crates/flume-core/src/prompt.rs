@@ -354,6 +354,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         };
         let way = way_to_stop_short(&agent, &identity);
         assert!(way.starts_with(&agent.stop_short(&identity)), "{way}");

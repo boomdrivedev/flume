@@ -563,6 +563,7 @@ impl Host {
             place: String::new(),
             stage: stage.into(),
             start,
+            resume: 0,
         };
         let mark = ended_mark(&self.folder(place), &identity);
         std::fs::create_dir_all(mark.parent().expect("a folder")).expect("the mark's folder");

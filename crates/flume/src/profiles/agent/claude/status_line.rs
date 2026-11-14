@@ -46,6 +46,7 @@ fn identity(word: &str) -> Option<Identity> {
         place: place.into(),
         stage: stage.into(),
         start: start.parse().ok()?,
+        resume: 0,
     };
     (identity.to_string() == word).then_some(identity)
 }
@@ -61,6 +62,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 2,
+            resume: 0,
         };
         assert_eq!(super::identity(&identity.to_string()), Some(identity));
         for word in [

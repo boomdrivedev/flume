@@ -320,6 +320,7 @@ impl World {
             place: format!("{kind}--{name}"),
             stage: stage.into(),
             start,
+            resume: 0,
         }
     }
 

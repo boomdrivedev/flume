@@ -227,6 +227,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 2,
+            resume: 0,
         };
         assert_eq!(
             file("/state/places/fix--one", &identity),

@@ -215,6 +215,7 @@ impl Engine {
             place: held.place.short(),
             stage: held.place.kind.stages[index].name.clone(),
             start: held.stages[index].starts + 1,
+            resume: 0,
         }
     }
 

@@ -149,6 +149,7 @@ fn identity() -> Identity {
         place: "bump--one".into(),
         stage: "code".into(),
         start: 2,
+        resume: 0,
     }
 }
 
@@ -3911,6 +3912,41 @@ fn an_identity_a_secret_and_a_stop_short() {
     assert_eq!(before.addressee, None);
     assert_eq!(before.commits, Vec::<Revision>::new());
     assert_eq!(before.screen, None);
+}
+
+/// seam-contracts' "A resume's identity round-trips" and "An identity
+/// written before": the second resume of talk's first start, as JSON
+/// and as flume spells it, and an identity's JSON with no resume read
+/// as a start's (33, 74, 213).
+#[test]
+fn an_identity_names_its_resume() {
+    let resumed = Identity {
+        repository: "/r".into(),
+        place: "research--one".into(),
+        stage: "talk".into(),
+        start: 1,
+        resume: 2,
+    };
+    round_trips(resumed.clone());
+    assert_eq!(resumed.to_string(), "flume:/r:research--one:talk:1.2");
+    assert!(resumed.to_string().ends_with(":talk:1.2"));
+    let json = serde_json::to_value(&resumed).unwrap();
+    assert_eq!(json["resume"], 2);
+    let start = Identity {
+        resume: 0,
+        ..resumed
+    };
+    assert!(serde_json::to_value(&start)
+        .unwrap()
+        .get("resume")
+        .is_none());
+    assert_eq!(start.to_string(), "flume:/r:research--one:talk:1");
+    let before: Identity =
+        serde_json::from_str(r#"{"repository":"/r","place":"bump--one","stage":"code","start":2}"#)
+            .unwrap();
+    assert_eq!(before, identity());
+    assert_eq!(before.resume, 0);
+    assert_eq!(before.to_string(), "flume:/r:bump--one:code:2");
 }
 
 #[test]
