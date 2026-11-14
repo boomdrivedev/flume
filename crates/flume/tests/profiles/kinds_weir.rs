@@ -690,6 +690,7 @@ fn bump(version: u32, stages: &[&str]) -> Kind {
                 send_back_limit: None,
                 makes: vec![],
                 repeats: false,
+                hibernates: false,
             })
             .collect(),
         fix: None,

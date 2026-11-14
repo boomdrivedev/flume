@@ -386,6 +386,7 @@ fn settings_of(
         mode,
         keep_open: super::config::keep_open_of(table, at)?,
         programs,
+        hibernate_after: None,
     })
 }
 

@@ -22,6 +22,7 @@ fn settings() -> Settings {
         session: Some("office".into()),
         programs: BTreeMap::new(),
         keep_open: None,
+        hibernate_after: None,
     }
 }
 
@@ -101,6 +102,7 @@ fn stage() -> Stage {
         send_back_limit: Some(3),
         makes: vec!["preview".into(), "spike".into()],
         repeats: true,
+        hibernates: false,
     }
 }
 
@@ -3593,6 +3595,66 @@ fn a_kind_with_its_stages() {
         round_trips(declared);
     }
     assert_eq!(serde_json::to_value(Declared::Host).unwrap(), "host");
+}
+
+/// A kind whose conversation hibernates, settings giving its hibernate
+/// time `20m` taken whole as `keep_open` is, and a stage's JSON written
+/// before read as hibernating nothing (212, C.2, C.7; core.4).
+#[test]
+fn a_stage_that_hibernates_and_its_hibernate_time() {
+    let talk = Stage {
+        name: "talk".into(),
+        conversation: true,
+        deliverables: vec![],
+        waits: false,
+        quiet_limit: None,
+        send_back_to: None,
+        send_back_limit: None,
+        repeats: false,
+        hibernates: true,
+        ..stage()
+    };
+    let research = Kind {
+        name: "research".into(),
+        lands: false,
+        stages: vec![talk.clone()],
+        ..kind()
+    };
+    round_trips(research.clone());
+    assert_eq!(
+        serde_json::to_value(&talk).unwrap()["hibernates"],
+        serde_json::json!(true)
+    );
+    let twenty = Settings {
+        hibernate_after: Some("20m".into()),
+        ..settings()
+    };
+    round_trips(twenty.clone());
+    assert_eq!(
+        serde_json::to_value(&twenty).unwrap()["hibernate_after"],
+        "20m"
+    );
+    assert!(serde_json::to_value(settings())
+        .unwrap()
+        .get("hibernate_after")
+        .is_none());
+    let over = Settings {
+        hibernate_after: Some("1h".into()),
+        ..Settings::default()
+    };
+    assert_eq!(twenty.under(&over).hibernate_after.as_deref(), Some("1h"));
+    assert_eq!(
+        twenty
+            .under(&Settings::default())
+            .hibernate_after
+            .as_deref(),
+        Some("20m")
+    );
+    let mut before = serde_json::to_value(stage()).unwrap();
+    before.as_object_mut().unwrap().remove("hibernates");
+    let before: Stage = serde_json::from_value(before).unwrap();
+    assert!(!before.hibernates);
+    assert_eq!(before, stage());
 }
 
 #[test]

@@ -104,6 +104,7 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
             send_back_limit: Some(2),
             makes: vec![],
             repeats: false,
+            hibernates: false,
         }],
         fix: None,
         fix_limit: None,

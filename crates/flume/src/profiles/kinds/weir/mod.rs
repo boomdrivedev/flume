@@ -851,6 +851,7 @@ fn map_stage(
             None => false,
             Some(weir_kinds::Repeat::PerTaskGroup) => true,
         },
+        hibernates: false,
     }
 }
 
@@ -961,5 +962,6 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
         // Nor how long an agent is kept open for an answer, refused above
         // (158, 198).
         keep_open: None,
+        hibernate_after: None,
     }
 }

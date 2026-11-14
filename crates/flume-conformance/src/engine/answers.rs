@@ -125,6 +125,7 @@ fn settings() -> Settings {
         session: Some("review".into()),
         programs: BTreeMap::new(),
         keep_open: None,
+        hibernate_after: None,
     }
 }
 

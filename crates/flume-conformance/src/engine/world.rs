@@ -264,6 +264,7 @@ pub fn stage(name: &str, deliverable: Option<Deliverable>, prompt: &str) -> Stag
         send_back_limit: None,
         makes: vec![],
         repeats: false,
+        hibernates: false,
     }
 }
 
