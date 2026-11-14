@@ -514,17 +514,34 @@ impl Engine {
     }
 
     /// Ends the place's agent and nothing else: the stage neither ends nor
-    /// moves on, and waits for a retry or a drop (51).
+    /// moves on, and waits for a retry or a drop (51). A stop of a place
+    /// whose stage hibernates ends no agent: the hibernation is over and
+    /// the stage reads stopped, or, where it waits on its answer, stays
+    /// ended short with its close read stopped, so nothing resumes it
+    /// after (42, 51, 212).
     pub fn stop(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
             return Answer::refused(format!("no place {place} stands on this host"));
         };
+        if hibernating(&read.state).is_some() || hibernated_waiting(&read.state).is_some() {
+            return match self.stop_hibernated(place) {
+                true => self.acted(Act::Stop, place),
+                false => Answer::refused(format!(
+                    "the place {place} moved before its hibernating stage was stopped"
+                )),
+            };
+        }
         if read.state.live_start().is_none() {
             return Answer::refused(format!("the place {place} has no live agent"));
         }
         match self.end_agent(place, force) {
-            Ok(()) => self.acted(Act::Stop, place),
+            Ok(()) => {
+                // An agent kept open whose close read hibernated, not yet
+                // ended: its caller's stop is the cause now (51, 212).
+                self.stop_hibernated(place);
+                self.acted(Act::Stop, place)
+            }
             Err(reason) => Answer::refused(reason),
         }
     }
@@ -648,8 +665,8 @@ impl Engine {
 
     /// Ends a conversation's agent once quiet, one not quiet only when
     /// forced, and the conversation then counts as delivered (109, 40).
-    /// A conversation whose agent was lost has no agent to end, and waits
-    /// on a retry or this finish (45).
+    /// A conversation whose agent was lost, or that hibernates, has no
+    /// agent to end, and waits on a retry or this finish (45, 212).
     pub fn finish(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
@@ -659,7 +676,9 @@ impl Engine {
         let current = held.current.filter(|index| {
             let state = held.stages[*index].state;
             held.place.kind.stages[*index].conversation
-                && (state.running() || state == StageState::Lost)
+                && (state.running()
+                    || state == StageState::Lost
+                    || state == StageState::Hibernating)
         });
         let Some(index) = current else {
             return Answer::refused(format!("the place {place} runs no conversation"));
@@ -834,6 +853,41 @@ impl Engine {
             }
         }
         Err(format!("the agent {identity} did not receive the words"))
+    }
+
+    /// A stop of the place's hibernating stage: no agent to end, its
+    /// hibernation over and the stage stopped, or, where it waits on its
+    /// answer and its agent's close reads hibernated, its close read
+    /// stopped, in one write; true when it was written (42, 51, 212).
+    fn stop_hibernated(&self, place: &PlaceId) -> bool {
+        self.update(place, |held| {
+            if let Some(index) = hibernating(held) {
+                let stage = &mut held.stages[index];
+                stage.state = StageState::Stopped;
+                if let Some(start) = stage.start.as_mut() {
+                    start.hibernated = None;
+                }
+                return Step::Write(true);
+            }
+            let Some(index) = held.current.filter(|_| held.phase == Phase::Live) else {
+                return Step::Keep(false);
+            };
+            let stage = &mut held.stages[index];
+            if stage.state != StageState::EndedShort {
+                return Step::Keep(false);
+            }
+            match stage.end.as_mut().and_then(|end| end.closed.as_mut()) {
+                Some(closed) if closed.by == ClosedBy::Hibernated => {
+                    closed.by = ClosedBy::Stopped;
+                    if let Some(start) = stage.start.as_mut() {
+                        start.hibernated = None;
+                    }
+                    Step::Write(true)
+                }
+                _ => Step::Keep(false),
+            }
+        })
+        .unwrap_or(false)
     }
 
     /// The answer to an act taken: the place's status as it then stands.

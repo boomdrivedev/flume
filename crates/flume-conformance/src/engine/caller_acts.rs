@@ -21,6 +21,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_tell_to_a_hibernating_stage,
         },
         Scenario {
+            name: "retry: A retry of a hibernating conversation: a caller's retry with no words of a place whose talk hibernates starts a fresh talk:2 resuming no conversation, its hibernation over",
+            cites: &["49", "212"],
+            run: a_retry_of_a_hibernating_conversation,
+        },
+        Scenario {
+            name: "stop: A hibernating conversation stopped: a stop of a place whose talk hibernates is taken and talk reads stopped, and a tell after it is refused naming the place's want of a live agent, nothing typed and nothing started",
+            cites: &["51", "53", "212"],
+            run: a_hibernating_conversation_stopped,
+        },
+        Scenario {
+            name: "finish: A hibernating conversation finished: a finish of a place whose talk hibernates counts talk delivered, no agent closed through the terminal",
+            cites: &["40", "109", "212"],
+            run: a_hibernating_conversation_finished,
+        },
+        Scenario {
             name: "retry: a construct that ended short, its agent let go and ended, retried with words, starts afresh with the question and the answer",
             cites: &["S4", "49", "50", "42"],
             run: s4_retried_with_words,
@@ -1413,4 +1428,86 @@ fn a_tell_to_a_hibernating_stage(_: &()) -> Outcome {
         "go on",
         1,
     )
+}
+
+fn a_retry_of_a_hibernating_conversation(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, start_now, talk_of};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let carries = world.agent.log.count("carry");
+    taken(&world.engine().retry(&id, Retry::Current, None, false))?;
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            start.identity,
+            start.hibernated,
+            start.resumes.is_empty(),
+            start.conversation,
+            start.start_record.session,
+            world.agent.log.count("carry")
+        ),
+        (talk_of("one", 2), None, true, None, None, carries),
+        "talk's start after the retry, its hibernation, its resumes, its conversation, the session it resumes and the carries asked"
+    );
+    ensure!(
+        world
+            .stage_state(&id, "talk")
+            .is_some_and(StageState::running),
+        "talk after the retry: {:?}",
+        world.stage_state(&id, "talk")
+    );
+    Ok(())
+}
+
+fn a_hibernating_conversation_stopped(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, start_now, talk_of};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let closes = world.terminal.log.count("close");
+    taken(&world.engine().stop(&id, false))?;
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            start_now(&world, &id, "talk")?.hibernated,
+            world.terminal.log.count("close")
+        ),
+        (Some(StageState::Stopped), None, closes),
+        "talk once stopped, its hibernation and the agents closed"
+    );
+    let (opens, sent) = (
+        world.terminal.log.count("open"),
+        world.terminal.sent_to(&talk_of("one", 1)).len(),
+    );
+    let reason = refused(&world.engine().tell(&id, "go on", None))?;
+    ensure!(
+        reason.contains(&id.to_string()) && reason.contains("no live agent"),
+        "the tell's refusal names not the place's want of a live agent: {reason}"
+    );
+    ensure_eq!(
+        (
+            world.terminal.log.count("open"),
+            world.terminal.sent_to(&talk_of("one", 1)).len(),
+            world.stage_state(&id, "talk")
+        ),
+        (opens, sent, Some(StageState::Stopped)),
+        "the agents opened, the words sent and talk after the tell"
+    );
+    Ok(())
+}
+
+fn a_hibernating_conversation_finished(_: &()) -> Outcome {
+    use super::hibernation::hibernated_talk;
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let closes = world.terminal.log.count("close");
+    taken(&world.engine().finish(&id, false))?;
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            world.terminal.log.count("close")
+        ),
+        (Some(StageState::Finished), closes),
+        "talk once finished, and the agents closed"
+    );
+    Ok(())
 }

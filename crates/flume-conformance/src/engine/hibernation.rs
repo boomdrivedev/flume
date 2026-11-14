@@ -141,6 +141,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["42", "146", "213"],
             run: spent_after_a_resume,
         },
+        Scenario {
+            name: "hibernation: A hibernating research place done: a caller's done of a place whose talk hibernates, its kind landing nothing, makes its work over with no agent closed through the terminal, and the next settle tidies it",
+            cites: &["62", "114", "212"],
+            run: a_hibernating_research_place_done,
+        },
     ]
 }
 
@@ -1418,6 +1423,27 @@ fn spent_after_a_resume(_: &()) -> Outcome {
             .contains(&format!("{spent}\n\nuse notes.md")),
         "code's fresh start's prompt is not flume's words then the resume's: {}",
         start.prompt.text
+    );
+    Ok(())
+}
+
+fn a_hibernating_research_place_done(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let closes = closed(&world).len();
+    let answer = world.engine().done(&id, false);
+    taken(&answer)?;
+    ensure_eq!(closed(&world).len(), closes, "the agents closed");
+    world.settle(&id);
+    let phase = world.held(&id).map(|held| held.phase);
+    ensure!(
+        matches!(phase, None | Some(Phase::Tidied { .. })),
+        "the place once settled after its done: {phase:?}"
+    );
+    ensure!(
+        !world.place.log.of("remove").is_empty(),
+        "the place was not removed: {:?}",
+        world.place.log.calls()
     );
     Ok(())
 }

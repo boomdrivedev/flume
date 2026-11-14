@@ -249,7 +249,9 @@ impl Engine {
                 return Step::Keep(false);
             };
             let stage = &mut held.stages[index];
-            let lost = stage.state == StageState::Lost;
+            // A lost or hibernating stage has no agent to end, and ends at
+            // its caller's finish (45, 109, 212).
+            let lost = matches!(stage.state, StageState::Lost | StageState::Hibernating);
             let Some(start) = stage.start.as_mut().filter(|start| start.live || lost) else {
                 return Step::Keep(false);
             };
