@@ -755,6 +755,9 @@ impl Engine {
                     passed: None,
                 }),
                 answered: 0,
+                hibernated: None,
+                resumes: vec![],
+                handing: None,
             });
             if !held
                 .terminals

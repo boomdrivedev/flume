@@ -577,7 +577,8 @@ pub(crate) fn group_status(
         | StageState::Lost
         | StageState::NeverBegun
         | StageState::Stopped
-        | StageState::EndedShort => {
+        | StageState::EndedShort
+        | StageState::Hibernating => {
             let given = stage.start.as_ref()?.group.as_ref()?;
             find_group(facts, given)?
         }

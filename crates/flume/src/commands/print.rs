@@ -807,6 +807,16 @@ fn kept_open_line(waiting: &WaitingOn) -> Option<String> {
         ClosedBy::AgentEnded => "its agent ended",
         ClosedBy::AccountSpent => "its account spent",
         ClosedBy::Stopped => "its caller stopped it",
+        ClosedBy::Hibernated => {
+            let ended = match closed.ended_at {
+                Some(at) => format!("ended at {at}"),
+                None => "to be ended once quiet".to_string(),
+            };
+            return Some(format!(
+                "    its agent hibernated at {}, its time passed, {ended}: its answer resumes its session, by a tell or a retry with --words",
+                closed.at
+            ));
+        }
     };
     let ended = match (closed.ended_at, closed.left_in_pane) {
         (Some(at), _) => format!("and ended at {at}"),
@@ -1685,6 +1695,7 @@ fn unsettled_line(unsettled: &UnsettledStart) -> String {
 fn conversation_line(conversation: &Conversation) -> String {
     let lost = match conversation.cause {
         CarryCause::Lost => ", lost",
+        CarryCause::Hibernated => ", hibernated",
         CarryCause::Spent => "",
     };
     match &conversation.why {
