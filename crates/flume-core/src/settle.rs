@@ -11,6 +11,7 @@
 //! word (43, 114, 132, 193; core.25, core.28).
 
 use crate::held::read_stall;
+use crate::hibernate::hibernation_claimed;
 use crate::{Answer, Engine, Step, Tidied};
 use flume_seams::*;
 
@@ -262,6 +263,12 @@ impl Engine {
         let Some(index) = held.current else {
             return false;
         };
+        // A hibernation claimed on the current start, its agent not yet
+        // recorded ended, is carried on before anything else reads the
+        // agent (212).
+        if hibernation_claimed(&held) {
+            return self.carry_hibernation_on(id);
+        }
         match held.stages[index].state {
             StageState::Starting | StageState::Started => self.deliver(id),
             StageState::NeverBegun => self.begun_after(id),

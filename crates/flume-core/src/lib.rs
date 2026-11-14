@@ -20,6 +20,7 @@ mod end;
 mod ends;
 mod fixes;
 mod held;
+mod hibernate;
 mod kinds_lock;
 mod launch;
 mod line;

@@ -297,6 +297,18 @@ pub fn research_that_hibernates() -> Kind {
     kind("research", false, vec![talk])
 }
 
+/// The repository's kind `patch`, landing nothing, its one stage `code`
+/// delivering commits, which its kind hibernates (212).
+pub fn patch_that_hibernates() -> Kind {
+    let mut code = stage(
+        "code",
+        Some(Deliverable::Commits),
+        "Patch {{name}}.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    code.hibernates = true;
+    kind("patch", false, vec![code])
+}
+
 /// A launch of `kind` named `name` on `main` with `brief`.
 pub fn launch(kind: &str, name: &str, brief: Option<&str>) -> Launch {
     Launch {
@@ -447,14 +459,32 @@ impl World {
     /// launched as `given` launches it and settled once, its talk begun
     /// (212).
     pub fn researching(&self, given: Launch) -> Result<PlaceId, String> {
-        self.kinds
-            .set_kinds(REPOSITORY, vec![research_that_hibernates()]);
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
         let id = World::id("research", &given.name);
         launched(&self.engine.launch(&given))?;
         self.settle(&id);
         match self.stage_state(&id, "talk") {
             Some(StageState::Begun) => Ok(id),
             other => Err(format!("talk did not begin: {other:?}")),
+        }
+    }
+
+    /// The patch place `name`, of the kind whose code hibernates,
+    /// launched and settled once, its code begun (212).
+    pub fn patching(&self, name: &str) -> Result<PlaceId, String> {
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
+        let id = World::id("patch", name);
+        launched(&self.engine.launch(&launch("patch", name, Some("mend it"))))?;
+        self.settle(&id);
+        match self.stage_state(&id, "code") {
+            Some(StageState::Begun) => Ok(id),
+            other => Err(format!("code did not begin: {other:?}")),
         }
     }
 

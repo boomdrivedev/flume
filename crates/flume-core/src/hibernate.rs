@@ -1,0 +1,258 @@
+//! Hibernating a stage (212; record 0069; design 6): an act of its own
+//! beside the stage's state machine, taken only for a stage whose kind
+//! hibernates it. Its agent is ended once it is quiet, or, at its
+//! caller's forced word, working (31), through the terminal its start
+//! opened it in, and its session is kept: the start reads not live, so
+//! its room and its account are free (70, 145), and records since when
+//! it hibernated, why and the account it ran under. A running stage then
+//! reads hibernating, its end none, neither ended nor moved on; a stage
+//! ended short whose agent was kept open for its answer stays ended
+//! short, waiting on its answer, its close recorded hibernated (42, 198).
+//! Nothing counts a start, a retry or a going back (48).
+//!
+//! One step, used by a settle and by the caller's act: the hibernation
+//! is claimed on the start in one compare-and-set write before the agent
+//! is closed, so two settles at once close it once and record it once;
+//! the agent is then closed, a close the terminal refuses a failed end
+//! and the claim let go; and the start is then read not live in one more
+//! write. A claim a settle finds standing on a live start, its close or
+//! its last write not made, is carried on by that settle once the agent
+//! is quiet, so every step is safe to repeat (31, 74, 75; core.17).
+
+use crate::{Answer, Engine, Step};
+use flume_seams::*;
+
+/// What a hibernate of a place's current stage finds: the stage's index
+/// and its live start, or why it is refused.
+struct Due {
+    index: usize,
+    start: StartHeld,
+}
+
+impl Engine {
+    /// The caller's hibernate of the place's current stage (212): taken
+    /// for a stage whose kind hibernates it with a live agent, running or
+    /// kept open for its answer, its agent ended once quiet, one not quiet
+    /// only when `force`; refused, naming the place, for a stage whose
+    /// kind does not hibernate it and for a place with no live agent, and
+    /// naming the agent where it is not quiet and the caller did not
+    /// force it. The place is then settled, so a stage waiting for the
+    /// room it freed starts (70).
+    pub fn hibernate(&self, place: &PlaceId, force: bool) -> Answer {
+        self.settle_attended();
+        let Some(read) = self.store.read(place) else {
+            return Answer::refused(format!("no place {place} stands on this host"));
+        };
+        let held = read.state;
+        if held.phase != Phase::Live {
+            return Answer::refused(format!("the work of the place {place} is over"));
+        }
+        let index = held.current.unwrap_or(0);
+        let declared = held.place.kind.stages.get(index);
+        if !declared.is_some_and(|stage| stage.hibernates) {
+            let stage = declared.map_or("", |stage| stage.name.as_str());
+            return Answer::refused(format!(
+                "the place {place}'s kind {} does not hibernate its stage {stage} (212)",
+                held.place.kind.name
+            ));
+        }
+        let due = match due(&held, place) {
+            Ok(due) => due,
+            Err(reason) => return Answer::refused(reason),
+        };
+        match self.hibernate_start(place, &due, HibernatedBy::Caller, force) {
+            Ok(_) => {
+                self.settle_place(place);
+                self.acted(Act::Hibernate, place)
+            }
+            Err(reason) => Answer::refused(reason),
+        }
+    }
+
+    /// The step itself for the start `due` holds: claimed, closed, then
+    /// recorded not live (design 6).
+    fn hibernate_start(
+        &self,
+        id: &PlaceId,
+        due: &Due,
+        why: HibernatedBy,
+        force: bool,
+    ) -> Result<bool, String> {
+        let identity = due.start.identity.clone();
+        let reading = self.read_agent(id, &due.start);
+        let stopped = reading.state == AgentState::Stopped;
+        if !stopped && !reading.quiet() && !force {
+            return Err(format!(
+                "the agent {identity} is not quiet; ask again forced to hibernate it"
+            ));
+        }
+        let now = self.host.now();
+        let claimed = self
+            .update(id, |held| {
+                let Some(start) = current_start(held, due.index, &identity) else {
+                    return Step::Keep(false);
+                };
+                if !start.live || start.hibernated.is_some() {
+                    return Step::Keep(false);
+                }
+                start.hibernated = Some(HibernationHeld {
+                    since: now,
+                    why,
+                    account: start.account.as_ref().map(|account| account.name.clone()),
+                });
+                let stage = &mut held.stages[due.index];
+                if stage.state == StageState::EndedShort {
+                    if let Some(end) = stage.end.as_mut().filter(|end| end.closed.is_none()) {
+                        end.closed = Some(SessionClosed {
+                            at: now,
+                            by: ClosedBy::Hibernated,
+                            ended_at: None,
+                            left_in_pane: false,
+                        });
+                    }
+                }
+                Step::Write(true)
+            })
+            .unwrap_or(false);
+        if !claimed {
+            return Ok(false);
+        }
+        self.end_hibernated(id, due, !stopped)
+    }
+
+    /// Ends the agent of the start `due` holds, whose hibernation is
+    /// claimed, where `close` says it still runs, and records the start
+    /// not live; a close the terminal refuses is a failed end, and lets
+    /// go of the claim (31, 212).
+    fn end_hibernated(&self, id: &PlaceId, due: &Due, close: bool) -> Result<bool, String> {
+        let identity = &due.start.identity;
+        if close {
+            if let Closed::Refused { reason } = self.agent_on(&due.start).close() {
+                self.failed_end(id, identity, &reason);
+                self.update(id, |held| match current_start(held, due.index, identity) {
+                    Some(start) if start.live => {
+                        start.hibernated = None;
+                        if let Some(end) = held.stages[due.index].end.as_mut() {
+                            if end
+                                .closed
+                                .is_some_and(|closed| closed.by == ClosedBy::Hibernated)
+                            {
+                                end.closed = None;
+                            }
+                        }
+                        Step::Write(())
+                    }
+                    _ => Step::Keep(()),
+                });
+                return Err(format!("the agent {identity} did not end: {reason}"));
+            }
+        }
+        let now = self.host.now();
+        Ok(self
+            .update(id, |held| {
+                let Some(start) = current_start(held, due.index, identity) else {
+                    return Step::Keep(false);
+                };
+                if !start.live || start.hibernated.is_none() {
+                    return Step::Keep(false);
+                }
+                start.live = false;
+                start.first_quiet = None;
+                start.past_limit = false;
+                start.handing = None;
+                let stage = &mut held.stages[due.index];
+                if stage.state == StageState::EndedShort {
+                    if let Some(closed) = stage.end.as_mut().and_then(|end| end.closed.as_mut()) {
+                        closed.ended_at.get_or_insert(now);
+                    }
+                } else {
+                    stage.state = StageState::Hibernating;
+                    stage.end = None;
+                }
+                Step::Write(true)
+            })
+            .unwrap_or(false))
+    }
+
+    /// A settle's step for a start whose hibernation was claimed and whose
+    /// agent was not yet recorded ended: carried on once the agent is
+    /// quiet or stopped, never forced; true when it changed something
+    /// (31, 74, 212).
+    pub(crate) fn carry_hibernation_on(&self, id: &PlaceId) -> bool {
+        let Some(read) = self.store.read(id) else {
+            return false;
+        };
+        let Some(index) = read.state.current else {
+            return false;
+        };
+        let Some(start) = read.state.stages[index]
+            .start
+            .clone()
+            .filter(|start| start.live && start.hibernated.is_some())
+        else {
+            return false;
+        };
+        let reading = self.read_agent(id, &start);
+        let stopped = reading.state == AgentState::Stopped;
+        if !stopped && !reading.quiet() {
+            return false;
+        }
+        self.end_hibernated(id, &Due { index, start }, !stopped)
+            .unwrap_or(false)
+    }
+}
+
+/// Whether the place's current start's hibernation is claimed and its
+/// agent not yet recorded ended, which a settle carries on (212).
+pub(crate) fn hibernation_claimed(held: &HeldState) -> bool {
+    held.current
+        .and_then(|index| held.stages[index].start.as_ref())
+        .is_some_and(|start| start.live && start.hibernated.is_some())
+}
+
+/// The current stage at `index` and its live start under `identity`, as a
+/// write decides it: none where the place moved on (75).
+fn current_start<'a>(
+    held: &'a mut HeldState,
+    index: usize,
+    identity: &Identity,
+) -> Option<&'a mut StartHeld> {
+    if held.phase != Phase::Live || held.current != Some(index) {
+        return None;
+    }
+    held.stages[index]
+        .start
+        .as_mut()
+        .filter(|start| &start.identity == identity)
+}
+
+/// The place's current stage and its live start where a hibernate takes
+/// it: a stage whose agent runs, or one ended short whose agent is kept
+/// open for its answer and not let go; otherwise why not, naming the
+/// place (212).
+fn due(held: &HeldState, place: &PlaceId) -> Result<Due, String> {
+    let index = held.current.unwrap_or(0);
+    let stage = &held.stages[index];
+    let Some(start) = stage.start.clone().filter(|start| start.live) else {
+        return Err(format!("the place {place} has no live agent"));
+    };
+    let kept_open = stage.state == StageState::EndedShort
+        && stage
+            .end
+            .as_ref()
+            .is_some_and(|end| end.open_until.is_some() && end.closed.is_none());
+    if !stage.state.running() && !kept_open {
+        return Err(format!(
+            "the place {place}'s stage {} is {}, and only a stage whose agent runs or is kept open for its answer hibernates (212)",
+            stage.name,
+            stage.state.word()
+        ));
+    }
+    if start.hibernated.is_some() {
+        return Err(format!(
+            "the place {place}'s agent {} is hibernating already",
+            start.identity
+        ));
+    }
+    Ok(Due { index, start })
+}
