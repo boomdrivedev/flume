@@ -1,6 +1,7 @@
 //! The change profile over OpenSpec (C.3; design 8): the change seam's
-//! scenarios against it on scratch repositories, a change of another
-//! schema read through the pinned `openspec status`, and the file reading
+//! scenarios against it on scratch repositories, planning complete read
+//! through the pinned `openspec status` for every schema, a change that
+//! skips specs among them, and the other facts read from the files, all
 //! held to `openspec` at five revisions of one change (59).
 
 use crate::common::*;
@@ -284,4 +285,43 @@ fn a_change_of_another_schema_is_read_through_openspec() {
         })
         .count();
     assert!(after <= before, "a checkout for the read was left");
+}
+
+#[test]
+fn a_change_that_skips_specs_is_planned_as_openspec_reads_it() {
+    let repository = Repository::new("skips-specs");
+    repository.write("openspec/config.yaml", "schema: spec-driven\n");
+    repository.write("openspec/specs/.keep", "");
+    let folder = "openspec/changes/plan";
+    repository.write(&format!("{folder}/proposal.md"), "# Proposal\n");
+    repository.write(&format!("{folder}/design.md"), "# Design\n");
+    repository.write(
+        &format!("{folder}/tasks.md"),
+        "# Tasks\n\n## 1. One\n\n- [ ] 1.1 the first\n",
+    );
+    for (marker, planned) in [
+        ("schema: spec-driven\nskip_specs: true\n", true),
+        ("schema: spec-driven\n", false),
+        ("schema: spec-driven\nskip_specs: yes\n", false),
+    ] {
+        repository.write(&format!("{folder}/.openspec.yaml"), marker);
+        let revision = repository.commit(marker);
+        let read = match OpenSpec.read_change(&repository.name(), &Revision::new(&revision), "plan")
+        {
+            ChangeRead::Read { facts } => facts,
+            other => panic!("{marker:?} read as {other:?}"),
+        };
+        repository.git(&["checkout", "--quiet", &revision]);
+        let (_, reads, _) = openspec_reads(&repository.dir, "plan");
+        repository.git(&["checkout", "--quiet", "main"]);
+        assert!(read.exists, "the change standing with {marker:?}");
+        assert_eq!(
+            read.planning_complete, reads,
+            "planning complete with {marker:?} as openspec reads it"
+        );
+        assert_eq!(
+            read.planning_complete, planned,
+            "planning complete with {marker:?}"
+        );
+    }
 }
