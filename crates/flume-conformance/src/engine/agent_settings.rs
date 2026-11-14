@@ -7,7 +7,8 @@
 //! 144); the host's configuration read at every start; the launch
 //! refused for settings flume cannot run; and how long an agent is kept
 //! open for an answer, given by the launch's and the host's layers alone,
-//! else flume's own hour (32, 198).
+//! else flume's own hour (32, 198), and how long a conversation whose kind
+//! hibernates it may idle, given the same way (212).
 
 use super::account_pools::{account, fix_in, pool};
 use super::agent_modes::{in_mode, mode_from, passed, the_fakes_map};
@@ -105,7 +106,53 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["8", "32", "198"],
             run: keep_open_changed_after_the_launch,
         },
+        Scenario {
+            name: "launching: From the host's kind: the host gives research 20m to hibernate after, and talk's agent starts with 20m from host-kind",
+            cites: &["32", "212"],
+            run: hibernate_after_from_the_hosts_kind,
+        },
+        Scenario {
+            name: "launching: No layer gives one: no layer giving hibernate_after starts talk's agent with flume's own 1h from default",
+            cites: &["32", "212"],
+            run: hibernate_after_from_no_layer,
+        },
     ]
+}
+
+/// Settings hibernating a conversation idle `hibernate_after` (212).
+pub(super) fn hibernates_after(hibernate_after: &str) -> Settings {
+    Settings {
+        hibernate_after: Some(hibernate_after.into()),
+        ..Settings::default()
+    }
+}
+
+/// Where the place `id`'s agent's `hibernate_after` came from, as status
+/// gives it, and the value its start keeps in its held settings (56,
+/// 212).
+pub(super) fn hibernate_after_of(
+    world: &World,
+    id: &PlaceId,
+) -> Result<(Option<Given>, Option<String>), String> {
+    let from = world
+        .status(id)?
+        .agent
+        .ok_or("no agent")?
+        .settings
+        .from
+        .get("hibernate_after")
+        .cloned();
+    let held = world.held(id).ok_or("no held state")?;
+    let kept = held
+        .stages
+        .iter()
+        .rev()
+        .find_map(|stage| stage.start.as_ref())
+        .ok_or("no start")?
+        .settings
+        .hibernate_after
+        .clone();
+    Ok((from, kept))
 }
 
 /// Settings keeping an agent open `keep_open` for an answer.
@@ -842,6 +889,36 @@ fn keep_open_from_no_layer(_: &()) -> Outcome {
         "code's keep_open where no layer gives one"
     );
     ensure_eq!(flume_core::KEEP_OPEN, 60 * 60, "flume's own time kept open");
+    Ok(())
+}
+
+fn hibernate_after_from_the_hosts_kind(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .host
+        .set_settings(None, "research", for_every_stage(hibernates_after("20m")));
+    let id = world.researching(launch("research", "one", Some("weigh it")))?;
+    ensure_eq!(
+        hibernate_after_of(&world, &id)?,
+        (layer_gave(Layer::HostKind, "20m"), Some("20m".into())),
+        "talk's hibernate_after from the host's kind"
+    );
+    Ok(())
+}
+
+fn hibernate_after_from_no_layer(_: &()) -> Outcome {
+    let world = World::new();
+    let id = world.researching(launch("research", "one", Some("weigh it")))?;
+    ensure_eq!(
+        hibernate_after_of(&world, &id)?,
+        (layer_gave(Layer::Default, "1h"), Some("1h".into())),
+        "talk's hibernate_after where no layer gives one"
+    );
+    ensure_eq!(
+        flume_core::HIBERNATE_AFTER,
+        60 * 60,
+        "flume's own hibernate time"
+    );
     Ok(())
 }
 

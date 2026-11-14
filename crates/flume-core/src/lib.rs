@@ -81,6 +81,16 @@ const _: () = assert!(
     "KEEP_OPEN is whole hours"
 );
 
+/// How long a conversation of a stage whose kind hibernates it may be
+/// quiet before a settle hibernates it, where no layer gives a
+/// `hibernate_after`: flume's own one hour, the default layer's, written
+/// in whole hours (32, 212).
+pub const HIBERNATE_AFTER: Seconds = 60 * 60;
+const _: () = assert!(
+    HIBERNATE_AFTER.is_multiple_of(60 * 60),
+    "HIBERNATE_AFTER is whole hours"
+);
+
 /// How long after each sending flume reads whether a prompt was
 /// received (38).
 pub const RECEIVED_WITHIN: Seconds = 60;

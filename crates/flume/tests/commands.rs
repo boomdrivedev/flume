@@ -1293,6 +1293,7 @@ fn agent_settings_at_the_launch() {
             "model": {"layer": "launch", "value": model},
             "program": {"layer": "kind", "value": STAND_IN},
             "keep_open": keep_open,
+            "hibernate_after": {"layer": "default", "value": "1h"},
         })
     };
     let default = serde_json::json!({"layer": "default", "value": "1h"});
