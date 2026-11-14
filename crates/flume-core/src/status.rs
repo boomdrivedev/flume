@@ -774,6 +774,10 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
                 .or_else(|| stage.refused_setting.clone()),
         ),
         StageState::Stopped => retry(Waits::Stopped, None),
+        // A hibernating stage waits on no move of its caller's, and is
+        // never stalled: a resume, a tell or its answer wakes it (130,
+        // 212, 213).
+        StageState::Hibernating => None,
         StageState::Delivered | StageState::Finished if index == last => {
             if !place.kind.lands {
                 waits(Act::Done, None, Waits::Delivered, stage.since, None)

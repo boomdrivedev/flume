@@ -277,6 +277,10 @@ impl Engine {
                 self.run_over(id) || self.advance(id)
             }
             StageState::EndedShort => self.found_work(id) || self.close_session(id),
+            // A hibernating stage takes no step and no agent of it is read:
+            // it is never stuck, lost or past its limit, and waits on a
+            // resume, a tell or its caller's act (44, 45, 118, 212).
+            StageState::Hibernating => false,
             _ => false,
         }
     }
