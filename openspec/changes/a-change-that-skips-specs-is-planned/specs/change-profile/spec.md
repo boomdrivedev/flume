@@ -4,13 +4,9 @@
 
 The change profile SHALL read a change at a revision from its files:
 whether it exists, its tasks each ticked or not, and whether it is
-archived. It SHALL read whether a standing change's planning is complete
-through `openspec status --change <name> --json` in a checkout of the
-revision, whatever the change's schema, and SHALL count none of the
-change's files for it: a change `openspec status` reads no such change
-of SHALL read not planned, and an archived change that no longer stands
-SHALL read planned. Reading SHALL write nothing to the place (59, 86,
-87, C.3).
+archived; whether its planning is complete it SHALL read as the
+requirement "Planning complete read through OpenSpec's status" says.
+Reading SHALL write nothing to the place (86, 87, C.3).
 
 #### Scenario: Seam scenarios over the profile
 
@@ -21,6 +17,17 @@ SHALL read planned. Reading SHALL write nothing to the place (59, 86,
 
 - **WHEN** a scratch change is read at each of five revisions, from created to archived
 - **THEN** existence, planning complete and the tasks agree with what the pinned `openspec status` gives at the same revision (59)
+
+## ADDED Requirements
+
+### Requirement: Planning complete read through OpenSpec's status
+
+The change profile SHALL read whether a standing change's planning is
+complete through `openspec status --change <name> --json` in a checkout
+of the revision, whatever the change's schema, and SHALL count none of
+the change's files for it: a change `openspec status` reads no such
+change of SHALL read not planned, and an archived change that no longer
+stands SHALL read planned (59, C.3).
 
 #### Scenario: A change that skips specs is planned
 

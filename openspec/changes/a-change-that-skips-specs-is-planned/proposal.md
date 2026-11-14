@@ -58,7 +58,9 @@ None.
 - `change-profile`: a change's planning complete is read through
   `openspec status` for every schema, so a spec-driven change that
   declares `skip_specs` is planned with no delta spec, and a change
-  OpenSpec cannot read is not planned.
+  OpenSpec cannot read is not planned. The requirement that reads a
+  change from its files keeps its existence, its tasks and its archive,
+  and a requirement of its own reads its planning complete.
 
 ## Impact
 
