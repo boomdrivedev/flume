@@ -197,6 +197,7 @@ The state is the first that holds of these:
 | `being made` | a launch is making the place |
 | `landed`, `dropped`, `done` | the place's work is over |
 | `stalled` | the place waited on its caller under no hold's words past its stall bound |
+| `hibernating` | the stage's kind hibernates it, and its agent was ended with its session kept, idle or at its caller's word; a tell, `flume resume` or its answer resumes it |
 | `held` | a hold stops the place's next stage or its submission |
 | `waiting on an answer` | the stage stopped short and needs an answer, or found work |
 | `asking` | the agent shows a dialog of Claude Code's before its prompt, or, once started, asks a person a question |

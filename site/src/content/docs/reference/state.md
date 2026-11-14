@@ -155,6 +155,26 @@ each stop-short of one start is an end of its own. The start's
 A held state an earlier release wrote reads with no agent kept open, no
 answers and no close.
 
+### A start hibernated and its resumes
+
+A start whose agent hibernated records `hibernated`: `since`, when;
+`why`, `idle`, its conversation idled past its `hibernate_after`,
+`caller`, at `flume hibernate`, or `kept_open`, its time kept open for
+an answer passed; and `account`, the account it ran under, left out
+where it ran under none. Its stage reads `hibernating`, its `end` none,
+or, where it waits on its answer, stays `ended_short` with its end's
+`closed` `by` `hibernated`. A start's `resumes` lists each resume of
+it, in order: `at`; `by`, `caller`, `tell` or `answer`; `identity`, the
+resumed agent's, its start's number with the resume's after it;
+`words`, the words it was given, left out at a bare resume; and
+`conversation`, as a carried start's. A resume's start keeps its
+start's number, head and answers, and its `conversation` `cause` is
+`hibernated`. While a tell is being handed to its agent, a start holds
+`handing`, until when at the latest. A stage waiting to resume keeps in
+its `room` `carry` with `cause` `hibernated` and `resumed_by`. The
+start's `settings` keep `hibernate_after` as its layer wrote it. A held
+state an earlier release wrote reads with none of them.
+
 ### The question, the hold and the stall
 
 A stop-short that named a role by `flume needs --to` records, in its
@@ -300,7 +320,7 @@ Each place:
 | `lands` | whether the kind lands |
 | `phase` | `live`, or `tidied` with when and why: `landed` with its commit, `dropped` or `done`, and `pending_for`, the recipients an end of it is pending for. A place whose work is over that still stands is `over`, with why and `kept`, what keeps it: among them `session_runs`, kept while its session runs, each process that runs its conversation in `processes`, by its `pid` and `started`, or `unread`, what flume could not read |
 | `readiness` | each readiness step, whether it passed and what it printed |
-| `stages` | each stage: `name`, `state`, `starts`, `end`, `conversation`, and the part or setting it was refused for. A lost conversation's `end` holds `left_in_pane`, `true` where flume left the agent the terminal brought back in its pane, left out otherwise. A stop-short's `end` holds `open_until` and `closed` ([an agent kept open and its answers](#an-agent-kept-open-and-its-answers)). `answers`, each answer the stage's current start took in its session, in order: `question`, the question it answered, `words`, `act`, `at` and `session`, with `sent_at` and `received_at`; left out where there are none |
+| `stages` | each stage: `name`, `state`, `starts`, `end`, `conversation`, and the part or setting it was refused for. A lost conversation's `end` holds `left_in_pane`, `true` where flume left the agent the terminal brought back in its pane, left out otherwise. A stop-short's `end` holds `open_until` and `closed` ([an agent kept open and its answers](#an-agent-kept-open-and-its-answers)). For a stage whose kind hibernates it, `hibernates`, `true`, and `hibernate_after`, its current start's, with its `layer` and `value`; `hibernated`, where its agent hibernated, with `since`, `why` and `account`; and `resumes`, each resume of its current start ([a start hibernated and its resumes](#a-start-hibernated-and-its-resumes)); each left out where it has none. `answers`, each answer the stage's current start took in its session, in order: `question`, the question it answered, `words`, `act`, `at` and `session`, with `sent_at` and `received_at`; left out where there are none |
 | `current` | the current stage's name |
 | `agent` | the current agent: `identity`, `stage`, `program`, `settings` with `from`, the layer of each, each variable `env.<NAME>` from `account` as `<set>`; in `settings`, `programs` with the agent's program's entry alone, and `keep_open` as its layer wrote it, its layer in `from` as every setting's; in `from` each of its own settings, `programs.<program>.settings.<key>`, with its `layer`, its `value` as written and its `file` where it came from one; `own`, where a layer gave its program own settings, with `passed`, the arguments that named the file its start wrote, `read_back`, `false`, and `files`, each file a layer named with its `layer`, `written`, `read` and `left_out`, each key left out with its `key` and its `owner`; `account`, its `pool`, `name` and `from`, `affinity`, the intent's affinity for the agent's `program`, `strategy`, or `conversation`, the account a lost conversation's start ran under, which holds it; `mode`, where a layer gave one, with `passed`, the value its program was given, `entry`, the program whose entry of a table it took, and `read_back`, whether its program's word reads the mode back; `effort`, where a layer gave one, with `word`, as its layer wrote it, `layer`, `passed`, the value its program was given, `read_back`, `false`, since no program reads its effort back, and `outranked_by`, the variable its program reads over the effort, by its name, where the agent's account's `env` names it, left out otherwise; `state`, `started`, `asking`, `own_work`, `past_limit`, `screen`, `dialog`, the words of a dialog it shows before it takes its prompt, `printed`, `last_words` and `notes`; `session`, the herdr session it opened in, `name`, `null` for the terminal's own, and `from`: `launch`, `stream-stage`, the session its stream names for its kind's stage, `stream-kind`, the one its stream names for its kind, `stream`, `stream-name` or `own`, none where it opened beside a pane; `terminal`, the multiplexer it opened in, `profile` and `from`: `stream`, `host` or `neither`, `null` for a start an earlier release wrote, whose agent is in the host's; `left_in_pane`, `true` for an agent the terminal brought back in a lost conversation's pane, which flume left there and sends nothing, left out otherwise; and, for the agent of a start after a spent agent or a lost conversation's retry, `conversation`: `from`, the start whose conversation it carries, `cause`, `lost` where that start's conversation was reported lost and left out where its agent was spent, `carried`, and `why` where it was not carried, naming a variable and never a path |
 | `head` | the place's branch head; a base place's as the merge queue reads its branch, nothing read at its location |
@@ -334,8 +354,8 @@ Each place:
 
 A stage's `state` is one of `not_reached`, `waiting_on_readiness`,
 `on_hold`, `waiting_for_room`, `starting`, `started`, `begun`, `delivered`,
-`ended_short`, `finished`, `never_begun`, `lost`, `stuck`, `stopped`
-and `refused`. An agent's `started`, `asking` and `own_work` are `yes`,
+`ended_short`, `finished`, `never_begun`, `lost`, `stuck`, `stopped`,
+`hibernating` and `refused`. An agent's `started`, `asking` and `own_work` are `yes`,
 `no` or `unknown`.
 
 The host:

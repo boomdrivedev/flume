@@ -521,7 +521,25 @@ refused: the stage code of ~/.local/share/flume/places/f5f5e14159a8/chore--tidy-
 
 A conversation's agent let go because it stopped with its host or its
 terminal goes on in its session at the retry, as [a lost
-conversation](#a-lost-conversation) does. An agent the terminal brought
+conversation](#a-lost-conversation) does.
+
+### Hibernated waiting on its answer
+
+Where the stage's kind hibernates it, its agent's time passing
+hibernates it rather than letting it go. flume ends the agent once it
+is quiet and keeps its session, and the place waits on its answer as
+before. The answer, by a tell or a retry with `--words`, naming its key
+or none, is recorded on the stop-short with who gave it and when, and
+resumes the agent's session: one fresh agent carries it, its prompt the
+question and the answer, and the stage carries on under its start.
+Status says so:
+
+```text
+    its agent hibernated at 1793291441, its time passed, ended at 1793291441: its answer resumes its session, by a tell or a retry with --words
+```
+
+A stop of such a place reads its close stopped, so a later answer is a
+retry with a fresh agent. An agent the terminal brought
 back in a conversation's pane is left there, `and left in its pane`,
 and only your `flume stop`, `drop` or `done` ends it.
 
