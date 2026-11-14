@@ -1483,6 +1483,11 @@ pub struct CarryFrom {
     /// Why it does not, where it may not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
+    /// What resumed a hibernated start: its caller's resume, a tell or
+    /// its answer; none for any other carry, and in a wait written before
+    /// (213).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resumed_by: Option<ResumedBy>,
 }
 
 /// Why the start whose conversation a start carries ended: its agent

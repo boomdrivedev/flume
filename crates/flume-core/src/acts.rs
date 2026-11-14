@@ -354,6 +354,7 @@ impl Engine {
                             cause: CarryCause::Lost,
                             carry: true,
                             why: None,
+                            resumed_by: None,
                         }),
                         ..RoomWait::default()
                     });
@@ -745,7 +746,11 @@ impl Engine {
     /// terminal's send, and read received within 60 seconds of each
     /// sending or sent once more. When it was last sent and read
     /// received, or the tell's words saying why nothing more was typed
-    /// (37, 38, 53, 54; core.11).
+    /// (37, 38, 53, 54; core.11). The start is marked handing, in one
+    /// write before the agent is read, until the bound and the readings of
+    /// its receipt pass, and the mark is cleared once the hand ends
+    /// whatever it came to, so no settle hibernates the agent and no
+    /// caller's hibernate is taken unforced while it stands (212).
     pub(crate) fn hand(
         &self,
         place: &PlaceId,
@@ -762,6 +767,7 @@ impl Engine {
         };
         let folder = self.store.folder(place);
         let deadline = self.host.now() + bound.unwrap_or(TELL_BOUND);
+        let _handing = Handing::mark(self, place, identity, deadline + 2 * RECEIVED_WITHIN);
         loop {
             let state = self.state_of(Some(agent.as_ref()), &folder, start);
             let asking = agent.asking(&folder, identity);
@@ -822,6 +828,55 @@ impl Engine {
             tidy: None,
         }
     }
+}
+
+/// A start's mark that a tell is being handed to its agent, written when
+/// made and cleared when dropped, where it still stands as written (54,
+/// 212).
+struct Handing<'a> {
+    engine: &'a Engine,
+    place: PlaceId,
+    identity: Identity,
+    until: Seconds,
+}
+
+impl<'a> Handing<'a> {
+    fn mark(engine: &'a Engine, place: &PlaceId, identity: &Identity, until: Seconds) -> Self {
+        engine.update(place, |held| match start_under(held, identity) {
+            Some(start) => {
+                start.handing = Some(until);
+                Step::Write(())
+            }
+            None => Step::Keep(()),
+        });
+        Handing {
+            engine,
+            place: place.clone(),
+            identity: identity.clone(),
+            until,
+        }
+    }
+}
+
+impl Drop for Handing<'_> {
+    fn drop(&mut self) {
+        let until = self.until;
+        self.engine.update(&self.place, |held| {
+            match start_under(held, &self.identity) {
+                Some(start) if start.handing == Some(until) => {
+                    start.handing = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
+    }
+}
+
+/// The start under `identity` in `held`, where a stage holds it.
+fn start_under<'a>(held: &'a mut HeldState, identity: &Identity) -> Option<&'a mut StartHeld> {
+    let index = held.index_of(identity)?;
+    held.stages[index].start.as_mut()
 }
 
 /// A retry's words for a stage: where the stage ended short, the

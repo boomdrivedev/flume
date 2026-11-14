@@ -4,11 +4,13 @@
 //! session kept, its room and its account freed; and resumed in its own
 //! session by its caller's resume, a tell or the answer it waits on.
 
-use super::account_pools::{account, pool, stops_at_limit};
+use super::account_pools::{account, fill_first_at_homes, home, pool, stops_at_limit};
+use super::carried_conversations::{by_hand, resumed as resumes_session};
 use super::open_sessions::{stops_short, QUESTION};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Answer, Waits, KEEP_OPEN};
+use flume_fakes::FakeAgent;
 use flume_seams::*;
 use std::sync::{Arc, Mutex};
 
@@ -78,6 +80,31 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: Let go otherwise first: the same code agent's account spent within its hour lets it go by its account spent, not hibernated",
             cites: &["146", "198", "212"],
             run: let_go_otherwise_first,
+        },
+        Scenario {
+            name: "hibernation: A bare resume: a caller's resume of a place whose talk hibernates starts talk:1.1, its prompt flume's words that its session resumes and what ran in it then has stopped, then the way to stop short, talk's starts still 1",
+            cites: &["28", "213"],
+            run: a_bare_resume,
+        },
+        Scenario {
+            name: "hibernation: A resume of nothing hibernating: a caller's resume of a place whose talk runs is refused naming the place, and nothing changes",
+            cites: &["213"],
+            run: a_resume_of_nothing_hibernating,
+        },
+        Scenario {
+            name: "hibernation: The hibernated account spent: talk hibernated under work-1, work-1 spent, and the place resumed takes work-2, which reaches the conversation, carrying it, the move said",
+            cites: &["145", "213"],
+            run: the_hibernated_account_spent,
+        },
+        Scenario {
+            name: "hibernation: Waiting for room: a place resumed on a host at its bound waits for room with the resume's words, and starts its resume once room frees",
+            cites: &["70", "213"],
+            run: waiting_for_room,
+        },
+        Scenario {
+            name: "hibernation: A process runs the conversation: a place resumed while a person runs the hibernated session by hand waits while the fake agent's live reads that process, status naming it, and resumes once none runs",
+            cites: &["207", "213"],
+            run: a_process_runs_the_conversation,
         },
     ]
 }
@@ -679,4 +706,253 @@ fn let_go_otherwise_first(_: &()) -> Outcome {
         "code's hibernation once its hour passed"
     );
     Ok(())
+}
+
+/// flume's words at a bare resume (213).
+pub(super) const WOKEN: &str = "Your session hibernated and resumes here, with its conversation as it stood. Anything you had running in it then has stopped: read the place again before you carry on.";
+
+/// The research place `name`'s talk start `start`, its `resume`th resume.
+pub(super) fn talk_resumed(name: &str, start: u32, resume: u32) -> Identity {
+    Identity {
+        resume,
+        ..talk_of(name, start)
+    }
+}
+
+/// The research place `name` begun, its talk's first start's word naming
+/// the session `s-1`, which the login environment's configuration home
+/// reaches, hibernated at its caller's word; the time it hibernated (179,
+/// 212).
+pub(super) fn hibernated_talk(world: &World, name: &str) -> Result<(PlaceId, Seconds), String> {
+    world.agent.set_session(&talk_of(name, 1), "s-1");
+    world.agent.carry_to(
+        FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    let id = research(world, name)?;
+    let at = world.host.now();
+    taken(&world.engine().hibernate(&id, false))?;
+    hibernating(world, &id, at, HibernatedBy::Caller, 1)?;
+    Ok((id, at))
+}
+
+/// The prompt a resume is sent: `words`, then the way to stop short as
+/// the fake agent gives it for `identity` (28, 213).
+pub(super) fn resume_prompt(world: &World, identity: &Identity, words: &str) -> String {
+    format!(
+        "{words}\n\n{}",
+        flume_core::way_to_stop_short(world.agent.as_ref(), identity)
+    )
+}
+
+/// talk's current start is `identity`, resumed by `by` with `words`, its
+/// stage's starts still `starts`, carrying the session `s-1` of its start
+/// `from` (213).
+pub(super) fn resumed_as(
+    world: &World,
+    id: &PlaceId,
+    identity: &Identity,
+    by: ResumedBy,
+    words: &str,
+    starts: u32,
+) -> Outcome {
+    let stage = stage_of(world, id, "talk")?;
+    let start = stage.start.clone().ok_or("talk holds no start")?;
+    ensure_eq!(
+        (&start.identity, start.n, stage.starts, start.live),
+        (identity, identity.start, starts, true),
+        "talk's start, its number, the stage's starts and whether it is live"
+    );
+    let resume = start.resumes.last().ok_or("talk's start holds no resume")?;
+    ensure_eq!(
+        (
+            &resume.identity,
+            resume.by,
+            resume.words.as_deref(),
+            resume.conversation.carried,
+            resume.conversation.cause
+        ),
+        (identity, by, Some(words), true, CarryCause::Hibernated),
+        "talk's last resume"
+    );
+    ensure_eq!(
+        (
+            start.start_record.session.as_deref(),
+            resumes_session(world, identity)?
+        ),
+        (Some("s-1"), Some("s-1".to_string())),
+        "the session talk's resume's record names and its command resumes"
+    );
+    ensure_eq!(
+        world.prompt(id, identity),
+        Some(resume_prompt(world, identity, words)),
+        "the resume's prompt"
+    );
+    Ok(())
+}
+
+fn a_bare_resume(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    world.host.advance(3 * HOUR);
+    taken(&world.engine().resume(&id))?;
+    let resumed = talk_resumed("one", 1, 1);
+    resumed_as(&world, &id, &resumed, ResumedBy::Caller, WOKEN, 1)?;
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Begun),
+        "talk once resumed"
+    );
+    Ok(())
+}
+
+fn a_resume_of_nothing_hibernating(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    let before = world.held(&id);
+    let opens = world.terminal.log.count("open");
+    let reason = refused(&world.engine().resume(&id))?;
+    ensure!(
+        reason.contains(&id.to_string()),
+        "the refusal names not the place: {reason}"
+    );
+    ensure_eq!(
+        (world.held(&id), world.terminal.log.count("open")),
+        (before, opens),
+        "the place and the agents opened after the refusal"
+    );
+    Ok(())
+}
+
+fn the_hibernated_account_spent(_: &()) -> Outcome {
+    let world = World::new();
+    fill_first_at_homes(&world);
+    world.agent.carry_to(
+        &home("work-2"),
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.set_session(&talk_of("one", 1), "s-1");
+    let id = research(&world, "one")?;
+    ensure_eq!(
+        super::account_pools::account_of(&world, &id, "talk"),
+        super::account_pools::on("work", "work-1"),
+        "talk's account"
+    );
+    taken(&world.engine().hibernate(&id, false))?;
+    ensure_eq!(
+        hibernation(&world, &id, "talk")?.and_then(|held| held.account),
+        Some("work-1".to_string()),
+        "the account talk hibernated under"
+    );
+    launched(&world.engine.launch(&launch("fix", "two", Some("x"))))?;
+    let two = World::id("fix", "two");
+    world.settle(&two);
+    stops_at_limit(&world, "two", 1, Some(world.host.now() + 5 * HOUR));
+    world.settle(&two);
+    taken(&world.engine().resume(&id))?;
+    let resumed = talk_resumed("one", 1, 1);
+    resumed_as(&world, &id, &resumed, ResumedBy::Caller, WOKEN, 1)?;
+    ensure_eq!(
+        super::account_pools::account_of(&world, &id, "talk"),
+        super::account_pools::on("work", "work-2"),
+        "the account talk's resume runs on"
+    );
+    let held = world.held(&id).ok_or("no held state")?;
+    ensure!(
+        held.moves.iter().any(|moved| moved.from == "work-1"
+            && moved.to == "work-2"
+            && moved.on
+                == MoveOn::Stage {
+                    stage: "talk".into()
+                }
+            && moved.carried == Some(true)),
+        "no move of talk from work-1 to work-2 carrying its conversation: {:?}",
+        held.moves
+    );
+    Ok(())
+}
+
+fn waiting_for_room(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    world.host.set_bound(Some(1));
+    launched(&world.engine.launch(&launch("fix", "two", Some("x"))))?;
+    let two = World::id("fix", "two");
+    world.settle(&two);
+    ensure_eq!(
+        world.stage_state(&two, "code"),
+        Some(StageState::Begun),
+        "two's code"
+    );
+    taken(&world.engine().resume(&id))?;
+    let talk = stage_of(&world, &id, "talk")?;
+    let room = talk.room.ok_or("talk waits for no room")?;
+    ensure_eq!(
+        (
+            talk.state,
+            room.words.as_deref(),
+            room.carry.map(|carry| (carry.start, carry.cause))
+        ),
+        (
+            StageState::WaitingForRoom,
+            Some(WOKEN),
+            Some((talk_of("one", 1), CarryCause::Hibernated))
+        ),
+        "talk while the host is at its bound"
+    );
+    world
+        .terminal
+        .kill(&World::identity("fix", "two", "code", 1));
+    world.engine().settle(None);
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 1),
+        ResumedBy::Caller,
+        WOKEN,
+        1,
+    )
+}
+
+fn a_process_runs_the_conversation(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    world.agent.live_runs("s-1", &[by_hand()]);
+    taken(&world.engine().resume(&id))?;
+    let talk = stage_of(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            talk.state,
+            talk.room.map(|room| room.live),
+            world.terminal.opened(&talk_resumed("one", 1, 1)).is_some()
+        ),
+        (StageState::WaitingForRoom, Some(vec![by_hand()]), false),
+        "talk while a person runs its session"
+    );
+    let status = world.status(&id)?;
+    let named = serde_json::to_string(&status).map_err(|error| error.to_string())?;
+    ensure!(
+        named.contains("4242"),
+        "status names not the process that runs talk's session: {named}"
+    );
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::WaitingForRoom),
+        "talk at a settle while the process runs"
+    );
+    world.agent.live_ended("s-1");
+    world.settle(&id);
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 1),
+        ResumedBy::Caller,
+        WOKEN,
+        1,
+    )
 }

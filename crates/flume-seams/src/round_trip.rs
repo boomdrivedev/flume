@@ -315,6 +315,7 @@ fn held() -> HeldState {
                     cause: CarryCause::Spent,
                     carry: true,
                     why: None,
+                    resumed_by: None,
                 }),
             }),
             made_from: Some(1),
@@ -1278,6 +1279,7 @@ fn a_held_state_with_a_carried_start() {
         cause: CarryCause::Spent,
         carry: false,
         why: Some("the start that carried its conversation ended before it said it started".into()),
+        resumed_by: None,
     });
     round_trips(Conversation {
         from: 1,
@@ -1359,6 +1361,7 @@ fn talk() -> HeldState {
             cause: CarryCause::Lost,
             carry: true,
             why: None,
+            resumed_by: None,
         }),
         live: vec![LiveProcess {
             pid: 4242,
@@ -1481,6 +1484,7 @@ fn a_hibernations_types_round_trip() {
         cause: CarryCause::Hibernated,
         carry: true,
         why: None,
+        resumed_by: Some(ResumedBy::Tell),
     });
     round_trips(SessionClosed {
         at: 3600,

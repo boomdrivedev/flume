@@ -59,6 +59,7 @@ pub(crate) fn after_uncarried(start: &StartHeld, why: String) -> Option<CarryFro
         cause: conversation.cause,
         carry: false,
         why: Some(why),
+        resumed_by: None,
     })
 }
 

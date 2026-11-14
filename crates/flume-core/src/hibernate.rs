@@ -18,7 +18,16 @@
 //! write. A claim a settle finds standing on a live start, its close or
 //! its last write not made, is carried on by that settle once the agent
 //! is quiet, so every step is safe to repeat (31, 74, 75; core.17).
+//!
+//! A resume (213): its caller's `flume resume`, a tell or the answer the
+//! hibernated agent waits on puts the stage waiting for room to carry the
+//! hibernated start's conversation, as a lost conversation's retry does,
+//! with the resume's words, and starts it: one fresh agent under an
+//! identity of its own, carrying the session where its profile can, on
+//! the account the hibernated agent ran under while it is usable, and
+//! afresh otherwise (30, 49, 70, 145, 179, 207; core.10, core.32).
 
+use crate::start::{Start, StartReason};
 use crate::{Answer, Engine, Step};
 use flume_seams::*;
 
@@ -66,6 +75,107 @@ impl Engine {
                 self.acted(Act::Hibernate, place)
             }
             Err(reason) => Answer::refused(reason),
+        }
+    }
+
+    /// The caller's resume of the place's hibernating stage, with flume's
+    /// words that its session resumes and what ran in it then has stopped
+    /// as its prompt's words; refused, naming the place, where nothing of
+    /// it hibernates, or where its agent hibernated waiting on its answer,
+    /// which a tell or a retry with words gives (42, 213).
+    pub fn resume(&self, place: &PlaceId) -> Answer {
+        self.settle_attended();
+        let Some(read) = self.store.read(place) else {
+            return Answer::refused(format!("no place {place} stands on this host"));
+        };
+        let held = read.state;
+        let index = held.current.unwrap_or(0);
+        let stage = &held.stages[index];
+        if held.phase == Phase::Live && stage.state == StageState::Hibernating {
+            return match self.resume_stage(
+                place,
+                index,
+                ResumedBy::Caller,
+                StartReason::Woken.words(),
+            ) {
+                Ok(()) => self.acted(Act::Resume, place),
+                Err(reason) => Answer::refused(reason),
+            };
+        }
+        let answer_resumes = stage.state == StageState::EndedShort
+            && stage
+                .end
+                .as_ref()
+                .and_then(|end| end.closed)
+                .is_some_and(|closed| closed.by == ClosedBy::Hibernated);
+        if held.phase == Phase::Live && answer_resumes {
+            return Answer::refused(format!(
+                "the stage {} of the place {place} hibernated waiting on its answer, which resumes it: flume tell {place} <answer>, or flume retry {place} --words <answer> (213)",
+                stage.name
+            ));
+        }
+        Answer::refused(format!(
+            "nothing of the place {place} hibernates, so there is nothing to resume (213)"
+        ))
+    }
+
+    /// Puts the hibernated stage at `index` waiting for room to carry its
+    /// start's conversation, resumed by `by`, with `words` as the resume's
+    /// prompt's words, and starts it; why not where the terminal did not
+    /// open it or its prompt or settings refused it (49, 70, 213).
+    pub(crate) fn resume_stage(
+        &self,
+        place: &PlaceId,
+        index: usize,
+        by: ResumedBy,
+        words: String,
+    ) -> Result<(), String> {
+        let room = self.host.room();
+        let order = self.queue().next_order();
+        let woken = self
+            .update(place, |held| {
+                let stage = &mut held.stages[index];
+                let Some(start) = stage.start.as_ref().filter(|start| !start.live) else {
+                    return Step::Keep(false);
+                };
+                let carry = CarryFrom {
+                    start: start.identity.clone(),
+                    cause: CarryCause::Hibernated,
+                    carry: true,
+                    why: None,
+                    resumed_by: Some(by),
+                };
+                stage.state = StageState::WaitingForRoom;
+                stage.room = Some(RoomWait {
+                    order,
+                    words: Some(words.clone()),
+                    carry: Some(carry),
+                    ..RoomWait::default()
+                });
+                held.current = Some(index);
+                Step::Write(true)
+            })
+            .unwrap_or(false);
+        drop(room);
+        if !woken {
+            return Err(format!(
+                "the place {place} moved before its hibernating stage was resumed"
+            ));
+        }
+        match self.start_stage(place, index, Some(words)) {
+            Start::Opened(_) | Start::Held(_) | Start::NeverBegun(_) | Start::WaitingForRoom => {
+                Ok(())
+            }
+            Start::Refused(part) => Err(format!(
+                "the resumed stage's prompt asks for {}, which has nothing to fill it",
+                part.name()
+            )),
+            Start::AgentLive => Err(format!("an agent of the place {place} is live")),
+            Start::NotOpened(reason) => {
+                Err(format!("the terminal did not open the agent: {reason}"))
+            }
+            Start::Unresolved(reason) => Err(reason),
+            Start::NoPlace => Err(format!("no place {place} stands on this host")),
         }
     }
 
