@@ -163,7 +163,9 @@ enum Command {
     Settle {
         place: Option<String>,
         /// Read the place's agent until it is quiet, for up to 60 seconds,
-        /// first.
+        /// first, as its own quiet starts the settle: a conversation whose
+        /// kind hibernates it has its quiet started again, since a turn
+        /// ended (121, 212).
         #[arg(long)]
         on_quiet: bool,
         /// Settle every place as a watch over the host whose settles come
@@ -680,12 +682,13 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         } => {
             let place = maybe(place)?;
             let core = build()?;
-            if *on_quiet {
-                if let Some(place) = &place {
+            match (&place, *on_quiet) {
+                (Some(place), true) => {
                     until_quiet(&core, place, Duration::from_secs(ON_QUIET_WITHIN));
+                    core.settle_on_quiet(place)
                 }
+                _ => core.settle(place.as_ref()),
             }
-            core.settle(place.as_ref())
         }
         Command::Priority { place, priority } => {
             let place = named(place)?;
