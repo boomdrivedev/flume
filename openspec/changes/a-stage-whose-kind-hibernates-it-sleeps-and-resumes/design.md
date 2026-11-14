@@ -130,8 +130,10 @@ the stage's `starts` and the start's `n` stay; a stop-short's key, an
 answer's count and a deliverable's "since it started" stay the start's.
 Every agent still carries an identity no other live agent carries
 (core.10): the start record's folder, the herdr and Rex names and the
-started ack are keyed by the whole identity. The status line reads both
-spellings back.
+started ack are keyed by the whole identity. The herdr and Rex names
+spell a resume's start `<start>r<resume>` within their legal
+characters, before the digest of the whole identity. The status line
+reads both spellings back.
 
 *Paths not taken:* a resume as the stage's next start number, which
 would count a start 212 says it does not; reusing the hibernated
@@ -142,10 +144,16 @@ agent's identity, which core.10 forbids.
 On the hibernated start, a `HibernationHeld`: since when, why
 (`idle`, `caller`, `kept_open`), and the account it ran under. And the
 start's `resumes`, each a `ResumeHeld`: when, what started it (`caller`,
-`tell`, `answer`), the resume's number, and whether it carried the
-conversation or why not, as `Conversation` says it. A resume's start
-takes them over from the start it resumes, so status gives each resume
-of the stage's current start (56). A retry's fresh start holds none.
+`tell`, `answer`), the resumed agent's identity, the words it was given,
+and whether it carried the conversation, as `Conversation` says it. A
+bare resume's words are flume's own and none are kept of it, so no
+fresh start after it repeats them. A resume's start takes them over
+from the start it resumes, so status gives each resume of the stage's
+current start (56). A retry's fresh start holds none, and so does the
+fresh start a resume makes where it could not carry its conversation,
+whose own `conversation` says why. A stage waiting to resume keeps in
+its `RoomWait.carry` what resumed it, `CarryFrom.resumed_by`, so the
+claim that admits it under the room lock records it.
 
 The stage's state:
 
@@ -179,9 +187,10 @@ of the watch need see. Once quiet for its hibernate time, the settle
 hibernates it.
 
 A tell being handed marks the start, in one write before it reads the
-agent, `handing` until the tell ends or its bound passes, and clears
-the mark when it ends; a settle passes over a start so marked, and a
-caller's hibernate is refused unforced while it stands (54, 212).
+agent, `handing` until its bound and its two readings of receipt pass,
+and clears the mark when it ends; a settle reads a start so marked not
+quiet, its quiet starting again, and a caller's hibernate is refused
+unforced while it stands (54, 212).
 
 *Path not taken:* the agent's transcript's last write, which no part of
 the agent seam gives (B.4) and which a part of its own would need a
@@ -190,14 +199,21 @@ clause for.
 ### 6. Hibernating an agent
 
 `hibernate.rs` holds one step, used by the settle and the caller's act:
-the agent read quiet, closed through its start's terminal, and then, in
-one compare-and-set write, the start read not live and its
-`HibernationHeld` recorded, with the stage's state as decision 4 says;
-an agent not quiet is left for a later settle, or, at a caller's
-forced hibernate, closed working (31). A close the terminal refuses is
-a failed end, as elsewhere. Nothing counts a start, a retry or a going
-back (48), and the place's room and the account are free once the
-start is not live (70, 145).
+the agent read quiet, or, at a caller's forced hibernate, working (31);
+the hibernation claimed on the start, its `HibernationHeld` written
+while it is still live, in one compare-and-set write taken only where
+no other has claimed it; the agent closed through its start's terminal;
+and then, in one more write, the start read not live, with the stage's
+state as decision 4 says. Two settles at once so close the agent once
+and record its hibernation once (74, 75). A claim a settle finds
+standing on a live start, its close or its last write not made, is
+carried on by that settle once the agent is quiet. A close the terminal
+refuses is a failed end, as elsewhere, and lets the claim go. Nothing
+counts a start, a retry or a going back (48), and the place's room and
+the account are free once the start is not live (70, 145).
+
+*Path not taken:* closing the agent before any write, then recording
+the hibernation, which lets two settles at once both close it.
 
 For an agent kept open, `let_go_by`'s `ClosedBy::Time` reads
 `ClosedBy::Hibernated` where the stage hibernates, and `end_let_go`
@@ -210,9 +226,12 @@ A caller's `flume hibernate <place>` is refused, naming the place, for
 a place whose current stage its kind does not hibernate and for a
 place with no live agent (212); it is taken for any stage whose kind
 hibernates it with a live agent, a conversation's, one running, or one
-kept open for its answer, an agent not quiet only when forced (31).
-212 refuses those two alone, so a running stage that is not a
-conversation is taken too.
+kept open for its answer and not let go, an agent not quiet only when
+forced (31). 212 refuses those two alone, so a running stage that is
+not a conversation is taken too. The stage's agent is one that runs or
+is kept open: an agent the terminal brought back in a lost stage's
+pane is not the stage's (77), and a hibernate of a stage in any other
+state is refused naming its state.
 
 ### 7. A resume is a carried start of the same start
 
@@ -280,7 +299,8 @@ what it means of any stage:
 
 - **stop** records the hibernation over and the stage `Stopped`,
   waiting on a retry or a drop (51); one ended short stays ended short,
-  its close `Stopped`, its answer then a retry (42).
+  its close `Stopped`, its answer then a retry (42), whether the agent
+  its close read hibernated was ended yet or not.
 - **finish** of a hibernating conversation counts it delivered (109,
   40); of any other stage it is refused as today.
 - **drop** and **done** make the place's work over (52, 114).
@@ -290,7 +310,8 @@ what it means of any stage:
   is that answer, and resumes (decision 7).
 - **tell** to a hibernating stage resumes it (53, 55, 213).
 - **resume** of a place with no hibernating stage is refused, naming
-  the place.
+  the place; of one whose agent hibernated waiting on its answer, naming
+  the tell or the retry with words that gives the answer and resumes it.
 
 ### 9. The dialog Claude Code opens on resume
 
