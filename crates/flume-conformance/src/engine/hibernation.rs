@@ -106,6 +106,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["207", "213"],
             run: a_process_runs_the_conversation,
         },
+        Scenario {
+            name: "hibernation: Forty days hibernated: talk hibernated forty days ago, the fake agent's carry answering its transcript is gone, and the place resumed, talk's second start is fresh, its prompt talk's with flume's words that its conversation could not be carried before the resume's, status giving the resume not carried and why",
+            cites: &["179", "213", "S127"],
+            run: forty_days_hibernated,
+        },
+        Scenario {
+            name: "hibernation: A resume never begun: a resumed agent that stops before it says it started is recorded so, and talk starts afresh with flume's words and the resume's, carrying nothing",
+            cites: &["146", "213"],
+            run: a_resume_never_begun,
+        },
     ]
 }
 
@@ -955,4 +965,104 @@ fn a_process_runs_the_conversation(_: &()) -> Outcome {
         WOKEN,
         1,
     )
+}
+
+/// flume's words for a fresh start after a resume that could not carry
+/// its conversation (213, S127).
+pub(super) const HIBERNATED_WORDS: &str = "The stage's earlier agent hibernated, and its conversation could not be carried, so this agent starts the stage afresh. What it committed is on the place's branch and what it left is in the place: read them and carry the stage on from there.";
+
+/// talk's current start is its fresh start `n` after its start 1
+/// hibernated, its prompt talk's with flume's words then `words`, resuming
+/// nothing, its conversation not carried for `why` (213).
+pub(super) fn afresh_after_hibernated(
+    world: &World,
+    id: &PlaceId,
+    n: u32,
+    words: &str,
+    why: &str,
+) -> Outcome {
+    let stage = stage_of(world, id, "talk")?;
+    let start = stage.start.clone().ok_or("talk holds no start")?;
+    let fresh = talk_of("one", n);
+    ensure_eq!(
+        (
+            &start.identity,
+            stage.starts,
+            start.resumes.is_empty(),
+            start.start_record.session.clone(),
+            resumes_session(world, &fresh)?
+        ),
+        (&fresh, n, true, None, None),
+        "talk's fresh start, its starts, its resumes and the session it resumes"
+    );
+    ensure_eq!(
+        start.conversation,
+        Some(Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: false,
+            why: Some(why.to_string()),
+        }),
+        "talk's fresh start's conversation"
+    );
+    let given = format!("{HIBERNATED_WORDS}\n\n{words}");
+    ensure!(
+        start
+            .prompt
+            .text
+            .starts_with("Talk one over.\n\nweigh the options\n\n")
+            && start.prompt.text.contains(&given),
+        "the fresh start's prompt is not talk's with flume's words before the resume's: {}",
+        start.prompt.text
+    );
+    Ok(())
+}
+
+fn forty_days_hibernated(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    world.host.advance(40 * 24 * HOUR);
+    let gone = "its transcript is gone, cleaned after thirty days";
+    world
+        .agent
+        .carry_to(FakeAgent::LOGIN, Carry::No { why: gone.into() });
+    taken(&world.engine().resume(&id))?;
+    afresh_after_hibernated(&world, &id, 2, WOKEN, gone)?;
+    let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
+    ensure_eq!(
+        agent.conversation,
+        Some(Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: false,
+            why: Some(gone.into()),
+        }),
+        "the conversation status gives"
+    );
+    Ok(())
+}
+
+fn a_resume_never_begun(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    world.agent.carried_starts_end();
+    taken(&world.engine().resume(&id))?;
+    world.settle(&id);
+    let held = world.held(&id).ok_or("no held state")?;
+    let why = held
+        .uncarried
+        .iter()
+        .find(|read| read.stage == "talk" && read.start == 1)
+        .map(|read| read.words.clone())
+        .ok_or_else(|| {
+            format!(
+                "talk's resume was not recorded as not begun: {:?}",
+                held.uncarried
+            )
+        })?;
+    ensure!(
+        why.contains("ended before it said it started"),
+        "what the record says happened: {why}"
+    );
+    afresh_after_hibernated(&world, &id, 2, WOKEN, &why)
 }

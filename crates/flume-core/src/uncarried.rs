@@ -5,9 +5,10 @@
 //! recorded so on the place with what happened, its agent is sent nothing
 //! more, and once quiet it is ended and its stage started afresh with
 //! flume's words after the start that stopped, or after a lost
-//! conversation with its retry's words, carrying nothing. No end
-//! is delivered of it, no caller is waited on and no bound of the kind's
-//! counted (31, 35, 112).
+//! conversation with its retry's words, or after a hibernated agent with
+//! its resume's words, carrying nothing. No end is delivered of it, no
+//! caller is waited on and no bound of the kind's counted (31, 35, 112,
+//! 213).
 
 use crate::start::{StartReason, Starts};
 use crate::{Engine, Step};
@@ -46,14 +47,20 @@ pub(crate) fn uncarried<'a>(held: &'a HeldState, start: &StartHeld) -> Option<&'
 }
 
 /// The wait of a stage whose carried start `start` did not begin: after
-/// the start whose agent stopped at its account's usage limit or was
-/// reported lost, for the same cause, carrying nothing, with `why` (146,
-/// 179).
+/// the start whose agent stopped at its account's usage limit, was
+/// reported lost or hibernated, for the same cause, carrying nothing, with
+/// `why`. A resume names the hibernated agent by its whole identity, the
+/// resume before its own among it (146, 179, 213).
 pub(crate) fn after_uncarried(start: &StartHeld, why: String) -> Option<CarryFrom> {
     let conversation = start.conversation.as_ref()?;
+    let resume = match conversation.cause {
+        CarryCause::Hibernated => start.identity.resume.saturating_sub(1),
+        _ => 0,
+    };
     Some(CarryFrom {
         start: Identity {
             start: conversation.from,
+            resume,
             ..start.identity.clone()
         },
         cause: conversation.cause,
@@ -66,8 +73,9 @@ pub(crate) fn after_uncarried(start: &StartHeld, why: String) -> Option<CarryFro
 /// The words the fresh start after the carried start `start` that did not
 /// begin is given, as its cause has them: [`StartReason::Spent`]'s after a
 /// spent agent; after a lost conversation, the retry's words the carried
-/// start was given, which its claim puts after [`StartReason::Lost`]'s
-/// (49, 146, 179).
+/// start was given, which its claim puts after [`StartReason::Lost`]'s;
+/// after a resume, the resume's words, which its claim puts after
+/// [`StartReason::Hibernated`]'s (49, 146, 179, 213).
 pub(crate) fn words_after(start: &StartHeld) -> Option<String> {
     match start
         .conversation
@@ -75,6 +83,9 @@ pub(crate) fn words_after(start: &StartHeld) -> Option<String> {
         .map(|conversation| conversation.cause)
     {
         Some(CarryCause::Lost) => start.words.clone(),
+        Some(CarryCause::Hibernated) => {
+            start.resumes.last().and_then(|resume| resume.words.clone())
+        }
         _ => Some(StartReason::Spent.words()),
     }
 }
