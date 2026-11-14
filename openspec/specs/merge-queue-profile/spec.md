@@ -30,11 +30,12 @@ C.6, core.6).
 ### Requirement: Outcomes collected from sluice's inbox
 
 The profile SHALL collect a place's pending outcomes by `sluice inbox
---json` in the place: landed with its commit, failed with the merge
-queue's words, or in conflict with the files contested, each carrying
-sluice's `notice` as its words, a conflict's base revision read from
-the record's `tested.on`, each delivered once; and SHALL read a
-withdrawal from read-submission, never from the inbox (99, 133, C.6).
+--confirm --json` in the place, confirming each on receipt: landed with
+its commit, failed with the merge queue's words, or in conflict with the
+files contested, each carrying sluice's `notice` as its words, a
+conflict's base revision read from the record's `tested.on`, each
+delivered once; and SHALL read a withdrawal from read-submission, never
+from the inbox (99, 101, 133, C.6; sluice 51).
 
 #### Scenario: A conflict's base revision
 
@@ -188,3 +189,15 @@ words carry them (112, 210, C.6; sluice 65).
 
 - **WHEN** the profile reads an answer with `conflict` naming `README.md` and no entry ahead, `head` `aaa111` and `onto` `c0ffee`
 - **THEN** it gives the conflict with `README.md`, head `aaa111`, the base's revision `c0ffee` and no entry ahead, its words naming `README.md` and `c0ffee` in the lines a conflicting submission's words carry (112, 210)
+
+### Requirement: A submit's decided answer is confirmed
+
+Where sluice answers a submit with a decided entry's record, the profile
+SHALL confirm it by `sluice confirm <key>` of the record's `delivery`
+where it is owed, run where the submit ran, so no later inbox gives it
+(101, 112, 133, C.6; sluice 51; sluice record 0102).
+
+#### Scenario: A decided answer is confirmed
+
+- **WHEN** sluice answers the place's submit with its entry's record in conflict with an entry queued ahead
+- **THEN** submit answers the conflict, and the inbox collected after it gives nothing (112, 133)
