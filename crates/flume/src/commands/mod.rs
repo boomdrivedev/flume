@@ -431,13 +431,15 @@ struct LaunchArgs {
     stall_after: Option<String>,
     /// One setting of every stage's agent, or of one stage's (32): the
     /// field one of program, model, effort, instructions, beside, session,
-    /// mode and keep_open, `effort` its program's own word for how hard its
-    /// model works, `session` the terminal's session its agents open in,
-    /// the mode one of plan, ask, edits and full, or `mode.<program>` for
-    /// one program's entry of a mode, and `keep_open` how long the agent
-    /// is kept open for an answer once it stops short, as `<n>`, `<n>s`,
-    /// `<n>m` or `<n>h`, one time for every program, an hour where no
-    /// layer gives one (107, 162, 169, 197, 198).
+    /// mode, keep_open and hibernate_after, `effort` its program's own word
+    /// for how hard its model works, `session` the terminal's session its
+    /// agents open in, the mode one of plan, ask, edits and full, or
+    /// `mode.<program>` for one program's entry of a mode, `keep_open` how
+    /// long the agent is kept open for an answer once it stops short, and
+    /// `hibernate_after` how long a conversation whose kind hibernates it
+    /// may idle before it hibernates, each as `<n>`, `<n>s`, `<n>m` or
+    /// `<n>h`, one time for every program, an hour where no layer gives
+    /// one (107, 162, 169, 197, 198, 212).
     #[arg(long, value_name = "[STAGE.]FIELD=VALUE")]
     agent: Vec<String>,
     /// The stream the place runs in, one the host's configuration
