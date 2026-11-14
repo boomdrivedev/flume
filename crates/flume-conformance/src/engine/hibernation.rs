@@ -28,9 +28,39 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: refused_hibernates,
         },
         Scenario {
-            name: "hibernation: Room freed: talk hibernates on a host at its bound, its starts unchanged and its end none, and another place's stage waiting for room starts",
+            name: "hibernation: Room freed: talk hibernates idle on a host at its bound, its starts unchanged and its end none, and another place's stage waiting for room starts",
             cites: &["48", "70", "212"],
             run: room_freed,
+        },
+        Scenario {
+            name: "hibernation: An hour after the last turn: settles read talk quiet over an hour, and the settle at the hour ends its agent, talk hibernating since then, why idle, and the host's agents running drop by one",
+            cites: &["70", "212", "S124"],
+            run: an_hour_after_the_last_turn,
+        },
+        Scenario {
+            name: "hibernation: A turn between two settles: talk read quiet at t, quiet again at t plus 50 minutes with its on-quiet settle, is not hibernated at t plus 70 minutes, and is at t plus 110",
+            cites: &["44", "121", "212"],
+            run: a_turn_between_two_settles,
+        },
+        Scenario {
+            name: "hibernation: Asking, own work, a tell: no settle hibernates a talk agent past its time while it asks, its own work runs or a tell is handed to it, until none holds and it has been quiet its time again",
+            cites: &["54", "90", "91", "212"],
+            run: asking_own_work_a_tell_hold_a_settle_off,
+        },
+        Scenario {
+            name: "hibernation: Zero never hibernates on idling: a launch giving talk.hibernate_after=0 leaves talk's quiet agent running for a day",
+            cites: &["7", "212"],
+            run: zero_never_hibernates_on_idling,
+        },
+        Scenario {
+            name: "hibernation: A stage whose kind does not hibernate it: a conversation of a kind that declares no hibernate, quiet for a day, runs as a conversation does",
+            cites: &["109", "212"],
+            run: a_stage_whose_kind_does_not_hibernate_it,
+        },
+        Scenario {
+            name: "hibernation: Two settles at once: two settles reading talk due at once close its agent once and record its hibernation once",
+            cites: &["74", "75", "212"],
+            run: two_settles_at_once,
         },
         Scenario {
             name: "hibernation: Asking, own work, a tell: a caller's unforced hibernate of a talk agent asking, with its own work running, or being handed a tell, is refused, and the tell's mark is cleared once it ends",
@@ -198,6 +228,7 @@ fn room_freed(_: &()) -> Outcome {
     let world = World::new();
     world.host.set_bound(Some(1));
     let id = research(&world, "one")?;
+    world.settle(&id);
     launched(&world.engine.launch(&launch("fix", "two", Some("x"))))?;
     let two = World::id("fix", "two");
     world.settle(&two);
@@ -206,9 +237,10 @@ fn room_freed(_: &()) -> Outcome {
         Some(StageState::WaitingForRoom),
         "two's code while talk runs"
     );
+    world.host.advance(HOUR);
     let at = world.host.now();
-    taken(&world.engine().hibernate(&id, false))?;
-    hibernating(&world, &id, at, HibernatedBy::Caller, 1)?;
+    world.settle(&id);
+    hibernating(&world, &id, at, HibernatedBy::Idle, 1)?;
     ensure!(
         world
             .stage_state(&two, "code")
@@ -288,4 +320,219 @@ fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
         "the mark once the tell ended, talk, and the agents closed"
     );
     taken(&world.engine().hibernate(&id, false))
+}
+
+/// flume's own hibernate time, an hour (212).
+const HOUR: Seconds = flume_core::HIBERNATE_AFTER;
+
+/// The host's agents running, as status gives them (56, 70).
+fn running(world: &World) -> Result<u32, String> {
+    match world.engine().status(None) {
+        Answer::Status { host, .. } => Ok(host.running),
+        other => Err(format!("status answered {other:?}")),
+    }
+}
+
+/// Settles the place each `step` seconds until `until` seconds have
+/// passed, each reading talk not yet hibernated.
+fn settle_through(
+    world: &World,
+    id: &PlaceId,
+    step: Seconds,
+    until: Seconds,
+    stage: &str,
+) -> Outcome {
+    let mut passed = 0;
+    while passed + step <= until {
+        world.host.advance(step);
+        passed += step;
+        world.settle(id);
+        ensure!(
+            world.stage_state(id, stage) != Some(StageState::Hibernating),
+            "{stage} hibernated {passed} seconds on"
+        );
+    }
+    Ok(())
+}
+
+fn an_hour_after_the_last_turn(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    world.settle(&id);
+    ensure_eq!(running(&world)?, 1, "agents running while talk runs");
+    settle_through(&world, &id, 10 * 60, HOUR - 10 * 60, "talk")?;
+    world.host.advance(10 * 60);
+    let at = world.host.now();
+    world.settle(&id);
+    ensure_eq!(
+        closed(&world),
+        vec![format!("close {}", talk_of("one", 1))],
+        "the agents closed"
+    );
+    hibernating(&world, &id, at, HibernatedBy::Idle, 1)?;
+    ensure_eq!(running(&world)?, 0, "agents running once talk hibernated");
+    Ok(())
+}
+
+fn a_turn_between_two_settles(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    let talk = talk_of("one", 1);
+    world.settle(&id);
+    let t = world.host.now();
+    ensure_eq!(
+        start_now(&world, &id, "talk")?.first_quiet,
+        Some(t),
+        "talk's quiet from flume's first reading of it"
+    );
+    // A turn no settle reads: the agent works and is quiet again by the
+    // time its own quiet starts a settle, at t plus 50 minutes.
+    world.terminal.set_state(&talk, AgentState::Working);
+    world.host.advance(50 * 60);
+    world.terminal.set_state(&talk, AgentState::Waiting);
+    taken(&world.engine().settle_on_quiet(&id))?;
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Begun),
+        "talk at t plus 70 minutes"
+    );
+    world.host.advance(40 * 60);
+    world.settle(&id);
+    hibernating(&world, &id, t + 110 * 60, HibernatedBy::Idle, 1)
+}
+
+fn asking_own_work_a_tell_hold_a_settle_off(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    let talk = talk_of("one", 1);
+    world.settle(&id);
+    for (what, set, clear) in [
+        (
+            "asking",
+            Box::new(|world: &World, talk: &Identity| world.agent.set_asking(talk, Reading::Yes))
+                as Box<dyn Fn(&World, &Identity)>,
+            Box::new(|world: &World, talk: &Identity| world.agent.set_asking(talk, Reading::No))
+                as Box<dyn Fn(&World, &Identity)>,
+        ),
+        (
+            "its own work",
+            Box::new(|world: &World, talk: &Identity| world.agent.set_own_work(talk, Reading::Yes)),
+            Box::new(|world: &World, talk: &Identity| world.agent.set_own_work(talk, Reading::No)),
+        ),
+    ] {
+        world.host.advance(HOUR - 60);
+        set(&world, &talk);
+        world.host.advance(60);
+        world.settle(&id);
+        ensure_eq!(
+            (world.stage_state(&id, "talk"), closed(&world).len()),
+            (Some(StageState::Begun), 0),
+            format!("talk past its time while {what}")
+        );
+        world.host.advance(HOUR);
+        world.settle(&id);
+        ensure_eq!(
+            world.stage_state(&id, "talk"),
+            Some(StageState::Begun),
+            format!("talk an hour on while {what}")
+        );
+        clear(&world, &talk);
+        world.settle(&id);
+        settle_through(&world, &id, 20 * 60, HOUR - 20 * 60, "talk")?;
+    }
+    // A tell being handed to the agent once it is past its time: the
+    // settle beside it passes it over, and its quiet starts again. A
+    // caller keeps watch, so the tell settles nothing first.
+    world.keep_watch();
+    world.host.advance(HOUR);
+    world.agent.receives_at(&talk, Some(2));
+    let other = world.engine();
+    let place = id.clone();
+    world.host.at_next_sleep(move || {
+        other.settle(Some(&place));
+    });
+    taken(&world.engine().tell(&id, "go on", None))?;
+    ensure_eq!(
+        (world.stage_state(&id, "talk"), closed(&world).len()),
+        (Some(StageState::Begun), 0),
+        "talk once a settle read it while a tell was handed"
+    );
+    world.settle(&id);
+    settle_through(&world, &id, 20 * 60, HOUR - 20 * 60, "talk")?;
+    world.host.advance(20 * 60);
+    let at = world.host.now();
+    world.settle(&id);
+    hibernating(&world, &id, at, HibernatedBy::Idle, 1)
+}
+
+fn zero_never_hibernates_on_idling(_: &()) -> Outcome {
+    let world = World::new();
+    let mut given = launch("research", "one", Some("weigh the options"));
+    given
+        .settings
+        .insert("talk".into(), super::agent_settings::hibernates_after("0"));
+    let id = world.researching(given)?;
+    settle_through(&world, &id, HOUR, 24 * HOUR, "talk")?;
+    ensure_eq!(
+        (world.stage_state(&id, "talk"), closed(&world).len()),
+        (Some(StageState::Begun), 0),
+        "talk a day on"
+    );
+    Ok(())
+}
+
+fn a_stage_whose_kind_does_not_hibernate_it(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![kind(
+            "chat",
+            false,
+            vec![stage("talk", None, "Talk {{name}} over.\n\n{{brief}}")],
+        )],
+    );
+    launched(&world.engine.launch(&launch("chat", "one", Some("x"))))?;
+    let id = World::id("chat", "one");
+    world.settle(&id);
+    settle_through(&world, &id, HOUR, 24 * HOUR, "talk")?;
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            closed(&world).len(),
+            start.live,
+            start.hibernated
+        ),
+        (Some(StageState::Begun), 0, true, None),
+        "talk a day on"
+    );
+    taken(&world.engine().finish(&id, false))?;
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Finished),
+        "talk once its caller finished it"
+    );
+    Ok(())
+}
+
+fn two_settles_at_once(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    world.settle(&id);
+    world.host.advance(HOUR);
+    let at = world.host.now();
+    let other = world.engine();
+    let place = id.clone();
+    world.store.before_next_write(move || {
+        other.settle(Some(&place));
+    });
+    world.settle(&id);
+    ensure_eq!(
+        closed(&world),
+        vec![format!("close {}", talk_of("one", 1))],
+        "the agents closed"
+    );
+    hibernating(&world, &id, at, HibernatedBy::Idle, 1)
 }

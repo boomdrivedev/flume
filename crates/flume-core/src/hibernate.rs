@@ -35,8 +35,8 @@ impl Engine {
     /// kept open for its answer, its agent ended once quiet, one not quiet
     /// only when `force`; refused, naming the place, for a stage whose
     /// kind does not hibernate it and for a place with no live agent, and
-    /// naming the agent where it is not quiet and the caller did not
-    /// force it. The place is then settled, so a stage waiting for the
+    /// naming the agent where it is not quiet, or the tell where one is
+    /// being handed to it, and the caller did not force it (54). The place is then settled, so a stage waiting for the
     /// room it freed starts (70).
     pub fn hibernate(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
@@ -69,6 +69,51 @@ impl Engine {
         }
     }
 
+    /// Hibernates the place's current stage, as a settle does, for `why`:
+    /// its agent ended once quiet, or working where `force`; true where
+    /// this call recorded the hibernation, false where another had or the
+    /// place moved on; refused where the agent is not quiet and not forced,
+    /// a tell is being handed to it, or the terminal did not end it (31,
+    /// 212).
+    pub(crate) fn hibernate_stage(
+        &self,
+        id: &PlaceId,
+        why: HibernatedBy,
+        force: bool,
+    ) -> Result<bool, String> {
+        let Some(read) = self.store.read(id) else {
+            return Ok(false);
+        };
+        match due(&read.state, id) {
+            Ok(due) => self.hibernate_start(id, &due, why, force),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Settles the place as its agent's own quiet starts a settle: a
+    /// running conversation whose kind hibernates it has its quiet started
+    /// again first, since a turn ended then that no settle need have read
+    /// (44, 121, 212).
+    pub fn settle_on_quiet(&self, place: &PlaceId) -> Answer {
+        self.update(place, |held| {
+            let Some(index) = held.current else {
+                return Step::Keep(());
+            };
+            let declared = &held.place.kind.stages[index];
+            if !(declared.conversation && declared.hibernates) {
+                return Step::Keep(());
+            }
+            match held.stages[index].start.as_mut() {
+                Some(start) if start.live && start.first_quiet.is_some() => {
+                    start.first_quiet = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
+        self.settle(Some(place))
+    }
+
     /// The step itself for the start `due` holds: claimed, closed, then
     /// recorded not live (design 6).
     fn hibernate_start(
@@ -79,6 +124,12 @@ impl Engine {
         force: bool,
     ) -> Result<bool, String> {
         let identity = due.start.identity.clone();
+        let now = self.host.now();
+        if let Some(until) = due.start.handing.filter(|until| now < *until && !force) {
+            return Err(format!(
+                "a tell is being handed to the agent {identity}, until {until} at the latest; ask again once it ends, or forced to hibernate it"
+            ));
+        }
         let reading = self.read_agent(id, &due.start);
         let stopped = reading.state == AgentState::Stopped;
         if !stopped && !reading.quiet() && !force {
@@ -86,7 +137,6 @@ impl Engine {
                 "the agent {identity} is not quiet; ask again forced to hibernate it"
             ));
         }
-        let now = self.host.now();
         let claimed = self
             .update(id, |held| {
                 let Some(start) = current_start(held, due.index, &identity) else {
