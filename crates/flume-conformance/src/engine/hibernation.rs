@@ -9,7 +9,7 @@ use super::carried_conversations::{by_hand, resumed as resumes_session};
 use super::open_sessions::{stops_short, QUESTION};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
-use flume_core::{Act, Answer, Waits, KEEP_OPEN};
+use flume_core::{Act, Answer, Answering, Waits, KEEP_OPEN};
 use flume_fakes::FakeAgent;
 use flume_seams::*;
 use std::sync::{Arc, Mutex};
@@ -107,7 +107,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_process_runs_the_conversation,
         },
         Scenario {
-            name: "hibernation: Forty days hibernated: talk hibernated forty days ago, the fake agent's carry answering its transcript is gone, and the place resumed, talk's second start is fresh, its prompt talk's with flume's words that its conversation could not be carried before the resume's, status giving the resume not carried and why",
+            name: "hibernation: Forty days hibernated: talk hibernated forty days ago, the fake agent's carry answering its transcript is gone, and the place told \"carry on\", talk's second start is fresh, its prompt talk's with flume's words that its conversation could not be carried before \"carry on\", status giving the resume not carried and why",
             cites: &["179", "213", "S127"],
             run: forty_days_hibernated,
         },
@@ -115,6 +115,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: A resume never begun: a resumed agent that stops before it says it started is recorded so, and talk starts afresh with flume's words and the resume's, carrying nothing",
             cites: &["146", "213"],
             run: a_resume_never_begun,
+        },
+        Scenario {
+            name: "hibernation: A message next morning: talk hibernated idle, and next morning its caller's tell \"where were we?\" starts talk:1.1 on the account it ran under, resuming its session with the tell's words, talk's starts still 1, the tell answered with the place's status",
+            cites: &["53", "213", "S124"],
+            run: a_message_next_morning,
+        },
+        Scenario {
+            name: "hibernation: The answer three hours later: code hibernated at the end of its keep-open time, and a tell naming its stop-short's key three hours later is recorded on the stop-short and resumes code's session with the question then the answer, code delivering once its agent commits",
+            cites: &["42", "198", "213", "S125"],
+            run: the_answer_three_hours_later,
         },
     ]
 }
@@ -1026,8 +1036,8 @@ fn forty_days_hibernated(_: &()) -> Outcome {
     world
         .agent
         .carry_to(FakeAgent::LOGIN, Carry::No { why: gone.into() });
-    taken(&world.engine().resume(&id))?;
-    afresh_after_hibernated(&world, &id, 2, WOKEN, gone)?;
+    taken(&world.engine().tell(&id, "carry on", None))?;
+    afresh_after_hibernated(&world, &id, 2, "carry on", gone)?;
     let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
     ensure_eq!(
         agent.conversation,
@@ -1065,4 +1075,166 @@ fn a_resume_never_begun(_: &()) -> Outcome {
         "what the record says happened: {why}"
     );
     afresh_after_hibernated(&world, &id, 2, WOKEN, &why)
+}
+
+fn a_message_next_morning(_: &()) -> Outcome {
+    let world = World::new();
+    fill_first_at_homes(&world);
+    world.agent.carry_to(
+        &home("work-1"),
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.set_session(&talk_of("one", 1), "s-1");
+    let id = research(&world, "one")?;
+    world.settle(&id);
+    world.host.advance(HOUR);
+    let at = world.host.now();
+    world.settle(&id);
+    hibernating(&world, &id, at, HibernatedBy::Idle, 1)?;
+    world.host.advance(14 * HOUR);
+    let answered = world.engine().tell(&id, "where were we?", None);
+    match &answered {
+        Answer::Acted {
+            act: Act::Tell,
+            status: Some(status),
+            ..
+        } if status.place == id => {}
+        other => return Err(format!("the tell answered {other:?}")),
+    }
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 1),
+        ResumedBy::Tell,
+        "where were we?",
+        1,
+    )?;
+    ensure_eq!(
+        super::account_pools::account_of(&world, &id, "talk"),
+        super::account_pools::on("work", "work-1"),
+        "the account talk's resume runs on"
+    );
+    Ok(())
+}
+
+/// The key of the patch place's code's first stop-short (42, 43).
+fn code_key() -> EndKey {
+    EndKey::Stage {
+        stage: "code".into(),
+        start: 1,
+        state: StageState::EndedShort,
+        answered: 0,
+    }
+}
+
+/// The patch place `name`, its code's first start's word naming the
+/// session `s-1`, which the login environment's configuration home
+/// reaches, stopped short needing an answer and hibernated at the end of
+/// its keep-open time; the time it stopped short (198, 212).
+pub(super) fn patch_hibernated(world: &World, name: &str) -> Result<(PlaceId, Seconds), String> {
+    world.agent.set_session(&patch_code(name, 1), "s-1");
+    world.agent.carry_to(
+        FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    let (id, at) = patch_asking(world, name)?;
+    world.host.advance(KEEP_OPEN);
+    world.settle(&id);
+    ensure_eq!(
+        hibernation(world, &id, "code")?.map(|held| held.why),
+        Some(HibernatedBy::KeptOpen),
+        "code's hibernation"
+    );
+    Ok((id, at))
+}
+
+/// code's current start is its first start's resume `1.<resume>`, given
+/// the question then `answer` as its words, the stage's starts still 1,
+/// resuming `s-1` (42, 213).
+pub(super) fn code_resumed(world: &World, id: &PlaceId, resume: u32, answer: &str) -> Outcome {
+    let resumed = Identity {
+        resume,
+        ..patch_code("one", 1)
+    };
+    let stage = stage_of(world, id, "code")?;
+    let start = stage.start.clone().ok_or("code holds no start")?;
+    ensure_eq!(
+        (&start.identity, start.n, stage.starts, start.live),
+        (&resumed, 1, 1, true),
+        "code's start, its number, the stage's starts and whether it is live"
+    );
+    let words = format!("The question: {QUESTION}\n\nThe answer: {answer}");
+    ensure_eq!(
+        (
+            start
+                .resumes
+                .last()
+                .map(|resume| (resume.by, resume.words.clone())),
+            start.start_record.session.as_deref()
+        ),
+        (Some((ResumedBy::Answer, Some(words.clone()))), Some("s-1")),
+        "code's resume and the session it resumes"
+    );
+    ensure_eq!(
+        world.prompt(id, &resumed),
+        Some(resume_prompt(world, &resumed, &words)),
+        "the resume's prompt"
+    );
+    Ok(())
+}
+
+fn the_answer_three_hours_later(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = patch_hibernated(&world, "one")?;
+    world.host.advance(3 * HOUR);
+    let at = world.host.now();
+    let answering = Answering {
+        key: Some(code_key()),
+        by: Some("ops".into()),
+    };
+    taken(
+        &world
+            .engine()
+            .tell_answering(&id, "use notes.md", None, &answering),
+    )?;
+    let held = world.held(&id).ok_or("no held state")?;
+    let answer = held
+        .ends
+        .iter()
+        .find(|end| end.of.end_key() == code_key())
+        .and_then(|end| end.answer.clone())
+        .ok_or("no answer recorded on code's stop-short")?;
+    ensure_eq!(
+        (
+            answer.words.as_str(),
+            answer.act,
+            answer.by.as_deref(),
+            answer.key,
+            answer.at,
+            answer.session
+        ),
+        (
+            "use notes.md",
+            Act::Tell,
+            Some("ops"),
+            Some(code_key()),
+            at,
+            None
+        ),
+        "the answer on code's stop-short"
+    );
+    code_resumed(&world, &id, 1, "use notes.md")?;
+    world.settle(&id);
+    world.commit("patch/one", &["notes.md"]);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Delivered),
+        "code once its resumed agent committed"
+    );
+    Ok(())
 }

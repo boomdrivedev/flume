@@ -11,6 +11,16 @@ use std::sync::{Arc, Mutex};
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "retry: A retry with words answers a hibernated agent: code of a kind that hibernates it ended short and hibernated at the end of its keep-open time, and its caller's retry with \"notes.md\" resumes its session, its starts unchanged, its prompt the question then \"notes.md\"",
+            cites: &["42", "49", "213"],
+            run: a_retry_with_words_answers_a_hibernated_agent,
+        },
+        Scenario {
+            name: "tell: A tell to a hibernating stage: a tell \"go on\" to a place whose talk hibernates is taken at once, and talk resumes with \"go on\" as its prompt",
+            cites: &["53", "213"],
+            run: a_tell_to_a_hibernating_stage,
+        },
+        Scenario {
             name: "retry: a construct that ended short, its agent let go and ended, retried with words, starts afresh with the question and the answer",
             cites: &["S4", "49", "50", "42"],
             run: s4_retried_with_words,
@@ -1367,4 +1377,40 @@ fn s93_a_question_for_ops_answered_once(_: &()) -> Outcome {
         "a run of east/operator was woken"
     );
     Ok(())
+}
+
+fn a_retry_with_words_answers_a_hibernated_agent(_: &()) -> Outcome {
+    use super::hibernation::{code_resumed, patch_hibernated};
+    let world = World::new();
+    let (id, _) = patch_hibernated(&world, "one")?;
+    world.host.advance(30 * 60);
+    taken(&world.engine().retry(
+        &id,
+        Retry::Stage("code".into()),
+        Some("notes.md".into()),
+        false,
+    ))?;
+    code_resumed(&world, &id, 1, "notes.md")
+}
+
+fn a_tell_to_a_hibernating_stage(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, resumed_as, talk_resumed};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    match world.engine().tell(&id, "go on", None) {
+        Answer::Acted {
+            act: Act::Tell,
+            status: Some(_),
+            ..
+        } => {}
+        other => return Err(format!("the tell answered {other:?}")),
+    }
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 1),
+        ResumedBy::Tell,
+        "go on",
+        1,
+    )
 }

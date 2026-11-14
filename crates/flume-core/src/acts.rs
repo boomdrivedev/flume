@@ -7,6 +7,7 @@
 
 use crate::base::base_place;
 use crate::held::refresh_waiting;
+use crate::hibernate::{hibernated_waiting, hibernating};
 use crate::launch::and_list;
 use crate::open_sessions::waits_on_answer;
 use crate::start::{Start, Starts};
@@ -241,6 +242,11 @@ impl Engine {
         if let (Some(index), Some(words)) = (index, words.as_deref()) {
             if let Some(kept) = self.kept_open(&held).filter(|kept| kept.index() == index) {
                 return self.answer(place, &kept, words, Act::Retry, None, answering);
+            }
+            // An answer to an agent hibernated waiting on it resumes its
+            // session (42, 49, 213).
+            if hibernated_waiting(&held) == Some(index) {
+                return self.answer_hibernated(place, index, words, Act::Retry, answering);
             }
         }
         // An answer naming its key, carried by a fresh agent: claimed on
@@ -693,8 +699,11 @@ impl Engine {
     /// A tell to a place whose stage ended short needing an answer is that
     /// answer while its agent is kept open for it, carrying the stage on
     /// in its session, and is refused, naming the retry that answers it,
-    /// once its agent is not (42, 53 to 55, 198). It names no key and no
-    /// one who gives it: [`Engine::tell_answering`] with neither.
+    /// once its agent is not, but where its agent hibernated, whose session
+    /// the answer resumes; and a tell to a place whose stage hibernates
+    /// resumes it with the tell's words (42, 53 to 55, 198, 213). It names
+    /// no key and no one who gives it: [`Engine::tell_answering`] with
+    /// neither.
     pub fn tell(&self, place: &PlaceId, words: &str, bound: Option<Seconds>) -> Answer {
         self.tell_answering(place, words, bound, &Answering::default())
     }
@@ -724,12 +733,23 @@ impl Engine {
             }
         }
         if let Some(stage) = waits_on_answer(&read.state) {
-            return match self.kept_open(&read.state) {
-                Some(kept) => self.answer(place, &kept, words, Act::Tell, bound, answering),
-                None => Answer::refused(format!(
+            return match (
+                self.kept_open(&read.state),
+                hibernated_waiting(&read.state),
+            ) {
+                (Some(kept), _) => self.answer(place, &kept, words, Act::Tell, bound, answering),
+                (None, Some(index)) => {
+                    self.answer_hibernated(place, index, words, Act::Tell, answering)
+                }
+                (None, None) => Answer::refused(format!(
                     "the stage {stage} of {place} waits on an answer and its agent is no longer kept open; give the answer as a retry: flume retry {place} --words <answer>"
                 )),
             };
+        }
+        // A tell to a hibernating stage resumes it, its words the resumed
+        // agent's prompt (53, 213).
+        if let Some(index) = hibernating(&read.state) {
+            return self.tell_hibernating(place, index, words);
         }
         let Some((_, start)) = read.state.live_start() else {
             return Answer::refused(format!("the place {place} has no live agent"));

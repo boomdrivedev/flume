@@ -27,8 +27,10 @@
 //! the account the hibernated agent ran under while it is usable, and
 //! afresh otherwise (30, 49, 70, 145, 179, 207; core.10, core.32).
 
+use crate::acts::{asked, waited_key, Answering};
+use crate::open_sessions::waits_on_answer;
 use crate::start::{Start, StartReason};
-use crate::{Answer, Engine, Step};
+use crate::{Answer, Engine, Step, TELL_BOUND};
 use flume_seams::*;
 
 /// What a hibernate of a place's current stage finds: the stage's index
@@ -97,6 +99,7 @@ impl Engine {
                 index,
                 ResumedBy::Caller,
                 StartReason::Woken.words(),
+                &|_| true,
             ) {
                 Ok(()) => self.acted(Act::Resume, place),
                 Err(reason) => Answer::refused(reason),
@@ -119,21 +122,119 @@ impl Engine {
         ))
     }
 
+    /// The answer `words` to the stop-short the place's stage at `index`
+    /// waits on, whose agent hibernated and was ended: claimed on its
+    /// stop-short, its key checked as `answering` names it, then, in the
+    /// one write that puts the stage waiting to resume its session with
+    /// the question then the answer as its words, recorded on the
+    /// stop-short with `act`, who gave it, its key and when, the start's
+    /// count of answers raised and each hold on the stage ended (42, 49,
+    /// 53 to 55, 213).
+    pub(crate) fn answer_hibernated(
+        &self,
+        place: &PlaceId,
+        index: usize,
+        words: &str,
+        act: Act,
+        answering: &Answering,
+    ) -> Answer {
+        let Some(read) = self.store.read(place) else {
+            return Answer::refused(format!("no place {place} stands on this host"));
+        };
+        let held = read.state;
+        let Some(key) = waited_key(&held) else {
+            return Answer::refused(format!("the place {place} waits on no answer"));
+        };
+        let stage = &held.stages[index];
+        let question = stage
+            .end
+            .as_ref()
+            .and_then(|end| end.words.clone())
+            .unwrap_or_default();
+        let name = stage.name.clone();
+        let _claimed = match self.claim_answer(place, &key, answering, TELL_BOUND) {
+            Ok(claimed) => claimed,
+            Err(reason) => return Answer::refused(reason),
+        };
+        let answer = AnswerHeld {
+            words: words.to_string(),
+            act,
+            at: self.host.now(),
+            session: None,
+            by: answering.by.clone(),
+            key: answering.key.clone(),
+        };
+        let record = |held: &mut HeldState| -> bool {
+            let Some(end) = held
+                .ends
+                .iter_mut()
+                .find(|end| end.answer.is_none() && end.of.end_key() == key)
+            else {
+                return false;
+            };
+            end.answer = Some(answer.clone());
+            end.claim = None;
+            if let Some(start) = held.stages[index].start.as_mut() {
+                start.answered += 1;
+            }
+            let on = HoldOn::Stage {
+                stage: name.clone(),
+            };
+            held.holds.retain(|hold| hold.on != on);
+            true
+        };
+        match self.resume_stage(
+            place,
+            index,
+            ResumedBy::Answer,
+            asked(&question, words),
+            &record,
+        ) {
+            Ok(()) => self.acted(act, place),
+            Err(reason) => Answer::refused(reason),
+        }
+    }
+
+    /// A tell's words to the place's hibernating stage, its resume's words:
+    /// taken at once and answered with the place's status (53, 213).
+    pub(crate) fn tell_hibernating(&self, place: &PlaceId, index: usize, words: &str) -> Answer {
+        match self.resume_stage(place, index, ResumedBy::Tell, words.to_string(), &|_| true) {
+            Ok(()) => self.acted(Act::Tell, place),
+            Err(reason) => Answer::refused(reason),
+        }
+    }
+
     /// Puts the hibernated stage at `index` waiting for room to carry its
     /// start's conversation, resumed by `by`, with `words` as the resume's
     /// prompt's words, and starts it; why not where the terminal did not
-    /// open it or its prompt or settings refused it (49, 70, 213).
+    /// open it or its prompt or settings refused it (49, 70, 213). What
+    /// `record` writes, an answer on the stop-short it answers, is written
+    /// in the same write, which is not made where it records nothing (42,
+    /// 75).
     pub(crate) fn resume_stage(
         &self,
         place: &PlaceId,
         index: usize,
         by: ResumedBy,
         words: String,
+        record: &dyn Fn(&mut HeldState) -> bool,
     ) -> Result<(), String> {
         let room = self.host.room();
         let order = self.queue().next_order();
         let woken = self
             .update(place, |held| {
+                if held.phase != Phase::Live
+                    || held.current != Some(index)
+                    || !matches!(
+                        held.stages[index].state,
+                        StageState::Hibernating | StageState::EndedShort
+                    )
+                {
+                    return Step::Keep(false);
+                }
+                if !record(held) {
+                    return Step::Keep(false);
+                }
                 let stage = &mut held.stages[index];
                 let Some(start) = stage.start.as_ref().filter(|start| !start.live) else {
                     return Step::Keep(false);
@@ -360,6 +461,25 @@ impl Engine {
         self.end_hibernated(id, &Due { index, start }, !stopped)
             .unwrap_or(false)
     }
+}
+
+/// The index of the place's current stage where it hibernates (212).
+pub(crate) fn hibernating(held: &HeldState) -> Option<usize> {
+    let index = held.current?;
+    (held.phase == Phase::Live && held.stages[index].state == StageState::Hibernating)
+        .then_some(index)
+}
+
+/// The index of the place's current stage where it waits on its answer and
+/// its agent kept open for it hibernated and was ended, so its answer
+/// resumes its session (42, 198, 213).
+pub(crate) fn hibernated_waiting(held: &HeldState) -> Option<usize> {
+    waits_on_answer(held)?;
+    let index = held.current?;
+    let stage = &held.stages[index];
+    let closed = stage.end.as_ref()?.closed?;
+    let ended = stage.start.as_ref().is_some_and(|start| !start.live);
+    (closed.by == ClosedBy::Hibernated && closed.ended_at.is_some() && ended).then_some(index)
 }
 
 /// Whether the place's current start's hibernation is claimed and its
