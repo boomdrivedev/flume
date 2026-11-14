@@ -1572,6 +1572,55 @@ fn a_repositorys_keep_open_refuses_the_launch_naming_the_field() {
     }
 }
 
+/// The words a declaration's `hibernate_after` is refused in (212).
+const HIBERNATE_AFTER_REFUSED: &str =
+    "how long a conversation may idle before it hibernates is the host's or the launch's to give";
+
+#[test]
+fn a_repositorys_hibernate_after_refuses_the_launch_naming_the_field() {
+    // 4, 158, 212, C.2: the kinds-profile spec's "A repository's hibernate
+    // time": `hibernate_after` in a declared kind's own agents table fails
+    // the read naming the field and that the host or the launch gives it,
+    // and a launch of that kind is refused with nothing made; so does one
+    // in a stage's table of a kind it declares, in a repository's table
+    // for a kind it does not declare, and in its table for every kind.
+    let research = "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\n";
+    for (given, kind, field) in [
+        (
+            format!("[kinds.research.agents]\nhibernate_after = \"2h\"\n\n{research}"),
+            "research",
+            "kinds.research.agents.hibernate_after",
+        ),
+        (
+            format!("[kinds.research.agents.stages.talk]\nhibernate_after = \"2h\"\n\n{research}"),
+            "research",
+            "kinds.research.agents.stages.talk.hibernate_after",
+        ),
+        (
+            "[kinds.fix.agents]\nhibernate_after = \"2h\"\n".to_string(),
+            "fix",
+            "kinds.fix.agents.hibernate_after",
+        ),
+        (
+            "[agents]\nhibernate_after = \"2h\"\n".to_string(),
+            "fix",
+            "agents.hibernate_after",
+        ),
+    ] {
+        let repository = Repository::new("declared-hibernate-after");
+        repository.write(DECLARATION, &given);
+        repository.write(".config/prompts/talk.md", "{{brief}}");
+        repository.commit("a hibernate_after in the declaration");
+        let reason = could_not_read(&repository);
+        assert!(
+            reason.contains(&format!("{field}: {HIBERNATE_AFTER_REFUSED}")),
+            "{given}: {reason}"
+        );
+        launch_refused_naming(&repository, kind, &[field]);
+    }
+}
+
 #[test]
 fn a_packages_keep_open_refuses_the_launch_naming_the_stages_field() {
     // 4, 158, 198, C.2: the kinds-profile spec's "A kind's keep_open": a
