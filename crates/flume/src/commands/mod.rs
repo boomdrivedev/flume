@@ -99,6 +99,14 @@ enum Command {
     Drop(Forced),
     /// Declare complete the work of a place whose kind does not land (114).
     Done(Forced),
+    /// Hibernate the place's current stage, whose kind hibernates it: its
+    /// agent ended once quiet, or working with `--force`, and its session
+    /// kept, its room and its account freed (31, 212).
+    Hibernate(Forced),
+    /// Resume the place's hibernating stage in its own session, with
+    /// flume's words that it resumes; a tell or its answer resumes it with
+    /// theirs (213).
+    Resume { place: String },
     /// Start a stage again, or submit the place again (49, 50).
     Retry {
         place: String,
@@ -615,6 +623,11 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         Command::Finish(forced) => build_for(forced, &named, build, Engine::finish)?,
         Command::Drop(forced) => build_for(forced, &named, build, Engine::drop_place)?,
         Command::Done(forced) => build_for(forced, &named, build, Engine::done)?,
+        Command::Hibernate(forced) => build_for(forced, &named, build, Engine::hibernate)?,
+        Command::Resume { place } => {
+            let place = named(place)?;
+            build()?.resume(&place)
+        }
         Command::Retry {
             place,
             stage,

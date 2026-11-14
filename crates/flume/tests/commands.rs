@@ -907,6 +907,72 @@ fn a_refusal() {
 }
 
 #[test]
+fn hibernation_through_the_binary_a_hibernate_of_a_fix_is_refused() {
+    // 61, 212: the command-line spec's "A hibernate refused through the
+    // command line": a fix's kind hibernates nothing, so its hibernate is
+    // refused naming the place and that, exiting non-zero.
+    let host = Host::new("hibernate-fix");
+    let repository = repository("hibernate-fix", Some(STAND_IN_QUEUE));
+    let kinds = kinds_file(&host, true);
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    let ran = host.flume(&repository.dir, &["hibernate", "fix--one", "--json"], &[]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let place = host.place_of(&repository, "fix--one");
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    assert!(
+        reason.contains(&place) && reason.contains("does not hibernate"),
+        "{reason}"
+    );
+    let forced = host.flume(
+        &repository.dir,
+        &["hibernate", "fix--one", "--force", "--json"],
+        &[],
+    );
+    assert_eq!(forced.code, 1, "{}", forced.text);
+}
+
+#[test]
+fn hibernation_through_the_binary_a_resume_of_nothing_is_refused() {
+    // 61, 213: the command-line spec's "A resume of nothing hibernating
+    // through the command line": refused naming the place, exiting
+    // non-zero, in the JSON and the person's form.
+    let host = Host::new("resume-nothing");
+    let repository = repository("resume-nothing", Some(STAND_IN_QUEUE));
+    let kinds = kinds_file(&host, true);
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    let ran = host.flume(&repository.dir, &["resume", "fix--one", "--json"], &[]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let place = host.place_of(&repository, "fix--one");
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    assert!(reason.contains(&place), "{reason}");
+    let person = host.flume(&repository.dir, &["resume", "fix--one"], &[]);
+    assert_eq!(person.code, 1);
+    assert!(person.text.starts_with("refused: "), "{}", person.text);
+}
+
+#[test]
 fn a_watch_over_a_scratch_repository() {
     // The command-line spec's "A watch over a scratch repository": a
     // caller's settle with a bound steps the submitted place's base once,
