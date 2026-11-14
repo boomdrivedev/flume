@@ -15,17 +15,21 @@ it's stuck waiting for an answer, it should be allowed to hibernate and
 then be woken up when the answer comes" (record 0069, accepted
 2026-11-14).
 
-The statement holds it at boomdrivedev/blueprints 81288ba, clauses 212
-and 213, with 42, 49, 53 to 56, 109, 179 and 198 amended to meet them,
-and scenarios S124, S125 and S127. Rules core.10 and core.32 are amended
-with the record: a resume is one fresh agent under an identity of its
-own carrying its stage's own session, on the account 213 names, and is
-no retry. No code holds any of it yet.
+The statement holds it at boomdrivedev/blueprints 30dce35, on
+`design/a-stage-declares-it-hibernates`: clauses 212 and 213, with 42,
+49, 53 to 56, 109, 179 and 198 amended to meet them, C.2 and C.7 naming
+the hibernate time `hibernate_after`, scenarios S124, S125 and S127, and
+weir's 53 and C.4 giving a stage `hibernate`. Rules core.10 and core.32
+are amended with the record: a resume is one fresh agent under an
+identity of its own carrying its stage's own session, on the account 213
+names, and is no retry. No code holds any of it yet.
 
 ## What Changes
 
-- **A stage may hibernate (212).** A kind declares, by weir's field on
-  a stage, that the stage hibernates. flume's own kinds declare none.
+- **A stage may hibernate (212; weir 53, 58).** A kind declares, by
+  weir's `hibernate` on a stage, a bool weir returns as written, that
+  the stage hibernates; flume reads it left out as never. flume's own
+  kinds declare none.
 - **It is hibernated three ways (212).** A conversation's, once its
   agent has been quiet for its hibernate time with no question open, no
   own work running and nothing being handed to it; any such stage's
@@ -35,14 +39,16 @@ no retry. No code holds any of it yet.
   answer reaches the end of its time, in place of being let go. Hibernating ends the agent once it is quiet, keeps its
   session, frees its room and its account, counts no start and no retry,
   and leaves the stage neither ended nor moved on.
-- **The hibernate time (212).** The agent's settings give it, in the
-  forms `keep_open` takes, from the launch's settings and the host's
-  agents tables alone, as `keep_open` is given; flume's own one hour
-  where none does; `0` never hibernates a stage on its idling.
+- **The hibernate time (212, C.2, C.7).** The agent's
+  `hibernate_after`, in the forms `keep_open` takes, from the launch's
+  settings and the host's agents tables alone, as `keep_open` is given;
+  flume's own one hour where none does; `0` never hibernates a stage on
+  its idling.
 - **A resume (213).** A caller's `flume resume`, a tell to the place,
   and the answer to the stop-short a hibernated agent waits on, by a
   tell or a retry with words, each resume it: one fresh agent under an
-  identity of its own, the stage's start number kept, carrying the
+  identity of its own, its start's with the resume's number after it,
+  `<stage>:<start>.<resume>`, the stage's start number kept, carrying the
   hibernated agent's conversation where its profile can, on the account
   that agent ran under while it is usable and otherwise on the one 145
   chooses, waiting for room and for no process running its conversation
@@ -109,9 +115,10 @@ no retry. No code holds any of it yet.
 - `crates/flume-conformance`: the clause list, and `engine/hibernation.rs`.
 - `site/`: the commands, the kinds' fields, the settings and the
   stage states.
-- The kinds profile reads `hibernate` from weir's `Stage`, which the
-  revision of weir the tree pins does not give: weir's format names the
-  field first, at a revision the tree's pin moves to (core.4, core.22).
+- The kinds profile reads `hibernate` from weir's `Stage`, which weir's
+  unit `a-stage-may-declare-that-it-hibernates` adds to weir-kinds: the
+  tree's pin moves to the revision that lands it, the change's last
+  kinds task (core.4, core.22).
 - Out of this change: a delivery to a role whose place hibernates
   resuming it (214), the deliver part (215), `message` replacing
   `tell` (53) and flume's MCP serving `hibernate` and `resume` (C.2),

@@ -2,8 +2,9 @@
 
 The work is on `change/a-stage-whose-kind-hibernates-it-sleeps-and-resumes`,
 cut from `bolt/flumes-roles-sleep-and-wake`. The statement is read at
-boomdrivedev/blueprints 81288ba (42, 49, 51 to 56, 109, 179, 198, 212,
-213, S124, S125, S127); the rules at this place's base, core.10 and
+boomdrivedev/blueprints 30dce35, on `design/a-stage-declares-it-hibernates`
+(42, 49, 51 to 56, 109, 179, 198, 212, 213, C.2, C.7, S124, S125,
+S127; weir 53, 58, C.4); the rules at this place's base, core.10 and
 core.32 as record 0069 amends them. Every conformance scenario a task
 adds cites its clauses as data (106), and goes into
 `crates/flume-conformance/src/engine/hibernation.rs` unless the task
@@ -15,7 +16,7 @@ the user's.
 - [ ] 1.1 In `crates/flume-seams/src/agent.rs`, give `Identity` the field `resume: u32`, `#[serde(default)]` and skipped when zero, spelled by `Display` as `flume:<repository>:<place>:<stage>:<start>` where it is zero and `flume:<repository>:<place>:<stage>:<start>.<resume>` otherwise, its doc citing 30, 33 and 213 and core.10 (design 3); fit every `Identity` literal in the workspace so it builds; and add to `crates/flume-seams/src/round_trip.rs` the test `an_identity_names_its_resume`, asserting seam-contracts' "A resume's identity round-trips" and "An identity written before". Verify with `devenv shell -- cargo test -p flume-seams an_identity_names_its_resume`.
 - [ ] 1.2 In `crates/flume-seams/src/kinds.rs`, give `Stage` `hibernates: bool`, `#[serde(default)]`, its doc citing 212 and core.4, and `Settings` `hibernate_after: Option<String>`, which `under` takes as it takes `keep_open` (design 1, 2); fit every literal so the workspace builds; and add to `round_trip.rs` the test `a_stage_that_hibernates_and_its_hibernate_time`, a kind whose stage hibernates and settings giving `hibernate_after` `20m` round-tripping, and a stage's JSON written before reading `hibernates` false. Verify with `devenv shell -- cargo test -p flume-seams a_stage_that_hibernates_and_its_hibernate_time`.
 - [ ] 1.3 In `crates/flume-seams/src/held.rs`, add `StageState::Hibernating` (word `hibernating`, in `ALL`); `HibernationHeld { since, why, account }` with `HibernatedBy` `idle`, `caller` and `kept_open`; `ResumeHeld { at, by, identity, words, conversation }` with `ResumedBy` `caller`, `tell` and `answer`; on `StartHeld`, `hibernated: Option<HibernationHeld>`, `resumes: Vec<ResumeHeld>` and `handing: Option<Seconds>`, each defaulted and skipped when empty; `CarryCause::Hibernated` (name `hibernated`); `ClosedBy::Hibernated`; and `Act::Hibernate` and `Act::Resume` (design 4, 5, 7); fit every match and literal so the workspace builds; and add to `round_trip.rs` the tests `a_hibernation_held_and_resumed`, `a_hibernations_types_round_trip` and `a_hibernation_absent_from_a_state_written_before`, asserting seam-contracts' "A hibernated start round-trips", "Each round-trips" and "A held state written before". Verify with `devenv shell -- cargo test -p flume-seams a_hibernation`.
-- [ ] 1.4 In `crates/flume-conformance/src/clauses.rs`, have the list hold 212 and 213 in Part A and the scenarios S124, S125 and S127, which this change's scenarios cite, read at blueprints 81288ba, adopting nothing else of the statement past `REVISION`; `the_clauses_listed` asserting each, and every count it checks fitted. Verify with `devenv shell -- cargo test -p flume-conformance the_clauses_listed`.
+- [ ] 1.4 In `crates/flume-conformance/src/clauses.rs`, have the list hold 212 and 213 in Part A and the scenarios S124, S125 and S127, which this change's scenarios cite, read at blueprints 30dce35, adopting nothing else of the statement past `REVISION`; `the_clauses_listed` asserting each, and every count it checks fitted. Verify with `devenv shell -- cargo test -p flume-conformance the_clauses_listed`.
 
 ## 2. The hibernate time
 
@@ -58,7 +59,7 @@ the user's.
 
 ## 8. The kind's word from weir
 
-- [ ] 8.1 Move the pin of `weir-kinds`, `weir-delivery` and `weir-pack` in `Cargo.toml`, with `Cargo.lock`, to the revision of weir's main whose `Stage` names whether a stage hibernates; in `crates/flume/src/profiles/kinds/weir/mod.rs`, map that field onto the seams' `Stage.hibernates`, never reading `sections` for it, flume's own kinds declaring none (design 1; 23, 212, C.2; core.4, core.22); with the tests `hibernate_through_weir_a_conversation_read` and `hibernate_through_weir_flumes_own_kinds_declare_none` in `crates/flume/tests/profiles/kinds_weir.rs`, kinds-profile's "A hibernating conversation read" and "flume's own kinds". Verify with `devenv shell -- cargo test -p flume --test profiles kinds_weir::hibernate_through_weir`.
+- [ ] 8.1 Move the pin of `weir-kinds`, `weir-delivery` and `weir-pack` in `Cargo.toml`, with `Cargo.lock`, to the revision of weir's main that lands weir's unit `a-stage-may-declare-that-it-hibernates`, whose `Stage` gives `hibernate` as written; in `crates/flume/src/profiles/kinds/weir/mod.rs`, map it onto the seams' `Stage.hibernates`, true where the declaration writes `true` and false where it writes `false` or leaves it out, never reading `sections` for it, flume's own kinds declaring none (design 1; 23, 212, C.2; weir 53, 58; core.4, core.22); with the tests `hibernate_through_weir_a_conversation_read` and `hibernate_through_weir_flumes_own_kinds_declare_none` in `crates/flume/tests/profiles/kinds_weir.rs`, kinds-profile's "A hibernating conversation read" and "flume's own kinds". Where that revision has not landed on weir's main when this task is reached, stop short naming it, every task before it built, as boomdrive-design ruled. Verify with `devenv shell -- cargo test -p flume --test profiles kinds_weir::hibernate_through_weir`.
 
 ## 9. The site
 

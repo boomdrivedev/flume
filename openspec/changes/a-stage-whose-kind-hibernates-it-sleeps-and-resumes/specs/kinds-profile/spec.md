@@ -2,11 +2,11 @@
 
 ### Requirement: A stage's hibernate read through weir's crate
 
-The kinds profile SHALL read whether a stage hibernates through
-weir-kinds' `Stage` alone, at the revision the tree pins, and never
-from its unread sections; a stage that declares nothing SHALL not
-hibernate, and flume's own kinds SHALL declare none (23, 212, C.2;
-core.4, core.22).
+The kinds profile SHALL read whether a stage hibernates from
+weir-kinds' `Stage`'s `hibernate` alone, at the revision the tree pins,
+and never from its unread sections; a stage that leaves it out SHALL
+not hibernate, and flume's own kinds SHALL declare none (23, 212, C.2;
+weir 53, 58; core.4, core.22).
 
 #### Scenario: A hibernating conversation read
 

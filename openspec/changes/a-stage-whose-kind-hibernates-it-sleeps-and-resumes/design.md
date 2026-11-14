@@ -8,13 +8,27 @@ Record 0069, accepted by the user on 2026-11-14, is the decision:
 hibernate and resume are acts of their own beside the stage's state
 machine, a kind declares the stages they apply to, and the idle time is
 the life of the prompt cache. Its statement is clauses 212 and 213 at
-boomdrivedev/blueprints 81288ba, with 42, 49, 53 to 56, 109, 179 and
-198 amended to meet them, and scenarios S124, S125 and S127. Rules
+boomdrivedev/blueprints 30dce35, on `design/a-stage-declares-it-hibernates`,
+with 42, 49, 53 to 56, 109, 179 and 198 amended to meet them, C.2 and
+C.7 naming the hibernate time, and scenarios S124, S125 and S127; and
+weir's 53, 58 and C.4 at the same revision giving a simple kind's stage
+`hibernate`. Rules
 core.10 and core.32 are amended with it: a resume of a hibernating
 stage starts exactly one fresh agent under an identity of its own,
 carrying the stage's own session, on the account the hibernated agent
 ran under while that account is usable and otherwise on the one 145
 chooses where it reaches the conversation, and is no retry.
+
+boomdrive-design ruled on the three points the construct put to it, at
+30dce35: weir names the field, `hibernate`, a bool weir returns as
+written and leaves out when omitted, its meaning the reader's, so flume
+reads it absent as never (weir 53, 58, C.4), weir's unit
+`a-stage-may-declare-that-it-hibernates` adding it to weir-kinds; the
+hibernate time is `hibernate_after`, the host's or the launch's alone as
+`keep_open` is (212, C.2, C.7); and a resume's agent carries its
+start's identity with the resume's number after it,
+`<stage>:<start>.<resume>` (213). The change goes on to code before
+weir's revision lands, its weir pin the one task that waits on it.
 
 This change builds 212 and 213 and their meeting with 42, 49, 51 to
 53, 109 and 198. It builds nothing of 214 and 215, a delivery to a
@@ -51,9 +65,9 @@ On `bolt/flumes-roles-sleep-and-wake` at 2d180f0b:
   quiet limit (44, 109).
 - **The kind's stages.** The kinds profile maps weir's `Stage` into the
   seams' `Stage` (`conversation`, `waits`, `repeats`, …). weir's
-  `Stage`, at the revision the tree pins (52b9552), has no field that
-  says a stage hibernates: `hibernate` there falls into its unread
-  `sections`, which core.4 forbids flume to read a field from.
+  `Stage`, at the revision the tree pins (52b9552), gives no
+  `hibernate`: there it falls into its unread `sections`, which core.4
+  forbids flume to read a field from.
 
 ## Goals / Non-Goals
 
@@ -62,8 +76,8 @@ and S127 as conformance scenarios; the acts 212 lists taken on a
 hibernating stage; status, the line and the list saying it.
 
 **Non-Goals:** 214, 215, `message`, the MCP tools, a role's standing
-place; section 10's open questions, which this change answers only as
-far as it must to run (decisions 3 and 9).
+place; section 10's open question on Claude Code's resume dialog, which
+this change needs no answer to on the pinned release (decision 9).
 
 ## Decisions
 
@@ -71,13 +85,15 @@ far as it must to run (decisions 3 and 9).
 
 The seams' `Stage` gains `hibernates: bool`, false where the kind
 declares nothing and in a held state written before, as `repeats` is
-(140; core.4). The weir kinds profile fills it from weir's `Stage`
-field alone, read through weir-kinds at the revision the tree pins, and
-never from `sections` (core.4, core.22). Until the pin moves to a
-revision of weir whose format names the field, no kind read through
-weir hibernates; every other part of this change is built and proved on
-the fake kinds, which give the seam's `Stage` directly. The pin moves
-in this change's last kinds task, once weir's main gives the field.
+(140; core.4). The weir kinds profile fills it from weir's `Stage`'s
+`hibernate` alone, read through weir-kinds at the revision the tree
+pins, true where the declaration writes `true` and false where it
+writes `false` or leaves it out, and never from `sections` (weir 53,
+58; core.4, core.22). Every other part of this change is built and
+proved on the fake kinds, which give the seam's `Stage` directly; the
+pin moves to the revision of weir that lands
+`a-stage-may-declare-that-it-hibernates` in this change's last kinds
+task, which waits on that revision alone.
 
 *Path not taken:* reading `hibernate` from `sections` until weir names
 it, which core.4's details rule out for `repeat` and `standing` alike.
@@ -94,10 +110,8 @@ declaration that give it fail to read, as a `keep_open` does, since how
 long an agent holds the host's room and an account is the host's or the
 launch's (198, 212, C.2, C.7). Status gives it with its layer (56).
 
-The statement says "the time its settings give" (212) and names no key;
-`hibernate_after` is this change's word, kept apart from the kind's
-`hibernate`, a stage's bool, so one key is never both. A design that
-names it otherwise renames it before this change lands.
+`hibernate_after` is kept apart from the kind's `hibernate`, a stage's
+bool, so one key is never both (212, C.2; weir 53).
 
 *Paths not taken:* reusing `keep_open`, which 212 keeps apart (an
 agent kept open for an answer and a conversation's idling are different
@@ -110,17 +124,14 @@ waits); a kind's declaration giving the time, which 198's reason for
 it is not, so a held state and an identity written before read the
 same. It is written `flume:<repository>:<place>:<stage>:<start>` for a
 start and `flume:<repository>:<place>:<stage>:<start>.<resume>` for the
-`<resume>`th resume of that start. A resume counts no start (212), so
+`<resume>`th resume of that start, as 213 spells it. A resume counts no
+start (48, 212, 213), so
 the stage's `starts` and the start's `n` stay; a stop-short's key, an
 answer's count and a deliverable's "since it started" stay the start's.
 Every agent still carries an identity no other live agent carries
 (core.10): the start record's folder, the herdr and Rex names and the
 started ack are keyed by the whole identity. The status line reads both
 spellings back.
-
-This answers section 10's question "What identity does a resume's agent
-carry" for this build; the statement's question stays open for the
-design to settle, and a later answer changes only `Identity`'s spelling.
 
 *Paths not taken:* a resume as the stage's next start number, which
 would count a start 212 says it does not; reusing the hibernated
@@ -337,14 +348,16 @@ change. No rule is departed from.
 
 ## Risks / Trade-offs
 
-- **weir's field.** Until weir's format names it, the build hibernates
-  no kind read through weir, and the change cannot land whole: its last
-  kinds task waits on weir's revision. → Every other task is proved on
-  the fakes; the dependency is named in the proposal and asked of the
-  design.
-- **The key's name.** `hibernate_after` is this change's word for a
-  setting 212 does not name. → A rename before landing touches the
-  settings tasks alone.
+- **weir's revision.** The change cannot land whole until weir's
+  `a-stage-may-declare-that-it-hibernates` lands: its weir pin task
+  waits on that revision. → Every other task is built and proved on the
+  fakes first; where the revision has not landed when the code stage
+  reaches that task, the stage stops short naming it, as boomdrive-design
+  ruled.
+- **The statement's branch.** 212, 213, C.2, C.7 and weir's 53 and C.4
+  are cited at 30dce35, on a design branch waiting on the user's push.
+  → A later wording there that changes what they say is carried here
+  before the change lands.
 - **A turn no settle sees.** Under a terminal or a program with no
   on-quiet hook, a person's turn between two readings leaves the quiet
   clock running from the earlier quiet. → The degraded on-quiet part is
