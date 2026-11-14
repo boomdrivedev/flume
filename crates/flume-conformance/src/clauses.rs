@@ -6,6 +6,18 @@
 /// the list was read at.
 pub const REVISION: &str = "31f9f1c";
 
+/// The revision of the statement, on `design/a-stage-declares-it-hibernates`,
+/// at which the list adopts clauses 212 and 213 and the scenarios
+/// [`HIBERNATION_SCENARIOS`] alone, which the change that builds record
+/// 0069 cites, ahead of the rest of what the statement holds past
+/// [`REVISION`].
+pub const HIBERNATION: &str = "30dce35";
+
+/// The scenarios past [`SCENARIOS`] read at [`HIBERNATION`]: a stage
+/// hibernated and resumed, idle and at the end of its keep-open wait, and
+/// one whose conversation could not be carried (212, 213).
+pub const HIBERNATION_SCENARIOS: &[u32] = &[124, 125, 127];
+
 /// Part A: what flume decides.
 pub fn part_a() -> Vec<u32> {
     (1..=77)
@@ -23,6 +35,7 @@ pub fn part_a() -> Vec<u32> {
         .chain([190, 191, 193, 195, 197, 198, 199, 200])
         .chain(202..=204)
         .chain([208])
+        .chain([212, 213])
         .collect()
 }
 
@@ -56,6 +69,11 @@ pub fn all() -> Vec<String> {
     all.extend(
         (1..=SCENARIOS)
             .filter(|scenario| !SKIPPED.contains(scenario))
+            .map(|scenario| format!("S{scenario}")),
+    );
+    all.extend(
+        HIBERNATION_SCENARIOS
+            .iter()
             .map(|scenario| format!("S{scenario}")),
     );
     all
@@ -149,10 +167,10 @@ mod tests {
         let b = part_b();
         assert_eq!(
             a.len(),
-            77 + 8 + 3 + 2 + 4 + 1 + 10 + 6 + 3 + 9 + 3 + 7 + 8 + 3 + 1
+            77 + 8 + 3 + 2 + 4 + 1 + 10 + 6 + 3 + 9 + 3 + 7 + 8 + 3 + 1 + 2
         );
         assert_eq!(b.len(), 22 + 6 + 3 + 2 + 4 + 4 + 2 + 3 + 5 + 3 + 3 + 3 + 1);
-        let gaps = [100, 150, 194, 209];
+        let gaps = [100, 150, 194, 209, 211];
         for gap in gaps {
             assert!(!a.contains(&gap) && !b.contains(&gap), "{gap} is listed");
         }
@@ -161,17 +179,17 @@ mod tests {
         every.sort();
         assert_eq!(
             every,
-            (1..=210)
+            (1..=213)
                 .filter(|clause| !gaps.contains(clause))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(all().len(), 206 + 8 + 120);
+        assert_eq!(all().len(), 208 + 8 + 120 + 3);
         assert!(all().contains(&"S64".to_string()), "S64 is not listed");
         assert!(SKIPPED.is_empty(), "{SKIPPED:?} are skipped");
         for scenario in [
             "S91", "S92", "S93", "S94", "S95", "S96", "S97", "S98", "S99", "S100", "S103", "S104",
             "S105", "S106", "S107", "S108", "S109", "S110", "S111", "S112", "S113", "S114", "S115",
-            "S116", "S117", "S118", "S119", "S120",
+            "S116", "S117", "S118", "S119", "S120", "S124", "S125", "S127",
         ] {
             assert!(
                 all().contains(&scenario.to_string()),
@@ -179,10 +197,17 @@ mod tests {
             );
         }
         assert_eq!(REVISION, "31f9f1c");
+        assert_eq!(HIBERNATION, "30dce35");
+        for adopted_none in ["211", "214", "215", "S121", "S122", "S123", "S126"] {
+            assert!(
+                !all().contains(&adopted_none.to_string()),
+                "{adopted_none} is listed"
+            );
+        }
         for clause in [
             129, 130, 131, 132, 137, 140, 141, 142, 148, 154, 155, 156, 157, 158, 159, 161, 162,
             163, 165, 168, 169, 173, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186, 190, 191,
-            193, 195, 197, 198, 199, 200, 202, 203, 204, 208,
+            193, 195, 197, 198, 199, 200, 202, 203, 204, 208, 212, 213,
         ] {
             assert!(part_a().contains(&clause), "{clause} is not in Part A");
         }
