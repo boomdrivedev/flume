@@ -1135,8 +1135,9 @@ fn a_conflicts_base_revision_and_words_are_sluices() {
 #[test]
 fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     // sluice answers the submit with the entry's record, in conflict with
-    // the one queued ahead of it, exiting as a conflict does, and records
-    // it delivered: submit answers the outcome, and no inbox gives it.
+    // the one queued ahead of it, exiting as a conflict does, and the
+    // profile confirms its delivery: submit answers the outcome, and no
+    // inbox gives it (sluice 51; sluice record 0102).
     let harness = Harness::new();
     let (place, head) = harness.place();
     let other = Harness::worktree(&harness.repository, "other", "other", "work.rs");
@@ -1194,13 +1195,16 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
 }
 
 #[test]
-fn a_settle_beside_the_stand_ins_submit_collects_nothing_its_answer_delivers() {
+fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_gives() {
     // While the stand-in's first submit waits on the rounds that decide
     // it, a settle beside it steps main and collects the place's inbox,
-    // as the agent's Stop hook and a caller's settle do: the inbox gives
-    // nothing, and the conflict reaches flume once, in the submit's
-    // answer with its own words, as a pull request's entry sluice decides
-    // as it takes it in reaches the place only by that answer (112, 133).
+    // as the agent's Stop hook and a caller's settle do. The conflict
+    // reaches flume in the submit's answer with its own words. sluice
+    // keeps it owed until the profile confirms it after the answer, so an
+    // inbox in between may hand it over too, once, confirming it on
+    // receipt; the core acts on it once whichever gives it first (112,
+    // 133; sluice 51; sluice record 0102). Once the answer is confirmed,
+    // the inbox gives nothing.
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.on_main("work.rs", "the base's own\n");
@@ -1225,7 +1229,6 @@ fn a_settle_beside_the_stand_ins_submit_collects_nothing_its_answer_delivers() {
         }
         (submit.join().expect("the submit"), collected)
     });
-    assert_eq!(collected, vec![], "the inbox beside the submit");
     let Submitted::Decided {
         outcome: SubmissionOutcome::Conflict { files, words, .. },
         ..
@@ -1233,6 +1236,14 @@ fn a_settle_beside_the_stand_ins_submit_collects_nothing_its_answer_delivers() {
     else {
         panic!("the submit was answered {answer:?}");
     };
+    assert!(
+        collected.len() <= 1
+            && collected.iter().all(|outcome| matches!(
+                outcome,
+                SubmissionOutcome::Conflict { files: beside, .. } if beside == &files
+            )),
+        "the inbox beside the submit gave more than the answer's outcome once: {collected:?}"
+    );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     assert!(
         words.starts_with("conflict on main: work.rs"),
