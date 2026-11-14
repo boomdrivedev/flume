@@ -35,18 +35,23 @@ pub fn line(
 }
 
 /// The identity `word` gives as flume spells one,
-/// `flume:<repository>:<place>:<stage>:<start>`, read back only where it
-/// spells the same again (33).
+/// `flume:<repository>:<place>:<stage>:<start>` for a start and
+/// `flume:<repository>:<place>:<stage>:<start>.<resume>` for a resume of
+/// it, read back only where it spells the same again (33, 213).
 fn identity(word: &str) -> Option<Identity> {
     let (repository, rest) = word.strip_prefix("flume:")?.split_once(':')?;
     let (rest, start) = rest.rsplit_once(':')?;
     let (place, stage) = rest.rsplit_once(':')?;
+    let (start, resume) = match start.split_once('.') {
+        Some((start, resume)) => (start, resume.parse().ok()?),
+        None => (start, 0),
+    };
     let identity = Identity {
         repository: repository.into(),
         place: place.into(),
         stage: stage.into(),
         start: start.parse().ok()?,
-        resume: 0,
+        resume,
     };
     (identity.to_string() == word).then_some(identity)
 }
@@ -64,7 +69,18 @@ mod tests {
             start: 2,
             resume: 0,
         };
-        assert_eq!(super::identity(&identity.to_string()), Some(identity));
+        assert_eq!(
+            super::identity(&identity.to_string()),
+            Some(identity.clone())
+        );
+        // A resume's identity, its start's number with its resume's after
+        // it, reads back whole (213).
+        let resumed = Identity {
+            resume: 3,
+            ..identity
+        };
+        assert_eq!(resumed.to_string(), "flume:b3e4c15d5ebe:fix--one:code:2.3");
+        assert_eq!(super::identity(&resumed.to_string()), Some(resumed));
         for word in [
             "",
             "fix--one",
@@ -72,6 +88,11 @@ mod tests {
             "flume:b3e4c15d5ebe:fix--one:code:two",
             "flume:b3e4c15d5ebe:fix--one:code:+2",
             "other:b3e4c15d5ebe:fix--one:code:2",
+            "flume:b3e4c15d5ebe:fix--one:code:1.x",
+            "flume:b3e4c15d5ebe:fix--one:code:1.",
+            "flume:b3e4c15d5ebe:fix--one:code:1.0",
+            "flume:b3e4c15d5ebe:fix--one:code:1.2.3",
+            "flume:b3e4c15d5ebe:fix--one:code:.2",
         ] {
             assert_eq!(super::identity(word), None, "{word}");
         }

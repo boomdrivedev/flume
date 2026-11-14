@@ -27,7 +27,7 @@ the user's.
 
 ## 3. A resume's identity in the profiles
 
-- [ ] 3.1 In `crates/flume/src/profiles/agent/claude/status_line.rs`, have `identity` read back both spellings of decision 3, a resume's `<start>.<resume>` among them, and nothing else; extending `an_identity_read_back_as_flume_spells_it` with a resume's identity and `…:code:1.x` refused. Verify with `devenv shell -- cargo test -p flume --lib an_identity_read_back_as_flume_spells_it`.
+- [x] 3.1 In `crates/flume/src/profiles/agent/claude/status_line.rs`, have `identity` read back both spellings of decision 3, a resume's `<start>.<resume>` among them, and nothing else; extending `an_identity_read_back_as_flume_spells_it` with a resume's identity and `…:code:1.x` refused. Verify with `devenv shell -- cargo test -p flume --lib an_identity_read_back_as_flume_spells_it`.
 - [ ] 3.2 In the herdr and Rex profiles (`crates/flume/src/profiles/terminal/herdr/mod.rs`, `rex/mod.rs`), have an agent's name carry its resume within the names' legal characters and length, so a resume's name differs from its start's (core.10, core.29); with the unit tests `a_resumes_herdr_name_differs_from_its_starts` and `a_resumes_rex_name_differs_from_its_starts`. Verify with `devenv shell -- cargo test -p flume --lib a_resumes_`.
 
 ## 4. Hibernating a stage
