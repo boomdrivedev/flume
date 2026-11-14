@@ -1296,6 +1296,27 @@ pub struct StageStatus {
     /// 198).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers: Vec<SessionAnswer>,
+    /// Whether its kind hibernates the stage; false, written by no field,
+    /// where it does not (56, 212).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hibernates: bool,
+    /// For a stage whose kind hibernates it, its current start's
+    /// `hibernate_after` as written, with the layer it came from, flume's
+    /// own hour named `default`; none before its first start (32, 56,
+    /// 212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernate_after: Option<Given>,
+    /// Its current start's hibernation: since when, why, `idle`, `caller`
+    /// or `kept_open`, and the account it ran under; none where it has not
+    /// hibernated (56, 212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernated: Option<HibernationHeld>,
+    /// Each resume of its current start, in order: when, by what,
+    /// `caller`, `tell` or `answer`, its agent's identity, the words it
+    /// was given and whether it carried its conversation or why not (56,
+    /// 213).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resumes: Vec<ResumeHeld>,
 }
 
 /// An answer a stage's start took in its session: the stop-short's words

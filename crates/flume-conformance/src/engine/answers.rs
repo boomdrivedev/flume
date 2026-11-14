@@ -237,7 +237,7 @@ fn place_status() -> PlaceStatus {
             answers: vec![SessionAnswer {
                 question: Some("which design?".into()),
                 answer: answered(),
-            }],
+            }], hibernates: false, hibernate_after: None, hibernated: None, resumes: vec![],
         }],
         current: Some("code".into()),
         agent: Some(AgentStatus {

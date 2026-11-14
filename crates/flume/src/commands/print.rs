@@ -4266,6 +4266,10 @@ mod tests {
                 answer("Which file holds the log?", "notes.md", Act::Retry, 1200),
                 answer("Which test covers it?", "the walkthrough", Act::Tell, 2400),
             ],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
@@ -4594,6 +4598,10 @@ mod tests {
                 title: Some("Two".into()),
             }),
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
@@ -4814,6 +4822,10 @@ mod tests {
             conversation: false,
             group: None,
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),

@@ -18,6 +18,11 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "carried conversations: A resumed talk: status of a place whose talk start 1 was resumed once gives its agent's conversation as start 1, hibernated, carried",
+            cites: &["56", "213"],
+            run: a_resumed_talk,
+        },
+        Scenario {
             name: "carried conversations: A resume carries its own stage's conversation: talk hibernated after its first start and resumed carries that start's session, the fake agent asked one carry of it",
             cites: &["179", "213"],
             run: a_resume_carries_its_own_stages_conversation,
@@ -1742,5 +1747,26 @@ fn a_resume_carries_its_own_stages_conversation(_: &()) -> Outcome {
         format!("the carries of talk's first start asked: {carries:?}")
     );
     ensure_eq!(carries.len(), 1, "the carries asked");
+    Ok(())
+}
+
+fn a_resumed_talk(_: &()) -> Outcome {
+    use super::hibernation::hibernated_talk;
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    if let Some(reason) = world.engine().resume(&id).refusal() {
+        return Err(format!("the resume was refused: {reason}"));
+    }
+    let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
+    ensure_eq!(
+        agent.conversation,
+        Some(Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: true,
+            why: None,
+        }),
+        "the conversation status gives"
+    );
     Ok(())
 }
