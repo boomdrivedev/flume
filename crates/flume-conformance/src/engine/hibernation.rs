@@ -8,6 +8,7 @@ use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Answer;
 use flume_seams::*;
+use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -30,6 +31,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: Room freed: talk hibernates on a host at its bound, its starts unchanged and its end none, and another place's stage waiting for room starts",
             cites: &["48", "70", "212"],
             run: room_freed,
+        },
+        Scenario {
+            name: "hibernation: Asking, own work, a tell: a caller's unforced hibernate of a talk agent asking, with its own work running, or being handed a tell, is refused, and the tell's mark is cleared once it ends",
+            cites: &["54", "90", "91", "212"],
+            run: asking_own_work_a_tell_refuse_a_callers_hibernate,
         },
     ]
 }
@@ -211,4 +217,75 @@ fn room_freed(_: &()) -> Outcome {
         world.stage_state(&two, "code")
     );
     Ok(())
+}
+
+/// What a hibernate asked during a tell answered, and the start's mark
+/// that the tell is being handed as it then stood.
+type During = (Answer, Option<Seconds>);
+
+fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
+    let world = World::new();
+    let id = research(&world, "one")?;
+    let talk = talk_of("one", 1);
+    world.agent.set_asking(&talk, Reading::Yes);
+    let reason = refused(&world.engine().hibernate(&id, false))?;
+    ensure!(
+        reason.contains("not quiet"),
+        "the refusal names not the agent asking: {reason}"
+    );
+    world.agent.set_asking(&talk, Reading::No);
+    world.agent.set_own_work(&talk, Reading::Yes);
+    let reason = refused(&world.engine().hibernate(&id, false))?;
+    ensure!(
+        reason.contains("not quiet"),
+        "the refusal names not the agent's own work: {reason}"
+    );
+    world.agent.set_own_work(&talk, Reading::No);
+    // A tell handed to the agent while it works: the caller's hibernate
+    // asked while it waits for the agent to take it.
+    world.terminal.set_state(&talk, AgentState::Working);
+    let during: Arc<Mutex<Option<During>>> = Arc::default();
+    let into = during.clone();
+    let other = world.engine();
+    let (place, store, terminal, who) = (
+        id.clone(),
+        world.store.clone(),
+        world.terminal.clone(),
+        talk.clone(),
+    );
+    world.host.at_next_sleep(move || {
+        // The agent is quiet while the hibernate is asked, so the mark
+        // alone refuses it.
+        terminal.set_state(&who, AgentState::Waiting);
+        let answer = other.hibernate(&place, false);
+        let mark = store.held(&place).and_then(|held| {
+            held.stages
+                .into_iter()
+                .find_map(|stage| stage.start)
+                .and_then(|start| start.handing)
+        });
+        *into.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((answer, mark));
+    });
+    taken(&world.engine().tell(&id, "go on", None))?;
+    let (answer, mark) = during
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+        .ok_or("the hibernate was not asked during the tell")?;
+    ensure!(mark.is_some(), "the start was not marked handing");
+    let reason = refused(&answer)?;
+    ensure!(
+        reason.contains("a tell is being handed") && reason.contains(&talk.to_string()),
+        "the refusal names not the tell being handed: {reason}"
+    );
+    ensure_eq!(
+        (
+            start_now(&world, &id, "talk")?.handing,
+            world.stage_state(&id, "talk"),
+            closed(&world).len()
+        ),
+        (None, Some(StageState::Begun), 0),
+        "the mark once the tell ended, talk, and the agents closed"
+    );
+    taken(&world.engine().hibernate(&id, false))
 }
