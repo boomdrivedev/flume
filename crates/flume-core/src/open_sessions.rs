@@ -17,7 +17,11 @@
 //! agent ended or brought back bare, and a spent account each say more
 //! than the time, and are what a later answer's retry acts on (49, 77),
 //! so a settle that finds the time passed and the agent ended as well
-//! records the agent ended.
+//! records the agent ended. Where the stage's kind hibernates it, its
+//! time passing hibernates the agent in place of letting it go: its close
+//! reads hibernated, and the write that records the agent ended records
+//! the start's hibernation, why `kept_open`, its session kept for its
+//! answer to resume (198, 212, 213).
 //!
 //! While the agent is kept open, an answer, a retry with words naming its
 //! stage or a tell to its place, is handed to its session as a tell is,
@@ -176,7 +180,8 @@ impl Engine {
     fn let_go(&self, id: &PlaceId, held: &HeldState, kept: &Kept) -> bool {
         let start = &kept.start;
         let reading = start.live.then(|| self.read_agent(id, start));
-        let Some(by) = self.let_go_by(id, kept, reading.as_ref()) else {
+        let hibernates = held.place.kind.stages[kept.index].hibernates;
+        let Some(by) = self.let_go_by(id, kept, reading.as_ref(), hibernates) else {
             return false;
         };
         let conversation = held.place.kind.stages[kept.index].conversation;
@@ -206,12 +211,14 @@ impl Engine {
     /// start's, one the terminal brought back bare (77, 96, 134); its
     /// account spent, by its own record or the host's documents (146,
     /// core.32), an account past its pool's threshold not among them
-    /// (185); or its time passed. None while it is still kept open.
+    /// (185); or its time passed, which hibernates it where its stage's
+    /// kind `hibernates` it (212). None while it is still kept open.
     fn let_go_by(
         &self,
         id: &PlaceId,
         kept: &Kept,
         reading: Option<&AgentReading>,
+        hibernates: bool,
     ) -> Option<ClosedBy> {
         let Some(reading) = reading else {
             return Some(ClosedBy::Stopped);
@@ -223,7 +230,11 @@ impl Engine {
             return Some(ClosedBy::AccountSpent);
         }
         let open_until = kept.end.open_until?;
-        (self.host.now() >= open_until).then_some(ClosedBy::Time)
+        let by = match hibernates {
+            true => ClosedBy::Hibernated,
+            false => ClosedBy::Time,
+        };
+        (self.host.now() >= open_until).then_some(by)
     }
 
     /// Whether the start's account is spent: its agent's own record shows
@@ -285,8 +296,10 @@ impl Engine {
     }
 
     /// The agent `kept` holds let go, ended now: its start no longer live
-    /// where `live` says it was, and its close recording when; true when
-    /// this write took it (31, 70).
+    /// where `live` says it was, and its close recording when; one whose
+    /// close reads hibernated records, in the same write, its start's
+    /// hibernation since now, why `kept_open`, where none is recorded; true
+    /// when this write took it (31, 70, 212).
     fn ended_let_go(&self, id: &PlaceId, kept: &Kept, live: bool) -> bool {
         let now = self.host.now();
         self.update(id, |held| {
@@ -308,10 +321,18 @@ impl Engine {
                 return Step::Keep(false);
             };
             closed.ended_at = Some(now);
+            let hibernated = closed.by == ClosedBy::Hibernated;
             if let Some(start) = held.stages[index].start.as_mut() {
                 start.live = false;
                 start.first_quiet = None;
                 start.past_limit = false;
+                if hibernated && start.hibernated.is_none() {
+                    start.hibernated = Some(HibernationHeld {
+                        since: now,
+                        why: HibernatedBy::KeptOpen,
+                        account: start.account.as_ref().map(|account| account.name.clone()),
+                    });
+                }
             }
             Step::Write(true)
         })

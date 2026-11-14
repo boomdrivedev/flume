@@ -75,6 +75,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: not_quiet_once_its_time_has_passed,
         },
         Scenario {
+            name: "stage runs: Hibernated at its time, not quiet: a code agent of a stage that hibernates working on once its keep-open time has passed reads its close hibernated, and is ended, and its hibernation recorded, only once a settle reads it quiet",
+            cites: &["31", "198", "212"],
+            run: hibernated_at_its_time_not_quiet,
+        },
+        Scenario {
             name: "let go: an asking agent whose session ends within its hour is recorded let go, ended, at the next settle, closed by nothing of flume's, and its stage waits on its answer with no agent",
             cites: &["96", "134", "42", "130", "198", "S105"],
             run: the_agent_dying_within_its_time,
@@ -731,6 +736,63 @@ fn the_time_passing(_: &()) -> Outcome {
             .is_some_and(StageState::running),
         "two's code did not start in the room one's agent freed: {:?}",
         world.stage_state(&two, "code")
+    );
+    Ok(())
+}
+
+fn hibernated_at_its_time_not_quiet(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, at) = super::hibernation::patch_asking(&world, "one")?;
+    let who = World::identity("patch", "one", "code", 1);
+    world.terminal.set_state(&who, AgentState::Working);
+    world.host.advance(KEEP_OPEN + 60);
+    world.settle(&id);
+    let hibernated = |world: &World| -> Result<Option<(Seconds, HibernatedBy)>, String> {
+        Ok(super::hibernation::hibernation(world, &id, "code")?.map(|held| (held.since, held.why)))
+    };
+    ensure_eq!(
+        (
+            end_of(&world, &id, "code")?.closed,
+            closed(&world),
+            live(&world, &id, &who)?,
+            hibernated(&world)?
+        ),
+        (
+            Some(SessionClosed {
+                at: at + KEEP_OPEN + 60,
+                by: ClosedBy::Hibernated,
+                ended_at: None,
+                left_in_pane: false,
+            }),
+            vec![],
+            true,
+            None
+        ),
+        "the agent's close, the agents closed, whether code's start is live and its hibernation while it works"
+    );
+    world.host.advance(60);
+    world.terminal.set_state(&who, AgentState::Waiting);
+    world.settle(&id);
+    let then = at + KEEP_OPEN + 120;
+    ensure_eq!(
+        (
+            end_of(&world, &id, "code")?.closed.map(|closed| closed.ended_at),
+            closed(&world),
+            live(&world, &id, &who)?,
+            hibernated(&world)?
+        ),
+        (
+            Some(Some(then)),
+            vec![format!("close {who}")],
+            false,
+            Some((then, HibernatedBy::KeptOpen))
+        ),
+        "when it was ended, the agents closed, whether code's start is live and its hibernation once quiet"
+    );
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::EndedShort),
+        "code once hibernated"
     );
     Ok(())
 }

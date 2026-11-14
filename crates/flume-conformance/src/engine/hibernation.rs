@@ -4,9 +4,11 @@
 //! session kept, its room and its account freed; and resumed in its own
 //! session by its caller's resume, a tell or the answer it waits on.
 
+use super::account_pools::{account, pool, stops_at_limit};
+use super::open_sessions::{stops_short, QUESTION};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
-use flume_core::Answer;
+use flume_core::{Act, Answer, Waits, KEEP_OPEN};
 use flume_seams::*;
 use std::sync::{Arc, Mutex};
 
@@ -67,12 +69,27 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["54", "90", "91", "212"],
             run: asking_own_work_a_tell_refuse_a_callers_hibernate,
         },
+        Scenario {
+            name: "hibernation: A code stage kept open its hour: code of a kind that hibernates it stops short needing an answer, and a settle after the hour records its close hibernated, ends its agent and records it hibernated, why kept_open, code waiting on its answer",
+            cites: &["42", "198", "212", "S125"],
+            run: a_code_stage_kept_open_its_hour,
+        },
+        Scenario {
+            name: "hibernation: Let go otherwise first: the same code agent's account spent within its hour lets it go by its account spent, not hibernated",
+            cites: &["146", "198", "212"],
+            run: let_go_otherwise_first,
+        },
     ]
 }
 
 /// The research place `name`'s talk start `start`.
 pub(super) fn talk_of(name: &str, start: u32) -> Identity {
     World::identity("research", name, "talk", start)
+}
+
+/// The patch place `name`'s code start `start`.
+pub(super) fn patch_code(name: &str, start: u32) -> Identity {
+    World::identity("patch", name, "code", start)
 }
 
 /// The research place `name` of the kind whose talk hibernates, launched
@@ -535,4 +552,131 @@ fn two_settles_at_once(_: &()) -> Outcome {
         "the agents closed"
     );
     hibernating(&world, &id, at, HibernatedBy::Idle, 1)
+}
+
+/// The patch place `name` whose code stopped short needing an answer at
+/// the time given, settled, its agent kept open (42, 198).
+pub(super) fn patch_asking(world: &World, name: &str) -> Result<(PlaceId, Seconds), String> {
+    let id = world.patching(name)?;
+    let at = stops_short(
+        world,
+        &id,
+        0,
+        &patch_code(name, 1),
+        QUESTION,
+        StopKind::NeedsAnswer,
+    )?;
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::EndedShort),
+        "code once it stopped short"
+    );
+    Ok((id, at))
+}
+
+/// The place waits on its caller's answer to `stage`, since `since` (42,
+/// 130).
+pub(super) fn waits_on_its_answer(
+    world: &World,
+    id: &PlaceId,
+    stage: &str,
+    since: Seconds,
+) -> Outcome {
+    let waiting = world
+        .status(id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (
+            waiting.act,
+            waiting.stage.as_deref(),
+            waiting.why,
+            waiting.since
+        ),
+        (Act::Retry, Some(stage), Waits::Answer, Some(since)),
+        "the move the place waits on"
+    );
+    Ok(())
+}
+
+fn a_code_stage_kept_open_its_hour(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, at) = patch_asking(&world, "one")?;
+    let who = patch_code("one", 1);
+    world.host.advance(KEEP_OPEN);
+    world.settle(&id);
+    let then = at + KEEP_OPEN;
+    let code = stage_of(&world, &id, "code")?;
+    ensure_eq!(
+        code.end.as_ref().and_then(|end| end.closed),
+        Some(SessionClosed {
+            at: then,
+            by: ClosedBy::Hibernated,
+            ended_at: Some(then),
+            left_in_pane: false,
+        }),
+        "code's close"
+    );
+    ensure_eq!(
+        closed(&world),
+        vec![format!("close {who}")],
+        "the agents closed"
+    );
+    let start = code.start.ok_or("code holds no start")?;
+    ensure_eq!(
+        (
+            code.state,
+            start.live,
+            start.hibernated.map(|held| (held.since, held.why))
+        ),
+        (
+            StageState::EndedShort,
+            false,
+            Some((then, HibernatedBy::KeptOpen))
+        ),
+        "code's state, whether its start is live, and its hibernation"
+    );
+    waits_on_its_answer(&world, &id, "code", at)
+}
+
+fn let_go_otherwise_first(_: &()) -> Outcome {
+    let world = World::new();
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![account("work-1", None), account("work-2", None)],
+    );
+    world.host.set_host_pool(Some("work"));
+    let (id, at) = patch_asking(&world, "one")?;
+    launched(&world.engine.launch(&launch("fix", "two", Some("x"))))?;
+    let two = World::id("fix", "two");
+    world.settle(&two);
+    world.host.advance(20 * 60);
+    stops_at_limit(&world, "two", 1, Some(at + 5 * 3600));
+    world.settle(&two);
+    world.settle(&id);
+    let code = stage_of(&world, &id, "code")?;
+    ensure_eq!(
+        code.end
+            .as_ref()
+            .and_then(|end| end.closed)
+            .map(|closed| closed.by),
+        Some(ClosedBy::AccountSpent),
+        "code's close"
+    );
+    ensure_eq!(
+        code.start.and_then(|start| start.hibernated),
+        None,
+        "code's hibernation"
+    );
+    world.host.advance(KEEP_OPEN);
+    world.settle(&id);
+    ensure_eq!(
+        hibernation(&world, &id, "code")?,
+        None,
+        "code's hibernation once its hour passed"
+    );
+    Ok(())
 }
