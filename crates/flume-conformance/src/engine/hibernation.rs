@@ -112,7 +112,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: forty_days_hibernated,
         },
         Scenario {
-            name: "hibernation: A resume never begun: a resumed agent that stops before it says it started is recorded so, and talk starts afresh with flume's words and the resume's, carrying nothing",
+            name: "hibernation: A resume never begun: a resumed agent that stops before it says it started is recorded so, and talk starts afresh with flume's words and the resume's, none at a bare resume, carrying nothing",
             cites: &["146", "213"],
             run: a_resume_never_begun,
         },
@@ -125,6 +125,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: The answer three hours later: code hibernated at the end of its keep-open time, and a tell naming its stop-short's key three hours later is recorded on the stop-short and resumes code's session with the question then the answer, code delivering once its agent commits",
             cites: &["42", "198", "213", "S125"],
             run: the_answer_three_hours_later,
+        },
+        Scenario {
+            name: "hibernation: Working past its limit from the resume: a code stage resumed two hours after it began, its agent working 20 minutes from the resume under a 30-minute limit, is not reported working past its limit",
+            cites: &["118", "213"],
+            run: working_past_its_limit_from_the_resume,
+        },
+        Scenario {
+            name: "hibernation: Hibernating again: a resumed talk agent quiet for its hibernate time hibernates again, and its second resume's agent is talk:1.2",
+            cites: &["212", "213"],
+            run: hibernating_again,
+        },
+        Scenario {
+            name: "hibernation: Spent after a resume: a code agent resumed by a tell \"use notes.md\" stops at its account's usage limit with no account of its pool reaching its conversation, and code starts afresh with flume's words, then the start's, then \"use notes.md\"",
+            cites: &["42", "146", "213"],
+            run: spent_after_a_resume,
         },
     ]
 }
@@ -786,6 +801,7 @@ pub(super) fn resumed_as(
         "talk's start, its number, the stage's starts and whether it is live"
     );
     let resume = start.resumes.last().ok_or("talk's start holds no resume")?;
+    let kept = (by != ResumedBy::Caller).then_some(words);
     ensure_eq!(
         (
             &resume.identity,
@@ -794,7 +810,7 @@ pub(super) fn resumed_as(
             resume.conversation.carried,
             resume.conversation.cause
         ),
-        (identity, by, Some(words), true, CarryCause::Hibernated),
+        (identity, by, kept, true, CarryCause::Hibernated),
         "talk's last resume"
     );
     ensure_eq!(
@@ -982,13 +998,14 @@ fn a_process_runs_the_conversation(_: &()) -> Outcome {
 pub(super) const HIBERNATED_WORDS: &str = "The stage's earlier agent hibernated, and its conversation could not be carried, so this agent starts the stage afresh. What it committed is on the place's branch and what it left is in the place: read them and carry the stage on from there.";
 
 /// talk's current start is its fresh start `n` after its start 1
-/// hibernated, its prompt talk's with flume's words then `words`, resuming
-/// nothing, its conversation not carried for `why` (213).
+/// hibernated, its prompt talk's with flume's words then `words` where the
+/// resume gave any, resuming nothing, its conversation not carried for
+/// `why` (213).
 pub(super) fn afresh_after_hibernated(
     world: &World,
     id: &PlaceId,
     n: u32,
-    words: &str,
+    words: Option<&str>,
     why: &str,
 ) -> Outcome {
     let stage = stage_of(world, id, "talk")?;
@@ -1015,7 +1032,10 @@ pub(super) fn afresh_after_hibernated(
         }),
         "talk's fresh start's conversation"
     );
-    let given = format!("{HIBERNATED_WORDS}\n\n{words}");
+    let given = match words {
+        Some(words) => format!("{HIBERNATED_WORDS}\n\n{words}"),
+        None => format!("{HIBERNATED_WORDS}\n\n"),
+    };
     ensure!(
         start
             .prompt
@@ -1037,7 +1057,7 @@ fn forty_days_hibernated(_: &()) -> Outcome {
         .agent
         .carry_to(FakeAgent::LOGIN, Carry::No { why: gone.into() });
     taken(&world.engine().tell(&id, "carry on", None))?;
-    afresh_after_hibernated(&world, &id, 2, "carry on", gone)?;
+    afresh_after_hibernated(&world, &id, 2, Some("carry on"), gone)?;
     let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
     ensure_eq!(
         agent.conversation,
@@ -1074,7 +1094,11 @@ fn a_resume_never_begun(_: &()) -> Outcome {
         why.contains("ended before it said it started"),
         "what the record says happened: {why}"
     );
-    afresh_after_hibernated(&world, &id, 2, WOKEN, &why)
+    ensure!(
+        !start_now(&world, &id, "talk")?.prompt.text.contains(WOKEN),
+        "the fresh start was given a bare resume's words"
+    );
+    afresh_after_hibernated(&world, &id, 2, None, &why)
 }
 
 fn a_message_next_morning(_: &()) -> Outcome {
@@ -1235,6 +1259,165 @@ fn the_answer_three_hours_later(_: &()) -> Outcome {
         world.stage_state(&id, "code"),
         Some(StageState::Delivered),
         "code once its resumed agent committed"
+    );
+    Ok(())
+}
+
+/// The patch place `name` begun, its code's first start's word naming the
+/// session `s-1`, which the login environment's configuration home
+/// reaches (179).
+fn patch_carrying(world: &World, name: &str) -> Result<PlaceId, String> {
+    world.agent.set_session(&patch_code(name, 1), "s-1");
+    world.agent.carry_to(
+        FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.patching(name)
+}
+
+fn working_past_its_limit_from_the_resume(_: &()) -> Outcome {
+    let world = World::new();
+    let id = patch_carrying(&world, "one")?;
+    world.host.advance(10 * 60);
+    taken(&world.engine().hibernate(&id, false))?;
+    world.host.advance(2 * HOUR - 10 * 60);
+    taken(&world.engine().resume(&id))?;
+    let resumed = Identity {
+        resume: 1,
+        ..patch_code("one", 1)
+    };
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code once resumed"
+    );
+    world.terminal.set_state(&resumed, AgentState::Working);
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    let start = start_now(&world, &id, "code")?;
+    ensure_eq!(
+        (&start.identity, start.past_limit),
+        (&resumed, false),
+        "code's resumed start and whether it works past its limit"
+    );
+    world.host.advance(15 * 60);
+    world.settle(&id);
+    ensure!(
+        start_now(&world, &id, "code")?.past_limit,
+        "code was not reported working past its limit 35 minutes after its resume"
+    );
+    Ok(())
+}
+
+fn hibernating_again(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    taken(&world.engine().tell(&id, "go on", None))?;
+    let first = talk_resumed("one", 1, 1);
+    world.settle(&id);
+    ensure_eq!(
+        (
+            start_now(&world, &id, "talk")?.identity,
+            world.stage_state(&id, "talk")
+        ),
+        (first.clone(), Some(StageState::Begun)),
+        "talk's first resume"
+    );
+    world.host.advance(HOUR);
+    let at = world.host.now();
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            hibernation(&world, &id, "talk")?.map(|held| (held.since, held.why))
+        ),
+        (
+            Some(StageState::Hibernating),
+            Some((at, HibernatedBy::Idle))
+        ),
+        "talk an hour after its resume"
+    );
+    ensure!(
+        closed(&world).contains(&format!("close {first}")),
+        "talk's first resume's agent was not closed: {:?}",
+        closed(&world)
+    );
+    taken(&world.engine().tell(&id, "and now?", None))?;
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 2),
+        ResumedBy::Tell,
+        "and now?",
+        1,
+    )?;
+    let resumes = start_now(&world, &id, "talk")?.resumes;
+    ensure_eq!(
+        resumes
+            .iter()
+            .map(|resume| (resume.identity.to_string(), resume.words.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (first.to_string(), Some("go on".to_string())),
+            (
+                talk_resumed("one", 1, 2).to_string(),
+                Some("and now?".to_string())
+            )
+        ],
+        "talk's resumes"
+    );
+    Ok(())
+}
+
+fn spent_after_a_resume(_: &()) -> Outcome {
+    let world = World::new();
+    fill_first_at_homes(&world);
+    world.agent.carry_to(
+        &home("work-1"),
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.set_session(&patch_code("one", 1), "s-1");
+    let id = world.patching("one")?;
+    taken(&world.engine().hibernate(&id, false))?;
+    world.host.advance(HOUR);
+    taken(&world.engine().tell(&id, "use notes.md", None))?;
+    let resumed = Identity {
+        resume: 1,
+        ..patch_code("one", 1)
+    };
+    world.settle(&id);
+    ensure_eq!(
+        start_now(&world, &id, "code")?.identity,
+        resumed.clone(),
+        "code's resumed start"
+    );
+    world.agent.set_spent(
+        &resumed,
+        Spent::Yes {
+            until: Some(world.host.now() + 5 * HOUR),
+            words: "a usage limit this test writes".into(),
+        },
+    );
+    world.settle(&id);
+    let start = start_now(&world, &id, "code")?;
+    ensure_eq!(
+        (start.identity, start.resumes.is_empty()),
+        (patch_code("one", 2), true),
+        "code's start after its resumed agent was spent"
+    );
+    let spent = "The stage's earlier agent stopped at its account's usage limit, and this agent starts the stage afresh. What it committed is on the place's branch and what it left is in the place: read them and carry the stage on from there.";
+    ensure!(
+        start
+            .prompt
+            .text
+            .contains(&format!("{spent}\n\nuse notes.md")),
+        "code's fresh start's prompt is not flume's words then the resume's: {}",
+        start.prompt.text
     );
     Ok(())
 }

@@ -116,6 +116,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["32", "212"],
             run: hibernate_after_from_no_layer,
         },
+        Scenario {
+            name: "launching: Read at each start: the host's hibernate_after for every agent changing from 1h to 15m while talk hibernates, the resumed agent starts with 15m",
+            cites: &["32", "213"],
+            run: hibernate_after_read_at_each_start,
+        },
     ]
 }
 
@@ -918,6 +923,29 @@ fn hibernate_after_from_no_layer(_: &()) -> Outcome {
         flume_core::HIBERNATE_AFTER,
         60 * 60,
         "flume's own hibernate time"
+    );
+    Ok(())
+}
+
+fn hibernate_after_read_at_each_start(_: &()) -> Outcome {
+    let world = World::new();
+    world.host.set_every_agent(hibernates_after("1h"));
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    world.host.set_every_agent(hibernates_after("15m"));
+    if let Some(reason) = world.engine().resume(&id).refusal() {
+        return Err(format!("the resume was refused: {reason}"));
+    }
+    let resumed = super::hibernation::talk_resumed("one", 1, 1);
+    let start = super::hibernation::start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        (start.identity, start.settings.hibernate_after),
+        (resumed, Some("15m".into())),
+        "talk's resume and its hibernate_after"
+    );
+    ensure_eq!(
+        hibernate_after_of(&world, &id)?.0,
+        layer_gave(Layer::Host, "15m"),
+        "talk's resume's hibernate_after from the host as it stands at its start"
     );
     Ok(())
 }

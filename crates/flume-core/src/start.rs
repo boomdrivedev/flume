@@ -773,11 +773,14 @@ impl Engine {
             let (n, start_head, made_from, answered, group, resumed) = match &resumes {
                 Some(from) => {
                     let mut resumed = from.resumes.clone();
+                    // A bare resume's words are flume's own, and none are
+                    // kept of it, so no fresh start after it repeats them
+                    // (213).
                     resumed.push(ResumeHeld {
                         at: now,
                         by: resumed_by,
                         identity: identity.clone(),
-                        words: words.clone(),
+                        words: words.clone().filter(|_| resumed_by != ResumedBy::Caller),
                         conversation: conversation.clone().unwrap_or(Conversation {
                             from: from.n,
                             cause: CarryCause::Hibernated,

@@ -392,11 +392,11 @@ pub(crate) fn last_answer(held: &HeldState, index: usize, start: &StartHeld) -> 
         .max()
 }
 
-/// The words the start `start` of the place's stage was given and each
+/// The words the start `start` of the place's stage was given, each
 /// answer it took in its session, the question then the answer, in order,
-/// as a fresh start flume makes on its own after it carries them after
-/// flume's own words; none where it was given none and took none (42, 146,
-/// 161).
+/// and each resume's words after them, as a fresh start flume makes on its
+/// own after it carries them after flume's own words; none where it was
+/// given none, took none and was resumed with none (42, 146, 161, 213).
 pub(crate) fn told(held: &HeldState, start: &StartHeld) -> Option<String> {
     let Some(index) = held.index_of(&start.identity) else {
         return start.words.clone();
@@ -420,7 +420,17 @@ pub(crate) fn told(held: &HeldState, start: &StartHeld) -> Option<String> {
         }
         _ => None,
     });
-    let parts: Vec<String> = start.words.clone().into_iter().chain(answers).collect();
+    let resumed = start
+        .resumes
+        .iter()
+        .filter_map(|resume| resume.words.clone());
+    let parts: Vec<String> = start
+        .words
+        .clone()
+        .into_iter()
+        .chain(answers)
+        .chain(resumed)
+        .collect();
     (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
