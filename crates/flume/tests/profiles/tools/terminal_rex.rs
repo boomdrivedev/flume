@@ -9,7 +9,9 @@ use flume::host::config::HostConfig;
 use flume::host::process::listed;
 use flume::host::RealHost;
 use flume::profiles::store::state_dir::StateDir;
-use flume::profiles::terminal::rex::{rex_name, Block, Rex, NAME, PIECE, RUNTIME_ROOT};
+use flume::profiles::terminal::rex::{
+    rex_name, Block, Rex, NAME, PIECE, RUNTIME_ROOT, SEND_KEY_REFUSES,
+};
 use flume_conformance::engine::world::{kind, stage, World};
 use flume_conformance::scenario::pass_all;
 use flume_conformance::seams::terminal::{self, TerminalHarness};
@@ -302,10 +304,16 @@ fn the_pinned_rex_runs_at_api_revision_twelve_or_later() {
 /// terminal a chunk at a time, unechoed, ctrl+c no signal and Enter no
 /// line feed: a ctrl+c clears what it held typed, as Claude Code clears
 /// its input, a line feed typed is kept in the line, and Enter ends it.
+/// What it holds typed it shows on its last line, drawn again after each
+/// chunk it reads as Claude Code draws its input, its controls left out,
+/// and rubbed out before it takes a line, so a relay's typing shows on
+/// its screen and a line it takes leaves the screen as it was.
 /// A line `report <state>` reports that state alone, `print <n>` prints
-/// `n` numbered lines, and `exit` exits. As its environment asks, it
-/// shows the folder-trust question first, reports nothing, or exits as
-/// it starts.
+/// `n` numbered lines, `paint <n>` prints them each in a colour, and
+/// `exit` exits. As its environment asks, it shows the folder-trust
+/// question first, reports nothing, exits as it starts, or, under
+/// `STAND_IN_CAT`, runs `cat` in raw mode into its log once the test
+/// says go.
 const STAND_IN: &str = r#"#!/bin/sh
 LC_ALL=C
 export LC_ALL
@@ -359,10 +367,20 @@ if [ -n "$STAND_IN_SILENT" ]; then echo "the stand-in says nothing to Rex"; whil
 # block shows nothing else, its program started under no login.
 echo "the stand-in waits for a prompt"
 report idle
+if [ -n "$STAND_IN_CAT" ]; then
+  # Once the test says go, after open has read the program, a block
+  # running `cat` in raw mode, so every key and character a relay types
+  # reaches it as bytes, a ctrl+c or a ctrl+d among them, and none ends it.
+  while [ ! -e "$log/go" ]; do sleep 0.1; done
+  stty raw -echo 2>/dev/null
+  exec cat > "$log/cat"
+fi
 stty -icanon -isig -echo -icrnl min 1 time 0 2>/dev/null
 ctrl_c=$(printf '\003')
 cr=$(printf '\r')
 pending=
+# What it holds typed, on the cursor's line, its controls left out.
+draw() { printf '\r\033[K%s' "$(printf '%s' "$pending" | tr -d '\000-\037\177')"; }
 while :; do
   chunk=$(dd bs=65536 count=1 2>/dev/null; printf x)
   chunk=${chunk%x}
@@ -373,12 +391,14 @@ while :; do
       *"$cr"*)
         line=${pending%%"$cr"*}
         pending=${pending#*"$cr"}
+        printf '\r\033[K'
         case $line in
           *"$ctrl_c"*) echo cleared >> "$log/events"; line=${line##*"$ctrl_c"} ;;
         esac
         case $line in
           "report "*) report "${line#report }"; continue ;;
           "print "*) i=0; while [ "$i" -lt "${line#print }" ]; do i=$((i + 1)); echo "row $i"; done; continue ;;
+          "paint "*) i=0; while [ "$i" -lt "${line#paint }" ]; do i=$((i + 1)); printf '\033[3%dmrow %d\033[0m\n' $((i % 7 + 1)) "$i"; done; continue ;;
           exit) exit 0 ;;
         esac
         report working
@@ -389,6 +409,7 @@ while :; do
       *) break ;;
     esac
   done
+  draw
 done
 "#;
 
@@ -1467,6 +1488,172 @@ fn the_screen_is_the_blocks_last_rows() {
 }
 
 #[test]
+fn relay_gives_the_blocks_screen_and_not_its_scrollback() {
+    // The terminal-profiles scenario "A block's screen and not its
+    // scrollback against the pinned Rex" (136, 222, C.5's Rex relay row):
+    // a block of 24 rows that printed 60 numbered lines, each in colour: a
+    // relay read holds line 60, no more lines than the block's rows and not
+    // line 1, and each line it holds keeps its colour.
+    let fixture = Fixture::new();
+    let profile = fixture.profile();
+    let who = identity(1);
+    let block = opened(&fixture, &profile, &who, &fixture.command(&[]));
+    let rows = fixture.rex("flume", &["block", "call", "-b", &block.id, "size"])["rows"]
+        .as_u64()
+        .expect("the block's rows") as usize;
+    assert_eq!(rows, 24, "the block's rows");
+    typed(&block, "paint 60");
+    let mut relay = profile.relay(&who).expect("the block is relayed");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let screen = loop {
+        match relay.screen() {
+            RelayScreen::Shows { screen } if screen.contains("row 60\x1b[") => break screen,
+            read => assert!(
+                Instant::now() < deadline,
+                "no read showed line 60: {read:?}"
+            ),
+        }
+        std::thread::sleep(relay.every());
+    };
+    let lines: Vec<&str> = screen.lines().collect();
+    assert!(lines.len() <= rows, "{} lines: {screen:?}", lines.len());
+    assert!(!screen.contains("row 1\x1b["), "line 1 read: {screen:?}");
+    let numbered: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| line.contains("row "))
+        .collect();
+    assert!(numbered.len() >= rows - 2, "{screen:?}");
+    for line in numbered {
+        let colour = line.find("\x1b[3").expect("a colour");
+        assert!(
+            colour < line.find("row ").expect("its number"),
+            "a line without its colour: {line:?}"
+        );
+    }
+}
+
+/// What the stand-in's `cat` read, once it has read nothing more for a
+/// third of a second, waiting up to ten seconds.
+fn settled(cat: &Path) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut read = fs::read(cat).unwrap_or_default();
+    loop {
+        std::thread::sleep(Duration::from_millis(330));
+        let again = fs::read(cat).unwrap_or_default();
+        if again == read || Instant::now() >= deadline {
+            return again;
+        }
+        read = again;
+    }
+}
+
+#[test]
+fn relay_types_each_of_flumes_key_names_into_a_block() {
+    // The terminal-profiles scenario "Every key name against the pinned
+    // Rex" (222, C.5's Rex relay row at blueprints e28b901; core.29): each
+    // of flume's named keys, f1 to f12, every printable character of
+    // ASCII and é, each bare and led by ctrl+, alt+ and shift+, typed by
+    // the relay into a block of the pinned Rex running `cat`: every name
+    // typed but the nineteen and é led, which the relay refuses, named;
+    // `cat` reads each of those given bare as its own bytes; the pinned
+    // Rex's own `send-key` still refuses each of them bare; and `cat`
+    // reads `a?b` of `a`, `?` and `b`, and `ab` of `a`, `ctrl+?` and `b`,
+    // `ctrl+?` refused, named.
+    let fixture = Fixture::new();
+    let profile = fixture.profile();
+    let who = identity(1);
+    let block = opened(
+        &fixture,
+        &profile,
+        &who,
+        &fixture.command(&[("STAND_IN_CAT", "1")]),
+    );
+    let log = fixture
+        .path("log")
+        .join(block.id.strip_prefix("block:").unwrap_or(&block.id));
+    fs::write(log.join("go"), "").expect("the stand-in told to run cat");
+    let cat = log.join("cat");
+    within("the block's cat did not run", || cat.exists());
+    let mut relay = profile.relay(&who).expect("the block is relayed");
+    let cannot: Vec<char> = SEND_KEY_REFUSES.into_iter().chain(['\u{e9}']).collect();
+    for one in &cannot {
+        let before = settled(&cat).len();
+        let text = one.to_string();
+        assert_eq!(
+            relay.typed(&Typed::Keys(vec![Key::bare(KeyName::Char(*one))])),
+            Ok(()),
+            "{one} bare"
+        );
+        within(&format!("cat did not read {one}"), || {
+            fs::read(&cat).is_ok_and(|read| read.len() >= before + text.len())
+        });
+        assert_eq!(
+            &settled(&cat)[before..],
+            text.as_bytes(),
+            "what cat read of {one} bare"
+        );
+    }
+    let mut bare: Vec<String> = KeyName::named().iter().map(ToString::to_string).collect();
+    bare.extend((0x21u8..0x7f).map(|byte| char::from(byte).to_string()));
+    bare.push("\u{e9}".into());
+    let mut refused = vec![];
+    for name in &bare {
+        let one = name.chars().next().filter(|_| name.chars().count() == 1);
+        for lead in ["", "ctrl+", "alt+", "shift+"] {
+            let full = format!("{lead}{name}");
+            let key: Key = full.parse().unwrap_or_else(|words| panic!("{words}"));
+            let led_cannot = !lead.is_empty() && one.is_some_and(|one| cannot.contains(&one));
+            match relay.typed(&Typed::Keys(vec![key])) {
+                Ok(()) => assert!(!led_cannot, "{full} was typed"),
+                Err(words) if led_cannot => assert!(
+                    words.starts_with(&format!("{full} is a key Rex 0.1.0-preview.14 cannot type")),
+                    "{full}: {words}"
+                ),
+                Err(words) => refused.push((full, words)),
+            }
+        }
+    }
+    assert!(refused.is_empty(), "Rex refused {refused:#?}");
+    for one in &cannot {
+        let words = try_rex(
+            &block.socket,
+            &["send-key", "-b", &block.id, &one.to_string()],
+        )
+        .expect_err(&format!("the pinned Rex's send-key took {one}"));
+        assert!(
+            words.contains("unknown key"),
+            "the pinned Rex's refusal of {one}: {words}"
+        );
+    }
+    let keys =
+        |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
+    let before = settled(&cat).len();
+    assert_eq!(relay.typed(&keys(&["a", "?", "b"])), Ok(()));
+    within("cat did not read a?b", || {
+        fs::read(&cat).is_ok_and(|read| read.len() >= before + 3)
+    });
+    assert_eq!(&settled(&cat)[before..], b"a?b");
+    let before = settled(&cat).len();
+    let words = relay
+        .typed(&keys(&["a", "ctrl+?", "b"]))
+        .expect_err("ctrl+? is refused");
+    assert_eq!(
+        words,
+        "ctrl+? is a key Rex 0.1.0-preview.14 cannot type; nothing was sent for it, and the \
+         keys around it were typed"
+    );
+    within("cat did not read a and b", || {
+        fs::read(&cat).is_ok_and(|read| read.len() >= before + 2)
+    });
+    assert_eq!(&settled(&cat)[before..], b"ab");
+    assert!(
+        matches!(relay.screen(), RelayScreen::Shows { .. }),
+        "the block reads gone once every key was typed"
+    );
+}
+
+#[test]
 fn a_close_rex_cannot_make_is_refused() {
     // 97, 98, C.5: an agent's server stopped so its block cannot be
     // closed, and the agent closed: the close refused, and not reported.
@@ -2376,10 +2563,10 @@ impl TerminalHarness for Harness {
         true
     }
 
-    /// C.5 gives Rex no relay row, so flume's Rex profile offers none
-    /// (222).
+    /// Rex relays a block's screen and a person's keys, as C.5's Rex relay
+    /// row at blueprints e28b901 says (221, 222).
     fn relays(&self) -> bool {
-        false
+        true
     }
 }
 
