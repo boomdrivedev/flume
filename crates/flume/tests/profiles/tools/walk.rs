@@ -636,21 +636,42 @@ impl Walk {
             .cloned()
             .unwrap_or_default()
     }
+
+    /// Where sluice holds submission `id`'s delivery: its `delivery` as
+    /// `sluice status <id> --json` gives it (sluice 51; sluice record
+    /// 0102).
+    pub fn delivery(&self, id: &Value) -> Value {
+        let id = id.to_string();
+        let output = self
+            .command("sluice", &self.repository.dir)
+            .args(["status", id.as_str(), "--json"])
+            .output()
+            .expect("sluice runs");
+        let status: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+            panic!(
+                "sluice status {id}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+        status["delivery"].clone()
+    }
 }
 
 /// The stand-in for sluice written into `bin` as `sluice`: the pinned
 /// sluice, as the test's own `PATH` finds it, with its first submit's
 /// `--no-wait` dropped, so it answers as the pinned sluice answers a
 /// no-wait submit on a base that takes pull requests where it finds the
-/// submission decided as it takes it in: with the entry's record,
-/// exiting as the outcome does, the outcome recorded delivered to the
-/// worktree, so no inbox gives it (sluice's `report_delivering`; 112,
-/// 133). While that submit waits on the rounds that decide it, its inbox
-/// gives no outcome, as the pinned sluice's place inbox gives none of a
-/// submission it decided as it took it in, whose record names the pull
-/// request: a settle beside the submit, the Stop hook's or a caller's,
-/// collects nothing the answer delivers. Every other command, and every
-/// later submit, is the pinned sluice's own.
+/// submission decided as it takes it in: with the entry's record and
+/// its `delivery`, owed to the worktree, exiting as the outcome does; the
+/// profile confirms it by its key, so no later inbox gives it (112, 133;
+/// sluice 51; sluice record 0102). While that submit waits on the rounds
+/// that decide it, its inbox gives no outcome, as the pinned sluice's
+/// place inbox gives none of a submission it decided as it took it in,
+/// whose record names the pull request: a settle beside the submit, the
+/// Stop hook's or a caller's, collects nothing until the answer comes.
+/// Every other command, and every later submit, is the pinned sluice's
+/// own.
 pub fn stand_in_sluice(bin: &Path) {
     let pinned = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
         .map(|dir| dir.join("sluice"))

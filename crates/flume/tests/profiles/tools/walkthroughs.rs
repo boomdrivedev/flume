@@ -410,8 +410,9 @@ fn a_conflicting_submission_merges_the_base_and_lands() {
 fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
     // 112, 133: the stand-in for sluice answers the first submission with
     // its entry's record, found in conflict as it was taken in, exiting
-    // as a conflict does and delivered, as sluice answers a no-wait submit
-    // on a base that takes pull requests. The place goes back to code with
+    // as a conflict does, as sluice answers a no-wait submit on a base
+    // that takes pull requests, and the profile confirms its delivery
+    // (sluice 51; sluice record 0102). The place goes back to code with
     // the files contested and the base's revision in its words, never
     // waiting on its caller as if refused, and lands on the second.
     let walk = Walk::new("walk-conflict-at-submit");
@@ -431,9 +432,10 @@ fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
     let first = walk.submissions();
     assert_eq!(first.len(), 1, "{first:?}");
     assert_eq!(first[0]["state"], "conflict", "{first:?}");
-    assert!(
-        first[0]["delivered"].is_string(),
-        "the outcome sluice's answer delivered: {first:?}"
+    let delivery = walk.delivery(&first[0]["id"]);
+    assert_eq!(
+        delivery["state"], "done",
+        "the outcome sluice's answer gave, confirmed: {delivery}"
     );
     let prompt = walk.prompt(&place);
     for named in [

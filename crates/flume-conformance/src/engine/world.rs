@@ -32,6 +32,9 @@ pub struct World {
     pub history: Arc<FakeHistory>,
     pub resolver: Arc<FakeResolver>,
     pub defaults: Defaults,
+    /// The telemetry every engine of the world hands its signals to,
+    /// sending nothing until a scenario sets what it sends (216).
+    pub telemetry: Arc<FakeTelemetry>,
     pub engine: Engine,
 }
 
@@ -100,6 +103,7 @@ impl World {
             },
             send_backs: 2,
         };
+        let telemetry = Arc::new(FakeTelemetry::default());
         let engine = Engine::new(
             resolver.clone(),
             terminal.clone(),
@@ -107,7 +111,8 @@ impl World {
             history.clone(),
             host.clone(),
             defaults.clone(),
-        );
+        )
+        .with_telemetry(telemetry.clone());
         World {
             git,
             host,
@@ -122,6 +127,7 @@ impl World {
             history,
             resolver,
             defaults,
+            telemetry,
             engine,
         }
     }
@@ -147,6 +153,7 @@ impl World {
             self.host.clone(),
             self.defaults.clone(),
         )
+        .with_telemetry(self.telemetry.clone())
     }
 
     /// A fake terminal of its own, which the resolver gives by `name` and
