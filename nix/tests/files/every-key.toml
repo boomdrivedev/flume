@@ -121,3 +121,14 @@ owed = 2
 [streams.work.labels.operation]
 owed = 2
 reserved = 1
+
+[telemetry]
+collector = "http://localhost:4318"
+logs = false
+metrics = true
+send = true
+service = "flume"
+traces = true
+
+[telemetry.attributes]
+"deployment.environment" = "lab"

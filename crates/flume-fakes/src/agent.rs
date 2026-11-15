@@ -115,6 +115,10 @@ struct Record {
     /// The windows its program last reported, with when they were taken,
     /// as scripted (211).
     windows: Option<(Seconds, Vec<UsageWindow>)>,
+    /// The conversation it runs, as the seam reads it for a start's span,
+    /// as scripted; else the session its word that it started names
+    /// (217).
+    conversation: Option<String>,
 }
 
 impl Default for Record {
@@ -136,6 +140,7 @@ impl Default for Record {
             session: None,
             ends_after_stop_short: false,
             windows: None,
+            conversation: None,
         }
     }
 }
@@ -304,6 +309,13 @@ impl FakeAgent {
     /// not offered and `windows` unknown for every start (171, 174).
     pub fn reports_no_windows(&self) {
         lock(&self.state).no_windows = true;
+    }
+
+    /// The conversation the seam reads `agent` running, for its start's
+    /// span, none where `conversation` is none (217).
+    pub fn set_conversation(&self, agent: &Identity, conversation: Option<&str>) {
+        let conversation = conversation.map(str::to_string);
+        self.with(agent, |record| record.conversation = conversation);
     }
 
     /// The program carries a stopped or lost start's conversation to the
@@ -777,6 +789,17 @@ impl Agent for FakeAgent {
     fn started_without(&self, folder: &str, agent: &Identity) -> Option<Unsettled> {
         self.read_in("started_without", folder, agent)
             .and_then(|record| self.unsettled(agent, &record))
+    }
+
+    /// The conversation scripted, else the session its word that it
+    /// started names; logged by no line, so a settle's calls read as
+    /// before (217).
+    fn conversation(&self, folder: &str, agent: &Identity) -> Option<String> {
+        let record = self.record(agent);
+        if record.folder.as_deref().is_some_and(|kept| kept != folder) {
+            return None;
+        }
+        record.conversation.or(record.session)
     }
 
     /// The answer scripted for the account by its [`FakeAgent::HOME`],

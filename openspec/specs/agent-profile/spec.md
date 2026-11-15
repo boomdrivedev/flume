@@ -578,3 +578,15 @@ C.4).
 
 - **WHEN** a report's windows are the engine's `five_hour` 23.5 resetting at `2026-11-05T17:00:00.000Z`, `seven_day` 7 with no `resetsAt`, and a gateway's `spend_limit` 112
 - **THEN** the profile reads `five_hour` 2350 hundredths resetting at that moment, `seven_day` 700 with no reset, and `spend_limit` 10000 (211, C.4)
+
+### Requirement: Claude Code's conversation read from its started word
+
+The Claude Code profile SHALL give a start's conversation as the
+session its word that it started names, read from its record in the
+place's own folder, and none where the start has said nothing yet; a
+profile that reads none SHALL give none (217, 128).
+
+#### Scenario: The conversation of a started agent
+
+- **WHEN** the profile reads a start whose word that it started names the session `s-1`, and a start that has said nothing
+- **THEN** it gives `s-1` for the first and none for the second (217)
