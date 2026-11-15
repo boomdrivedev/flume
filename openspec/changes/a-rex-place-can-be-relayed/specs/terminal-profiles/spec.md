@@ -52,15 +52,15 @@ press no Enter of its own and read no receipt (95, 107, 221, 222, C.5).
 - **WHEN** the relay types a text of 150,000 bytes, non-ASCII among them, over the stand-in `rex`
 - **THEN** the stand-in ran three `send` calls, each piece at most 60,000 bytes and cut between characters, their text together the whole text in order, and no `send-key` (95, 222, C.5)
 
-### Requirement: Rex's relay types a character send-key refuses as text, and refuses it led
+### Requirement: Rex's relay types a character send-key does not type as itself as text, and refuses it led
 
-The Rex profile's relay SHALL type a key whose own name is one of `!`,
-`"`, `#`, `$`, `%`, `&`, `(`, `)`, `*`, `:`, `<`, `?`, `@`, `^`, `_`,
-`{`, `|`, `}` and `~`, or a character outside ASCII, which the pinned
-Rex's `send-key` names none of, as the text it is by `send` where it is
-bare. Where it is led, the relay SHALL refuse it, named as a key Rex
-0.1.0-preview.14 cannot type, sending nothing for it. The keys around
-either SHALL go in, in order (222, C.5; core.29).
+The Rex profile's relay SHALL type a character the pinned Rex's
+`send-key` names none of, the nineteen of design section 4 and every
+character outside ASCII, or types as another, each capital, as the text
+it is by `send` where it is bare. Where it is led, the relay SHALL
+refuse it, named as a key Rex 0.1.0-preview.14 cannot type, sending
+nothing for it. The keys around either SHALL go in, in order (222, C.5's
+Rex relay row at blueprints bf9e16f; core.29).
 
 #### Scenario: Keys and characters among keys over a stand-in rex
 
@@ -69,8 +69,21 @@ either SHALL go in, in order (222, C.5; core.29).
 
 #### Scenario: Every key name against the pinned Rex
 
-- **WHEN** the relay types into a block of the pinned Rex running `cat` in raw mode each of flume's named keys, `f1` to `f12`, every printable character of ASCII and `é`, each bare and led by `ctrl+`, `alt+` and `shift+`, then the keys `a`, `?` and `b` together, then `a`, `ctrl+?` and `b`
-- **THEN** every name is typed but the nineteen and `é` led, which the relay refuses, each named as a key Rex 0.1.0-preview.14 cannot type. `cat` reads each of the nineteen and `é` given bare as its own bytes. The pinned Rex's own `send-key` still refuses each of them bare. `cat` reads `a?b` for the first three keys, and `ab` for the last, `ctrl+?` refused, named (222, C.5; core.29)
+- **WHEN** the relay types alone into a block of the pinned Rex running `cat` in raw mode, its extended input off, each of flume's named keys, `f1` to `f12`, every printable character of ASCII and `é`, each bare and under each of `ctrl+`, `alt+` and `shift+`, their pairs and all three, then the keys `a`, `?` and `b` together, then `a`, `ctrl+?` and `b`, then `A`, `ctrl+shift+a` and `b`
+- **THEN** each key the relay hands `send-key` types something, a bare character types itself, `alt+` and a character or `space` types ESC before what the key without `alt+` types, and `shift+` and a small letter types its capital. Each key the relay refuses is named as a key Rex 0.1.0-preview.14 cannot type and types nothing. The pinned Rex's own `send-key` still refuses each of the nineteen and `é`, still types each capital as its small letter under the same leads, and still types each other key the relay refuses as nothing or as that key with a lead dropped. `cat` reads `a?b` for the first three keys, `ab` for the next, `ctrl+?` refused, named, and `Ab` for the last, `ctrl+shift+a` refused, named (222, C.5; core.29)
+
+### Requirement: Rex's relay refuses a led key the pinned Rex types otherwise than typed
+
+The Rex profile's relay SHALL hand `send-key` only a key the pinned Rex
+was read to type as the person typed it. It SHALL refuse each other led
+key, named as a key Rex 0.1.0-preview.14 cannot type, sending nothing
+and building no escape sequence for it, and the keys around it SHALL go
+in, in order (222, C.5's Rex relay row at blueprints bf9e16f; core.29).
+
+#### Scenario: Capitals and keys Rex types otherwise over a stand-in rex
+
+- **WHEN** the relay types the keys `A`, `b`, `ctrl+shift+a`, `alt+shift+a`, `ctrl+i`, `shift+A` and `enter` over the stand-in `rex`
+- **THEN** the stand-in ran, in that order, `send -s s1 -b block:b1 -- A`, `send-key -s s1 -b block:b1 b` and `send-key -s s1 -b block:b1 enter`, nothing for the four led keys, and the input is refused naming each of `ctrl+shift+a`, `alt+shift+a`, `ctrl+i` and `shift+A` as a key Rex 0.1.0-preview.14 cannot type (222, C.5)
 
 ### Requirement: Rex's relay reads a gone block gone
 
@@ -122,6 +135,6 @@ which they name `<typed>` (98, 221, 222; core.29, core.57).
 
 ### Requirement: Rex refuses relay
 
-**Reason**: C.5 now gives Rex a relay row (boomdrivedev/blueprints 3d0200b, on main at cb114fd, as e28b901 amends it), so the Rex profile relays rather than refusing before any call.
+**Reason**: C.5 now gives Rex a relay row (boomdrivedev/blueprints 3d0200b, on main at cb114fd, as e28b901 and bf9e16f amend it), so the Rex profile relays rather than refusing before any call.
 
 **Migration**: Rex's relay is the requirement "Rex relays an agent's block" and the four beside it. The Rex harness says it relays, so the terminal seam's relay scenario runs against the pinned Rex in place of the refusal.

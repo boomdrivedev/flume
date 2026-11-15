@@ -64,7 +64,7 @@
 //! relay finds the agent's block from its record, making no call, and is
 //! refused with `no agent runs under <agent>` where no record names a
 //! block; the block keeps its id when it moves between windows, so the
-//! handle never finds it again (C.5's Rex relay row at blueprints e28b901).
+//! handle never finds it again (C.5's Rex relay row at blueprints bf9e16f).
 //! Its handle states 250 milliseconds and reads what a person's view of
 //! the block shows by `capture -s <session> -b <block> --format vt --trim`
 //! and `block call size`, giving the capture's last `rows` lines as Rex
@@ -74,12 +74,20 @@
 //! most 60,000 bytes, and keys by `send-key -s <session> -b <block>
 //! <key>…` by flume's names, which are Rex's own, one call for each run
 //! of them, clearing nothing, pressing no Enter of its own and reading no
-//! receipt. Rex 0.1.0-preview.14's `send-key` names none of `!`, `"`,
-//! `#`, `$`, `%`, `&`, `(`, `)`, `*`, `:`, `<`, `?`, `@`, `^`, `_`, `{`,
-//! `|`, `}` and `~`, nor any character outside ASCII: bare, such a
-//! character goes in as the text it is by `send`, each run of them one
-//! `send`; led, it is refused, named as a key Rex 0.1.0-preview.14 cannot
-//! type, nothing sent for it, and the keys around it are typed. A block
+//! receipt. A key goes to `send-key` only where the pinned Rex was read to
+//! type it as the person typed it: Rex 0.1.0-preview.14's `send-key` names
+//! none of `!`, `"`, `#`, `$`, `%`, `&`, `(`, `)`, `*`, `:`, `<`, `?`, `@`,
+//! `^`, `_`, `{`, `|`, `}` and `~`, nor any character outside ASCII, and
+//! types each capital as its small letter; bare, such a character goes in
+//! as the text it is by `send`, each run of them one `send`; led, it is
+//! refused, named as a key Rex 0.1.0-preview.14 cannot type, nothing sent
+//! for it, and the keys around it are typed. So is every led key Rex was
+//! read to type otherwise than typed: `ctrl+shift+` with a character or
+//! `space`, which types nothing or drops its ctrl and its shift; `ctrl+`
+//! with one of `i`, `m`, `'`, `+`, `,`, `-`, `.`, `;`, `=`, `>`, `[` and
+//! the backtick, which types nothing, or drops its ctrl after `alt+`; and
+//! `alt+shift+` with a character its shift changes, which drops its shift.
+//! No escape sequence is built. A block
 //! Rex answers not found, or a server not running at its socket, reads
 //! gone. Each relay call is bounded at one second, a read past it unread
 //! and an input past it refused, naming the bound; the relay makes, keeps
@@ -132,12 +140,26 @@ pub const RELAY_BOUND: Duration = Duration::from_secs(1);
 
 /// The printable characters of ASCII Rex 0.1.0-preview.14's `send-key`
 /// names none of, bare or led, as C.5's Rex relay row at blueprints
-/// e28b901 lists them and the tools layer reads them from the pinned Rex;
-/// every character outside ASCII is refused there too. Bare, each goes in
-/// as the text it is by `send`; led, it is refused (222; core.29).
+/// bf9e16f lists them and the tools layer reads them from the pinned Rex;
+/// every character outside ASCII is refused there too, and each capital,
+/// which it takes, it types as its small letter. Bare, each of these goes
+/// in as the text it is by `send`; led, it is refused (222; core.29).
 pub const SEND_KEY_REFUSES: [char; 19] = [
     '!', '"', '#', '$', '%', '&', '(', ')', '*', ':', '<', '?', '@', '^', '_', '{', '|', '}', '~',
 ];
+
+/// The characters whose `ctrl+` the pinned Rex's `send-key` types as
+/// nothing, and whose `ctrl+alt+` it types as `alt+` alone, as the tools
+/// layer reads them; so each is refused led by `ctrl+` (222, C.5's Rex
+/// relay row at blueprints bf9e16f; core.29).
+pub const CTRL_TYPES_NOTHING: [char; 12] =
+    ['i', 'm', '\'', '+', ',', '-', '.', ';', '=', '>', '[', '`'];
+
+/// The characters `send-key` takes that a shift leaves as they are, which
+/// its `alt+shift+` types as their `alt+`, as a person's would; every
+/// other's shift the pinned Rex drops after `alt+` (222, C.5's Rex relay
+/// row at blueprints bf9e16f).
+const SHIFT_KEEPS: [char; 2] = ['+', '>'];
 
 /// The rows a block's screen is read as where Rex's `size` gives none, as
 /// C.5's screen row reads it (136).
@@ -1485,32 +1507,56 @@ pub fn screen_rows(captured: &str, rows: usize) -> String {
 }
 
 /// What Rex 0.1.0-preview.14 is given for a key flume names (222, C.5's
-/// Rex relay row at blueprints e28b901).
+/// Rex relay row at blueprints bf9e16f).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RexKey {
     /// The key by `send-key`, by flume's name, which is Rex's own.
     Key(String),
-    /// A character `send-key` names none of, given bare: the text it is,
-    /// by `send`.
+    /// A character `send-key` does not type as itself, given bare: the
+    /// text it is, by `send`.
     Text(char),
-    /// Such a character given led, which nothing types: why, naming it.
+    /// A key `send-key` does not type as the person typed it, led, which
+    /// nothing types: why, naming it.
     Refused(String),
 }
 
-/// A key as Rex 0.1.0-preview.14 takes it: by `send-key` by flume's name
-/// for every key it names; the text it is, by `send`, for a character of
-/// [`SEND_KEY_REFUSES`] or one outside ASCII given bare; and that
-/// character refused, named, where led by `ctrl+`, `alt+` or `shift+`
-/// (222, C.5's Rex relay row at blueprints e28b901; core.29).
+/// A key as Rex 0.1.0-preview.14 takes it, by `send-key` by flume's name
+/// only where the pinned Rex was read to type it as the person typed it
+/// (222, C.5's Rex relay row at blueprints bf9e16f; core.29):
+///
+/// - a character of [`SEND_KEY_REFUSES`], one outside ASCII, or a
+///   capital, which `send-key` types as its small letter: bare, the text
+///   it is, by `send`; led by `ctrl+`, `alt+` or `shift+`, refused, named;
+/// - `ctrl+shift+` with any other character or `space`, which `send-key`
+///   types as nothing, or, after `alt+`, as `alt+` alone: refused, named;
+/// - `ctrl+` with a character of [`CTRL_TYPES_NOTHING`], which it types
+///   as nothing, or, after `alt+`, as `alt+` alone: refused, named;
+/// - `alt+shift+` with a character its shift changes, which it types as
+///   `alt+` alone: refused, named;
+/// - every other key, by `send-key`.
+///
+/// No escape sequence is built for a key refused.
 pub fn rex_key(key: &Key) -> RexKey {
+    let refused = || RexKey::Refused(format!("{key} is a key Rex 0.1.0-preview.14 cannot type"));
+    let led = key.ctrl || key.alt || key.shift;
     match key.name {
-        KeyName::Char(one) if !one.is_ascii() || SEND_KEY_REFUSES.contains(&one) => {
-            if key.ctrl || key.alt || key.shift {
-                RexKey::Refused(format!("{key} is a key Rex 0.1.0-preview.14 cannot type"))
+        KeyName::Char(one)
+            if !one.is_ascii() || one.is_ascii_uppercase() || SEND_KEY_REFUSES.contains(&one) =>
+        {
+            if led {
+                refused()
             } else {
                 RexKey::Text(one)
             }
         }
+        KeyName::Char(one)
+            if (key.ctrl && key.shift)
+                || (key.ctrl && CTRL_TYPES_NOTHING.contains(&one))
+                || (key.alt && key.shift && !SHIFT_KEEPS.contains(&one)) =>
+        {
+            refused()
+        }
+        KeyName::Space if key.ctrl && key.shift => refused(),
         _ => RexKey::Key(key.to_string()),
     }
 }
@@ -1519,7 +1565,8 @@ pub fn rex_key(key: &Key) -> RexKey {
 enum Run {
     /// Keys `send-key` takes, by one `send-key`.
     Keys(Vec<String>),
-    /// Bare characters `send-key` names none of, by `send` as text.
+    /// Bare characters `send-key` does not type as themselves, by `send`
+    /// as text.
     Text(String),
 }
 
@@ -1605,10 +1652,11 @@ impl Relay for RexRelay<'_> {
     }
 
     /// Text by `send -- <text>` in pieces; keys in order as runs, each run
-    /// of keys `send-key` takes by one `send-key <key>…`, each run of bare
-    /// characters it names none of by `send` as their text, and each such
-    /// character given led refused, named, nothing sent for it, ending the
-    /// run before it; the input then refused naming each key not typed.
+    /// of keys `send-key` types as typed by one `send-key <key>…`, each run
+    /// of bare characters it does not type as themselves by `send` as their
+    /// text, and each other key it does not type as typed refused, named,
+    /// nothing sent for it, ending the run before it, as [`rex_key`] says;
+    /// the input then refused naming each key not typed.
     /// Nothing is cleared, no Enter of the profile's own is pressed and no
     /// receipt is read (95, 107, 222, C.5's Rex relay row).
     fn typed(&mut self, input: &Typed) -> Result<(), String> {
@@ -2825,8 +2873,9 @@ mod tests {
     #[test]
     fn relay_types_a_character_send_key_refuses_as_text_and_refuses_it_led() {
         // The terminal-profiles scenario "Keys and characters among keys
+        // over a stand-in rex" and "Capitals and keys Rex types otherwise
         // over a stand-in rex" (222, C.5's Rex relay row at blueprints
-        // e28b901).
+        // bf9e16f).
         let (rex, scratch, log, socket) = over_relay("chars", ":");
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         let keys =
@@ -2848,50 +2897,81 @@ mod tests {
                 "send-key -s s1 -b block:b1 enter".into(),
             ]
         );
+        let cannot = |name: &str| {
+            assert_eq!(
+                rex_key(&name.parse().unwrap()),
+                RexKey::Refused(format!("{name} is a key Rex 0.1.0-preview.14 cannot type")),
+                "{name}"
+            );
+        };
+        let capitals = ('A'..='Z').collect::<Vec<_>>();
         for one in SEND_KEY_REFUSES
             .iter()
             .copied()
             .chain(['\u{e9}', '\u{1f600}'])
+            .chain(capitals)
         {
             let bare = Key::bare(KeyName::Char(one));
             assert_eq!(rex_key(&bare), RexKey::Text(one), "{one}");
             for lead in ["ctrl+", "alt+", "shift+", "ctrl+alt+shift+"] {
-                let led: Key = format!("{lead}{one}").parse().unwrap();
-                assert_eq!(
-                    rex_key(&led),
-                    RexKey::Refused(format!(
-                        "{lead}{one} is a key Rex 0.1.0-preview.14 cannot type"
-                    )),
-                );
+                cannot(&format!("{lead}{one}"));
             }
         }
+        let taken: Vec<char> = ('a'..='z')
+            .chain('0'..='9')
+            .chain("'+,-./;=>[\\]`".chars())
+            .collect();
+        for one in &taken {
+            for lead in ["ctrl+shift+", "ctrl+alt+shift+"] {
+                cannot(&format!("{lead}{one}"));
+            }
+            let ctrl = format!("ctrl+{one}");
+            let ctrl_alt = format!("ctrl+alt+{one}");
+            if CTRL_TYPES_NOTHING.contains(one) {
+                cannot(&ctrl);
+                cannot(&ctrl_alt);
+            } else {
+                assert_eq!(rex_key(&ctrl.parse().unwrap()), RexKey::Key(ctrl.clone()));
+                assert_eq!(
+                    rex_key(&ctrl_alt.parse().unwrap()),
+                    RexKey::Key(ctrl_alt.clone())
+                );
+            }
+            let alt_shift = format!("alt+shift+{one}");
+            if ['+', '>'].contains(one) {
+                assert_eq!(
+                    rex_key(&alt_shift.parse().unwrap()),
+                    RexKey::Key(alt_shift.clone())
+                );
+            } else {
+                cannot(&alt_shift);
+            }
+            for lead in ["", "alt+", "shift+"] {
+                let name = format!("{lead}{one}");
+                assert_eq!(rex_key(&name.parse().unwrap()), RexKey::Key(name.clone()));
+            }
+        }
+        cannot("ctrl+shift+space");
+        cannot("ctrl+alt+shift+space");
         for name in [
-            "a",
-            "Z",
-            "0",
-            "'",
-            "+",
-            ",",
-            "-",
-            ".",
-            "/",
-            ";",
-            "=",
-            ">",
-            "[",
-            "\\",
-            "]",
-            "`",
             "enter",
             "delete",
             "home",
             "pagedown",
             "f12",
             "space",
+            "ctrl+space",
+            "alt+shift+space",
             "ctrl+c",
+            "ctrl+o",
+            "ctrl+v",
+            "ctrl+/",
+            "ctrl+0",
             "shift+tab",
+            "ctrl+shift+tab",
+            "ctrl+alt+shift+delete",
+            "ctrl+shift+backspace",
             "alt+>",
-            "ctrl++",
         ] {
             assert_eq!(
                 rex_key(&name.parse().unwrap()),
@@ -2899,6 +2979,32 @@ mod tests {
                 "{name}"
             );
         }
+        fs::remove_file(&log).expect("the log cleared");
+        let refused = relay
+            .typed(&keys(&[
+                "A",
+                "b",
+                "ctrl+shift+a",
+                "alt+shift+a",
+                "ctrl+i",
+                "shift+A",
+                "enter",
+            ]))
+            .expect_err("the four led ones");
+        for name in ["ctrl+shift+a", "alt+shift+a", "ctrl+i", "shift+A"] {
+            assert!(
+                refused.contains(&format!("{name} is a key Rex 0.1.0-preview.14 cannot type")),
+                "{refused}"
+            );
+        }
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec![
+                "send -s s1 -b block:b1 -- A".to_string(),
+                "send-key -s s1 -b block:b1 b".into(),
+                "send-key -s s1 -b block:b1 enter".into(),
+            ]
+        );
         fs::remove_file(&log).expect("the log cleared");
         let refused = relay
             .typed(&keys(&["alt+!", "~", "shift+~"]))

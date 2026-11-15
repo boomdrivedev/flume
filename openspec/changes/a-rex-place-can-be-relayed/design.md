@@ -1,7 +1,7 @@
 # Design
 
 The statement is read at boomdrivedev/blueprints main cb114fd, with
-C.5's Rex relay row as e28b901 amends it, on the branch
+C.5's Rex relay row as e28b901 and bf9e16f amend it, on the branch
 design/rex-relay-types-what-it-can, which waits on the user's push. It
 also reads 107, 221 and 222, 222 as b54a9b4 amended it, and the Rex
 paragraphs and rows of C.5 the relay row leans on: the screen row's
@@ -90,25 +90,47 @@ types them in order. It takes every named key of flume's, `f1` to
 `alt+` and `shift+`. It refuses the nineteen other printable characters
 of ASCII, `!`, `"`, `#`, `$`, `%`, `&`, `(`, `)`, `*`, `:`, `<`, `?`,
 `@`, `^`, `_`, `{`, `|`, `}` and `~`, and every character outside
-ASCII, and types nothing of a call that holds one. The row, as e28b901
-amends it, says what the relay does with them:
+ASCII, and types nothing of a call that holds one.
 
-- **Bare**, such a character goes in as the text it is, by `send`. A
-  person typing it bare types exactly that text, and Rex types it by
-  `send`.
-- **Led** by `ctrl+`, `alt+` or `shift+`, it is refused, named as a key
-  Rex 0.1.0-preview.14 cannot type, and nothing is sent for it.
+The row, as bf9e16f amends it, holds the relay to one rule: a key goes
+to `send-key` only where, on the reading of the pinned Rex, it types as
+the person typed it. Any key that does not is a bare character sent as
+text, or refused where led. Rex 0.1.0-preview.14, read typing each key
+alone into a block running `cat` in raw mode, types every named key and
+`f1` to `f12` under every lead as a terminal's modifier forms give
+them. It does not type as typed:
 
-So a relay's keys go in order as runs. Each run of keys Rex takes is one
-`send-key`. Each run of bare characters it refuses is one `send` of
-their text, cut as any text is. Each led one is refused, ending the run
+- **each capital**, which it takes and types as its small letter;
+- **`ctrl+shift+` with a character or `space`**, which types nothing,
+  and after `alt+` types `alt+` alone;
+- **`ctrl+` with `i`, `m`, `'`, `+`, `,`, `-`, `.`, `;`, `=`, `>`, `[`
+  or the backtick**, which types nothing, and after `alt+` types `alt+`
+  alone;
+- **`alt+shift+` with a character its shift changes**, every one it
+  takes but `+` and `>`, which types `alt+` alone.
+
+So, as the row says:
+
+- **Bare**, one of the nineteen, a character outside ASCII or a capital
+  goes in as the text it is, by `send`. A person typing it bare types
+  exactly that text, and Rex types it by `send`.
+- **Led** by `ctrl+`, `alt+` or `shift+`, such a character is refused,
+  named as a key Rex 0.1.0-preview.14 cannot type, and nothing is sent
+  for it. So is each led key of the list above. 222 never lets a key go
+  silently untyped, and no escape sequence is built for one.
+
+So a relay's keys go in order as runs. Each run of keys Rex types as
+typed is one `send-key`. Each run of bare characters it does not is one
+`send` of their text, cut as any text is. Each refused key ends the run
 before it. The input is then given back as untyped, naming each key not
 typed, as herdr's relay gives back its six. The profile holds the
-nineteen as a list beside herdr's `CANNOT_TYPE`, and any character
-outside ASCII by its range. It does not learn them from Rex's refusal,
+nineteen as a list beside herdr's `CANNOT_TYPE`, the characters whose
+`ctrl+` types nothing as another, and any character outside ASCII and
+each capital by its range. It does not learn them from Rex's refusal,
 which would drop the whole call. The tools layer reads the pinned Rex
-taking every other name and still refusing each of these by
-`send-key`, so a Rex that comes to type them shows there.
+typing each of flume's keys alone, the relay's and Rex's own `send-key`
+alike, so a Rex that comes to type one of them as typed, or stops
+typing another so, shows there.
 
 ## 5. The calls (98; core.29)
 
@@ -143,8 +165,8 @@ again after each chunk it reads, as Claude Code draws its input box.
 Each line it takes and each `print` stay as they are, so the Rex tests
 that read the screen read what they did. It also gains `STAND_IN_CAT`,
 as herdr's stand-in has: once the test says go, it runs `cat` in raw
-mode into its log, so every key and character a relay types reaches it
-as bytes.
+mode, its extended input off, into its log, so every key and character
+a relay types reaches it as bytes.
 
 ## 8. Through the binary (221)
 
@@ -162,15 +184,24 @@ host's state directory holds `relay-marker` (107, 221, 222, C.5).
 
 Record 0070 gains an amendment of 2026-11-15, proposed: a Rex place is
 relayed. Its decision 7, "Rex refuses", is replaced by C.5's Rex relay
-row at e28b901, quoted. The amendment holds the pinned Rex's reading of
-its keys, and the design's ruling of 2026-11-15 on this change's
-construct stop-short, quoted. The ruling gave the two choices the row
-now makes, against the construct's recommendations:
+row at bf9e16f, quoted. The amendment holds the pinned Rex's reading of
+its keys, and the design's two rulings of 2026-11-15, quoted. The first,
+on this change's construct stop-short, gave the two choices the row
+makes at e28b901, against the construct's recommendations:
 
 - a bare character `send-key` refuses goes in as text by `send`, and
   only a led one is refused; not every such character refused, bare or
   led;
 - the block's last `rows` lines; not the whole capture.
+
+The second, on the code stage's found, gave the rule the row makes at
+bf9e16f, the code stage's recommendation with one more:
+
+- a capital joins the nineteen, bare sent as text and led refused; not
+  a bare capital sent to `send-key` as `shift+` its small letter;
+- `ctrl+shift+` and a letter, which types nothing, is refused too;
+- a key goes to `send-key` only where it types as the person typed it
+  on the reading of the pinned Rex, and no escape sequence is built.
 
 The construction agent's own choices are recorded with the path not
 taken:
@@ -186,25 +217,33 @@ taken:
 - `send`'s text is named `<typed>` for every send, not for the relay's
   alone;
 - the characters Rex refuses are a list the profile holds, not learned
-  from Rex's refusal of a whole call.
+  from Rex's refusal of a whole call;
+- a key types as typed where it types what a terminal's modifier forms
+  give it, as Rex gives every named key, `ctrl+0` typing `0` and
+  `shift+space` a space among them, and not only where its bytes
+  differ under each of its leads;
+- the stand-in's `cat` runs with no extended input, which macOS's raw
+  mode leaves on and which takes `ctrl+o` and `ctrl+v` for the
+  terminal, not with it on.
 
 core.57's own text stands, since it already says a key the terminal
 cannot type is refused, named, and the keys after it typed. Its details
 change:
 
 - "Not ruled out" no longer names Rex among the terminals that offer no
-  relay. It gains a bare character Rex's `send-key` refuses typed as
-  text by `send`.
+  relay. It gains a bare character Rex's `send-key` refuses or types
+  as another typed as text by `send`.
 - "Rules out" gains:
   - a Rex relay call with no bound or one of more than a second;
   - a Rex relay giving more than the block's last `rows` lines;
   - `send`'s text repeated in words of flume's;
-  - a character Rex 0.1.0-preview.14's `send-key` refuses sent to
-    `send-key`;
-  - such a character given led sent at all;
+  - a key Rex 0.1.0-preview.14's `send-key` refuses, or types
+    otherwise than the person typed it, sent to `send-key`;
+  - such a key given led sent at all, or an escape sequence built for
+    it;
   - the keys around a refused one dropped with it.
 
-The source list gains C.5's Rex relay row at e28b901. The site's rules
+The source list gains C.5's Rex relay row at bf9e16f. The site's rules
 page mirrors core.57 as written.
 
 ## 10. The suite

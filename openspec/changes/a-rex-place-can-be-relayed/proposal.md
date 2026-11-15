@@ -12,13 +12,16 @@ whose multiplexer is Rex from elsewhere.
 The statement now gives Rex a relay row: C.5's Rex relay row, on
 boomdrivedev/blueprints at 3d0200b, merged to main at cb114fd, from
 boomdrive-ops' reading of Rex 0.1.0-preview.14 on deneb on 2026-11-14.
-It is amended at e28b901, on the branch design/rex-relay-types-what-it-can,
-which waits on the user's push. The amendment follows this change's
-reading of the pinned Rex's keys on 2026-11-15 and the design's ruling
-on it. The block's screen is its last rows of `capture --format vt
---trim`, with its colours. Text goes by `send` and keys by `send-key`. A
-character `send-key` refuses goes in as text where bare, and is refused
-where led. Read beside 221 and 222, Rex's relay is built as herdr's is.
+It is amended at e28b901 and bf9e16f, on the branch
+design/rex-relay-types-what-it-can, which waits on the user's push. The
+amendments follow this change's readings of the pinned Rex's keys on
+2026-11-15 and the design's rulings on them. The block's screen is its
+last rows of `capture --format vt --trim`, with its colours. Text goes
+by `send` and keys by `send-key`, a key only where the pinned Rex types
+it as the person typed it. A character `send-key` refuses or types as
+another, as it types a capital as its small letter, goes in as text
+where bare, and is refused where led, as is every led key it types
+otherwise than typed. Read beside 221 and 222, Rex's relay is built as herdr's is.
 The queued unit is flume's batch 12, after
 flume-relays-a-places-terminal, on the bolt a-rex-place-can-be-relayed.
 
@@ -32,10 +35,15 @@ flume-relays-a-places-terminal, on the bolt a-rex-place-can-be-relayed.
   scrollback. It types text by `send -s <session> -b <block> --
   <text>`, in pieces of at most 60,000 bytes, and keys by `send-key -s
   <session> -b <block> <key>…`, by flume's names, which are Rex's own.
-  It clears nothing and reads no receipt. A character the pinned Rex's
-  `send-key` refuses goes in as text by `send` where it is bare. Where
-  it is led, it is refused, named, with nothing sent for it, and the
-  keys around it are typed (222). A block Rex holds no more, or a server
+  It clears nothing and reads no receipt. A key goes to `send-key` only
+  where the pinned Rex was read to type it as the person typed it. A
+  character its `send-key` refuses, or types as another, as it types a
+  capital as its small letter, goes in as text by `send` where it is
+  bare. Where it is led, it is refused, named, with nothing sent for
+  it, and the keys around it are typed (222). So is every led key the
+  pinned Rex types otherwise than typed: `ctrl+shift+` and a character,
+  `ctrl+` and a character whose control it types as nothing, and
+  `alt+shift+` and a character whose shift it drops. A block Rex holds no more, or a server
   not running, reads gone. Each call is bounded at one second, as
   herdr's are. A refusal's words name the typed text `<typed>`.
 - **No more refusal under Rex.** The Rex profile's refusal of relay and
