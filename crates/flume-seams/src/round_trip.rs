@@ -5134,6 +5134,39 @@ fn held_state_written_before_reads_its_old_deliveries() {
     );
 }
 
+/// The seam-contracts scenario "Input read and written back": a person's
+/// input as a relay's caller writes it, read as `Typed` and written back
+/// as it was; and a relay's read beside it (222).
+#[test]
+fn a_persons_typed_input() {
+    for written in [r#"{"text":"yes"}"#, r#"{"keys":["ctrl+c","enter"]}"#] {
+        let typed: Typed = serde_json::from_str(written).expect(written);
+        assert_eq!(serde_json::to_string(&typed).unwrap(), written);
+        round_trips(typed);
+    }
+    let keys: Typed = serde_json::from_str(r#"{"keys":["ctrl+c","enter"]}"#).unwrap();
+    assert_eq!(
+        keys,
+        Typed::Keys(vec![
+            Key {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                name: KeyName::Char('c'),
+            },
+            Key::bare(KeyName::Enter),
+        ])
+    );
+    assert!(serde_json::from_str::<Typed>(r#"{"keys":["hyper+x"]}"#).is_err());
+    round_trips(RelayScreen::Shows {
+        screen: "\u{1b}[1mready\u{1b}[0m".into(),
+    });
+    round_trips(RelayScreen::Gone);
+    round_trips(RelayScreen::Unread {
+        reason: "slow".into(),
+    });
+}
+
 #[test]
 fn a_held_state_with_its_trace_and_waits() {
     // A place's trace, its start's span, its start read asking a person
