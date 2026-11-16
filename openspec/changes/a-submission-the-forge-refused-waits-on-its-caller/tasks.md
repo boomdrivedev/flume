@@ -16,7 +16,7 @@ its spec names and cites the clauses its spec scenario cites.
 
 ## 2. The fake merge queue
 
-- [ ] 2.1 In `crates/flume-fakes/src/merge_queue.rs`, add `Plan::Held { words, recorded }`, `push_again` and `drop_held`, and have a submit of a branch whose newest submission is held withdraw it, as design section 7 says; the fake's doc says so (106, 112, 124; sluice 67). Add `the_fake_merge_queue_holds_a_landing_the_forge_refused` to `crates/flume-conformance/tests/seams.rs`, as the seam-fakes scenario "Held, pushed again, dropped and replaced" says. True when `devenv shell -- cargo test -p flume-conformance --test seams the_fake_merge_queue_holds_a_landing_the_forge_refused` passes.
+- [x] 2.1 In `crates/flume-fakes/src/merge_queue.rs`, add `Plan::Held { words, recorded }`, `push_again` and `drop_held`, and have a submit of a branch whose newest submission is held withdraw it, as design section 7 says; the fake's doc says so (106, 112, 124; sluice 67). Add `the_fake_merge_queue_holds_a_landing_the_forge_refused` to `crates/flume-conformance/tests/seams.rs`, as the seam-fakes scenario "Held, pushed again, dropped and replaced" says. True when `devenv shell -- cargo test -p flume-conformance --test seams the_fake_merge_queue_holds_a_landing_the_forge_refused` passes.
 
 ## 3. The sluice profile
 
