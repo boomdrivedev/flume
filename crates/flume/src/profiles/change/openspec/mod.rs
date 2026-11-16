@@ -1,10 +1,12 @@
-//! The change profile (C.3; design 8): a change read at a revision. A
-//! change of OpenSpec's spec-driven schema is read from its files with
-//! git alone; a change of any other schema through the pinned `openspec
+//! The change profile (C.3; design 8): a change read at a revision.
+//! Whether a standing change's planning is complete is OpenSpec's own
+//! reading of it, whatever its schema, through the pinned `openspec
 //! status --change <name> --json`, run in a checkout of the revision's
-//! `openspec/` made for the read and removed after it. Reading writes
-//! nothing to the place or the repository (86, 87). A change lies at
-//! `openspec/changes/<name>` in the place (127).
+//! `openspec/` made for the read and removed after it; whether it
+//! exists, its tasks and whether it is archived are read from its files
+//! with git alone. Reading writes nothing to the place or the repository
+//! (59, 86, 87). A change lies at `openspec/changes/<name>` in the place
+//! (127).
 
 use crate::git::Git;
 use flume_seams::{Change, ChangeFacts, ChangeRead, Revision, Task, TaskGroup};
@@ -17,8 +19,6 @@ pub const NAME: &str = "openspec";
 
 const CHANGES: &str = "openspec/changes";
 const ARCHIVE: &str = "openspec/changes/archive";
-const PROJECT: &str = "openspec/config.yaml";
-const SPEC_DRIVEN: &str = "spec-driven";
 
 /// The change profile over OpenSpec.
 #[derive(Clone, Copy, Debug, Default)]
@@ -41,28 +41,26 @@ fn read(repository: &str, revision: &Revision, name: &str) -> Result<ChangeFacts
     let git = Git::at(repository);
     git.commit(&revision.0)?;
     let directory = format!("{CHANGES}/{name}");
-    let files = git.files(&revision.0, &directory)?;
-    let exists = !files.is_empty();
+    let exists = !git.files(&revision.0, &directory)?.is_empty();
     let archived_as = archived(&git, revision, name)?;
-    let (read_from, files) = match (&archived_as, exists) {
-        (Some(archived), false) => (archived.clone(), git.files(&revision.0, archived)?),
-        _ => (directory, files),
+    let read_from = match (&archived_as, exists) {
+        (Some(archived), false) => archived.clone(),
+        _ => directory,
     };
     let (tasks, groups) = match git.file(&revision.0, &format!("{read_from}/tasks.md"))? {
         Some(text) => tasks(&text),
         None => (vec![], vec![]),
     };
-    let planning_complete = if !exists && archived_as.is_none() {
-        false
-    } else if schema(&git, revision, &read_from)? == SPEC_DRIVEN {
-        spec_driven_planned(&files)
-    } else if exists {
+    // A standing change's planning complete is OpenSpec's own reading,
+    // whatever its schema, and not planned where OpenSpec reads no such
+    // change (59, C.3). An archived change that no longer stands was
+    // planned before it was archived, and OpenSpec reads only a change
+    // that stands; a change neither standing nor archived is not planned,
+    // with no `openspec` run.
+    let planning_complete = if exists {
         status(&git, revision, name)?.unwrap_or(false)
     } else {
-        // An archived change of another schema: OpenSpec reads only a
-        // change that stands, and an archived change was planned before
-        // it was archived.
-        true
+        archived_as.is_some()
     };
     Ok(ChangeFacts {
         exists,
@@ -91,41 +89,6 @@ fn archived(git: &Git, revision: &Revision, name: &str) -> Result<Option<String>
         .collect();
     held.sort();
     Ok(held.pop().map(|entry| format!("{ARCHIVE}/{entry}")))
-}
-
-/// The schema the change names in its `.openspec.yaml`, else the
-/// project's in `openspec/config.yaml`, else OpenSpec's default.
-fn schema(git: &Git, revision: &Revision, directory: &str) -> Result<String, String> {
-    for file in [format!("{directory}/.openspec.yaml"), PROJECT.to_string()] {
-        if let Some(text) = git.file(&revision.0, &file)? {
-            if let Some(schema) = schema_of(&text) {
-                return Ok(schema);
-            }
-        }
-    }
-    Ok(SPEC_DRIVEN.into())
-}
-
-/// The top-level `schema:` of a YAML file.
-fn schema_of(text: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        let value = line.strip_prefix("schema:")?;
-        let value = value.split(" #").next().unwrap_or(value).trim();
-        let value = value.trim_matches(|c| c == '"' || c == '\'');
-        (!value.is_empty()).then(|| value.to_string())
-    })
-}
-
-/// Planning complete under the spec-driven schema: the artifacts it puts
-/// before the tasks, and the tasks, exist (C.3).
-fn spec_driven_planned(files: &[String]) -> bool {
-    let has = |file: &str| files.iter().any(|path| path == file);
-    has("proposal.md")
-        && has("design.md")
-        && has("tasks.md")
-        && files
-            .iter()
-            .any(|path| path.starts_with("specs/") && path.ends_with(".md"))
 }
 
 /// The `- [ ]` and `- [x]` lines of a tasks file, in order, each in
@@ -362,15 +325,5 @@ mod tests {
             heading("## 12.  Many  words "),
             Some(group("12", "Many  words"))
         );
-    }
-
-    #[test]
-    fn a_schema_is_read_from_its_line() {
-        assert_eq!(
-            schema_of("created: x\nschema: spec-driven # the default\n"),
-            Some("spec-driven".into())
-        );
-        assert_eq!(schema_of("schema: \"other\"\n"), Some("other".into()));
-        assert_eq!(schema_of("context: |\n  schema: x\n"), None);
     }
 }
