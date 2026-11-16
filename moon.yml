@@ -71,6 +71,14 @@ tasks:
     inputs: ['/openspec/changes/**/*', '!/openspec/changes/archive/**/*', '/openspec/specs/**/*', '/openspec/config.yaml', '/check-changes.sh', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
+  # check-changes.sh says what core.58 asks of each open change: its cases,
+  # each a scratch tree of its own holding the changes the-gate's scenarios
+  # name, check its exit and its words (record 0072, core.58).
+  changes-cases:
+    command: 'sh check-changes-cases.sh'
+    inputs: ['/check-changes.sh', '/check-changes-cases.sh', '/devenv.nix', '/devenv.lock']
+    tags: [check-fast]
+    options: {runFromWorkspaceRoot: true}
   # Every task of every project carries exactly one layer tag, or a comment
   # saying why the gate cannot run it (check-layers.sh).
   layers:
