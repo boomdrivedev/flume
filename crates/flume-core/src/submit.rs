@@ -4,7 +4,9 @@
 //! it. Its outcomes are collected at the settles that follow through the
 //! merge queue's inbox, or read from submit's answer where the merge
 //! queue decided the submission as it took it in and delivered the
-//! outcome with that answer, and acted on once each: a landing makes the
+//! outcome with that answer, and acted on once each, then confirmed to
+//! the merge queue so no later settle is given it, an outcome a settle
+//! could not act on left unconfirmed for the next: a landing makes the
 //! work over, a failure or a conflict starts the kind's fix round, as found
 //! work from its last stage does where the fix round is a stage before it,
 //! every going-back counted together up to the kind's bound. A withdrawal, and a landing before flume
@@ -18,6 +20,8 @@
 //! merge queue's record, which gives its outcome where the merge queue
 //! delivered it to the request rather than the place, acted on once
 //! whichever of the record and the inbox gives it first (124, 133, C.6).
+//! An outcome of a submission before the one flume last made decides
+//! nothing of the place, and is confirmed with no act (225).
 //! A branch the merge queue could not read is passed over, named in
 //! status, and decides nothing of the place unless it is the place's
 //! base, where its submission is: the record and the inbox of every other
@@ -38,7 +42,12 @@ use flume_seams::*;
 
 impl Engine {
     /// The submission's step for a live place; true when it changed
-    /// something.
+    /// something. Collecting the place's outcomes counts as a change only
+    /// where it moved the place's held state: an outcome the merge queue
+    /// hands again, one flume acted on before, changes nothing, so the
+    /// step goes on, and the settle reads the place's stage, its prompt's
+    /// receipt and its end, rather than spending its steps on the inbox
+    /// (40, 46, 74, 133).
     pub(crate) fn submission(&self, held: &HeldState) -> bool {
         let place = &held.place;
         if !place.kind.lands {
@@ -50,8 +59,12 @@ impl Engine {
         let id = &place.id;
         let ours = &held.submission;
         let base = base_place(&place.kind);
-        if ours.submits > 0 && !base && self.collect(id, queue.as_ref(), &place.place_ref()) {
-            return true;
+        if ours.submits > 0 && !base {
+            let version = || self.store.read(id).map(|read| read.version);
+            let before = version();
+            if self.collect(id, queue.as_ref(), &place.place_ref()) && version() != before {
+                return true;
+            }
         }
         match own_read(
             held,
@@ -115,12 +128,19 @@ impl Engine {
     }
 
     /// Collects the place's pending outcomes and acts on each once, in
-    /// the order given; an inbox that cannot be read is named in status
-    /// and acts on nothing, and a branch it passed over is named in status
-    /// and decides nothing of the outcomes it gave (133, 68). The outcome
-    /// of a request's entry, which the merge queue's record gives as well,
-    /// is acted on only where neither gave it since flume's submit (124,
-    /// C.6). True when it changed something.
+    /// the order given, confirming each to the merge queue once the
+    /// place's state holds what it decided, so a later settle is given
+    /// only what is new; an outcome of a submission before the one flume
+    /// last made decides nothing and is confirmed with no act, and one
+    /// whose act was not written is left unconfirmed for the next settle
+    /// (225). An inbox that cannot be read is named in status and acts on
+    /// nothing, and a branch it passed over is named in status and decides
+    /// nothing of the outcomes it gave (133, 68). The outcome of a
+    /// request's entry, which the merge queue's record gives as well, is
+    /// acted on only where neither gave it since flume's submit (124,
+    /// C.6). A confirm the merge queue could not take leaves the outcome
+    /// pending, given again by the next inbox and acted on there no more
+    /// than once (74). True when it changed something.
     fn collect(&self, id: &PlaceId, queue: &dyn MergeQueue, place: &PlaceRef) -> bool {
         match queue.inbox(place) {
             Inbox::CouldNotRead { reason } => {
@@ -143,13 +163,17 @@ impl Engine {
                         Step::Write(was.is_some() || moved)
                     })
                     .unwrap_or(false);
-                for outcome in outcomes {
-                    let acted = self.store.read(id).is_some_and(|read| {
-                        let ours = &read.state.submission;
-                        ours.request.is_some() && ours.verdict.is_some()
-                    });
-                    if !acted {
-                        self.outcome(id, outcome);
+                for handed in outcomes {
+                    let Some(read) = self.store.read(id) else {
+                        break;
+                    };
+                    let ours = &read.state.submission;
+                    let acted = ours.request.is_some() && ours.verdict.is_some();
+                    let held = !decides(ours, &handed.submission)
+                        || acted
+                        || self.outcome(id, handed.outcome);
+                    if let (true, Some(key)) = (held, &handed.key) {
+                        let _ = queue.confirm(place, key);
                     }
                     changed = true;
                 }
@@ -273,9 +297,12 @@ impl Engine {
             Submitted::Decided {
                 submission,
                 outcome,
+                key,
             } => {
                 self.submitted(id, Some(&submission), None, before);
-                self.outcome(id, outcome);
+                if let (true, Some(key)) = (self.outcome(id, outcome), key) {
+                    let _ = queue.confirm(&place.place_ref(), &key);
+                }
             }
             Submitted::Refused { reason } => {
                 self.submitted(id, None, None, before);
@@ -324,24 +351,27 @@ impl Engine {
 
     /// Acts on an outcome of the place's submission as [`Engine::verdict`]
     /// acts on its verdict, a conflict's at the base's revision the merge
-    /// queue tested against (112).
-    pub(crate) fn outcome(&self, id: &PlaceId, outcome: SubmissionOutcome) {
+    /// queue tested against (112); true once the place's state holds what
+    /// it decided, written now or before, so it may be confirmed (225).
+    pub(crate) fn outcome(&self, id: &PlaceId, outcome: SubmissionOutcome) -> bool {
         let onto = match &outcome {
             SubmissionOutcome::Conflict { base, .. } => Some(base.clone()),
             _ => None,
         };
-        self.verdict_at(id, verdict_of(outcome), onto);
+        self.verdict_at(id, verdict_of(outcome), onto)
     }
 
     /// Acts on a verdict, a conflict's at `onto` where it is known; a base
     /// place's failure or conflict, where its kind names a fix, launches
     /// that fix as a conflict with its base does, decided in the write that
-    /// holds the verdict, so it is acted on once (112, 203).
-    fn verdict_at(&self, id: &PlaceId, verdict: Verdict, onto: Option<Revision>) {
+    /// holds the verdict, so it is acted on once (112, 203). True once
+    /// the place's state holds it, written now or before; false where the
+    /// place is gone or its state could not be written.
+    fn verdict_at(&self, id: &PlaceId, verdict: Verdict, onto: Option<Revision>) -> bool {
         let limit = self.defaults.send_backs;
         let now = self.host.now();
         let Some(read) = self.store.read(id) else {
-            return;
+            return false;
         };
         let place_of = self.fix_place_of(&read.state);
         let back = self.update(id, |held| {
@@ -398,13 +428,17 @@ impl Engine {
                     .map(|(target, words)| After::Back(target, words)),
             )
         });
-        match back.flatten() {
+        let Some(back) = back else {
+            return false;
+        };
+        match back {
             Some(After::Back(target, words)) => {
                 self.start_stage(id, target, Some(words));
             }
             Some(After::Fix(number, found)) => self.launch_fix(id, number, Some(&found)),
             None => {}
         }
+        true
     }
 
     /// Found work from the kind's last stage starts the kind's fix round
@@ -510,6 +544,18 @@ pub(crate) fn own_read(held: &HeldState, across: ReadAcross) -> SubmissionRead {
     }
 }
 
+/// Whether an outcome of `submission`, by the merge queue's id, decides
+/// the place: the entry flume's submit last made, or, while the place's
+/// request is not yet read taken in, any entry but the one before it. An
+/// earlier submission's, acted on when it was given first, or an earlier
+/// place's of the same name, decides nothing now (99, 124, 225).
+fn decides(ours: &SubmissionHeld, submission: &str) -> bool {
+    match &ours.id {
+        Some(id) => id == submission,
+        None => ours.request.is_some() && ours.before.as_deref() != Some(submission),
+    }
+}
+
 /// Whether the entry read is the place's submission: the one flume's
 /// submit made, or one an intake took in from the request it opened
 /// (99, 124).
@@ -603,7 +649,9 @@ pub(crate) fn fix_round_of(held: &HeldState) -> Option<usize> {
 /// [`fix_round_of`] reads, and every stage from it not reached again,
 /// counted as one going-back against the last stage's bound, flume's
 /// default where it sets none; past the bound, the place waits on its
-/// caller with `cause` and the words (23, 112, 130, 131). The stage to
+/// caller with `cause` and the words (23, 112, 130, 131). The fix round
+/// lets go of its stage's count, so it counts only what is made after
+/// it, and leaves every later stage's as it stands (25). The stage to
 /// start and its words.
 fn fix_round(
     held: &mut HeldState,
@@ -629,6 +677,7 @@ fn fix_round(
     held.submission.send_backs += 1;
     held.submission.waiting = None;
     held.submission.due = false;
+    held.stages[target].counts = None;
     for stage in held.stages.iter_mut().skip(target) {
         stage.state = StageState::NotReached;
         stage.made_from = None;

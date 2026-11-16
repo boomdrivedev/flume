@@ -67,7 +67,7 @@ on_this_server() {
 
 # The popup's key, which herdr 0.9.5's manifest cannot declare: the
 # entry a host adds to herdr's configuration, as the README gives it and
-# tests/manifest.sh holds it (122, C.5).
+# tests/config.sh writes it (122, C.5).
 entry='[[keys.command]]
 key = "prefix+f"
 type = "plugin_action"

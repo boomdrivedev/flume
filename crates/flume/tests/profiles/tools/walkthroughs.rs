@@ -357,6 +357,19 @@ fn a_failed_submission_goes_back_to_code_and_lands_on_the_second() {
         stage(status, "code")["starts"] == 2 && !status["agent"].is_null()
     });
     assert_eq!(status["submission"]["send_backs"], 1, "{status}");
+    // The failure flume acted on is confirmed, so the next settle is
+    // handed nothing and sends nothing back again (225).
+    let first = walk.submissions();
+    assert_eq!(first.len(), 1, "{first:?}");
+    let delivery = walk.delivery(&first[0]["id"]);
+    assert_eq!(
+        delivery["state"], "done",
+        "the failure flume acted on, confirmed: {delivery}"
+    );
+    walk.settle(&place);
+    let status = walk.status(&place);
+    assert_eq!(status["submission"]["send_backs"], 1, "{status}");
+    assert_eq!(stage(&status, "code")["starts"], 2, "{status}");
     let prompt = walk.prompt(&place);
     // sluice's notice, as sluice words it, names the failure and where
     // to read why.
@@ -415,8 +428,8 @@ fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
     // 112, 133: the stand-in for sluice answers the first submission with
     // its entry's record, found in conflict as it was taken in, exiting
     // as a conflict does, as sluice answers a no-wait submit on a base
-    // that takes pull requests, and the profile confirms its delivery
-    // (sluice 51; sluice record 0102). The place goes back to code with
+    // that takes pull requests, and flume confirms its delivery once it
+    // has acted on it (225; sluice 51; sluice record 0102). The place goes back to code with
     // the files contested and the base's revision in its words, never
     // waiting on its caller as if refused, and lands on the second.
     let walk = Walk::new("walk-conflict-at-submit");
@@ -2949,6 +2962,28 @@ while IFS= read -r line; do
 done
 "#;
 
+/// A standing agent under herdr that confirms what it takes: as
+/// [`STANDING`], and, for each line it takes, `flume confirm <key>` run in
+/// its pane, the key the line's last word, naming no recipient and with
+/// `$FLUME_RECIPIENT` unset, the walk's `flume` at `$STANDING_FLUME` on
+/// the walk's `PATH`, `$STANDING_PATH`, what it answered kept in
+/// `$STANDING_CONFIRMED`, as an agent a person keeps confirms a notice it
+/// acted on (43, 132).
+const CONFIRMING: &str = r#"#!/bin/sh
+pane="$HERDR_PANE_ID"
+env -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_ENV \
+  "$HERDR_BIN_PATH" pane report-agent "$pane" --source flume-test --agent claude --state idle >/dev/null 2>&1
+ctrl_c=$(printf '\003')
+stty -isig 2>/dev/null
+while IFS= read -r line; do
+  line="${line##*"$ctrl_c"}"
+  printf '%s\n' "$line" >> "$STANDING_LOG"
+  env -u FLUME_RECIPIENT PATH="$STANDING_PATH" "$STANDING_FLUME" confirm "${line##* }" --json \
+    >> "$STANDING_CONFIRMED.part" 2>&1
+  mv "$STANDING_CONFIRMED.part" "$STANDING_CONFIRMED"
+done
+"#;
+
 /// The standing agent `name` started in the session `session` of the
 /// host's herdr, as a person keeps one: the session's server started
 /// headless, a workspace of its own whose shell reads no startup file and
@@ -2956,6 +2991,18 @@ done
 /// its pane, `herdr:<pane>@<socket>`, once herdr lists it, and the file it
 /// keeps what it takes in (132, C.5).
 fn standing_under_herdr(host: &UnderHerdr, session: &str, name: &str) -> (String, PathBuf) {
+    standing_under_herdr_running(host, session, name, STANDING, &[])
+}
+
+/// As [`standing_under_herdr`], the agent the script `script`, its
+/// workspace given each of `env` beside.
+fn standing_under_herdr_running(
+    host: &UnderHerdr,
+    session: &str,
+    name: &str,
+    script: &str,
+    env: &[(&str, String)],
+) -> (String, PathBuf) {
     let scratch = host.walk.repository.scratch.path("standing");
     std::fs::create_dir_all(scratch.join("bin")).expect("the standing agent's folder");
     let write = |path: PathBuf, text: &str| {
@@ -2964,28 +3011,23 @@ fn standing_under_herdr(host: &UnderHerdr, session: &str, name: &str) -> (String
             .expect("the script made executable");
         path
     };
-    write(scratch.join("bin/claude"), STANDING);
+    write(scratch.join("bin/claude"), script);
     let shell = write(scratch.join("shell"), "#!/bin/sh\nexec /bin/sh -i\n");
     let log = scratch.join("took");
     let socket = scratch_session(host, session, &scratch, &shell);
-    let made = host.herdr(
-        Some(&socket),
-        &[
-            "workspace",
-            "create",
-            "--cwd",
-            &scratch.to_string_lossy(),
-            "--env",
-            &format!("PATH={}:/usr/bin:/bin", scratch.join("bin").display()),
-            "--env",
-            &format!("SHELL={}", shell.display()),
-            "--env",
-            &format!("STANDING_LOG={}", log.display()),
-            "--label",
-            name,
-            "--no-focus",
-        ],
-    );
+    let mut variables = vec![
+        format!("PATH={}:/usr/bin:/bin", scratch.join("bin").display()),
+        format!("SHELL={}", shell.display()),
+        format!("STANDING_LOG={}", log.display()),
+    ];
+    variables.extend(env.iter().map(|(name, value)| format!("{name}={value}")));
+    let scratch_folder = scratch.to_string_lossy();
+    let mut create = vec!["workspace", "create", "--cwd", &scratch_folder];
+    for variable in &variables {
+        create.extend(["--env", variable.as_str()]);
+    }
+    create.extend(["--label", name, "--no-focus"]);
+    let made = host.herdr(Some(&socket), &create);
     let pane = made["root_pane"]["pane_id"]
         .as_str()
         .unwrap_or_else(|| panic!("herdr gave no pane in {made}"))
@@ -3174,6 +3216,111 @@ fn a_standing_agent_under_herdr_takes_a_fixs_end_through_the_binary() {
         Some(1),
         "a planner's place made by the wake"
     );
+}
+
+#[test]
+fn a_standing_agent_under_herdr_confirms_its_end_naming_no_recipient() {
+    // The role-waking spec's "A standing agent under herdr confirms
+    // through the binary" (43, 132, 193, C.5): acme's roles file gives
+    // `w/planner` the agent `w-planner` in the session `w` of the host's
+    // herdr; the agent confirms each notice it takes by `flume confirm
+    // <key>` in its pane, naming no recipient; the fix runs in `t` under
+    // the printed command, its submission held, and its code end is
+    // confirmed as `w/planner`, pending for no one.
+    let host = UnderHerdr::new(Walk::new("walk-standing-confirms"), "w");
+    host.walk.configure_whole(&format!(
+        "[host]\nmultiplexer = \"herdr\"\n\n[streams.w]\n\n[streams.t]\nmultiplexer = \"printed\"\npool = \"stand-in\"\n\n\
+         [pools.stand-in]\nstrategy = \"fill-first\"\naccounts = [{{ name = \"stand-in-1\", program = \"claude\", env = {{ CLAUDE_CONFIG_DIR = {:?}, CLAUDE_CODE_OAUTH_TOKEN = \"{STAND_IN_TOKEN}\" }} }}]\n",
+        host.walk.account().display().to_string()
+    ));
+    let config = host.walk.config_dir();
+    let roles = config.join("acme-roles.toml");
+    std::fs::write(
+        &roles,
+        "[roles.\"w/planner\"]\nagent = \"w-planner\"\nsession = \"w\"\n",
+    )
+    .expect("acme's roles file");
+    std::fs::create_dir_all(config.join("sources")).expect("the sources folder");
+    std::fs::write(
+        config.join("sources/acme.toml"),
+        format!(
+            "kinds_dir = {:?}\nroles = {:?}\n",
+            config.join("kinds/acme").display().to_string(),
+            roles.display().to_string()
+        ),
+    )
+    .expect("acme's source file");
+    let confirmed = host.walk.repository.scratch.path("confirmed");
+    let (_, took) = standing_under_herdr_running(
+        &host,
+        "w",
+        "w-planner",
+        CONFIRMING,
+        &[
+            ("STANDING_FLUME", env!("CARGO_BIN_EXE_flume").to_string()),
+            ("STANDING_PATH", host.walk.path().to_string()),
+            ("STANDING_CONFIRMED", confirmed.display().to_string()),
+        ],
+    );
+    let place = host.walk.launch(
+        "fix",
+        "one",
+        &[
+            "--brief",
+            "fix the parser",
+            "--stream",
+            "t",
+            "--recipient",
+            "w/planner",
+            "--hold-submission",
+        ],
+    );
+    host.walk
+        .agent(&place, commits("parser.rs", "fn parse() {}\n"));
+    host.walk
+        .until(&place, "its end confirmed by the standing agent", |_| {
+            confirmed.exists()
+        });
+    let took = std::fs::read_to_string(&took).expect("what the standing agent took");
+    let answered = std::fs::read_to_string(&confirmed).expect("what the confirm answered");
+    let answer: Value = serde_json::from_str(&answered)
+        .unwrap_or_else(|error| panic!("the confirm answered {answered}: {error}"));
+    assert_eq!(
+        answer["confirmed"]["recipient"], "w/planner",
+        "the confirm in w-planner's pane, after taking {took}: {answer}"
+    );
+    let everything = host.walk.everything();
+    let code = everything["places"][0]["ends"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|end| end["key"] == "stage/code/1/delivered")
+        .cloned()
+        .unwrap_or_else(|| panic!("status gives no code end: {everything}"));
+    assert_eq!(code["pending_for"], json!([]), "{code}");
+    assert!(
+        code["confirmed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|by| by["recipient"] == "w/planner"),
+        "{code}"
+    );
+    assert!(
+        took.ends_with(&format!(
+            "confirm: flume confirm --recipient w/planner {}\n",
+            code["delivery"].as_str().unwrap_or_default()
+        )),
+        "the notice the standing agent took: {took}"
+    );
+    let planner = everything["host"]["addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|address| address["address"] == "w/planner")
+        .cloned()
+        .unwrap_or_else(|| panic!("status gives no w/planner: {everything}"));
+    assert_eq!(planner["pending"], json!([]), "{planner}");
 }
 
 /// A kind of the walkthrough's own whose one stage is a conversation, and
@@ -4291,16 +4438,8 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
     // The place-relay scenario "Through the binary under herdr" (107, 221,
     // 222, C.5): a fix's code agent, the stand-in in a pane of flume's own
     // herdr session, its terminal echoing what is typed as Claude Code's
-    // input shows it; `flume relay fix--one` run as a child once the agent
-    // said it started gives a screen first, types `relay-marker` written
-    // to its input, gives a screen holding it, and, its input closed, ends
-    // by its caller with exit 0, its last line the relayed answer; the
-    // place's held state stands at its version, and no file of flume's
-    // state holds what was typed.
-    use std::io::{BufRead, BufReader, Write};
-    use std::process::Stdio;
-    use std::sync::mpsc::channel;
-    use std::time::{Duration, Instant};
+    // input shows it, relayed through the binary as
+    // `relayed_through_the_binary` says.
     let host = Walk::under_herdr("walk-relay");
     let echoing = host.signal("echoing");
     host.script(
@@ -4317,8 +4456,59 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
         "code's agent said it started and echoes",
         |status| stage(status, "code")["state"] == "begun" && echoing.exists(),
     );
+    relayed_through_the_binary(&host, &place);
+}
+
+#[test]
+fn a_person_reaches_a_fixs_agent_under_rex_through_a_relay() {
+    // The place-relay scenario "Through the binary under Rex" (107, 221,
+    // 222, C.5's Rex relay row): a fix launched on the stream `trial`,
+    // whose multiplexer is Rex, its code agent the stand-in in a block of
+    // trial's Rex server, its terminal echoing what is typed as Claude
+    // Code's input shows it, relayed through the binary as
+    // `relayed_through_the_binary` says.
+    let host = Walk::under_rex("walk-rex-relay");
+    let echoing = host.signal("echoing");
+    host.script(
+        "code",
+        1,
+        json!([
+            [{ "bash": format!("stty echo < /dev/tty && touch '{}'", echoing.display()) }],
+            [],
+        ]),
+    );
+    let place = host.walk.launch(
+        "fix",
+        "one",
+        &["--brief", "wait for a person", "--stream", "trial"],
+    );
+    let status = host.walk.until(
+        &place,
+        "code's agent said it started under Rex and echoes",
+        |status| stage(status, "code")["state"] == "begun" && echoing.exists(),
+    );
+    assert_eq!(
+        status["agent"]["terminal"],
+        json!({"profile": "rex", "from": "stream"}),
+        "{status}"
+    );
+    relayed_through_the_binary(&host.walk, &place);
+}
+
+/// The place's code agent, said started and echoing what is typed,
+/// relayed through the binary: `flume relay fix--one` run as a child
+/// gives a screen first, types `relay-marker` written to its input, gives
+/// a screen holding it, and, its input closed, ends by its caller with
+/// exit 0, its last line the relayed answer naming code's first start;
+/// the place's held state stands at its version, and no file of flume's
+/// state holds what was typed (107, 221, 222).
+fn relayed_through_the_binary(host: &Walk, place: &str) {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    use std::sync::mpsc::channel;
+    use std::time::{Duration, Instant};
     let store = StateDir::at(host.home().join("state/flume"));
-    let id = PlaceId::new(&place);
+    let id = PlaceId::new(place);
     let before = store.read(&id).expect("the place's held state").version;
 
     let mut relay = host
@@ -4370,7 +4560,7 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
         last,
         json!({"relayed": {
             "place": place,
-            "agent": format!("flume:{}:fix--one:code:1", repository_id(&host)),
+            "agent": format!("flume:{}:fix--one:code:1", repository_id(host)),
             "ended": "caller",
         }}),
         "the last line"

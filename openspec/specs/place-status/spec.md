@@ -66,12 +66,20 @@ when, or when and why it was let go and whether it is ended (56, 130,
 Status SHALL read every fact of a deliverable, a change or a submission
 from its seam when asked, at one head per place, SHALL keep none of
 them between asks, and SHALL start no agent, send nothing and write
-nothing (57, 58).
+nothing (57, 58). It SHALL read its places side by side, ask each
+repository's merge queue once for all the places of that repository it
+gives, and read each live agent once, for its place and its base's
+count (58, 99, 139, C.6).
 
 #### Scenario: A change ticked between two asks
 
 - **WHEN** status is asked, the fake change then ticks a task at a new head, and status is asked again
 - **THEN** the second answer gives the new count, and neither ask wrote to the fake store or called the fake terminal's open or send
+
+#### Scenario: Three places of one repository
+
+- **WHEN** status is asked of every place while three fixes of one repository each run a live agent, and a hand has submitted the second's branch
+- **THEN** the fake merge queue is read once, naming the three branches, the second place gives the hand's submission and the others none, and the fake terminal reads each agent's state once (58, 99, 139)
 
 ### Requirement: One answer from one core
 
@@ -519,14 +527,21 @@ host's `watch` (61, 122, 208; core.14).
 ### Requirement: Status gives who answers a place
 
 Status SHALL give each place's recipients, each with where it came
-from; the role a stop-short named; each end's key, and a stop-short's
-answer with who gave it and when; and a hold on the waiting move with
-its words, since when, its bound or that it lapsed (56, 130, 193).
+from, a recipient a standing agent's launch gave with that agent and
+the source that declares it; the role a stop-short named; each end's
+key, and a stop-short's answer with who gave it and when; and a hold on
+the waiting move with its words, since when, its bound or that it
+lapsed (56, 130, 132, 193).
 
 #### Scenario: Recipients and their sources
 
 - **WHEN** one place names `ops` at its launch and another took its stream's answerer `east/operator`
 - **THEN** status gives the first `ops` from the launch and the second `east/operator` from the stream's answerer, declared by the source `acme`, in the JSON form and the person's
+
+#### Scenario: A recipient from a standing agent's launch
+
+- **WHEN** a place was launched naming no recipient from the pane of `east-planner`, which `acme` gives `east/planner`
+- **THEN** status gives `east/planner` from the standing agent `east-planner`, declared by `acme`: in the JSON form `recipients_from` with `from` `standing`, `agent` and `source`, and in the person's as `east/planner, from the standing agent east-planner that launched it, declared by acme` (56, 132)
 
 #### Scenario: An answered question
 
