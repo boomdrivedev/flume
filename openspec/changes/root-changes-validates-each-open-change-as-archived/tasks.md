@@ -12,7 +12,7 @@ merge queue gives the place (core.51).
 
 ## 1. The tree's leftover change
 
-- [ ] 1.1 Cut `openspec/changes/a-hosts-full-status-read-takes-seconds/specs/merge-queue-profile/spec.md` as design section 5 says: the MODIFIED "Read, base and the place's data" in the words given there, with its scenarios but "Every branch asked at once", and an ADDED "One read for every branch asked at once" in the words given there, with that scenario; then archive the change, `devenv shell -- openspec archive a-hosts-full-status-read-takes-seconds --yes`, so the specs say what landed at #117 (core.19). True when `sluice exec <base> -- moon run root:specs` passes.
+- [x] 1.1 Cut `openspec/changes/a-hosts-full-status-read-takes-seconds/specs/merge-queue-profile/spec.md` as design section 5 says: the MODIFIED "Read, base and the place's data" in the words given there, with its scenarios but "Every branch asked at once", and an ADDED "One read for every branch asked at once" in the words given there, with that scenario; then archive the change, `devenv shell -- openspec archive a-hosts-full-status-read-takes-seconds --yes`, so the specs say what landed at #117 (core.19). True when `sluice exec <base> -- moon run root:specs` passes.
 
 ## 2. The record and the rule
 

@@ -2,20 +2,13 @@
 
 ### Requirement: Read, base and the place's data
 
-The profile SHALL read the newest entry of each branch asked from
-`sluice overview --json` and `sluice status <base> --all --json` for
-each base the overview names, run once for every branch of one
-repository asked at once; answer the base at `origin/<base>` after one fetch
-where `.config/sluice.toml` lands the base on a remote and the local
-base otherwise; and give the place profile the readiness, `sluice equip
-<base> --at <revision> --json` with the reading of its steps, the
-teardown (`sluice release`) and the base's ref, reading no `[tests]`
-key for a place (9, 11, 20, 99, 126, C.1, C.6, core.3).
-
-#### Scenario: Every branch asked at once
-
-- **WHEN** read-submission is asked at once of `fix/one` and `fix/two`, each submitted to main, and `fix/none`, submitted nowhere
-- **THEN** sluice runs `overview` once and `status main --all` once, and the answer gives `fix/one` and `fix/two` each its own entry and `fix/none` none (99, C.6)
+The profile SHALL read each branch's newest entry as "One read for every
+branch asked at once" says; answer the base at `origin/<base>` after one
+fetch where `.config/sluice.toml` lands the base on a remote and the
+local base otherwise; and give the place profile the readiness, `sluice
+equip <base> --at <revision> --json` with the reading of its steps, the
+teardown (`sluice release`) and the base's ref, reading no `[tests]` key
+for a place (9, 11, 20, 126, C.1, C.6, core.3).
 
 #### Scenario: A queue nothing drives
 
@@ -41,3 +34,17 @@ key for a place (9, 11, 20, 99, 126, C.1, C.6, core.3).
 
 - **WHEN** `sluice equip` answers a refusal with its `error.message`, or nothing the profile can read, or cannot be run
 - **THEN** the reading gives one failed step, `sluice equip`, with sluice's message, its errors, or why it could not run (12, C.6)
+
+## ADDED Requirements
+
+### Requirement: One read for every branch asked at once
+
+The profile SHALL read the newest entry of each branch asked from
+`sluice overview --json` and `sluice status <base> --all --json` for
+each base the overview names, run once for every branch of one
+repository asked at once (99, C.6).
+
+#### Scenario: Every branch asked at once
+
+- **WHEN** read-submission is asked at once of `fix/one` and `fix/two`, each submitted to main, and `fix/none`, submitted nowhere
+- **THEN** sluice runs `overview` once and `status main --all` once, and the answer gives `fix/one` and `fix/two` each its own entry and `fix/none` none (99, C.6)
