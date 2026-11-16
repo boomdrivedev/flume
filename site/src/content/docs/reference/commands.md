@@ -826,6 +826,13 @@ any of `ctrl+`, `alt+` and `shift+` in that order: `ctrl+c`,
 `shift+tab`, `ctrl+alt+x`. `escape` is read as `esc`. herdr 0.9.5
 cannot type `delete`, `insert`, `home`, `end`, `pageup` or `pagedown`:
 under it each is given back as untyped, named, and the keys around it
+still go in. Rex 0.1.0-preview.14 types as typed only some keys. Under
+it, these characters go in as text when bare, and are given back as
+untyped, named, when led: `!` `"` `#` `$` `%` `&` `(` `)` `*` `:` `<`
+`?` `@` `^` `_` `{` `|` `}` `~`, every character outside ASCII and each
+capital. So are `ctrl+shift+` and a character or `space`, `ctrl+` and
+one of `i` `m` `'` `+` `,` `-` `.` `;` `=` `>` `[` `` ` ``, and
+`alt+shift+` and a character its shift changes. The keys around them
 still go in.
 
 **A person's keys.** Nothing the agent holds typed is cleared first,
@@ -836,13 +843,14 @@ not a prompt of flume's. Text typed and not submitted stays typed.
 is no longer read, its answer ended by its caller, or once the agent's
 terminal goes, ended `gone`; either way it exits `0`. A place with no
 live agent, such as one whose stage waits for room, and a terminal that
-offers no relay, the printed command's and Rex's, are refused: the
+offers no relay, the printed command's, are refused: the
 refusal's JSON is the only line, and it exits `1`.
 
 **Nothing kept.** The relay settles nothing, writes nothing and keeps
-nothing it carried, and status and the list name no relay. Under herdr,
-the screen is read again at most every 250 milliseconds, and each read
-and each input is one call bounded at a second.
+nothing it carried, and status and the list name no relay. Under herdr
+and Rex alike, the screen is read again at most every 250 milliseconds,
+each read and each input bounded at a second, and a screen is the
+agent's visible screen, never its scrollback.
 
 ```console
 $ printf '%s\n' '{"text":"yes"}' '{"keys":["enter"]}' | flume relay fix--the-parser-reads-tabs
