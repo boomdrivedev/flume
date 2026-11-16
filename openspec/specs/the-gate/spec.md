@@ -46,24 +46,6 @@ not the build `.prototools` pins (core.22).
 - **WHEN** `root:toolchain` runs with a rustc on PATH other than the pinned one first
 - **THEN** it fails naming the tool and both versions
 
-### Requirement: The root project checks what spans the tree
-
-The root project SHALL hold one check-fast task per check that spans
-the tree: `format`, `toolchain`, `adrs` (no two records share a number),
-`specs` and `changes` (`openspec validate --strict` of the specs and the
-open changes) and `marketplace` (the marketplace manifest and each
-plugin it lists) (core.21).
-
-#### Scenario: Two records with one number
-
-- **WHEN** `root:adrs` runs over `docs/adr` holding two records numbered 0015
-- **THEN** it fails naming both
-
-#### Scenario: An open change that does not validate
-
-- **WHEN** `root:changes` runs over an open change whose requirement has no scenario
-- **THEN** it fails naming the change and the requirement
-
 ### Requirement: Three layers, the gate and CI
 
 The checks SHALL be tagged `check-fast`, `check-tools` or `check-live`;
@@ -183,3 +165,17 @@ commit to one convco (core.22).
 
 - **WHEN** `nix:test` reads `.github/workflows/ci.yml`
 - **THEN** the job `conventional` reads the nixpkgs `devenv.lock` pins and runs `convco check --ignore-reverts` from it, and names no `nixpkgs#convco` of the registry
+
+### Requirement: The root project checks what spans the tree and reads no Markdown
+
+The root project SHALL hold one check-fast task per check that spans
+the tree: `format`, `toolchain`, `specs` and `changes` (`openspec
+validate --strict` of the specs and the open changes) and `marketplace`
+(the marketplace manifest and each plugin it lists); no task SHALL read
+a Markdown file for its words or its form, a record's number among them
+(core.21; record 0071).
+
+#### Scenario: An open change that does not validate
+
+- **WHEN** `root:changes` runs over an open change whose requirement has no scenario
+- **THEN** it fails naming the change and the requirement

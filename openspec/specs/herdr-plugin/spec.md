@@ -64,20 +64,6 @@ it (56, 60, 122; S14).
 - **WHEN** the popup stays open for ten minutes with no key, then the retry key is pressed on a place
 - **THEN** the stand-in flume records one `flume status --json` at the opening, one `flume retry`, and one `flume status --json` after it, and nothing else
 
-### Requirement: The popup's key is the host's entry
-
-The manifest SHALL declare no key, since herdr 0.9.5's action has none, and SHALL describe the entry that binds one; the README SHALL give that `[[keys.command]]` entry apart from the sidebar's rows, the same as the startup's words; and the entry and the rows SHALL pass the pinned herdr's `config check` (C.5; core.29).
-
-#### Scenario: The manifest and the README
-
-- **WHEN** the manifest's check reads `herdr-plugin.toml` and the README
-- **THEN** the `places` action holds a description naming `plugin_action` and `agentplot.flume.places`, and the README's entry is the one `lib/common.sh` gives
-
-#### Scenario: The entry against the pinned herdr
-
-- **WHEN** `herdr config check` of the pinned herdr reads a scratch configuration holding the README's entry and rows
-- **THEN** it answers `config: ok`
-
 ### Requirement: The plugin keeps no process and runs no settle
 
 The plugin SHALL keep no process between herdr's startup and a
@@ -112,14 +98,28 @@ tell no person (72, C.5).
 #### Scenario: A configuration with neither
 
 - **WHEN** the startup runs with `HERDR_CONFIG_PATH` naming a scratch file that binds no key to `agentplot.flume.places` and names no `$flume`
-- **THEN** `setup.json` holds two entries, one giving the README's `[[keys.command]]` entry and naming the file, the plugin's log holds them, and the stand-in herdr recorded no notification
+- **THEN** `setup.json` holds two entries, one giving the `[[keys.command]]` entry `lib/common.sh` gives and naming the file, the plugin's log holds them, and the stand-in herdr recorded no notification
 
 #### Scenario: A configuration with both
 
-- **WHEN** the scratch file holds the README's entry and its rows, and the startup runs
+- **WHEN** the scratch file holds the entry `lib/common.sh` gives and the sidebar's rows, and the startup runs
 - **THEN** `setup.json` holds an empty array
 
 #### Scenario: No configuration file
 
 - **WHEN** `HERDR_CONFIG_PATH` names no file
 - **THEN** `setup.json` holds both entries, naming that path
+
+### Requirement: The popup's key is the entry lib/common.sh gives
+
+The manifest SHALL declare no key, since herdr 0.9.5's action has none, and SHALL describe the entry that binds one; the `[[keys.command]]` entry `lib/common.sh` gives, the same as the startup's words, and the sidebar's rows SHALL pass the pinned herdr's `config check`. The README gives a person that entry apart from the rows, kept by its writers, and no check SHALL read it (C.5; core.21, core.29; record 0071).
+
+#### Scenario: The manifest
+
+- **WHEN** the manifest's check reads `herdr-plugin.toml`
+- **THEN** the `places` action holds a description naming `plugin_action` and `agentplot.flume.places`
+
+#### Scenario: The entry against the pinned herdr
+
+- **WHEN** `herdr config check` of the pinned herdr reads a scratch configuration holding the entry `lib/common.sh` gives and the sidebar's rows
+- **THEN** it answers `config: ok`

@@ -19,4 +19,4 @@ boomdrivedev/blueprints `design/principles.md` 16 at `b2e8c85`.
 ## 3. The rule and the spec
 
 - [x] 3.1 core.21 sets Markdown aside, citing principle 16 and record 0071, mirrored on the site's rules page. Verify with `sluice exec bolt/flumes-checks-read-no-markdown -- moon run root:format`.
-- [ ] 3.2 Validate with `openspec validate flumes-tasks-read-no-markdown --strict`, then archive with `openspec archive flumes-tasks-read-no-markdown --yes`.
+- [x] 3.2 Validate with `openspec validate flumes-tasks-read-no-markdown --strict`, then archive with `openspec archive flumes-tasks-read-no-markdown --yes`.
