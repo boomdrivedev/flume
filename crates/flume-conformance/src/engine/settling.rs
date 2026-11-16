@@ -172,6 +172,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["203", "112", "99"],
             run: a_base_places_held_submission,
         },
+        Scenario {
+            name: "submit: a fix whose landing is held stalls once five minutes pass under no hold's words, its recipient delivered once that it stalls on a retry of code",
+            cites: &["130", "112", "43"],
+            run: a_held_landing_stalls,
+        },
     ]
 }
 
@@ -1663,5 +1668,62 @@ fn a_base_places_held_submission(_: &()) -> Outcome {
         "a fix's agent opened"
     );
     ensure_eq!(world.queue.log.count("forecast"), 0, "forecasts");
+    Ok(())
+}
+
+fn a_held_landing_stalls(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session("ops", AgentState::Waiting);
+    world.queue.plan_submits(vec![Plan::Held {
+        words: FORGE.into(),
+        recorded: true,
+    }]);
+    let mut fix = launch("fix", "one", Some("x"));
+    fix.recipients = vec!["ops".into()];
+    launched(&world.engine.launch(&fix))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    world.queue.moves_on_its_own();
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    world.queue.run_round(REPOSITORY, "main");
+    world.host.advance(60);
+    let since = world.host.now();
+    world.settle(&id);
+    world.host.advance(STALL_AFTER);
+    world.settle(&id);
+    for _ in 0..2 {
+        world.host.advance(30);
+        world.settle(&id);
+    }
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure!(
+        held.waiting.as_ref().is_some_and(|waiting| waiting.stalled),
+        "the place is not stalled: {:?}",
+        held.waiting
+    );
+    let stalls: Vec<EndOf> = held
+        .ends
+        .into_iter()
+        .map(|end| end.of)
+        .filter(|of| matches!(of, EndOf::Stall { .. }))
+        .collect();
+    ensure!(
+        matches!(
+            stalls.as_slice(),
+            [EndOf::Stall { since: at, waiting, .. }] if *at == since && waiting == "a retry of code"
+        ),
+        "the stalls recorded: {stalls:?}"
+    );
+    let notices: Vec<String> = world
+        .terminal
+        .notices("ops")
+        .into_iter()
+        .filter(|text| text.contains(" stalled: "))
+        .collect();
+    ensure!(
+        matches!(notices.as_slice(), [one] if one.contains("a retry of code")),
+        "the stall notices to ops: {notices:?}"
+    );
     Ok(())
 }

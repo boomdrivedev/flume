@@ -430,6 +430,14 @@ mod tests {
         held.submission.waiting = Some("the submission failed: test failed".into());
         assert_eq!(line(&held, 0).short, "submission refused");
         assert_eq!(line(&held, 1).short, "1 on its branch · open");
+        // 112, 130: a landing the forge refused, held open by the merge
+        // queue, reads as its own state (core.58).
+        let mut refused = spring();
+        refused.submission.submits = 1;
+        refused.submission.waiting =
+            Some("the forge refused the submission's landing: push declined".into());
+        refused.submission.landing_refused = true;
+        assert_eq!(line(&refused, 0).short, "landing refused");
         held.phase = Phase::Over {
             over: Over::Landed {
                 commit: Revision::new("c9"),
