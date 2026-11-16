@@ -70,16 +70,21 @@ flume.
 
 Each settle after the submission:
 
-1. runs `sluice inbox --json` in the place, which gives each outcome
-   sluice holds for the place's worktree once;
+1. runs `sluice inbox --confirm --json` in the place, which gives each
+   outcome sluice owes the place's worktree and confirms it, so no later
+   inbox gives it again;
 2. runs one round of the base's queue, `sluice step <base>`, which does
    nothing where a `sluice run` on the host drives the queue.
 
+sluice keeps an outcome owed until its reader confirms it from release
+0.79.0 on, so flume needs sluice 0.79.0 or later.
+
 sluice can decide a submission as it takes it in, as it can on a base
 that takes pull requests when the work conflicts with the base. Its
-answer to the submit is then the entry's record, and sluice counts the
-outcome delivered, so no inbox gives it. flume reads that outcome from
-the answer in the same settle, as it reads one from the inbox. A
+answer to the submit is then the entry's record. flume reads that
+outcome from the answer in the same settle, as it reads one from the
+inbox, and confirms it with `sluice confirm` by the key the answer
+gives, so no later inbox gives it. A
 conflict there starts the fix round as any other does, never a wait as
 if sluice refused the submission.
 

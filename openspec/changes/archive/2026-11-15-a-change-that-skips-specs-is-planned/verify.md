@@ -81,10 +81,10 @@ Every task is ticked, and each holds:
   writing nothing and the change of another schema passed under the new
   read. `write_change` needed no change: the pinned `openspec` reads
   its scratch changes as their facts say.
-- 2.1: record 0070, proposed, is in `docs/adr/` with the options,
+- 2.1: record 0071, proposed, is in `docs/adr/` with the options,
   consequences and decision makers design section 6 names, and core.15's
   details rule out a planning complete counted from a change's files,
-  citing C.3 and record 0070. `root:adrs` passed.
+  citing C.3 and record 0071. `root:adrs` passed.
 - 3.1: `openspec/specs/change-profile/spec.md` is the base's, and the
   delta splits the requirement in two as the task says. The trial
   archive above passed 49 of 49, and `root:changes` passed.
@@ -105,7 +105,7 @@ Every task is ticked, and each holds:
   `design/flume-a-change-that-skips-specs-is-planned` at 4de08fb. It must
   land on blueprints' main for the statement to say what this change
   cites.
-- Record 0070 stays proposed until the operator's yes.
+- Record 0071 stays proposed until the operator's yes.
 
 ## Outcome
 

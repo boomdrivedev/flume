@@ -8,6 +8,7 @@ mod launch;
 pub mod mcp;
 pub mod place;
 mod print;
+pub mod relay;
 
 use clap::{Args, Parser, Subcommand};
 use flume_core::{Answer, Answering, Engine, KindsLock, LockOf, Retry, WaitFor};
@@ -321,6 +322,28 @@ enum Command {
     /// flume's status over MCP on standard input and output, one tool,
     /// `status`, settling nothing (57, 60).
     Mcp,
+    /// Relay the place's live agent's terminal for a program that carries
+    /// a person's screen and keys, in JSON lines both ways (221, 222).
+    ///
+    /// It writes what the terminal shows of the agent to standard output
+    /// as it changes, one JSON line each, {"screen": "<what it shows>"},
+    /// with {"unread": "<why>"} where a read is not answered and
+    /// {"untyped": "<why>"} for an input not typed, and last its answer,
+    /// which `--json` gives as for any command. It reads standard input
+    /// one JSON line at a time and types each as the person typed it,
+    /// nothing cleared first: {"text": "<text>"}, or {"keys": ["<key>",
+    /// …]} by flume's key names: enter, tab, esc, backspace, delete,
+    /// insert, home, end, pageup, pagedown, up, down, left, right, space,
+    /// f1 to f12 or one printable character, each led by any of ctrl+,
+    /// alt+ and shift+ in that order. An empty line is passed over. It
+    /// ends when its input closes, or its output is no longer read, or
+    /// once the agent's terminal goes; a place with no live agent, and a
+    /// terminal that offers no relay, are refused. It settles, writes and
+    /// keeps nothing.
+    Relay {
+        /// A location, or `<kind>--<name>` in the repository.
+        place: String,
+    },
     /// The kinds a lock records, by which a kind from outside flume and
     /// the repository runs (155, C.2).
     Kinds {
@@ -470,13 +493,19 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// Prints the words and gives the exit status.
+    /// Prints the words, then sends what the command's telemetry holds,
+    /// within its bound, and gives the exit status: the answer is never
+    /// held for a signal (216; core.13).
     pub fn exit(self) -> ExitCode {
+        use std::io::Write;
         if self.usage {
             eprintln!("{}", self.text.trim_end());
         } else if !self.text.is_empty() {
             println!("{}", self.text);
         }
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        crate::telemetry::finish();
         ExitCode::from(self.code)
     }
 }
@@ -536,6 +565,20 @@ where
                     usage: false,
                     code: 1,
                 },
+            };
+        }
+        Command::Relay { place } => {
+            let code = relay::serve(
+                place,
+                std::io::stdin(),
+                std::io::stdout().lock(),
+                build,
+                cli.repository.as_deref(),
+            );
+            return Outcome {
+                text: String::new(),
+                usage: false,
+                code,
             };
         }
         Command::Mcp => {
@@ -759,7 +802,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             })
         }
         Command::Open { session } => build()?.open_session(session.as_deref()),
-        Command::Hook { .. } | Command::Ack { .. } | Command::Mcp => {
+        Command::Hook { .. } | Command::Ack { .. } | Command::Mcp | Command::Relay { .. } => {
             unreachable!("answered before the core's acts")
         }
     })

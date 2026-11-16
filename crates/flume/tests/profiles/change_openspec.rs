@@ -11,7 +11,42 @@ use flume_conformance::scenario::pass_all;
 use flume_conformance::seams::change::{self, ChangeHarness};
 use flume_seams::*;
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::process::Command;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+/// Held by every test here that reads a change through the profile,
+/// shared among them and alone by the one that looks for a checkout left:
+/// every read makes a checkout of its own in the temporary directory, so
+/// one read beside another would be counted as left (59).
+static READS: RwLock<()> = RwLock::new(());
+
+/// A read's share of `READS`, taken beside the other reads.
+fn reading() -> RwLockReadGuard<'static, ()> {
+    READS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// `READS` alone, no other read of this process running beside it.
+fn alone() -> RwLockWriteGuard<'static, ()> {
+    READS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// This process's checkouts standing in the temporary directory, each by
+/// its name: another process's, a run of flume's or another test
+/// binary's, is no read of this one's.
+fn checkouts() -> BTreeSet<String> {
+    let prefix = format!("flume-openspec-{}-", std::process::id());
+    std::fs::read_dir(std::env::temp_dir())
+        .expect("the temporary directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(&prefix))
+        .collect()
+}
 
 /// Writes the change `name` so that it stands as `facts` say: its folder
 /// where it exists, its archive's where it is archived, the artifacts
@@ -89,6 +124,7 @@ impl ChangeHarness for Harness {
 
 #[test]
 fn the_change_profile_passes_the_change_scenarios() {
+    let _reading = reading();
     pass_all("change", &change::scenarios(), Harness::default);
 }
 
@@ -99,6 +135,7 @@ fn the_change_lies_at_its_folder() {
 
 #[test]
 fn reading_writes_nothing() {
+    let _reading = reading();
     let repository = Repository::new("untouched");
     write_change(
         &repository,
@@ -173,6 +210,7 @@ fn openspec_reads(dir: &std::path::Path, name: &str) -> (bool, bool, Vec<(String
 
 #[test]
 fn the_file_reading_agrees_with_openspec_at_five_revisions() {
+    let _reading = reading();
     let repository = Repository::new("agreement");
     repository.write("openspec/config.yaml", "schema: spec-driven\n");
     repository.write("openspec/specs/.keep", "");
@@ -243,6 +281,7 @@ fn the_file_reading_agrees_with_openspec_at_five_revisions() {
 
 #[test]
 fn a_change_of_another_schema_is_read_through_openspec() {
+    let _alone = alone();
     let repository = Repository::new("other-schema");
     let git = Git::at(&repository.name());
     let folder = "openspec/changes/plan";
@@ -251,16 +290,7 @@ fn a_change_of_another_schema_is_read_through_openspec() {
     let revision = Revision::new(repository.commit("created"));
     assert_eq!(status(&git, &revision, "plan"), Ok(Some(false)));
     assert_eq!(status(&git, &revision, "absent"), Ok(None));
-    let before = std::fs::read_dir(std::env::temp_dir())
-        .expect("the temporary directory")
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("flume-openspec-")
-        })
-        .count();
+    let before = checkouts();
     repository.write(
         &format!("{folder}/.openspec.yaml"),
         "schema: a-schema-of-its-own\n",
@@ -274,21 +304,16 @@ fn a_change_of_another_schema_is_read_through_openspec() {
             "a change of another schema not read through openspec: {reason}"
         ),
     }
-    let after = std::fs::read_dir(std::env::temp_dir())
-        .expect("the temporary directory")
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("flume-openspec-")
-        })
-        .count();
-    assert!(after <= before, "a checkout for the read was left");
+    let left = checkouts().difference(&before).cloned().collect::<Vec<_>>();
+    assert!(
+        left.is_empty(),
+        "a checkout for the read was left: {left:?}"
+    );
 }
 
 #[test]
 fn a_change_that_skips_specs_is_planned_as_openspec_reads_it() {
+    let _reading = reading();
     let repository = Repository::new("skips-specs");
     repository.write("openspec/config.yaml", "schema: spec-driven\n");
     repository.write("openspec/specs/.keep", "");

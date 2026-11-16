@@ -30,6 +30,7 @@ mod open_sessions;
 mod own;
 mod prompt;
 mod reading;
+mod relay;
 mod room;
 mod settings;
 mod settle;
@@ -39,6 +40,7 @@ mod start;
 mod start_record;
 mod status;
 mod submit;
+mod telemetry;
 mod terminals;
 mod tidy;
 mod uncarried;
@@ -57,6 +59,7 @@ pub use kinds_lock::{KindsLock, LockOf};
 pub use line::NOT_ITS_AGENT;
 pub use own::shaped_as_credential;
 pub use prompt::{group_name, way_to_stop_short, ONE_WAY_TO_ASK};
+pub use relay::{RelayEnded, RelayLine, RelayLink, RelayNext};
 pub use start_record::{
     variable_digest, AGENT_VARIABLE, PLACE_VARIABLE, STAGE_VARIABLE, TERMINALS_OWN,
 };
@@ -64,7 +67,7 @@ pub use wait::{session_words, WaitFor, WAIT_POLL};
 
 use flume_seams::{
     Agent, Binding, Change, History, Host, MergeQueue, Place, PlaceRecord, Resolver, Seconds,
-    Settings, Store, Terminal,
+    Settings, Store, Telemetry, Terminal,
 };
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -103,8 +106,9 @@ pub struct Defaults {
 }
 
 /// The engine, built for one command over a resolver from profile names
-/// to seams, the host's terminal and store, git's history and the host
-/// (design 2, 3, 10).
+/// to seams, the host's terminal and store, git's history and the host,
+/// and the telemetry it hands its signals to, which sends nothing where
+/// it is given none (design 2, 3, 10; 216).
 pub struct Engine {
     resolver: Arc<dyn Resolver>,
     terminal: Arc<dyn Terminal>,
@@ -112,6 +116,7 @@ pub struct Engine {
     history: Arc<dyn History>,
     host: Arc<dyn Host>,
     defaults: Defaults,
+    telemetry: Arc<dyn Telemetry>,
     /// The repositories and bases whose queue this command drove a round
     /// of, each at most once (125).
     stepped: Mutex<BTreeSet<(String, String)>>,
@@ -203,8 +208,15 @@ impl Engine {
             history,
             host,
             defaults,
+            telemetry: Arc::new(flume_seams::telemetry::Off),
             stepped: Mutex::default(),
         }
+    }
+
+    /// The engine handing its signals to `telemetry` (216, 217; design
+    /// 6).
+    pub fn with_telemetry(self, telemetry: Arc<dyn Telemetry>) -> Engine {
+        Engine { telemetry, ..self }
     }
 
     pub fn defaults(&self) -> &Defaults {
