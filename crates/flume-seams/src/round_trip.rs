@@ -315,6 +315,12 @@ fn held() -> HeldState {
                 }),
             }),
             made_from: Some(1),
+            counts: Some(Counted {
+                start: 1,
+                at: 3,
+                head: Revision::new("c1"),
+                made_from: 1,
+            }),
             start: Some(StartHeld {
                 n: 2,
                 started_at: 5,
@@ -425,6 +431,12 @@ fn held() -> HeldState {
                     passed: Some("--own /state/places/x/agent/own.json".into()),
                 }),
                 answered: 0,
+                counts: Some(Counted {
+                    start: 1,
+                    at: 3,
+                    head: Revision::new("c1"),
+                    made_from: 1,
+                }),
                 span: None,
                 asking_since: None,
             }),
@@ -918,14 +930,19 @@ fn a_held_state_with_a_stream_an_account_and_a_record() {
 
 #[test]
 fn a_held_state_with_where_its_recipients_came_from() {
-    // Each of the four a launch takes its recipients from reads back
-    // unchanged, the answerer with its source; a state written before
-    // reads with none, and writes none (7, 193).
+    // Each of the five a launch takes its recipients from reads back
+    // unchanged, the answerer with its source and the standing agent
+    // with its name and source; a state written before reads with none,
+    // and writes none (7, 132, 193).
     for from in [
         RecipientsFrom::Launch,
         RecipientsFrom::Environment,
         RecipientsFrom::Session,
         RecipientsFrom::Answerer {
+            source: "acme".into(),
+        },
+        RecipientsFrom::Standing {
+            agent: "east-planner".into(),
             source: "acme".into(),
         },
     ] {
@@ -941,6 +958,18 @@ fn a_held_state_with_where_its_recipients_came_from() {
     let json = serde_json::to_value(&state).expect("held state as JSON");
     assert_eq!(json["place"]["recipients_from"]["from"], "answerer");
     assert_eq!(json["place"]["recipients_from"]["source"], "acme");
+    let mut standing = held();
+    standing.place.recipients_from = Some(RecipientsFrom::Standing {
+        agent: "east-planner".into(),
+        source: "acme".into(),
+    });
+    let standing = serde_json::to_value(&standing).expect("held state as JSON");
+    assert_eq!(standing["place"]["recipients_from"]["from"], "standing");
+    assert_eq!(
+        standing["place"]["recipients_from"]["agent"],
+        "east-planner"
+    );
+    assert_eq!(standing["place"]["recipients_from"]["source"], "acme");
     let mut before = json;
     before["place"]
         .as_object_mut()
@@ -4136,6 +4165,14 @@ fn submit_holds_no_wait() {
             base: Revision::new("c8"),
             words: "conflict on main: src/lib.rs with #6".into(),
         },
+        key: Some("7:conflict".into()),
+    });
+    round_trips(Submitted::Decided {
+        submission: a_submission(),
+        outcome: SubmissionOutcome::Failed {
+            words: "check test-x failed".into(),
+        },
+        key: None,
     });
     round_trips(Submitted::Refused {
         reason: "no such base".into(),
@@ -4186,6 +4223,15 @@ fn the_inbox_and_its_outcomes() {
     for outcome in &outcomes {
         round_trips(outcome.clone());
     }
+    let outcomes: Vec<Owed> = outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(at, outcome)| Owed {
+            submission: (at + 1).to_string(),
+            key: (at > 0).then(|| format!("{}:failed", at + 1)),
+            outcome,
+        })
+        .collect();
     round_trips(Inbox::Outcomes {
         outcomes: outcomes.clone(),
         passed_over: vec![],
@@ -4202,6 +4248,14 @@ fn the_inbox_and_its_outcomes() {
         passed_over: vec![],
     });
     round_trips(Inbox::CouldNotRead {
+        reason: "down".into(),
+    });
+}
+
+#[test]
+fn a_confirm() {
+    round_trips(Confirmed::Confirmed);
+    round_trips(Confirmed::CouldNotRead {
         reason: "down".into(),
     });
 }

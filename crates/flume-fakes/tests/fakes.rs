@@ -1039,6 +1039,13 @@ fn submitted(answer: Submitted) -> Submission {
 }
 
 fn outcomes(answer: Inbox) -> Vec<SubmissionOutcome> {
+    handed(answer)
+        .into_iter()
+        .map(|handed| handed.outcome)
+        .collect()
+}
+
+fn handed(answer: Inbox) -> Vec<Owed> {
     match answer {
         Inbox::Outcomes { outcomes, .. } => outcomes,
         other => panic!("the inbox answered {other:?}"),
@@ -1057,12 +1064,21 @@ fn submit_holds_no_wait_and_a_step_decides() {
     assert!(submission.state.open());
     assert_eq!(outcomes(queue.inbox(&at)), vec![]);
     assert_eq!(queue.step("/r", "main"), Stepped::Stepped);
-    let landed = outcomes(queue.inbox(&at));
+    let landed = handed(queue.inbox(&at));
     assert!(
-        matches!(landed.as_slice(), [SubmissionOutcome::Landed { .. }]),
+        matches!(
+            landed.as_slice(),
+            [Owed { outcome: SubmissionOutcome::Landed { .. }, submission, .. }]
+                if *submission == landed_id(&queue)
+        ),
         "{landed:?}"
     );
-    assert_eq!(outcomes(queue.inbox(&at)), vec![], "delivered twice");
+    assert_eq!(handed(queue.inbox(&at)), landed, "given again unconfirmed");
+    let key = landed[0].key.clone().expect("a key to confirm it by");
+    assert_eq!(key, format!("{}:landed", landed[0].submission));
+    assert_eq!(queue.confirm(&at, &key), Confirmed::Confirmed);
+    assert_eq!(outcomes(queue.inbox(&at)), vec![], "given once confirmed");
+    assert_eq!(queue.confirm(&at, &key), Confirmed::Confirmed, "again");
     assert_eq!(
         queue
             .log
@@ -1070,8 +1086,13 @@ fn submit_holds_no_wait_and_a_step_decides() {
             .iter()
             .map(|line| line.split(' ').next().unwrap())
             .collect::<Vec<_>>(),
-        vec!["submit", "inbox", "step", "inbox", "inbox"]
+        vec!["submit", "inbox", "step", "inbox", "inbox", "confirm", "inbox", "confirm"]
     );
+}
+
+/// The id of the one submission of `fix/one` the queue holds.
+fn landed_id(queue: &FakeMergeQueue) -> String {
+    queue.submissions("/r", "fix/one")[0].id.clone()
 }
 
 #[test]
@@ -1122,6 +1143,9 @@ fn the_merge_queues_outcomes_are_planned() {
             reason: "no such base".into()
         }
     );
+    for given in handed(queue.inbox(&at)) {
+        queue.confirm(&at, &given.key.expect("a key"));
+    }
     submitted(queue.submit(&at, &head));
     queue.step("/r", "main");
     assert_eq!(outcomes(queue.inbox(&at)), vec![], "a held submission");
@@ -1156,7 +1180,7 @@ fn the_merge_queues_outcomes_are_planned() {
 }
 
 #[test]
-fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
+fn a_conflict_at_submit_is_answered_and_owed_until_confirmed() {
     let git = FakeGit::new();
     let base = git.init("/r", "main");
     let queue = FakeMergeQueue::new(git.clone());
@@ -1170,6 +1194,7 @@ fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
     let Submitted::Decided {
         submission,
         outcome,
+        key,
     } = queue.submit(&at, &head)
     else {
         panic!("a conflict at submit was not answered decided");
@@ -1187,7 +1212,14 @@ fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
         SubmissionRead::Found { submission: found } if found == submission
     ));
     queue.step("/r", "main");
-    assert_eq!(outcomes(queue.inbox(&at)), vec![], "an outcome delivered");
+    assert_eq!(
+        outcomes(queue.inbox(&at)),
+        vec![outcome],
+        "an outcome unconfirmed"
+    );
+    assert_eq!(key, Some(format!("{}:conflict", submission.id)));
+    queue.confirm(&at, &key.expect("a key"));
+    assert_eq!(outcomes(queue.inbox(&at)), vec![], "an outcome confirmed");
 }
 
 #[test]
@@ -1357,13 +1389,20 @@ fn a_request_is_an_entry_only_once_taken_in_and_its_outcome_goes_to_the_request(
     assert_eq!(entry.request.as_deref(), Some("1"));
     assert_eq!(queue.take_in("/r", "fix/one"), None, "taken in once");
     queue.step("/r", "main");
+    let left = handed(queue.inbox(&at));
     assert_eq!(
-        outcomes(queue.inbox(&at)),
-        vec![SubmissionOutcome::Failed {
-            words: "check x failed".into()
-        }],
+        left.iter()
+            .map(|owed| (owed.submission.clone(), owed.outcome.clone()))
+            .collect::<Vec<_>>(),
+        vec![(
+            entry.id.clone(),
+            SubmissionOutcome::Failed {
+                words: "check x failed".into()
+            }
+        )],
         "an outcome left for the place as well"
     );
+    queue.confirm(&at, left[0].key.as_deref().expect("a key"));
     assert_eq!(
         queue.submit(&at, &head),
         Submitted::Requested {
