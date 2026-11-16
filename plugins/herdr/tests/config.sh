@@ -3,7 +3,7 @@
 # write it into a scratch file: the popup's entry as lib/common.sh gives
 # it, and the sidebar's rows naming "$flume" (122, C.5; design 8). The
 # README gives a person the same, kept by its writers: no test reads it
-# (core.21; record 0071). $1 is the plugin's directory (default: this
+# (core.21; record 0074). $1 is the plugin's directory (default: this
 # one's).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd -P)

@@ -31,12 +31,15 @@ and no interface SHALL name a tool (core.1, core.2).
 
 The merge queue's submit SHALL answer once the merge queue holds the
 submission, with no wait on its verdict, and its inbox SHALL give each
-pending outcome of the place once (117, 133).
+pending outcome of the place with the submission it decides, again at
+every inbox until the place confirms it by the key it gives, and never
+after; a merge queue that keeps nothing to confirm SHALL give no key and
+each outcome once (117, 133, 225).
 
 #### Scenario: Submit holds no wait
 
 - **WHEN** the fake merge queue holds a submission undecided
-- **THEN** submit answers with the submission at once, and a later inbox gives its outcome once and then nothing (117, 133)
+- **THEN** submit answers with the submission at once, and once it is decided an inbox gives its outcome with that submission, again until the place confirms it by its key, and then nothing (117, 133, 225)
 
 ### Requirement: What the agent and terminal seams read
 
@@ -1096,3 +1099,16 @@ other name SHALL be refused, naming it and flume's names (222).
 
 - **WHEN** `ctrl+c`, `shift+tab`, `escape`, `f12`, `ctrl+alt+x`, `é` and `space` are read as keys, and then `alt+ctrl+x`, `f13` and `hyper+x`
 - **THEN** the first seven are read and written back as `ctrl+c`, `shift+tab`, `esc`, `f12`, `ctrl+alt+x`, `é` and `space`, and each of the last three is refused naming it and flume's names (222)
+
+### Requirement: The merge queue reads several branches at once
+
+The merge queue seam SHALL answer read-submission for several branches
+of one repository at once, each branch's newest submission in the
+order the branches were asked, from one read of the merge queue; and
+read-submission of one branch SHALL be that read of the one branch (99,
+C.6).
+
+#### Scenario: Two branches and one with nothing
+
+- **WHEN** the fake merge queue holds a submission of `fix/one` and none of `fix/two`, and both are asked at once
+- **THEN** the answer gives `fix/one` its submission and `fix/two` none, in that order, from one read (99)

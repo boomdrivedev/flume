@@ -9,7 +9,9 @@ use flume::host::config::HostConfig;
 use flume::host::process::listed;
 use flume::host::RealHost;
 use flume::profiles::store::state_dir::StateDir;
-use flume::profiles::terminal::rex::{rex_name, Block, Rex, NAME, PIECE, RUNTIME_ROOT};
+use flume::profiles::terminal::rex::{
+    rex_key, rex_name, Block, Rex, RexKey, NAME, PIECE, RUNTIME_ROOT, SEND_KEY_REFUSES,
+};
 use flume_conformance::engine::world::{kind, stage, World};
 use flume_conformance::scenario::pass_all;
 use flume_conformance::seams::terminal::{self, TerminalHarness};
@@ -302,10 +304,16 @@ fn the_pinned_rex_runs_at_api_revision_twelve_or_later() {
 /// terminal a chunk at a time, unechoed, ctrl+c no signal and Enter no
 /// line feed: a ctrl+c clears what it held typed, as Claude Code clears
 /// its input, a line feed typed is kept in the line, and Enter ends it.
+/// What it holds typed it shows on its last line, drawn again after each
+/// chunk it reads as Claude Code draws its input, its controls left out,
+/// and rubbed out before it takes a line, so a relay's typing shows on
+/// its screen and a line it takes leaves the screen as it was.
 /// A line `report <state>` reports that state alone, `print <n>` prints
-/// `n` numbered lines, and `exit` exits. As its environment asks, it
-/// shows the folder-trust question first, reports nothing, or exits as
-/// it starts.
+/// `n` numbered lines, `paint <n>` prints them each in a colour, and
+/// `exit` exits. As its environment asks, it shows the folder-trust
+/// question first, reports nothing, exits as it starts, or, under
+/// `STAND_IN_CAT`, runs `cat` in raw mode into its log once the test
+/// says go.
 const STAND_IN: &str = r#"#!/bin/sh
 LC_ALL=C
 export LC_ALL
@@ -359,10 +367,22 @@ if [ -n "$STAND_IN_SILENT" ]; then echo "the stand-in says nothing to Rex"; whil
 # block shows nothing else, its program started under no login.
 echo "the stand-in waits for a prompt"
 report idle
+if [ -n "$STAND_IN_CAT" ]; then
+  # Once the test says go, after open has read the program, a block
+  # running `cat` in raw mode, so every key and character a relay types
+  # reaches it as bytes, a ctrl+c or a ctrl+d among them, and none ends it;
+  # with no extended input, which macOS's raw mode leaves on, so the
+  # terminal takes no ctrl+o or ctrl+v for itself.
+  while [ ! -e "$log/go" ]; do sleep 0.1; done
+  stty raw -echo -iexten 2>/dev/null
+  exec cat > "$log/cat"
+fi
 stty -icanon -isig -echo -icrnl min 1 time 0 2>/dev/null
 ctrl_c=$(printf '\003')
 cr=$(printf '\r')
 pending=
+# What it holds typed, on the cursor's line, its controls left out.
+draw() { printf '\r\033[K%s' "$(printf '%s' "$pending" | tr -d '\000-\037\177')"; }
 while :; do
   chunk=$(dd bs=65536 count=1 2>/dev/null; printf x)
   chunk=${chunk%x}
@@ -373,12 +393,14 @@ while :; do
       *"$cr"*)
         line=${pending%%"$cr"*}
         pending=${pending#*"$cr"}
+        printf '\r\033[K'
         case $line in
           *"$ctrl_c"*) echo cleared >> "$log/events"; line=${line##*"$ctrl_c"} ;;
         esac
         case $line in
           "report "*) report "${line#report }"; continue ;;
           "print "*) i=0; while [ "$i" -lt "${line#print }" ]; do i=$((i + 1)); echo "row $i"; done; continue ;;
+          "paint "*) i=0; while [ "$i" -lt "${line#paint }" ]; do i=$((i + 1)); printf '\033[3%dmrow %d\033[0m\n' $((i % 7 + 1)) "$i"; done; continue ;;
           exit) exit 0 ;;
         esac
         report working
@@ -389,6 +411,7 @@ while :; do
       *) break ;;
     esac
   done
+  draw
 done
 "#;
 
@@ -1467,6 +1490,296 @@ fn the_screen_is_the_blocks_last_rows() {
 }
 
 #[test]
+fn relay_gives_the_blocks_screen_and_not_its_scrollback() {
+    // The terminal-profiles scenario "A block's screen and not its
+    // scrollback against the pinned Rex" (136, 222, C.5's Rex relay row):
+    // a block of 24 rows that printed 60 numbered lines, each in colour: a
+    // relay read holds line 60, no more lines than the block's rows and not
+    // line 1, and each line it holds keeps its colour.
+    let fixture = Fixture::new();
+    let profile = fixture.profile();
+    let who = identity(1);
+    let block = opened(&fixture, &profile, &who, &fixture.command(&[]));
+    let rows = fixture.rex("flume", &["block", "call", "-b", &block.id, "size"])["rows"]
+        .as_u64()
+        .expect("the block's rows") as usize;
+    assert_eq!(rows, 24, "the block's rows");
+    typed(&block, "paint 60");
+    let mut relay = profile.relay(&who).expect("the block is relayed");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let screen = loop {
+        match relay.screen() {
+            RelayScreen::Shows { screen } if screen.contains("row 60\x1b[") => break screen,
+            read => assert!(
+                Instant::now() < deadline,
+                "no read showed line 60: {read:?}"
+            ),
+        }
+        std::thread::sleep(relay.every());
+    };
+    let lines: Vec<&str> = screen.lines().collect();
+    assert!(lines.len() <= rows, "{} lines: {screen:?}", lines.len());
+    assert!(!screen.contains("row 1\x1b["), "line 1 read: {screen:?}");
+    let numbered: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| line.contains("row "))
+        .collect();
+    assert!(numbered.len() >= rows - 2, "{screen:?}");
+    for line in numbered {
+        let colour = line.find("\x1b[3").expect("a colour");
+        assert!(
+            colour < line.find("row ").expect("its number"),
+            "a line without its colour: {line:?}"
+        );
+    }
+}
+
+/// The text typed after each step of a test that reads keys one at a
+/// time, so `cat` reads what each step typed between two of them.
+const APART: &str = "#@#";
+
+/// What `cat` read, cut at each [`APART`], once it has read `steps` of
+/// them, waiting up to ten seconds: what each step typed, in order.
+fn read_apart(cat: &Path, steps: usize) -> Vec<Vec<u8>> {
+    let cut = |read: &[u8]| -> Vec<Vec<u8>> {
+        let mut parts = vec![];
+        let mut rest = read;
+        while let Some(at) = rest
+            .windows(APART.len())
+            .position(|at| at == APART.as_bytes())
+        {
+            parts.push(rest[..at].to_vec());
+            rest = &rest[at + APART.len()..];
+        }
+        parts
+    };
+    within(&format!("cat did not read {steps} steps"), || {
+        cut(&fs::read(cat).unwrap_or_default()).len() >= steps
+    });
+    cut(&fs::read(cat).unwrap_or_default())
+}
+
+/// How a step of the key reading came out: the relay's typing of a key,
+/// or the pinned Rex's own `send-key` of it.
+#[derive(Clone, Debug)]
+enum Step {
+    Relay(Result<(), String>),
+    Own(Result<Value, String>),
+}
+
+/// `name` with each lead of `leads` taken off it that it holds, by
+/// flume's spelling.
+fn without(name: &str, leads: &[&str]) -> String {
+    let key: Key = name.parse().expect("a key");
+    Key {
+        ctrl: key.ctrl && !leads.contains(&"ctrl+"),
+        alt: key.alt && !leads.contains(&"alt+"),
+        shift: key.shift && !leads.contains(&"shift+"),
+        name: key.name,
+    }
+    .to_string()
+}
+
+#[test]
+fn relay_types_each_of_flumes_key_names_into_a_block() {
+    // The terminal-profiles scenario "Every key name against the pinned
+    // Rex" (222, C.5's Rex relay row at blueprints bf9e16f; core.29): each
+    // of flume's named keys, f1 to f12, every printable character of ASCII
+    // and é, bare and under each of ctrl+, alt+ and shift+ and their
+    // pairs and all three, typed alone by the relay into a block of the
+    // pinned Rex running `cat`: each key the relay hands `send-key` types
+    // something, a bare character types itself, `alt+` types ESC before
+    // what the key without it types, and `shift+` and a small letter its
+    // capital; each key the relay refuses is named and types nothing. The
+    // pinned Rex's own `send-key` still refuses the nineteen and é, types
+    // each capital as its small letter, and types each other key the relay
+    // refuses as nothing or as that key with a lead dropped. And `cat` reads
+    // `a?b` of `a`, `?` and `b`, `ab` of `a`, `ctrl+?` and `b`, and `Ab`
+    // of `A`, `ctrl+shift+a` and `b`, each refused key named.
+    let fixture = Fixture::new();
+    let profile = fixture.profile();
+    let who = identity(1);
+    let block = opened(
+        &fixture,
+        &profile,
+        &who,
+        &fixture.command(&[("STAND_IN_CAT", "1")]),
+    );
+    let log = fixture
+        .path("log")
+        .join(block.id.strip_prefix("block:").unwrap_or(&block.id));
+    fs::write(log.join("go"), "").expect("the stand-in told to run cat");
+    let cat = log.join("cat");
+    within("the block's cat did not run", || cat.exists());
+    let mut relay = profile.relay(&who).expect("the block is relayed");
+    let apart = || {
+        rex(&block.socket, &["send", "-b", &block.id, "--", APART]);
+    };
+    let leads = [
+        "",
+        "ctrl+",
+        "alt+",
+        "shift+",
+        "ctrl+alt+",
+        "ctrl+shift+",
+        "alt+shift+",
+        "ctrl+alt+shift+",
+    ];
+    let mut bare: Vec<String> = KeyName::named().iter().map(ToString::to_string).collect();
+    bare.extend((0x21u8..0x7f).map(|byte| char::from(byte).to_string()));
+    bare.push("\u{e9}".into());
+    let mut steps: Vec<(String, Step)> = vec![];
+    for name in &bare {
+        for lead in leads {
+            let full = format!("{lead}{name}");
+            let key: Key = full.parse().unwrap_or_else(|words| panic!("{words}"));
+            steps.push((full, Step::Relay(relay.typed(&Typed::Keys(vec![key])))));
+            apart();
+        }
+    }
+    let handed = |full: &str| {
+        full.parse::<Key>()
+            .is_ok_and(|key| matches!(rex_key(&key), RexKey::Key(_)))
+    };
+    let not_handed: Vec<String> = steps
+        .iter()
+        .map(|(full, _)| full.clone())
+        .filter(|full| !handed(full))
+        .collect();
+    for full in not_handed {
+        let own = try_rex(&block.socket, &["send-key", "-b", &block.id, &full]);
+        steps.push((full, Step::Own(own)));
+        apart();
+    }
+    let keys =
+        |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
+    for around in [
+        ["a", "?", "b"],
+        ["a", "ctrl+?", "b"],
+        ["A", "ctrl+shift+a", "b"],
+    ] {
+        steps.push((around.join(" "), Step::Relay(relay.typed(&keys(&around)))));
+        apart();
+    }
+    let typed = read_apart(&cat, steps.len());
+    let cannot = |full: &str| format!("{full} is a key Rex 0.1.0-preview.14 cannot type");
+    let mut unread = vec![];
+    let mut by_send_key: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for ((full, step), bytes) in steps.iter().zip(&typed) {
+        if let (Step::Relay(Ok(())), true) = (step, handed(full)) {
+            by_send_key.insert(full.clone(), bytes.clone());
+        }
+        if let Step::Own(Ok(_)) = step {
+            by_send_key.insert(full.clone(), bytes.clone());
+        }
+    }
+    let own_of = |full: &str| by_send_key.get(full).cloned();
+    for ((full, step), bytes) in steps.iter().zip(&typed) {
+        let key: Option<Key> = full.parse().ok();
+        let base = key.as_ref().map(|key| key.name);
+        let led = key
+            .as_ref()
+            .is_some_and(|key| key.ctrl || key.alt || key.shift);
+        match step {
+            Step::Relay(Ok(())) if key.is_some() => {
+                if bytes.is_empty() {
+                    unread.push(format!("{full} typed nothing"));
+                }
+                if let (Some(KeyName::Char(one)), false) = (base, led) {
+                    assert_eq!(bytes, one.to_string().as_bytes(), "{full}");
+                }
+                if let (Some(KeyName::Char(_) | KeyName::Space), true) =
+                    (base, key.as_ref().is_some_and(|key| key.alt))
+                {
+                    if let Some(rest) = own_of(&without(full, &["alt+"])) {
+                        let mut expected = vec![0x1b];
+                        expected.extend(rest);
+                        assert_eq!(bytes, &expected, "{full} is ESC before what its alt+ leads");
+                    }
+                }
+                if let Some(KeyName::Char(one @ 'a'..='z')) = base {
+                    if full == &format!("shift+{one}") {
+                        assert_eq!(bytes, one.to_ascii_uppercase().to_string().as_bytes());
+                    }
+                }
+            }
+            Step::Relay(Err(words)) if key.is_some() => {
+                assert!(
+                    words.starts_with(&cannot(full)) && !handed(full),
+                    "{full}: {words}"
+                );
+                assert!(bytes.is_empty(), "{full} refused typed {bytes:?}");
+            }
+            Step::Relay(result) => {
+                let expected: &[u8] = match full.as_str() {
+                    "a ? b" => b"a?b",
+                    "a ctrl+? b" => b"ab",
+                    _ => b"Ab",
+                };
+                assert_eq!(bytes, expected, "{full}");
+                match (full.as_str(), result) {
+                    ("a ? b", Ok(())) => {}
+                    ("a ctrl+? b", Err(words)) => assert_eq!(
+                        words,
+                        &format!(
+                            "{}; nothing was sent for it, and the keys around it were typed",
+                            cannot("ctrl+?")
+                        )
+                    ),
+                    ("A ctrl+shift+a b", Err(words)) => {
+                        assert!(words.starts_with(&cannot("ctrl+shift+a")), "{words}")
+                    }
+                    other => panic!("{other:?}"),
+                }
+            }
+            Step::Own(own) => match base {
+                Some(KeyName::Char(one)) if !one.is_ascii() || SEND_KEY_REFUSES.contains(&one) => {
+                    let words = own.as_ref().expect_err(full);
+                    assert!(words.contains("unknown key"), "{full}: {words}");
+                }
+                Some(KeyName::Char(one)) if one.is_ascii_uppercase() => {
+                    assert!(own.is_ok(), "{full}: {own:?}");
+                    let small = full.replace(one, &one.to_ascii_lowercase().to_string());
+                    assert_eq!(
+                        Some(bytes.clone()),
+                        own_of(&small),
+                        "the pinned Rex's send-key types {full} as {small}"
+                    );
+                }
+                _ => {
+                    assert!(own.is_ok(), "{full}: {own:?}");
+                    let dropped = ["ctrl+", "alt+", "shift+"]
+                        .iter()
+                        .flat_map(|one| {
+                            [
+                                vec![*one],
+                                vec!["ctrl+", "alt+", "shift+"]
+                                    .into_iter()
+                                    .filter(|other| other != one)
+                                    .collect(),
+                            ]
+                        })
+                        .any(|leads| {
+                            let fewer = without(full, &leads);
+                            fewer != *full && own_of(&fewer).as_ref() == Some(bytes)
+                        });
+                    assert!(
+                        bytes.is_empty() || dropped,
+                        "the pinned Rex's send-key types {full} as {bytes:?}, as the person typed it"
+                    );
+                }
+            },
+        }
+    }
+    assert!(unread.is_empty(), "{unread:#?}");
+    assert!(
+        matches!(relay.screen(), RelayScreen::Shows { .. }),
+        "the block reads gone once every key was typed"
+    );
+}
+
+#[test]
 fn a_close_rex_cannot_make_is_refused() {
     // 97, 98, C.5: an agent's server stopped so its block cannot be
     // closed, and the agent closed: the close refused, and not reported.
@@ -2376,10 +2689,10 @@ impl TerminalHarness for Harness {
         true
     }
 
-    /// C.5 gives Rex no relay row, so flume's Rex profile offers none
-    /// (222).
+    /// Rex relays a block's screen and a person's keys, as C.5's Rex relay
+    /// row at blueprints e28b901 says (221, 222).
     fn relays(&self) -> bool {
-        false
+        true
     }
 }
 
