@@ -1,0 +1,85 @@
+{
+  "outcomes": [
+    {
+      "schema": "sluice/submission@1",
+      "id": 6,
+      "branch": "main",
+      "head": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6",
+      "from": {
+        "agent": "agent-1",
+        "worktree": "fix/one",
+        "path": "/places/fix--one",
+        "host": "host-a"
+      },
+      "submitted": "2026-11-16T08:40:00Z",
+      "after": [],
+      "priority": 0,
+      "attempt": 1,
+      "state": "landed",
+      "tested": {
+        "combination": "d6c0d6c0d6c0d6c0d6c0d6c0d6c0d6c0d6c0d6c0",
+        "on": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "submissions": [
+          6
+        ]
+      },
+      "landed_as": "1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d",
+      "notice": "[sluice] #6 landed on main as 1a2b3c4.",
+      "delivery": {
+        "key": "6:landed",
+        "reader": "/places/fix--one",
+        "state": "owed",
+        "recorded_at": "2026-11-16T09:10:00Z",
+        "expires_at": "2026-11-23T09:10:00Z",
+        "handed": [
+          {
+            "by": "inbox",
+            "at": "2026-11-16T09:20:00Z"
+          }
+        ],
+        "confirmed": null,
+        "known": true
+      }
+    },
+    {
+      "schema": "sluice/submission@1",
+      "id": 8,
+      "branch": "main",
+      "head": "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+      "from": {
+        "agent": "agent-1",
+        "worktree": "fix/one",
+        "path": "/places/fix--one",
+        "host": "host-a"
+      },
+      "submitted": "2026-11-16T09:00:00Z",
+      "after": [],
+      "priority": 0,
+      "attempt": 1,
+      "state": "parked",
+      "tested": {
+        "combination": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12",
+        "on": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+        "submissions": [
+          8
+        ]
+      },
+      "notice": "[sluice] #8 is parked on main.",
+      "delivery": {
+        "key": "8:parked",
+        "reader": "/places/fix--one",
+        "state": "owed",
+        "recorded_at": "2026-11-16T09:10:00Z",
+        "expires_at": "2026-11-23T09:10:00Z",
+        "handed": [
+          {
+            "by": "inbox",
+            "at": "2026-11-16T09:20:00Z"
+          }
+        ],
+        "confirmed": null,
+        "known": true
+      }
+    }
+  ]
+}

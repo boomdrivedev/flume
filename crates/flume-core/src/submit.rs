@@ -29,6 +29,15 @@
 //! from the merge queue's record of its branch alone, never an inbox, and
 //! a failure or a conflict starts nothing: the place waits on its caller
 //! with the merge queue's words (47, 111, 112, 117, 133, 203; core.6).
+//!
+//! A submission whose landing the forge refused, which the merge queue
+//! holds, is neither failed nor landed: read held from the inbox or the
+//! merge queue's record, it has the place wait on its caller to retry
+//! its kind's fix round with the forge's words, while the place waits on
+//! that submission alone, and starts no stage, launches no fix, counts no
+//! going-back, takes no verdict and steps no round for it; it stays the
+//! place's open submission, read again at each settle (99, 112, 130, 133,
+//! 203; core.58).
 
 use crate::base::base_place;
 use crate::fixes::{decide, Found};
@@ -68,8 +77,18 @@ impl Engine {
                     );
                     true
                 }
+                // A landing the forge refused, which the merge queue holds:
+                // the place waits on its caller, or, once a retry of its
+                // caller's has delivered its stages again, its submission
+                // is made, withdrawing the held one (112, 133; core.58).
+                SubmissionState::Held { words } if is_ours(&held.submission, &submission) => {
+                    self.landing_held(id, words) || self.due(held, queue.as_ref())
+                }
+                // A held landing's withdrawal is taken though `waiting`
+                // holds its words (112).
                 SubmissionState::Withdrawn
-                    if is_ours(&held.submission, &submission) && ours.waiting.is_none() =>
+                    if is_ours(&held.submission, &submission)
+                        && (ours.waiting.is_none() || ours.landing_refused) =>
                 {
                     self.verdict(id, Verdict::Withdrawn);
                     true
@@ -104,9 +123,13 @@ impl Engine {
                 }
                 state if state.open() => {
                     let taken = self.taken_in(id, &submission);
+                    // A held landing back in the queue, once another
+                    // submission it carried left, ends the place's wait
+                    // (112, 124).
+                    let back = is_ours(&held.submission, &submission) && self.back_in_queue(id);
                     let stepped =
                         self.step_base(queue.as_ref(), &place.repository, &submission.target);
-                    taken || stepped
+                    taken || back || stepped
                 }
                 _ => self.due(held, queue.as_ref()),
             },
@@ -144,6 +167,13 @@ impl Engine {
                     })
                     .unwrap_or(false);
                 for outcome in outcomes {
+                    // A held landing is no outcome decided: it is taken as
+                    // the place's wait, never as a verdict (133; core.58).
+                    if let SubmissionOutcome::Held { words } = &outcome {
+                        self.landing_held(id, words);
+                        changed = true;
+                        continue;
+                    }
                     let acted = self.store.read(id).is_some_and(|read| {
                         let ours = &read.state.submission;
                         ours.request.is_some() && ours.verdict.is_some()
@@ -156,6 +186,39 @@ impl Engine {
                 changed
             }
         }
+    }
+
+    /// The place's submission read held, its landing refused by the forge
+    /// with `words`: the place waits on its caller to retry its kind's fix
+    /// round with them, written once by compare-and-set while the place
+    /// waits on that submission alone, its words and since standing as
+    /// first written; nothing is started, launched, counted or decided
+    /// for it (112, 130, 133; core.16, core.58). True when it was written
+    /// now.
+    pub(crate) fn landing_held(&self, id: &PlaceId, words: &str) -> bool {
+        self.update(id, |held| {
+            if held.submission.landing_refused || !waits_on_its_submission(held) {
+                return Step::Keep(false);
+            }
+            held.submission.waiting = Some(format!(
+                "the forge refused the submission's landing: {words}"
+            ));
+            held.submission.landing_refused = true;
+            Step::Write(true)
+        })
+        .unwrap_or(false)
+    }
+
+    /// The wait on a held landing ended by its submission's return to the
+    /// queue; true when it was ended now (112, 124; core.58).
+    fn back_in_queue(&self, id: &PlaceId) -> bool {
+        self.update(id, |held| {
+            if !end_held_wait(&mut held.submission) {
+                return Step::Keep(false);
+            }
+            Step::Write(true)
+        })
+        .unwrap_or(false)
     }
 
     /// The entry an intake took the place's request in as, recorded as
@@ -219,6 +282,7 @@ impl Engine {
             held.submission.request = None;
             held.submission.verdict = None;
             held.submission.waiting = None;
+            held.submission.landing_refused = false;
             Step::Write(Some(held.place.clone()))
         });
         let Some(Some(place)) = claimed else {
@@ -330,7 +394,10 @@ impl Engine {
             SubmissionOutcome::Conflict { base, .. } => Some(base.clone()),
             _ => None,
         };
-        self.verdict_at(id, verdict_of(outcome), onto);
+        let Some(verdict) = verdict_of(outcome) else {
+            return;
+        };
+        self.verdict_at(id, verdict, onto);
     }
 
     /// Acts on a verdict, a conflict's at `onto` where it is known; a base
@@ -350,6 +417,9 @@ impl Engine {
             {
                 return Step::Keep(None);
             }
+            // A verdict on a held landing ends its wait, each arm below
+            // writing the place's next (112, 113; core.58).
+            end_held_wait(&mut held.submission);
             held.submission.verdict = Some(verdict.clone());
             let (cause, words) = match &verdict {
                 Verdict::Landed { commit, .. } => {
@@ -473,6 +543,7 @@ impl Engine {
                 kept: None,
             };
             held.submission.due = false;
+            end_held_wait(&mut held.submission);
             Step::Write(())
         });
     }
@@ -508,6 +579,35 @@ pub(crate) fn own_read(held: &HeldState, across: ReadAcross) -> SubmissionRead {
         }
         read => read,
     }
+}
+
+/// Ends the wait on a held landing, where the place waits on one, its
+/// words with it; true where it did (112, 113, 124; core.58).
+fn end_held_wait(ours: &mut SubmissionHeld) -> bool {
+    if !ours.landing_refused {
+        return false;
+    }
+    ours.landing_refused = false;
+    ours.waiting = None;
+    true
+}
+
+/// Whether the place waits on its submission alone: live, submitted by
+/// flume with nothing due and no verdict taken since, no stage live, and
+/// its last stage delivered or finished, a base place's always, so a held
+/// entry read again after a caller's retry raises no wait (112, 203;
+/// core.58).
+fn waits_on_its_submission(held: &HeldState) -> bool {
+    let ours = &held.submission;
+    held.phase == Phase::Live
+        && ours.submits > 0
+        && !ours.due
+        && ours.verdict.is_none()
+        && held.live_start().is_none()
+        && held
+            .stages
+            .last()
+            .is_none_or(|last| matches!(last.state, StageState::Delivered | StageState::Finished))
 }
 
 /// Whether the entry read is the place's submission: the one flume's
@@ -548,7 +648,10 @@ fn recorded(
                 words: words.clone(),
             })
         }
-        SubmissionState::Waiting | SubmissionState::UnderTest | SubmissionState::Withdrawn => None,
+        SubmissionState::Waiting
+        | SubmissionState::UnderTest
+        | SubmissionState::Withdrawn
+        | SubmissionState::Held { .. } => None,
     }
 }
 
@@ -640,15 +743,17 @@ fn fix_round(
 /// of a place (113). A conflict's words name the files contested and the
 /// base's revision the merge queue tested against, which the fix round's
 /// agent merges into the place's branch and commits before anything
-/// else; flume merges nothing itself (14, 112, core.5).
-fn verdict_of(outcome: SubmissionOutcome) -> Verdict {
-    match outcome {
+/// else; flume merges nothing itself (14, 112, core.5). A held outcome
+/// decides nothing, and reaches no verdict (112; core.58).
+fn verdict_of(outcome: SubmissionOutcome) -> Option<Verdict> {
+    Some(match outcome {
         SubmissionOutcome::Landed { commit } => Verdict::Landed {
             commit,
             place_removed: false,
             branch_removed: false,
         },
         SubmissionOutcome::Failed { words } => Verdict::Failed { words },
+        SubmissionOutcome::Held { .. } => return None,
         SubmissionOutcome::Conflict { files, base, words } => {
             let words = format!(
                 "{words}\n\nThe files contested: {}.\nThe base's revision the merge queue tested against: {base}.",
@@ -656,7 +761,7 @@ fn verdict_of(outcome: SubmissionOutcome) -> Verdict {
             );
             Verdict::Conflict { files, words }
         }
-    }
+    })
 }
 
 /// What follows a verdict's write: the place's fix round started at a

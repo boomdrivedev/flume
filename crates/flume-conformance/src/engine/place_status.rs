@@ -77,6 +77,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: waiting_on_an_answer,
         },
         Scenario {
+            name: "status: a fix whose submission a settle at t read held, the fake merge queue's record holding the forge's words, gives the submission held with the record's words and the move waited on as a retry of code for forge_refused since t with the words the wait was written with, in the JSON form and the person's",
+            cites: &["56", "99", "112", "130"],
+            run: a_submission_whose_landing_the_forge_refused,
+        },
+        Scenario {
             name: "status: a place whose construct's agent kept open was let go by its time and ended waits on the same move since the stop-short, giving when it was let go, time, and when it was ended, in the JSON form",
             cites: &["130", "56", "31", "198", "S104"],
             run: its_agent_let_go,
@@ -2885,4 +2890,66 @@ fn drop_field(value: &mut serde_json::Value, path: &[&str]) -> bool {
     } else {
         drop_field(inner, rest)
     }
+}
+
+fn a_submission_whose_landing_the_forge_refused(_: &()) -> Outcome {
+    use super::settling::{fix_held, FORGE};
+    let world = World::new();
+    let id = fix_held(&world, "one", true)?;
+    world.host.advance(60);
+    let t = world.host.now();
+    world.settle(&id);
+    world.host.advance(60);
+    let status = world.status(&id)?;
+    let submission = status.submission.clone().ok_or("no submission")?;
+    ensure!(
+        matches!(
+            &submission.read,
+            SubmissionRead::Found { submission }
+                if submission.state == SubmissionState::Held { words: FORGE.into() }
+        ),
+        "the submission read {:?}",
+        submission.read
+    );
+    let written = format!("the forge refused the submission's landing: {FORGE}");
+    let waiting = status
+        .waiting_on
+        .clone()
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        waiting,
+        WaitingOn {
+            act: Act::Retry,
+            stage: Some("code".into()),
+            why: Waits::ForgeRefused,
+            since: Some(t),
+            words: Some(written.clone()),
+            open_until: None,
+            closed: None,
+        },
+        "the move the place waits on"
+    );
+    ensure_eq!(
+        waiting.move_words(),
+        "a retry of code",
+        "the move in the person's form"
+    );
+    let json = status_json(&world, &id)?;
+    ensure_eq!(
+        json["waiting_on"],
+        serde_json::json!({
+            "act": "retry",
+            "stage": "code",
+            "why": "forge_refused",
+            "since": t,
+            "words": written,
+        }),
+        "the move in the JSON form"
+    );
+    ensure_eq!(
+        json["submission"]["read"]["found"]["submission"]["state"],
+        serde_json::json!({"held": {"words": FORGE}}),
+        "the submission in the JSON form"
+    );
+    Ok(())
 }

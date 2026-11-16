@@ -1,0 +1,47 @@
+{
+  "schema": "sluice/overview@1",
+  "host": "host-a",
+  "repository": "/repository",
+  "at": "2026-11-16T09:20:00Z",
+  "branches": [
+    {
+      "branch": "main",
+      "at": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+      "revision": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+      "version": 41,
+      "window": 1,
+      "parallel": 2,
+      "depth": 0,
+      "candidates": [],
+      "submissions": [],
+      "after_landed": [],
+      "recent": [],
+      "recent_from": {},
+      "recent_subjects": {},
+      "held_checkouts": [],
+      "refused_writes": []
+    },
+    {
+      "branch": "train/x",
+      "at": "7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d",
+      "revision": "7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d",
+      "version": 9,
+      "window": 1,
+      "parallel": 1,
+      "depth": 0,
+      "candidates": [],
+      "submissions": [],
+      "after_landed": [],
+      "recent": [],
+      "recent_from": {},
+      "recent_subjects": {},
+      "held_checkouts": [],
+      "refused_writes": []
+    }
+  ],
+  "sessions": [],
+  "previews": [],
+  "hosts": [],
+  "room": null,
+  "host_process": null
+}
