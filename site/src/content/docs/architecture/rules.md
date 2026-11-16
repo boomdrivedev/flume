@@ -10,10 +10,11 @@ A mirror of the rules in
 which is the binding copy. The rules are written so a reviewer can point
 at a diff and say which rule it breaks. The narrative is the statement
 in boomdrivedev/blueprints, `design/flume/requirements.md`; a rule names
-the clause it enforces and never restates it. The binding copy gives
-each rule's details: what it rules out, what it leaves open, and its
-sources. The [roadmap](/flume/roadmap/) names what is decided and not
-yet built.
+the clause it enforces and never restates it. Each rule's details,
+what it rules out, what it leaves open, and its sources, are on the
+binding copy's
+[details page](https://github.com/boomdrivedev/flume/blob/main/docs/architecture/core-details.md).
+The [roadmap](/flume/roadmap/) names what is decided and not yet built.
 
 <!-- The rules below are the binding copy's words, mirrored as written. -->
 <!-- vale off -->
