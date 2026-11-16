@@ -325,7 +325,9 @@ impl Engine {
     /// submission is decided: anything pending for the place then is of a
     /// submission whose verdict flume holds, or of none of the place's,
     /// and is no outcome of the one it makes now, so the settles that
-    /// follow collect that submission's alone (99, 101, 133).
+    /// follow collect that submission's alone, and an outcome flume acted
+    /// on whose confirm the merge queue could not take is confirmed here,
+    /// acted on no more (99, 101, 133, 225).
     fn collect_before(&self, id: &PlaceId, retried: bool) {
         let Some(read) = self.store.read(id) else {
             return;
