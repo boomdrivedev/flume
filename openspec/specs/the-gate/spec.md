@@ -191,7 +191,7 @@ archive each open change alone, by `openspec archive`, into a scratch
 copy of the tree's specs and configuration, every spec that archive
 writes passing `openspec validate --strict`. It SHALL fail naming each
 change that fails, with OpenSpec's words, fail none for a task left
-unchecked, and write nothing in the tree (core.58).
+unchecked, and write nothing in the tree (core.59).
 
 #### Scenario: A change archive refuses
 
