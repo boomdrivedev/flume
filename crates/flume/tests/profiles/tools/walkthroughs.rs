@@ -4388,16 +4388,8 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
     // The place-relay scenario "Through the binary under herdr" (107, 221,
     // 222, C.5): a fix's code agent, the stand-in in a pane of flume's own
     // herdr session, its terminal echoing what is typed as Claude Code's
-    // input shows it; `flume relay fix--one` run as a child once the agent
-    // said it started gives a screen first, types `relay-marker` written
-    // to its input, gives a screen holding it, and, its input closed, ends
-    // by its caller with exit 0, its last line the relayed answer; the
-    // place's held state stands at its version, and no file of flume's
-    // state holds what was typed.
-    use std::io::{BufRead, BufReader, Write};
-    use std::process::Stdio;
-    use std::sync::mpsc::channel;
-    use std::time::{Duration, Instant};
+    // input shows it, relayed through the binary as
+    // `relayed_through_the_binary` says.
     let host = Walk::under_herdr("walk-relay");
     let echoing = host.signal("echoing");
     host.script(
@@ -4414,8 +4406,59 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
         "code's agent said it started and echoes",
         |status| stage(status, "code")["state"] == "begun" && echoing.exists(),
     );
+    relayed_through_the_binary(&host, &place);
+}
+
+#[test]
+fn a_person_reaches_a_fixs_agent_under_rex_through_a_relay() {
+    // The place-relay scenario "Through the binary under Rex" (107, 221,
+    // 222, C.5's Rex relay row): a fix launched on the stream `trial`,
+    // whose multiplexer is Rex, its code agent the stand-in in a block of
+    // trial's Rex server, its terminal echoing what is typed as Claude
+    // Code's input shows it, relayed through the binary as
+    // `relayed_through_the_binary` says.
+    let host = Walk::under_rex("walk-rex-relay");
+    let echoing = host.signal("echoing");
+    host.script(
+        "code",
+        1,
+        json!([
+            [{ "bash": format!("stty echo < /dev/tty && touch '{}'", echoing.display()) }],
+            [],
+        ]),
+    );
+    let place = host.walk.launch(
+        "fix",
+        "one",
+        &["--brief", "wait for a person", "--stream", "trial"],
+    );
+    let status = host.walk.until(
+        &place,
+        "code's agent said it started under Rex and echoes",
+        |status| stage(status, "code")["state"] == "begun" && echoing.exists(),
+    );
+    assert_eq!(
+        status["agent"]["terminal"],
+        json!({"profile": "rex", "from": "stream"}),
+        "{status}"
+    );
+    relayed_through_the_binary(&host.walk, &place);
+}
+
+/// The place's code agent, said started and echoing what is typed,
+/// relayed through the binary: `flume relay fix--one` run as a child
+/// gives a screen first, types `relay-marker` written to its input, gives
+/// a screen holding it, and, its input closed, ends by its caller with
+/// exit 0, its last line the relayed answer naming code's first start;
+/// the place's held state stands at its version, and no file of flume's
+/// state holds what was typed (107, 221, 222).
+fn relayed_through_the_binary(host: &Walk, place: &str) {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    use std::sync::mpsc::channel;
+    use std::time::{Duration, Instant};
     let store = StateDir::at(host.home().join("state/flume"));
-    let id = PlaceId::new(&place);
+    let id = PlaceId::new(place);
     let before = store.read(&id).expect("the place's held state").version;
 
     let mut relay = host
@@ -4467,7 +4510,7 @@ fn a_person_reaches_a_fixs_agent_through_a_relay() {
         last,
         json!({"relayed": {
             "place": place,
-            "agent": format!("flume:{}:fix--one:code:1", repository_id(&host)),
+            "agent": format!("flume:{}:fix--one:code:1", repository_id(host)),
             "ended": "caller",
         }}),
         "the last line"
