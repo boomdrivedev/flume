@@ -34,7 +34,12 @@ pub struct StandIn {
 
 impl StandIn {
     /// The stand-in `name` in `folder`'s `bin`, which it makes; that `bin`
-    /// may be put first on a `PATH`.
+    /// may be put first on a `PATH`. Each run takes the first number no
+    /// other run took by the shell's own exclusive create, `set -C`, and
+    /// not by `mkdir`, which may not refuse a folder another run made at
+    /// the same moment: uutils' `mkdir`, the host's own on Ubuntu 26.04,
+    /// gives two runs one number, so one run's record overwrites the
+    /// other's.
     pub fn new(folder: &Path, name: &str) -> StandIn {
         let bin = folder.join("bin");
         let records = folder.join("runs").join(name);
@@ -60,7 +65,9 @@ if [ -f "$control/slow" ]; then
 fi
 records='{records}'
 n=0
-while ! mkdir "$records/lock.$n" 2>/dev/null; do n=$((n + 1)); done
+set -C
+while ! true 2>/dev/null > "$records/lock.$n"; do n=$((n + 1)); done
+set +C
 mkdir "$records/new.$n"
 env > "$records/new.$n/environment"
 echo $$ > "$records/new.$n/pid"
