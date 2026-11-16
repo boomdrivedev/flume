@@ -59,14 +59,24 @@ tasks:
     inputs: ['/openspec/specs/**/*', '/openspec/config.yaml', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
-  # Every open change under openspec/changes passes the same strict
-  # validation, so a requirement archive would refuse fails the change's own
-  # checks and not first at its merge. A MODIFIED block is read against the
-  # specs it replaces, so they are inputs too; the archived changes are not.
+  # Every open change under openspec/changes is validated as it would
+  # archive (record 0072, core.58): it passes openspec validate --strict,
+  # and archived alone into a scratch copy of the specs it writes specs
+  # that pass openspec validate --strict, so a change archive would refuse,
+  # or one that would archive into specs root:specs fails, fails its own
+  # checks and not first at its merge (check-changes.sh). The specs it is
+  # applied to are inputs too; the archived changes are not.
   changes:
-    command: 'openspec validate --changes --strict --no-interactive'
-    env: {OPENSPEC_TELEMETRY: '0', OPENSPEC_NO_UPDATE_CHECK: '1'}
-    inputs: ['/openspec/changes/**/*', '!/openspec/changes/archive/**/*', '/openspec/specs/**/*', '/openspec/config.yaml', '/devenv.nix', '/devenv.lock']
+    command: 'sh check-changes.sh'
+    inputs: ['/openspec/changes/**/*', '!/openspec/changes/archive/**/*', '/openspec/specs/**/*', '/openspec/config.yaml', '/check-changes.sh', '/devenv.nix', '/devenv.lock']
+    tags: [check-fast]
+    options: {runFromWorkspaceRoot: true}
+  # check-changes.sh says what core.58 asks of each open change: its cases,
+  # each a scratch tree of its own holding the changes the-gate's scenarios
+  # name, check its exit and its words (record 0072, core.58).
+  changes-cases:
+    command: 'sh check-changes-cases.sh'
+    inputs: ['/check-changes.sh', '/check-changes-cases.sh', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
   # Every task of every project carries exactly one layer tag, or a comment
