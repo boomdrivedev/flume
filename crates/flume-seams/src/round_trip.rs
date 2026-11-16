@@ -449,6 +449,7 @@ fn held() -> HeldState {
                 branch: "bolt/x".into(),
                 words: "bolt/x's policy cannot be read".into(),
             }],
+            landing_refused: false,
         },
         failures: vec!["the agent did not end".into()],
         priority: -3,
@@ -757,6 +758,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Waits::Submission,
         Waits::Delivered,
         Waits::Unsubmitted,
+        Waits::ForgeRefused,
     ] {
         round_trips(why);
     }
@@ -4092,6 +4094,77 @@ fn a_submission_and_its_outcomes() {
     ] {
         round_trips(verdict);
     }
+}
+
+#[test]
+fn a_held_submission_and_its_outcome() {
+    // A submission whose landing the forge refused, its outcome, the
+    // place's wait on it and a held state waiting on it read back
+    // unchanged; the held submission is not one a round moves, and a
+    // held state written before `landing_refused` reads it false (99,
+    // 112, 133; core.58).
+    let state = SubmissionState::Held {
+        words: "push declined: the push holds what looks like a secret".into(),
+    };
+    assert!(!state.open(), "a round moves no held landing");
+    round_trips(state.clone());
+    round_trips(SubmissionRead::Found {
+        submission: Submission {
+            state,
+            ..a_submission()
+        },
+    });
+    round_trips(SubmissionOutcome::Held {
+        words: "#7 on main: the forge refused its landing".into(),
+    });
+    round_trips(Inbox::Outcomes {
+        outcomes: vec![SubmissionOutcome::Held {
+            words: "#7 on main: the forge refused its landing".into(),
+        }],
+        passed_over: vec![],
+    });
+    round_trips(Waits::ForgeRefused);
+    assert_eq!(
+        serde_json::to_value(Waits::ForgeRefused).unwrap(),
+        serde_json::json!("forge_refused")
+    );
+    let mut waiting = held();
+    waiting.submission.verdict = None;
+    waiting.submission.waiting =
+        Some("the forge refused the submission's landing: push declined".into());
+    waiting.submission.landing_refused = true;
+    waiting.waiting = Some(Waiting {
+        on: WaitingOn {
+            act: Act::Retry,
+            stage: Some("code".into()),
+            why: Waits::ForgeRefused,
+            since: Some(150),
+            words: Some("the forge refused the submission's landing: push declined".into()),
+            open_until: None,
+            closed: None,
+        },
+        stalled: false,
+    });
+    round_trips(waiting.clone());
+    let mut before = serde_json::to_value(&waiting).unwrap();
+    assert_eq!(
+        before["submission"]["landing_refused"],
+        serde_json::json!(true)
+    );
+    before["submission"]
+        .as_object_mut()
+        .unwrap()
+        .remove("landing_refused");
+    let read: HeldState = serde_json::from_value(before).unwrap();
+    assert!(
+        !read.submission.landing_refused,
+        "false where none was written"
+    );
+    let written = serde_json::to_value(&read).unwrap();
+    assert!(
+        written["submission"].get("landing_refused").is_none(),
+        "nothing written while false"
+    );
 }
 
 fn a_submission() -> Submission {

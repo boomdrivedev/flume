@@ -251,6 +251,7 @@ pub(crate) fn state_words(
             Waits::Stopped => "stopped",
             Waits::PastBound => "past its bound",
             Waits::Submission => "submission refused",
+            Waits::ForgeRefused => "landing refused",
             Waits::Delivered => "waiting on done",
             Waits::Unsubmitted => "waiting on its caller",
         }

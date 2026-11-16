@@ -330,7 +330,10 @@ impl Engine {
             SubmissionOutcome::Conflict { base, .. } => Some(base.clone()),
             _ => None,
         };
-        self.verdict_at(id, verdict_of(outcome), onto);
+        let Some(verdict) = verdict_of(outcome) else {
+            return;
+        };
+        self.verdict_at(id, verdict, onto);
     }
 
     /// Acts on a verdict, a conflict's at `onto` where it is known; a base
@@ -548,7 +551,10 @@ fn recorded(
                 words: words.clone(),
             })
         }
-        SubmissionState::Waiting | SubmissionState::UnderTest | SubmissionState::Withdrawn => None,
+        SubmissionState::Waiting
+        | SubmissionState::UnderTest
+        | SubmissionState::Withdrawn
+        | SubmissionState::Held { .. } => None,
     }
 }
 
@@ -640,15 +646,17 @@ fn fix_round(
 /// of a place (113). A conflict's words name the files contested and the
 /// base's revision the merge queue tested against, which the fix round's
 /// agent merges into the place's branch and commits before anything
-/// else; flume merges nothing itself (14, 112, core.5).
-fn verdict_of(outcome: SubmissionOutcome) -> Verdict {
-    match outcome {
+/// else; flume merges nothing itself (14, 112, core.5). A held outcome
+/// decides nothing, and reaches no verdict (112; core.58).
+fn verdict_of(outcome: SubmissionOutcome) -> Option<Verdict> {
+    Some(match outcome {
         SubmissionOutcome::Landed { commit } => Verdict::Landed {
             commit,
             place_removed: false,
             branch_removed: false,
         },
         SubmissionOutcome::Failed { words } => Verdict::Failed { words },
+        SubmissionOutcome::Held { .. } => return None,
         SubmissionOutcome::Conflict { files, base, words } => {
             let words = format!(
                 "{words}\n\nThe files contested: {}.\nThe base's revision the merge queue tested against: {base}.",
@@ -656,7 +664,7 @@ fn verdict_of(outcome: SubmissionOutcome) -> Verdict {
             );
             Verdict::Conflict { files, words }
         }
-    }
+    })
 }
 
 /// What follows a verdict's write: the place's fix round started at a
