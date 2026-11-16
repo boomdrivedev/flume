@@ -4148,6 +4148,14 @@ fn submit_holds_no_wait() {
             base: Revision::new("c8"),
             words: "conflict on main: src/lib.rs with #6".into(),
         },
+        key: Some("7:conflict".into()),
+    });
+    round_trips(Submitted::Decided {
+        submission: a_submission(),
+        outcome: SubmissionOutcome::Failed {
+            words: "check test-x failed".into(),
+        },
+        key: None,
     });
     round_trips(Submitted::Refused {
         reason: "no such base".into(),
@@ -4198,6 +4206,15 @@ fn the_inbox_and_its_outcomes() {
     for outcome in &outcomes {
         round_trips(outcome.clone());
     }
+    let outcomes: Vec<Owed> = outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(at, outcome)| Owed {
+            submission: (at + 1).to_string(),
+            key: (at > 0).then(|| format!("{}:failed", at + 1)),
+            outcome,
+        })
+        .collect();
     round_trips(Inbox::Outcomes {
         outcomes: outcomes.clone(),
         passed_over: vec![],
@@ -4214,6 +4231,14 @@ fn the_inbox_and_its_outcomes() {
         passed_over: vec![],
     });
     round_trips(Inbox::CouldNotRead {
+        reason: "down".into(),
+    });
+}
+
+#[test]
+fn a_confirm() {
+    round_trips(Confirmed::Confirmed);
+    round_trips(Confirmed::CouldNotRead {
         reason: "down".into(),
     });
 }

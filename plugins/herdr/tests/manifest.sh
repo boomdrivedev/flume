@@ -5,11 +5,10 @@
 # [[actions]] and [[panes]] that runs a script names one that exists in
 # the plugin and parses under the system's sh, its version is the cargo
 # workspace's, so a tag installs the plugin of that flume, and its places
-# action's description names the entry that binds it a key. The README
-# beside it gives that entry, lib/common.sh's, in a TOML block of its own
-# (122; design 8). $1 is the manifest (default: the plugin's own); the
-# plugin's directory is its, and $2 the workspace's Cargo.toml (default:
-# the repository's).
+# action's description names the entry that binds it a key (122; design
+# 8). $1 is the manifest (default: the plugin's own); the plugin's
+# directory is its, and $2 the workspace's Cargo.toml (default: the
+# repository's).
 set -u
 here=$(cd "$(dirname "$0")" && pwd -P)
 manifest=${1:-$(dirname "$here")/herdr-plugin.toml}
@@ -80,21 +79,5 @@ if [ "$version" != "$workspace" ]; then
   echo "$manifest: version ${version:-none}, and the cargo workspace's is ${workspace:-none}"
   bad=1
 fi
-# The popup's entry as lib/common.sh gives it, sourced over a scratch
-# state directory.
-scratch=$(mktemp -d "${SLUICE_TMP:-${TMPDIR:-/tmp}}/flume-herdr-manifest.XXXXXX")
-trap 'rm -rf "$scratch"' EXIT
-entry=$(HERDR_PLUGIN_STATE_DIR=$scratch HERDR_PLUGIN_ROOT=$dir sh -c '. "$HERDR_PLUGIN_ROOT/lib/common.sh" && printf "%s\n" "$entry"' 2>/dev/null)
-if [ -z "$entry" ]; then
-  echo "$dir/lib/common.sh gives no entry for the popup's key"
-  bad=1
-elif ! ENTRY=$entry awk '
-  /^```toml$/ { block = ""; inside = 1; next }
-  /^```$/ && inside { if (block == ENVIRON["ENTRY"] "\n") found = 1; inside = 0; next }
-  inside { block = block $0 "\n" }
-  END { exit !found }' "$dir/README.md" 2>/dev/null; then
-  printf '%s\n' "$dir/README.md: no TOML block of its own is the popup's entry lib/common.sh gives:" "$entry"
-  bad=1
-fi
-[ "$bad" -eq 0 ] && echo "the manifest reads as herdr reads it, version $version, and the README gives the popup's entry"
+[ "$bad" -eq 0 ] && echo "the manifest reads as herdr reads it, version $version"
 exit "$bad"

@@ -7,7 +7,7 @@ flume's site at https://boomdrivedev.github.io/flume, an
 
 ```sh
 devenv shell -- site-build     # moon run site:build: dist/, every internal link checked
-devenv shell -- prose          # Vale over the pages and the README
+devenv shell -- prose          # Vale over the pages and the README, for their writers
 cd site && bun run dev         # http://localhost:4321/flume/
 devenv shell -- site-shots <dir>   # screenshots: every page, both widths, both themes, and diagram frames
 ```
