@@ -123,6 +123,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: an_unreadable_inbox,
         },
         Scenario {
+            name: "submit: a settle asks the merge queue's inbox only while the place's submission is open, never before flume submits it nor while its fix round runs, and once as flume submits it anew, an outcome pending from before deciding nothing of the new submission",
+            cites: &["111", "133", "99", "101", "112", "124", "46"],
+            run: an_inbox_asked_only_while_open,
+        },
+        Scenario {
             name: "submit: a branch the merge queue cannot read is passed over, named in status with its words, and a place's submission released on its base is still found, followed and landed",
             cites: &["99", "133", "111", "124", "47", "49", "56", "58", "63"],
             run: a_branch_passed_over,
@@ -138,8 +143,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: the_count_reached,
         },
         Scenario {
-            name: "submit: a withdrawn or refused submission leaves the place waiting, status naming why",
-            cites: &["112", "117"],
+            name: "submit: a withdrawn or refused submission leaves the place waiting, status naming why, and the settles after it ask the merge queue's inbox nothing",
+            cites: &["112", "117", "133"],
             run: withdrawn_and_refused,
         },
     ]
@@ -816,6 +821,80 @@ fn an_unreadable_inbox(_: &()) -> Outcome {
     Ok(())
 }
 
+fn an_inbox_asked_only_while_open(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .queue
+        .plan_submits(vec![Plan::Fail("check x failed".into()), Plan::Hold]);
+    world.queue.moves_on_its_own();
+    let id = fix_begun(&world, "one")?;
+    let location = world.held(&id).ok_or("no place")?.place.location;
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("inbox"), 0, "inboxes before a submit");
+
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    world.queue.log.clear();
+    world.settle(&id);
+    world.settle(&id);
+    ensure_eq!(
+        world.queue.log.count("inbox"),
+        2,
+        "inboxes of two settles while the submission is open"
+    );
+
+    world.queue.run_round(REPOSITORY, "main");
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure_eq!(held.submission.send_backs, 1, "send-backs");
+    ensure_eq!(held.stages[0].starts, 2, "code's starts");
+
+    // An outcome pending for the place once flume holds its verdict, as
+    // a merge queue leaves one it could not deliver to its reader.
+    world.queue.leave_pending(
+        &location,
+        SubmissionOutcome::Failed {
+            words: "an earlier failure".into(),
+        },
+    );
+    world.queue.log.clear();
+    world.settle(&id);
+    world.settle(&id);
+    world.engine().settle(None);
+    ensure_eq!(
+        world.queue.log.count("inbox"),
+        0,
+        "inboxes while the fix round runs"
+    );
+
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions anew");
+    ensure!(
+        world.queue.log.count("inbox") >= 1,
+        "no inbox as flume submitted anew"
+    );
+    ensure!(
+        world.queue.pending(&location).is_empty(),
+        "an outcome left pending from before the submission"
+    );
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure_eq!(held.submission.send_backs, 1, "send-backs");
+    ensure_eq!(held.stages[0].starts, 2, "code's starts");
+    ensure_eq!(
+        held.submission.verdict,
+        None,
+        "the new submission's verdict"
+    );
+
+    world.queue.decide(REPOSITORY, "fix/one", Plan::Land);
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed place is kept");
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions anew");
+    Ok(())
+}
+
 /// The words the merge queue refused a branch with on deneb, 2026-11-04.
 const REFUSED: &str =
     "bolt/a-run-compiles-through-a-shared-cache's policy at 4f6fe55f: [checkout] declares a cache";
@@ -965,6 +1044,13 @@ fn withdrawn_and_refused(_: &()) -> Outcome {
         );
         ensure_eq!(status.phase, Phase::Live, "the place");
         ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
+        world.queue.log.clear();
+        world.settle(&id);
+        ensure_eq!(
+            world.queue.log.count("inbox"),
+            0,
+            format!("inboxes once the submission is decided, {why}")
+        );
     }
     Ok(())
 }

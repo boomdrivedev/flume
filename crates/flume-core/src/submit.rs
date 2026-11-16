@@ -1,10 +1,13 @@
 //! A landing kind's submission (63, 111 to 113, 124, 125, 133): made at
 //! the place's head once its last stage delivered and its agent ended,
 //! unless the launch holds it or the work is over, with no wait held on
-//! it. Its outcomes are collected at the settles that follow through the
-//! merge queue's inbox, or read from submit's answer where the merge
-//! queue decided the submission as it took it in and delivered the
-//! outcome with that answer, and acted on once each: a landing makes the
+//! it. Its outcomes are collected through the merge queue's inbox at
+//! each settle that follows it while it is open, flume holding no outcome
+//! of it, and at no other settle but the one that submits the place anew,
+//! since flume makes every submission of a place (core.6), or read from
+//! submit's answer where the merge queue decided the submission as it
+//! took it in and delivered the outcome with that answer, and acted on
+//! once each: a landing makes the
 //! work over, a failure or a conflict starts the kind's fix round, as found
 //! work from its last stage does where the fix round is a stage before it,
 //! every going-back counted together up to the kind's bound. A withdrawal, and a landing before flume
@@ -30,7 +33,7 @@
 //! a failure or a conflict starts nothing: the place waits on its caller
 //! with the merge queue's words (47, 111, 112, 117, 133, 203; core.6).
 
-use crate::base::base_place;
+use crate::base::{base_place, submission_open};
 use crate::fixes::{decide, Found};
 use crate::start::Starts;
 use crate::{Engine, Step};
@@ -38,7 +41,11 @@ use flume_seams::*;
 
 impl Engine {
     /// The submission's step for a live place; true when it changed
-    /// something.
+    /// something. Its inbox is asked only while its submission is open:
+    /// a place flume has not submitted, or whose outcome it holds, has
+    /// nothing pending in the merge queue for a settle to collect, and
+    /// its withdrawal and its landing by hand are read from the record
+    /// (99, 111, 133; record 0012).
     pub(crate) fn submission(&self, held: &HeldState) -> bool {
         let place = &held.place;
         if !place.kind.lands {
@@ -50,7 +57,7 @@ impl Engine {
         let id = &place.id;
         let ours = &held.submission;
         let base = base_place(&place.kind);
-        if ours.submits > 0 && !base && self.collect(id, queue.as_ref(), &place.place_ref()) {
+        if !base && submission_open(held) && self.collect(id, queue.as_ref(), &place.place_ref()) {
             return true;
         }
         match own_read(
@@ -207,6 +214,7 @@ impl Engine {
     /// head (203). A retry naming the submission submits whether or not
     /// one is due (49).
     pub(crate) fn submit(&self, id: &PlaceId, retried: bool) -> bool {
+        self.collect_before(id, retried);
         let claimed = self.update(id, |held| {
             if held.phase != Phase::Live || !(retried || held.submission.due) {
                 return Step::Keep(None);
@@ -283,6 +291,31 @@ impl Engine {
             }
         }
         true
+    }
+
+    /// Collects the place's inbox before flume submits it anew after an
+    /// outcome, the one time a settle reads the inbox of a place whose
+    /// submission is decided: anything pending for the place then is of a
+    /// submission whose verdict flume holds, or of none of the place's,
+    /// and is no outcome of the one it makes now, so the settles that
+    /// follow collect that submission's alone (99, 101, 133).
+    fn collect_before(&self, id: &PlaceId, retried: bool) {
+        let Some(read) = self.store.read(id) else {
+            return;
+        };
+        let held = read.state;
+        let place = &held.place;
+        let ours = &held.submission;
+        if held.phase != Phase::Live
+            || !(retried || ours.due)
+            || ours.verdict.is_none()
+            || base_place(&place.kind)
+        {
+            return;
+        }
+        if let Some(queue) = self.bound(place).ok().and_then(|bound| bound.merge_queue) {
+            self.collect(id, queue.as_ref(), &place.place_ref());
+        }
     }
 
     /// What the merge queue holds of flume's submit recorded as the

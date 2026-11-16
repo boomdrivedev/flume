@@ -1964,13 +1964,13 @@ pub struct SubmissionHeld {
     /// Since when it has waited so (56, 130).
     #[serde(default)]
     pub waiting_since: Option<Seconds>,
-    /// Why the place's inbox could not be read at the last settle, which
-    /// acted on nothing (133, 68).
+    /// Why the place's inbox could not be read at the last settle that
+    /// read it, which acted on nothing (133, 68).
     #[serde(default)]
     pub unread: Option<String>,
-    /// Each branch the place's inbox passed over at the last settle, with
-    /// its words, its outcomes left pending for a later one; the
-    /// outcomes of every other branch were acted on (133).
+    /// Each branch the place's inbox passed over at the last settle that
+    /// read it, with its words, its outcomes left pending for a later
+    /// one; the outcomes of every other branch were acted on (133).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub passed_over: Vec<PassedOver>,
 }
