@@ -241,14 +241,17 @@ impl FakeMergeQueue {
         commit
     }
 
-    /// The newest open submission of `branch` decided now by `plan`, as a
-    /// round the queue ran on its own would.
+    /// The newest open or held submission of `branch` decided now by
+    /// `plan`, as a round the queue ran on its own would, or a hand
+    /// withdrawing a held landing does.
     pub fn decide(&self, repository: &str, branch: &str, plan: Plan) {
         let open = self
             .submissions(repository, branch)
             .into_iter()
             .rev()
-            .find(|submission| submission.state.open());
+            .find(|submission| {
+                submission.state.open() || matches!(submission.state, SubmissionState::Held { .. })
+            });
         if let Some(submission) = open {
             lock(&self.state)
                 .plans

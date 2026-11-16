@@ -84,8 +84,11 @@ impl Engine {
                 SubmissionState::Held { words } if is_ours(&held.submission, &submission) => {
                     self.landing_held(id, words) || self.due(held, queue.as_ref())
                 }
+                // A held landing's withdrawal is taken though `waiting`
+                // holds its words (112).
                 SubmissionState::Withdrawn
-                    if is_ours(&held.submission, &submission) && ours.waiting.is_none() =>
+                    if is_ours(&held.submission, &submission)
+                        && (ours.waiting.is_none() || ours.landing_refused) =>
                 {
                     self.verdict(id, Verdict::Withdrawn);
                     true
@@ -120,9 +123,13 @@ impl Engine {
                 }
                 state if state.open() => {
                     let taken = self.taken_in(id, &submission);
+                    // A held landing back in the queue, once another
+                    // submission it carried left, ends the place's wait
+                    // (112, 124).
+                    let back = is_ours(&held.submission, &submission) && self.back_in_queue(id);
                     let stepped =
                         self.step_base(queue.as_ref(), &place.repository, &submission.target);
-                    taken || stepped
+                    taken || back || stepped
                 }
                 _ => self.due(held, queue.as_ref()),
             },
@@ -202,6 +209,18 @@ impl Engine {
         .unwrap_or(false)
     }
 
+    /// The wait on a held landing ended by its submission's return to the
+    /// queue; true when it was ended now (112, 124; core.58).
+    fn back_in_queue(&self, id: &PlaceId) -> bool {
+        self.update(id, |held| {
+            if !end_held_wait(&mut held.submission) {
+                return Step::Keep(false);
+            }
+            Step::Write(true)
+        })
+        .unwrap_or(false)
+    }
+
     /// The entry an intake took the place's request in as, recorded as
     /// the place's submission once read; true when it was recorded now
     /// (124).
@@ -263,6 +282,7 @@ impl Engine {
             held.submission.request = None;
             held.submission.verdict = None;
             held.submission.waiting = None;
+            held.submission.landing_refused = false;
             Step::Write(Some(held.place.clone()))
         });
         let Some(Some(place)) = claimed else {
@@ -397,6 +417,9 @@ impl Engine {
             {
                 return Step::Keep(None);
             }
+            // A verdict on a held landing ends its wait, each arm below
+            // writing the place's next (112, 113; core.58).
+            end_held_wait(&mut held.submission);
             held.submission.verdict = Some(verdict.clone());
             let (cause, words) = match &verdict {
                 Verdict::Landed { commit, .. } => {
@@ -520,6 +543,7 @@ impl Engine {
                 kept: None,
             };
             held.submission.due = false;
+            end_held_wait(&mut held.submission);
             Step::Write(())
         });
     }
@@ -555,6 +579,17 @@ pub(crate) fn own_read(held: &HeldState, across: ReadAcross) -> SubmissionRead {
         }
         read => read,
     }
+}
+
+/// Ends the wait on a held landing, where the place waits on one, its
+/// words with it; true where it did (112, 113, 124; core.58).
+fn end_held_wait(ours: &mut SubmissionHeld) -> bool {
+    if !ours.landing_refused {
+        return false;
+    }
+    ours.landing_refused = false;
+    ours.waiting = None;
+    true
 }
 
 /// Whether the place waits on its submission alone: live, submitted by

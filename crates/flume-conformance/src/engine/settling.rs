@@ -147,6 +147,26 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["112", "130", "133"],
             run: held_nothing_started,
         },
+        Scenario {
+            name: "submit: a fix's held landing pushed again lands: the next settle reads it landed, the place's work is over and the place is tidied",
+            cites: &["113", "124", "112"],
+            run: pushed_again,
+        },
+        Scenario {
+            name: "submit: a fix's held landing dropped back into the queue: the settle that reads it waiting ends the wait and steps the base, and a later settle reads it landed",
+            cites: &["112", "124"],
+            run: back_in_the_queue,
+        },
+        Scenario {
+            name: "submit: a retry past a held landing: a change allowed one send-back whose landing is held is retried at code with its caller's words, the submission after its stages withdraws the held one, and its failure sends it back to code with the merge queue's words, the one send-back its kind allows",
+            cites: &["112", "131", "49"],
+            run: a_retry_past_a_held_landing,
+        },
+        Scenario {
+            name: "submit: a hand withdraws a fix's held landing: the next settle leaves the place waiting for its caller, status naming the withdrawal, and starts nothing",
+            cites: &["112", "99"],
+            run: a_held_landing_withdrawn,
+        },
     ]
 }
 
@@ -1416,5 +1436,170 @@ fn held_nothing_started(_: &()) -> Outcome {
         submission.submits == 1 && submission.verdict.is_none(),
         "the submission is not open: {submission:?}"
     );
+    Ok(())
+}
+
+/// The fix `one` whose landing the queue holds, its wait read at a settle.
+fn fix_waiting_on_a_held_landing(world: &World) -> Result<PlaceId, String> {
+    let id = fix_held(world, "one", true)?;
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure!(
+        held.submission.landing_refused,
+        "the place waits on no held landing: {:?}",
+        held.submission
+    );
+    Ok(id)
+}
+
+fn pushed_again(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_waiting_on_a_held_landing(&world)?;
+    world
+        .queue
+        .push_again(REPOSITORY, "fix/one")
+        .ok_or("no held landing to push again")?;
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed place is kept");
+    ensure!(!world.place.exists(&id.0), "the landed place stands");
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    Ok(())
+}
+
+fn back_in_the_queue(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_waiting_on_a_held_landing(&world)?;
+    world.queue.drop_held(REPOSITORY, "fix/one");
+    world.queue.log.clear();
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure!(
+        !held.submission.landing_refused && held.submission.waiting.is_none(),
+        "the wait stands: {:?}",
+        held.submission
+    );
+    ensure_eq!(held.waiting, None, "the move waited on");
+    ensure_eq!(
+        world.queue.log.of("step"),
+        vec![format!("step {REPOSITORY} main")],
+        "the base stepped"
+    );
+    world.queue.run_round(REPOSITORY, "main");
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed place is kept");
+    ensure_eq!(world.queue.log.count("submit"), 0, "submissions made anew");
+    Ok(())
+}
+
+fn a_retry_past_a_held_landing(_: &()) -> Outcome {
+    let world = World::new();
+    let mut own = crate::fake_harness::flumes_own();
+    for kind in own.iter_mut().filter(|kind| kind.name == "change") {
+        if let Some(verify) = kind.stages.last_mut() {
+            verify.send_back_limit = Some(1);
+        }
+    }
+    world.kinds.set_own(own);
+    let failed = "check test-y failed: 1 of 46";
+    world.queue.plan_submits(vec![
+        Plan::Held {
+            words: FORGE.into(),
+            recorded: true,
+        },
+        Plan::Fail(failed.into()),
+    ]);
+    let id = change_at_verify(&world, "plan")?;
+    world.queue.moves_on_its_own();
+    archive(&world, "plan");
+    world.settle(&id);
+    world.queue.run_round(REPOSITORY, "main");
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure!(held.submission.landing_refused, "no held landing's wait");
+    let first = held.submission.id.clone().ok_or("no submission")?;
+    let words = "take the token out of src/config.rs";
+    let retried = world
+        .engine
+        .retry(&id, Retry::Stage("code".into()), Some(words.into()), false);
+    if let Some(reason) = retried.refusal() {
+        return Err(format!("the retry was refused: {reason}"));
+    }
+    let code = World::identity("change", "plan", "code", 2);
+    let prompt = world.prompt(&id, &code).ok_or("no second code")?;
+    ensure!(
+        prompt.contains(words),
+        "the caller's words are not in {prompt}"
+    );
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure!(
+        !held.submission.landing_refused && held.submission.waiting.is_none(),
+        "the held landing's wait outlives the retry: {:?}",
+        held.submission
+    );
+    world.tick("change/plan", "plan", 2, 2);
+    world.settle(&id);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "verify"),
+        Some(StageState::Begun),
+        "verify, run again"
+    );
+    archive(&world, "plan");
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("submit"), 2, "submissions");
+    ensure!(
+        world
+            .queue
+            .submissions(REPOSITORY, "change/plan")
+            .iter()
+            .any(|submission| submission.id == first
+                && submission.state == SubmissionState::Withdrawn),
+        "the held submission is not withdrawn"
+    );
+    world.queue.run_round(REPOSITORY, "main");
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure_eq!(held.submission.send_backs, 1, "send-backs");
+    ensure_eq!(
+        held.submission.waiting,
+        None,
+        "a wait past the kind's bound"
+    );
+    ensure_eq!(held.stages[1].starts, 3, "code's starts");
+    let code = World::identity("change", "plan", "code", 3);
+    let prompt = world.prompt(&id, &code).ok_or("no third code")?;
+    ensure!(
+        prompt.contains(failed),
+        "the merge queue's words are not in {prompt}"
+    );
+    Ok(())
+}
+
+fn a_held_landing_withdrawn(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_waiting_on_a_held_landing(&world)?;
+    world.queue.decide(REPOSITORY, "fix/one", Plan::Withdraw);
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure_eq!(held.phase, Phase::Live, "the place");
+    ensure!(
+        !held.submission.landing_refused,
+        "the held landing's wait stands"
+    );
+    ensure_eq!(
+        held.submission.verdict,
+        Some(Verdict::Withdrawn),
+        "the verdict"
+    );
+    let status = world.status(&id)?;
+    let waiting = status.submission.and_then(|submission| submission.waiting);
+    ensure!(
+        waiting
+            .as_deref()
+            .is_some_and(|text| text.contains("withdrew")),
+        "status names not the withdrawal: {waiting:?}"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
     Ok(())
 }
