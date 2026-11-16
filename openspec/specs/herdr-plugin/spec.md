@@ -112,7 +112,7 @@ tell no person (72, C.5).
 
 ### Requirement: The popup's key is the entry lib/common.sh gives
 
-The manifest SHALL declare no key, since herdr 0.9.5's action has none, and SHALL describe the entry that binds one; the `[[keys.command]]` entry `lib/common.sh` gives, the same as the startup's words, and the sidebar's rows SHALL pass the pinned herdr's `config check`. The README gives a person that entry apart from the rows, kept by its writers, and no check SHALL read it (C.5; core.21, core.29; record 0071).
+The manifest SHALL declare no key, since herdr 0.9.5's action has none, and SHALL describe the entry that binds one; the `[[keys.command]]` entry `lib/common.sh` gives, the same as the startup's words, and the sidebar's rows SHALL pass the pinned herdr's `config check`. The README gives a person that entry apart from the rows, kept by its writers, and no check SHALL read it (C.5; core.21, core.29; record 0074).
 
 #### Scenario: The manifest
 
