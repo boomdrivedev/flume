@@ -18,6 +18,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s29_a_commit_and_a_quiet_agent,
         },
         Scenario {
+            name: "settle: a change sent back by a failure its merge queue hands again at every inbox, its confirm not taken, has its code begun in the settle that sent it back and ended in the settle that reads it delivered and quiet, the failure acted on once",
+            cites: &["40", "46", "112", "133", "74", "225"],
+            run: an_outcome_handed_again_holds_no_stage,
+        },
+        Scenario {
             name: "settle: a delivered stage whose next waits on its caller starts nothing more",
             cites: &["S7", "47", "70", "17", "I6"],
             run: s7_two_held_places,
@@ -224,6 +229,71 @@ fn s29_a_commit_and_a_quiet_agent(_: &()) -> Outcome {
             .stage_state(&id, "code")
             .is_some_and(StageState::running),
         "code did not start"
+    );
+    Ok(())
+}
+
+fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
+    // On deneb on 2026-11-15 a change's code, sent back by a failure its
+    // merge queue kept owed, stayed started with its tasks ticked and its
+    // agent waiting for hours: each settle's steps went to collecting that
+    // failure again, so none read the stage's prompt received or its end
+    // (40, 46, 133). A merge queue that takes no confirm keeps the
+    // failure owed and hands it again at every inbox, as one did before
+    // flume confirmed what it acted on (225).
+    let world = World::new();
+    world
+        .queue
+        .refuse_confirms(Some("the merge queue could not be read"));
+    let id = construct_begun(&world, "plan")?;
+    write_change(&world, "plan");
+    world.settle(&id);
+    world.tick("change/plan", "plan", 1, 1);
+    world.settle(&id);
+    ensure!(
+        world
+            .stage_state(&id, "verify")
+            .is_some_and(StageState::running),
+        "verify did not start in code's settle"
+    );
+    let words = "check test-x failed";
+    world.queue.plan_submits(vec![Plan::Fail(words.into())]);
+    archive(&world, "plan");
+    world.settle(&id);
+    let code = World::identity("change", "plan", "code", 2);
+    let prompt = world.prompt(&id, &code).ok_or("code did not start again")?;
+    ensure!(prompt.contains(words), "{words} is not in {prompt}");
+    let location = world.held(&id).ok_or("no place")?.place.location;
+    ensure_eq!(
+        world.queue.pending(&location),
+        vec![SubmissionOutcome::Failed {
+            words: words.into()
+        }],
+        "the failure owed, handed again at the next inbox"
+    );
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code, sent back, in the settle that sent it back"
+    );
+    world.tick("change/plan", "plan", 1, 1);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Delivered),
+        "code, delivered and its agent quiet, at the first settle"
+    );
+    ensure!(
+        world
+            .stage_state(&id, "verify")
+            .is_some_and(StageState::running),
+        "verify did not start again in code's settle"
+    );
+    let held = world.held(&id).ok_or("no place")?;
+    ensure_eq!(
+        (held.submission.submits, held.submission.send_backs),
+        (1, 1),
+        "submissions and goings-back, the failure handed again"
     );
     Ok(())
 }
