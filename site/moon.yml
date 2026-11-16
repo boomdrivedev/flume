@@ -1,7 +1,7 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
 # The site: its build, in the fast layer. No task reads its pages for
-# their words, which their writers keep (core.21; record 0071). The Pages
+# their words, which their writers keep (core.21; record 0074). The Pages
 # workflow builds and publishes it on every push to main.
 language: 'typescript'
 layer: 'application'

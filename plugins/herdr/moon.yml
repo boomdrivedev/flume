@@ -11,7 +11,7 @@ tasks:
   # herdr-plugin.toml as herdr reads it, every script it names present and
   # parsing under sh, its version the cargo workspace's, its places action
   # describing the key's entry. No task reads the README, which its
-  # writers keep (core.21; record 0071).
+  # writers keep (core.21; record 0074).
   manifest:
     command: 'sh tests/manifest.sh'
     inputs: ['herdr-plugin.toml', 'bin/**/*', 'lib/**/*', 'tests/manifest.sh', '/Cargo.toml', '/devenv.nix', '/devenv.lock', '/.prototools']

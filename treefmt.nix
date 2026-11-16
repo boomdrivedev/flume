@@ -19,7 +19,7 @@ in
   settings.excludes = [
     # Markdown: the pages, the READMEs, the records and the specs are kept
     # by their writers, and no task reads one for its words or its form
-    # (core.21; record 0071).
+    # (core.21; record 0074).
     "*.md"
     "*.mdx"
     # Written by cargo, devenv and bun in their own layouts.

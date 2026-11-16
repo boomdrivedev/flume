@@ -162,7 +162,7 @@ let
   '';
 
   # Vale, for the pages' writers to run on their prose (.vale.ini,
-  # styles/Flume); no check runs it (core.21; record 0071). From its own
+  # styles/Flume); no check runs it (core.21; record 0074). From its own
   # release: nixpkgs trails it. Bump the version and the four hashes from
   # the release's checksums file.
   valeVersion = "3.24.0";

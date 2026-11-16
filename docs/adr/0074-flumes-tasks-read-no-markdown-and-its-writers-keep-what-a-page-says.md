@@ -1,11 +1,12 @@
 ---
-number: 71
+number: 74
 title: flume's tasks read no Markdown, and its writers keep what a page says
 status: proposed
 date: 2026-11-15
 decision-makers:
 - Chuck Swanberg
 - the chore flumes-tasks-read-no-markdown's code stage
+- the fix flumes-checks-read-no-markdown-1's code stage
 ---
 
 # flume's tasks read no Markdown, and its writers keep what a page says
@@ -53,6 +54,8 @@ The prose job is option 1. A workflow that holds the site back for a page's word
 The herdr plugin's tests are option 1. The entry the tests prove is the code's, `lib/common.sh`'s, the one the startup's words give; the README is a page.
 
 What stays, as the brief says and by the same reading: OpenSpec's validation of the specs and the open changes, the change tool's own reading of its format; the site's build; Claude Code's `plugin validate` of the plugin, its command among it, Claude Code's own reading of its format; the kinds' prompts and the plugin's files the binary carries and sends as its own; and tests that write a `README.md`, a change folder or another Markdown file into a scratch repository as data.
+
+The record is 0074, the fix `flumes-checks-read-no-markdown-1`'s code stage's choice. main holds records 0071, a submission whose landing the forge refused, 0072, flume's confirming of a merge queue's outcome, and 0073, each open change validated as it would archive; 0074 is the next free. The change `the-no-markdown-requirements-cite-record-0074` gives the-gate's and herdr-plugin's requirements this number. Not taken: the archived change `flumes-tasks-read-no-markdown` rewritten to it, which says what was archived, as its commits do, under the number it was written with.
 
 ### Consequences
 

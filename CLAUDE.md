@@ -83,7 +83,7 @@ names it, and beside it a quick, narrow call, `cargo check` or one unit
 test, is fine to run directly. `devenv shell -- moon run :#check-fast` runs
 the fast layer, `:#check-tools` the tools layer; `site-build` runs the
 site's build, `prose` Vale over the pages and the README for their
-writers, which no check runs (core.21; record 0071), `lint` the workspace's clippy, `disk` what `target/` has grown to, and `moon run
+writers, which no check runs (core.21; record 0074), `lint` the workspace's clippy, `disk` what `target/` has grown to, and `moon run
 <crate>:test` one crate's tests (`seams`, `core`, `fakes`,
 `conformance`, `flume`). The site's own notes are `site/README.md`.
 

@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   # The site built and published; nothing reads its pages for their
-  # words, which their writers keep (core.21; record 0071).
+  # words, which their writers keep (core.21; record 0074).
   build:
     runs-on: ubuntu-latest
     steps:
