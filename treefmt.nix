@@ -17,8 +17,9 @@ in
 
   # What no formatter owns, each with its reason (core.21).
   settings.excludes = [
-    # Prose: the site's pages and the README are Vale's (site:prose), and
-    # no formatter here rewraps prose.
+    # Markdown: the pages, the READMEs, the records and the specs are kept
+    # by their writers, and no task reads one for its words or its form
+    # (core.21; record 0074).
     "*.md"
     "*.mdx"
     # Written by cargo, devenv and bun in their own layouts.

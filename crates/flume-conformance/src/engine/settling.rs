@@ -6,10 +6,8 @@
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Retry;
-use flume_fakes::{FakeMergeQueue, Plan};
+use flume_fakes::Plan;
 use flume_seams::*;
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -20,8 +18,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s29_a_commit_and_a_quiet_agent,
         },
         Scenario {
-            name: "settle: a change sent back by a failure its merge queue hands again at every inbox, as a merge queue does until its reader confirms it, has its code begun in the settle that sent it back and ended in the settle that reads it delivered and quiet, the failure acted on once",
-            cites: &["40", "46", "112", "133", "74"],
+            name: "settle: a change sent back by a failure its merge queue hands again at every inbox, its confirm not taken, has its code begun in the settle that sent it back and ended in the settle that reads it delivered and quiet, the failure acted on once",
+            cites: &["40", "46", "112", "133", "74", "225"],
             run: an_outcome_handed_again_holds_no_stage,
         },
         Scenario {
@@ -240,94 +238,18 @@ fn s29_a_commit_and_a_quiet_agent(_: &()) -> Outcome {
     Ok(())
 }
 
-/// The fake merge queue, but that its inbox hands each outcome it ever
-/// gave a place again at every inbox after, as a merge queue that keeps
-/// an outcome owed until its reader confirms it hands one no confirm
-/// reached: every other call is the fake's.
-struct HandsAgain {
-    queue: Arc<FakeMergeQueue>,
-    /// Each place's outcomes ever given, and how many inboxes gave them,
-    /// by location.
-    handed: Mutex<BTreeMap<String, (Vec<SubmissionOutcome>, usize)>>,
-}
-
-impl HandsAgain {
-    /// How many inboxes handed the place at `location` an outcome.
-    fn given(&self, location: &str) -> usize {
-        self.handed
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(location)
-            .map_or(0, |(_, inboxes)| *inboxes)
-    }
-}
-
-impl MergeQueue for HandsAgain {
-    fn submit(&self, place: &PlaceRef, head: &SubmitHead) -> Submitted {
-        self.queue.submit(place, head)
-    }
-
-    fn inbox(&self, place: &PlaceRef) -> Inbox {
-        match self.queue.inbox(place) {
-            Inbox::Outcomes {
-                outcomes,
-                passed_over,
-            } => {
-                let mut handed = self
-                    .handed
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                let (given, inboxes) = handed.entry(place.location.clone()).or_default();
-                given.extend(outcomes);
-                if !given.is_empty() {
-                    *inboxes += 1;
-                }
-                Inbox::Outcomes {
-                    outcomes: given.clone(),
-                    passed_over,
-                }
-            }
-            unread @ Inbox::CouldNotRead { .. } => unread,
-        }
-    }
-
-    fn read_submissions(&self, repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
-        self.queue.read_submissions(repository, branches)
-    }
-
-    fn step(&self, repository: &str, base: &str) -> Stepped {
-        self.queue.step(repository, base)
-    }
-
-    fn base_revision(&self, repository: &str, base: &str) -> BaseRevision {
-        self.queue.base_revision(repository, base)
-    }
-
-    fn open(&self, repository: &str, branch: &str, base: &str) -> BranchOpened {
-        self.queue.open(repository, branch, base)
-    }
-
-    fn close(&self, repository: &str, branch: &str, into: &str) -> BranchClosed {
-        self.queue.close(repository, branch, into)
-    }
-
-    fn forecast(&self, repository: &str, branch: &str, base: &str) -> Forecast {
-        self.queue.forecast(repository, branch, base)
-    }
-}
-
 fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
     // On deneb on 2026-11-15 a change's code, sent back by a failure its
     // merge queue kept owed, stayed started with its tasks ticked and its
     // agent waiting for hours: each settle's steps went to collecting that
     // failure again, so none read the stage's prompt received or its end
-    // (40, 46, 133).
+    // (40, 46, 133). A merge queue that takes no confirm keeps the
+    // failure owed and hands it again at every inbox, as one did before
+    // flume confirmed what it acted on (225).
     let world = World::new();
-    let queue = Arc::new(HandsAgain {
-        queue: world.queue.clone(),
-        handed: Mutex::default(),
-    });
-    world.resolver.bind_merge_queue("queue", queue.clone());
+    world
+        .queue
+        .refuse_confirms(Some("the merge queue could not be read"));
     let id = construct_begun(&world, "plan")?;
     write_change(&world, "plan");
     world.settle(&id);
@@ -347,6 +269,14 @@ fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
     let prompt = world.prompt(&id, &code).ok_or("code did not start again")?;
     ensure!(prompt.contains(words), "{words} is not in {prompt}");
     let location = world.held(&id).ok_or("no place")?.place.location;
+    ensure_eq!(
+        world.queue.pending(&location),
+        vec![SubmissionOutcome::Failed {
+            words: words.into()
+        }],
+        "the failure owed, handed again at the next inbox"
+    );
+    world.queue.log.clear();
     ensure_eq!(
         world.stage_state(&id, "code"),
         Some(StageState::Begun),
@@ -371,10 +301,14 @@ fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
         (1, 1),
         "submissions and goings-back, the failure handed again"
     );
-    // The inbox is asked only while the submission is open: it handed
-    // the failure once, and no settle asked it again while flume held
-    // that failure and code ran (111, 133; record 0012).
-    ensure_eq!(queue.given(&location), 1, "inboxes that handed the failure");
+    // The inbox is asked only while the submission is open: no settle
+    // asked it again while flume held that failure and code ran (111,
+    // 133; record 0012).
+    ensure_eq!(
+        world.queue.log.count("inbox"),
+        0,
+        "inboxes while flume held the failure"
+    );
     Ok(())
 }
 
@@ -994,11 +928,13 @@ fn an_inbox_asked_only_while_open(_: &()) -> Outcome {
     let held = world.held(&id).ok_or("the place is gone")?;
     ensure_eq!(held.submission.send_backs, 1, "send-backs");
     ensure_eq!(held.stages[0].starts, 2, "code's starts");
+    let first = held.submission.id.ok_or("no submission")?;
 
     // An outcome pending for the place once flume holds its verdict, as
     // a merge queue leaves one it could not deliver to its reader.
     world.queue.leave_pending(
         &location,
+        &first,
         SubmissionOutcome::Failed {
             words: "an earlier failure".into(),
         },

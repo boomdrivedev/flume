@@ -737,6 +737,7 @@ pub(crate) mod tests {
                 since: None,
                 room: None,
                 made_from: None,
+                counts: None,
             }],
             current: Some(0),
             submission: SubmissionHeld::default(),
@@ -824,6 +825,7 @@ pub(crate) mod tests {
             terminal: None,
             own: None,
             answered: 0,
+            counts: None,
             span: None,
             asking_since: None,
         }

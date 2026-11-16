@@ -161,7 +161,8 @@ let
     '') hookTypes}
   '';
 
-  # Vale checks the site's prose (.vale.ini, styles/Flume). From its own
+  # Vale, for the pages' writers to run on their prose (.vale.ini,
+  # styles/Flume); no check runs it (core.21; record 0074). From its own
   # release: nixpkgs trails it. Bump the version and the four hashes from
   # the release's checksums file.
   valeVersion = "3.24.0";
@@ -556,7 +557,7 @@ in
   };
 
   scripts.prose = {
-    description = "The site's prose, checked by Vale (.vale.ini)";
+    description = "Vale over the site's pages and the README, for their writers (.vale.ini)";
     exec = ''
       set -euo pipefail
       cd "$(git rev-parse --show-toplevel)"

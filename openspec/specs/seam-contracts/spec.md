@@ -31,12 +31,15 @@ and no interface SHALL name a tool (core.1, core.2).
 
 The merge queue's submit SHALL answer once the merge queue holds the
 submission, with no wait on its verdict, and its inbox SHALL give each
-pending outcome of the place once (117, 133).
+pending outcome of the place with the submission it decides, again at
+every inbox until the place confirms it by the key it gives, and never
+after; a merge queue that keeps nothing to confirm SHALL give no key and
+each outcome once (117, 133, 225).
 
 #### Scenario: Submit holds no wait
 
 - **WHEN** the fake merge queue holds a submission undecided
-- **THEN** submit answers with the submission at once, and a later inbox gives its outcome once and then nothing (117, 133)
+- **THEN** submit answers with the submission at once, and once it is decided an inbox gives its outcome with that submission, again until the place confirms it by its key, and then nothing (117, 133, 225)
 
 ### Requirement: What the agent and terminal seams read
 
@@ -1032,6 +1035,19 @@ written before, which has none, reads answered (43, 61, 75).
 - **WHEN** `round_trip.rs` writes an end with a notice claimed answered and one claimed sending, and reads each back
 - **THEN** each reads as written, and the answered claim is written with no `sending`, as a claim written before
 
+### Requirement: The type of a recipient a standing agent's launch gave
+
+`flume-seams` SHALL hold `RecipientsFrom::Standing`, with the standing
+agent's name, `agent`, and the source that declares it, `source`,
+serialized with `from` `standing`, written and read back by its round
+trip beside the variants before it, and a held state written before
+reading with the recipients' source it held (7, 61, 132; core.14).
+
+#### Scenario: Round trips
+
+- **WHEN** `round_trip.rs` writes a held state whose recipients came from the standing agent `east-planner`, declared by `acme`, and reads it back, beside each variant before it
+- **THEN** each reads as written, the standing one's JSON giving `from` `standing`, `agent` `east-planner` and `source` `acme`, and a held state written before reads with the source it held (61)
+
 ### Requirement: The terminal seam's relay
 
 The terminal seam SHALL offer relay: given an agent, a handle, or a
@@ -1096,3 +1112,16 @@ other name SHALL be refused, naming it and flume's names (222).
 
 - **WHEN** `ctrl+c`, `shift+tab`, `escape`, `f12`, `ctrl+alt+x`, `é` and `space` are read as keys, and then `alt+ctrl+x`, `f13` and `hyper+x`
 - **THEN** the first seven are read and written back as `ctrl+c`, `shift+tab`, `esc`, `f12`, `ctrl+alt+x`, `é` and `space`, and each of the last three is refused naming it and flume's names (222)
+
+### Requirement: The merge queue reads several branches at once
+
+The merge queue seam SHALL answer read-submission for several branches
+of one repository at once, each branch's newest submission in the
+order the branches were asked, from one read of the merge queue; and
+read-submission of one branch SHALL be that read of the one branch (99,
+C.6).
+
+#### Scenario: Two branches and one with nothing
+
+- **WHEN** the fake merge queue holds a submission of `fix/one` and none of `fix/two`, and both are asked at once
+- **THEN** the answer gives `fix/one` its submission and `fix/two` none, in that order, from one read (99)
