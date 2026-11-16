@@ -35,7 +35,7 @@ its spec names and cites the clauses its spec scenario cites.
 
 ## 5. The site
 
-- [ ] 5.1 In `site/src/content/docs/guides/claude-code.mdx`, add `landing refused` to the table of line states, after `past its bound`, `submission refused`: the forge refused the landing of the place's submission, which the merge queue holds, and the place waits on its caller with the forge's words. In `site/src/content/docs/architecture/rules.md`, mirror core.58 as `docs/architecture/core.md` writes it, after core.57 (core.35). True when `sluice exec <base> -- moon run site:prose` and `sluice exec <base> -- moon run site:build` pass.
+- [x] 5.1 In `site/src/content/docs/guides/claude-code.mdx`, add `landing refused` to the table of line states, after `past its bound`, `submission refused`: the forge refused the landing of the place's submission, which the merge queue holds, and the place waits on its caller with the forge's words. In `site/src/content/docs/architecture/rules.md`, mirror core.58 as `docs/architecture/core.md` writes it, after core.57 (core.35). True when `sluice exec <base> -- moon run site:prose` and `sluice exec <base> -- moon run site:build` pass.
 
 ## 6. The change
 
