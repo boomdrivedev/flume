@@ -1,0 +1,11 @@
+{
+  "confirmed": [
+    {
+      "key": "6:landed",
+      "branch": "main",
+      "reader": "/places/fix--one",
+      "at": "2026-11-16T09:20:01Z",
+      "first": true
+    }
+  ]
+}
