@@ -190,6 +190,9 @@ impl MergeQueue for StandInQueue {
             passed_over: vec![],
         }
     }
+    fn confirm(&self, _place: &PlaceRef, _key: &str) -> Confirmed {
+        Confirmed::Confirmed
+    }
     fn read_submissions(&self, _repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
         branches
             .iter()
@@ -265,6 +268,9 @@ impl MergeQueue for HoldingQueue {
             outcomes: vec![],
             passed_over: vec![],
         }
+    }
+    fn confirm(&self, _place: &PlaceRef, _key: &str) -> Confirmed {
+        Confirmed::Confirmed
     }
     fn read_submissions(&self, _repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
         let record = std::fs::read_to_string(Self::log()).unwrap_or_default();

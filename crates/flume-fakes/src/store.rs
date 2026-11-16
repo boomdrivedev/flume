@@ -30,6 +30,8 @@ pub struct FakeStore {
     during_read_every: Mutex<Vec<Interleaved>>,
     /// The places whose next write is refused, each once.
     refused: Mutex<Vec<PlaceId>>,
+    /// The places every write of which is refused while they are named.
+    refusing: Mutex<Vec<PlaceId>>,
     root: String,
     pub log: Log,
 }
@@ -64,6 +66,7 @@ impl FakeStore {
             after_read: Mutex::default(),
             during_read_every: Mutex::default(),
             refused: Mutex::default(),
+            refusing: Mutex::default(),
             root: root.into(),
             log: Log::default(),
         }
@@ -111,6 +114,17 @@ impl FakeStore {
     /// as a store refuses one whose file it could not write.
     pub fn refuse_next_write_of(&self, place: &PlaceId) {
         lock(&self.refused).push(place.clone());
+    }
+
+    /// Every write of `place` refused from now while `refuses`, as moved,
+    /// nothing written, as a store refuses writes to a file it cannot
+    /// write, and taken again once it is false.
+    pub fn refuse_writes_of(&self, place: &PlaceId, refuses: bool) {
+        let mut refusing = lock(&self.refusing);
+        refusing.retain(|named| named != place);
+        if refuses {
+            refusing.push(place.clone());
+        }
     }
 
     /// Takes out and runs the first hook whose test holds of `held`.
@@ -269,7 +283,7 @@ impl Store for FakeStore {
         let refused = {
             let mut refused = lock(&self.refused);
             let at = refused.iter().position(|refused| refused == place);
-            at.map(|at| refused.remove(at)).is_some()
+            at.map(|at| refused.remove(at)).is_some() || lock(&self.refusing).contains(place)
         };
         if refused {
             self.log

@@ -656,9 +656,9 @@ impl Walk {
 /// `--no-wait` dropped, so it answers as the pinned sluice answers a
 /// no-wait submit on a base that takes pull requests where it finds the
 /// submission decided as it takes it in: with the entry's record and
-/// its `delivery`, owed to the worktree, exiting as the outcome does; the
-/// profile confirms it by its key, so no later inbox gives it (112, 133;
-/// sluice 51; sluice record 0102). While that submit waits on the rounds
+/// its `delivery`, owed to the worktree, exiting as the outcome does; flume
+/// confirms it by its key once it has acted on it, so no later inbox gives
+/// it (112, 133, 225; sluice 51; sluice record 0102). While that submit waits on the rounds
 /// that decide it, its inbox gives no outcome, as the pinned sluice's
 /// place inbox gives none of a submission it decided as it took it in,
 /// whose record names the pull request: a settle beside the submit, the
