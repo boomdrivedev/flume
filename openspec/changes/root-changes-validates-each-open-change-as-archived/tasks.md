@@ -16,7 +16,7 @@ merge queue gives the place (core.51).
 
 ## 2. The record and the rule
 
-- [ ] 2.1 Write `docs/adr/0072-each-open-change-is-validated-as-it-would-archive-alone-against-the-trees-specs.md`, number 72, proposed, as design section 7 says: the user's answer of 2026-11-15 on their card `req_278df7ab2cc34988a3f5`, quoted, and principle 16 at `3a5c19d`; Boomdrive's record 0050's options and choices, cited as the family's one design; and design section 9's choices as the construction agent's, each with the path not taken. In the same commit, add core.58 under "The gate" in `docs/architecture/core.md`, after core.51, and its details after core.51's, each as design section 7 gives it, and mirror core.58 as written on `site/src/content/docs/architecture/rules.md` after core.51. True when `sluice exec <base> -- moon run site:build` passes.
+- [x] 2.1 Write `docs/adr/0072-each-open-change-is-validated-as-it-would-archive-alone-against-the-trees-specs.md`, number 72, proposed, as design section 7 says: the user's answer of 2026-11-15 on their card `req_278df7ab2cc34988a3f5`, quoted, and principle 16 at `3a5c19d`; Boomdrive's record 0050's options and choices, cited as the family's one design; and design section 9's choices as the construction agent's, each with the path not taken. In the same commit, add core.58 under "The gate" in `docs/architecture/core.md`, after core.51, and its details after core.51's, each as design section 7 gives it, and mirror core.58 as written on `site/src/content/docs/architecture/rules.md` after core.51. True when `sluice exec <base> -- moon run site:build` passes.
 
 ## 3. The check
 
