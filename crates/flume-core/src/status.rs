@@ -684,6 +684,17 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
     };
     let submission = &held.submission;
     if let Some(words) = &submission.waiting {
+        // A landing the forge refused: a retry of the kind's fix round, as
+        // a place past its bound waits (112, 130; core.58).
+        if submission.landing_refused {
+            return waits(
+                Act::Retry,
+                crate::submit::fix_round_of(held),
+                Waits::ForgeRefused,
+                submission.waiting_since,
+                Some(words.clone()),
+            );
+        }
         let found = held.stages[last].state == StageState::EndedShort
             && held.stages[last].end.as_ref().and_then(|end| end.needs)
                 == Some(StopKind::FoundWork);

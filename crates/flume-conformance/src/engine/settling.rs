@@ -142,6 +142,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["112", "117"],
             run: withdrawn_and_refused,
         },
+        Scenario {
+            name: "submit: held, nothing started: a fix whose landing the forge refused waits on its caller to retry code with the forge's words from the settle after the round, opening no agent, taking no verdict, counting no send-back and stepping no round, its submission held and open and its wait's since unchanged at the third settle",
+            cites: &["112", "130", "133"],
+            run: held_nothing_started,
+        },
     ]
 }
 
@@ -1322,6 +1327,94 @@ fn two_depths_in_one_settle(_: &()) -> Outcome {
             format!("step {REPOSITORY} train/x"),
         ],
         "the steps of one settle of every place"
+    );
+    Ok(())
+}
+
+/// The forge's words for a landing it refused, as a push protection
+/// gives them.
+pub const FORGE: &str =
+    "push declined: the push holds what looks like a secret in src/config.rs:12";
+
+/// A fix named `name` delivered and submitted to a queue that moves on
+/// its own, whose next round holds its landing with the forge's words,
+/// on its record where `recorded`: the round run, unsettled.
+pub fn fix_held(world: &World, name: &str, recorded: bool) -> Result<PlaceId, String> {
+    world.queue.plan_submits(vec![Plan::Held {
+        words: FORGE.into(),
+        recorded,
+    }]);
+    let id = fix_begun(world, name)?;
+    world.queue.moves_on_its_own();
+    deliver_fix(world, &id);
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    world.queue.run_round(REPOSITORY, "main");
+    Ok(id)
+}
+
+fn held_nothing_started(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_held(&world, "one", true)?;
+    world.host.advance(60);
+    let at = world.host.now();
+    world.queue.log.clear();
+    world.settle(&id);
+    let held = world.held(&id).ok_or("the place is gone")?;
+    let waiting = held.waiting.clone().ok_or("the place waits on nobody")?;
+    ensure_eq!(waiting.on.act, Act::Retry, "the move waited on");
+    ensure_eq!(
+        waiting.on.stage.as_deref(),
+        Some("code"),
+        "the stage retried"
+    );
+    ensure_eq!(waiting.on.why, Waits::ForgeRefused, "why it waits");
+    ensure!(
+        waiting
+            .on
+            .words
+            .as_deref()
+            .is_some_and(|words| words.contains(FORGE)),
+        "the wait's words are not the forge's: {:?}",
+        waiting.on.words
+    );
+    ensure_eq!(
+        waiting.on.since,
+        Some(at),
+        "since the settle after the round"
+    );
+    for _ in 0..2 {
+        world.host.advance(60);
+        world.settle(&id);
+    }
+    let held = world.held(&id).ok_or("the place is gone")?;
+    ensure_eq!(held.phase, Phase::Live, "the place");
+    ensure_eq!(held.submission.verdict, None, "a verdict taken");
+    ensure_eq!(held.submission.send_backs, 0, "send-backs");
+    ensure_eq!(held.submission.submits, 1, "submissions");
+    ensure_eq!(held.stages[0].starts, 1, "code's starts");
+    ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
+    ensure_eq!(world.queue.log.count("step"), 0, "rounds stepped");
+    ensure_eq!(world.queue.log.count("submit"), 0, "submissions made anew");
+    ensure_eq!(
+        held.waiting.map(|waiting| waiting.on.since),
+        Some(Some(at)),
+        "the wait's since at the third settle"
+    );
+    let status = world.status(&id)?;
+    let submission = status.submission.ok_or("no submission")?;
+    ensure!(
+        matches!(
+            &submission.read,
+            SubmissionRead::Found { submission }
+                if submission.state == SubmissionState::Held { words: FORGE.into() }
+        ),
+        "the submission read {:?}",
+        submission.read
+    );
+    ensure!(
+        submission.submits == 1 && submission.verdict.is_none(),
+        "the submission is not open: {submission:?}"
     );
     Ok(())
 }
