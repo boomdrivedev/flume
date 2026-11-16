@@ -100,7 +100,7 @@ C.6's rows at `8b73d11`, `fc4323b` and `04e5a1a`.
 
 ## 4. The core (112, 124, 130, 133)
 
-**Taking a hold.** `Engine::held(id, words)` records the place's wait
+**Taking a hold.** `Engine::landing_held(id, words)` records the place's wait
 on its caller for a held landing: `submission.waiting` is `the forge
 refused the submission's landing: <words>` and `landing_refused` is
 true, in one write by compare-and-set (core.16). It writes only while
@@ -113,9 +113,9 @@ writes nothing where `landing_refused` already holds: the wait's words
 and its since stand as first written.
 
 A settle reaches it two ways. `collect` hands `SubmissionOutcome::Held`
-to `held`, never to `outcome`, so no verdict is taken. `submission`
+to `landing_held`, never to `outcome`, so no verdict is taken. `submission`
 reads `SubmissionRead::Found` held for the place's own submission
-(`is_ours`) and hands its words to `held`, which is how a base place,
+(`is_ours`) and hands its words to `landing_held`, which is how a base place,
 which has no inbox, and a request's entry, whose outcome sluice
 delivers to the request, are held (99, 133, 203). The first to read it
 writes the wait.
@@ -176,7 +176,8 @@ a record (core.56).
 
 `Plan::Held { words, recorded }`: the round that reaches the
 submission holds it, its record `Held` with `words` where `recorded`,
-else with the words section 3 gives a record that carries none, and
+else with `HELD_WITHOUT_WORDS`, words saying the merge queue's record
+gives none of the forge's, and
 leaves `SubmissionOutcome::Held` with `words` in its place's inbox, as
 sluice's notice carries them. `push_again(repository, branch)` lands
 the branch's held submission as the same landing, merging its head,
@@ -245,3 +246,16 @@ taken:
   inbox's answer, since status already names what the inbox passed over;
 - fixtures written from sluice's code at `44e33d4`; not captured from a
   run of a sluice built there, which the tree pins nowhere (core.22).
+- `Engine::landing_held` as the core's name for taking a hold; not
+  `Engine::held`, which already reads a place's held state;
+- the fake's words for a held record with none name the merge queue;
+  not sluice's words of section 3, since the fakes name no tool
+  (core.1);
+- the fake's held plan held once, the landing put back in the queue
+  landing at its next round unless a test decides it otherwise, and
+  `decide` reaching a held landing so a test withdraws it as a hand
+  does; not a plan held again at every round, which would leave no
+  landing to read back in the queue;
+- core.58 on the rules page in its section after core.53, where
+  `core.md` places it; not after core.57, which is another section's
+  rule.
