@@ -167,6 +167,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["112", "99"],
             run: a_held_landing_withdrawn,
         },
+        Scenario {
+            name: "submit: a base place whose kind names a fix, submitted at its caller's retry, whose landing the merge queue holds with a record that carries no words, waits on its caller with words saying the record gives none, launching no fix and forecasting nothing",
+            cites: &["203", "112", "99"],
+            run: a_base_places_held_submission,
+        },
     ]
 }
 
@@ -1601,5 +1606,62 @@ fn a_held_landing_withdrawn(_: &()) -> Outcome {
     );
     ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
     ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    Ok(())
+}
+
+fn a_base_places_held_submission(_: &()) -> Outcome {
+    let world = World::new();
+    let spring = super::base_places::spring_mended(&world, None)?;
+    world.queue.plan_submits(vec![Plan::Held {
+        words: FORGE.into(),
+        recorded: false,
+    }]);
+    match world
+        .engine()
+        .retry(&spring, Retry::Submission, None, false)
+    {
+        flume_core::Answer::Acted { .. } => {}
+        other => return Err(format!("the retry answered {other:?}")),
+    }
+    world.engine().settle(None);
+    world.engine().settle(None);
+    ensure!(
+        world
+            .queue
+            .submissions(REPOSITORY, "train/spring")
+            .last()
+            .is_some_and(|submission| matches!(submission.state, SubmissionState::Held { .. })),
+        "the merge queue holds no landing of train/spring"
+    );
+    world.queue.log.clear();
+    world.engine().settle(None);
+    let held = world.held(&spring).ok_or("the base place is gone")?;
+    ensure!(held.submission.landing_refused, "no held landing's wait");
+    ensure!(held.fixes.is_empty(), "fixes launched: {:?}", held.fixes);
+    ensure_eq!(held.submission.verdict, None, "a verdict taken");
+    let status = world.status(&spring)?;
+    ensure_eq!(
+        status.waits_on,
+        Some(flume_core::WaitsOn::Caller),
+        "whom the base place waits on"
+    );
+    let words = status
+        .waiting_on
+        .and_then(|waiting| waiting.words)
+        .unwrap_or_default();
+    ensure!(
+        words.contains(flume_fakes::HELD_WITHOUT_WORDS),
+        "the words say not that the record gives none: {words}"
+    );
+    ensure!(
+        world
+            .terminal
+            .log
+            .of("open")
+            .iter()
+            .all(|call| !call.contains("mend--")),
+        "a fix's agent opened"
+    );
+    ensure_eq!(world.queue.log.count("forecast"), 0, "forecasts");
     Ok(())
 }
