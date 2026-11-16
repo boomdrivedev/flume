@@ -4,8 +4,36 @@ Verified on `change/a-submission-the-forge-refused-waits-on-its-caller`
 at 5b83a2e2, cut from `bolt/flume-leaves-the-merge-queue-to-sluice`
 (7005c04a).
 
-**Outcome: the whole checks pass and the work holds; the change is
-archived.**
+**Outcome: the whole checks pass and the code holds every task and
+scenario, but the change cannot be archived: its archive fails
+`root:specs`. It is not archived, and goes back to its code stage.**
+
+## What fails
+
+`openspec archive` applies the change's deltas to `openspec/specs/`,
+and the specs it writes then fail `openspec validate --specs --strict`,
+the command `root:specs` runs in `#check-fast`: 48 passed and 3 failed.
+Each of the three fails on one warning, which `--strict` fails as an
+error: "Requirement text is very long (>500 characters). Move examples
+and edge cases into scenarios, or split it into separate requirements
+that each state one behavior." Each is a requirement this change
+modifies, and each is under 500 characters on the base:
+
+| spec | requirement | its text, about |
+|---|---|---|
+| merge-queue-profile | Outcomes collected from sluice's inbox (requirements[1]) | 830 characters |
+| seam-contracts | The types of an agent, the terminal and a submission (requirements[7]) | 670 characters |
+| telemetry | A wait names whom it waits on (requirements[6]) | 525 characters |
+
+The specs at 5b83a2e, before the archive, pass the same command: 51
+passed, none failed. The gate did not catch it, since the change leaves
+`openspec/specs/` untouched until it is archived, and `root:changes`
+validates the change's deltas without that warning. Each of the three
+requirements' text must come under 500 characters, by moving clauses
+into its scenarios or splitting it into requirements that each state one
+behavior, and then `openspec validate --specs --strict` must pass over
+the specs as the archive writes them. The archive was run and undone;
+nothing of it is committed.
 
 ## The whole checks
 
