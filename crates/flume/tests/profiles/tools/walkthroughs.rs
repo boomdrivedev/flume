@@ -357,6 +357,19 @@ fn a_failed_submission_goes_back_to_code_and_lands_on_the_second() {
         stage(status, "code")["starts"] == 2 && !status["agent"].is_null()
     });
     assert_eq!(status["submission"]["send_backs"], 1, "{status}");
+    // The failure flume acted on is confirmed, so the next settle is
+    // handed nothing and sends nothing back again (225).
+    let first = walk.submissions();
+    assert_eq!(first.len(), 1, "{first:?}");
+    let delivery = walk.delivery(&first[0]["id"]);
+    assert_eq!(
+        delivery["state"], "done",
+        "the failure flume acted on, confirmed: {delivery}"
+    );
+    walk.settle(&place);
+    let status = walk.status(&place);
+    assert_eq!(status["submission"]["send_backs"], 1, "{status}");
+    assert_eq!(stage(&status, "code")["starts"], 2, "{status}");
     let prompt = walk.prompt(&place);
     // sluice's notice, as sluice words it, names the failure and where
     // to read why.
@@ -415,8 +428,8 @@ fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
     // 112, 133: the stand-in for sluice answers the first submission with
     // its entry's record, found in conflict as it was taken in, exiting
     // as a conflict does, as sluice answers a no-wait submit on a base
-    // that takes pull requests, and the profile confirms its delivery
-    // (sluice 51; sluice record 0102). The place goes back to code with
+    // that takes pull requests, and flume confirms its delivery once it
+    // has acted on it (225; sluice 51; sluice record 0102). The place goes back to code with
     // the files contested and the base's revision in its words, never
     // waiting on its caller as if refused, and lands on the second.
     let walk = Walk::new("walk-conflict-at-submit");

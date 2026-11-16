@@ -4,7 +4,7 @@
 
 /// The revision of `design/flume/requirements.md` in boomdrivedev/blueprints
 /// the list was read at.
-pub const REVISION: &str = "81288ba";
+pub const REVISION: &str = "aa710c6";
 
 /// Part A: what flume decides.
 pub fn part_a() -> Vec<u32> {
@@ -43,7 +43,7 @@ pub fn part_b() -> Vec<u32> {
         .chain(187..=189)
         .chain([192, 196, 201])
         .chain(205..=207)
-        .chain([210, 211, 215, 222])
+        .chain([210, 211, 215, 222, 225])
         .collect()
 }
 
@@ -206,7 +206,7 @@ mod tests {
             a.len(),
             77 + 8 + 3 + 2 + 4 + 1 + 10 + 6 + 3 + 9 + 3 + 7 + 8 + 3 + 1 + 3 + 6 + 2
         );
-        assert_eq!(b.len(), 22 + 6 + 3 + 2 + 4 + 4 + 2 + 3 + 5 + 3 + 3 + 3 + 4);
+        assert_eq!(b.len(), 22 + 6 + 3 + 2 + 4 + 4 + 2 + 3 + 5 + 3 + 3 + 3 + 5);
         let gaps = [100, 150, 194, 209];
         for gap in gaps {
             assert!(!a.contains(&gap) && !b.contains(&gap), "{gap} is listed");
@@ -216,11 +216,11 @@ mod tests {
         every.sort();
         assert_eq!(
             every,
-            (1..=224)
+            (1..=225)
                 .filter(|clause| !gaps.contains(clause))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(all().len(), 220 + 8 + 131);
+        assert_eq!(all().len(), 221 + 8 + 131);
         assert!(all().contains(&"S64".to_string()), "S64 is not listed");
         assert!(SKIPPED.is_empty(), "{SKIPPED:?} are skipped");
         for scenario in [
@@ -233,7 +233,7 @@ mod tests {
                 "{scenario} is not listed"
             );
         }
-        assert_eq!(REVISION, "81288ba");
+        assert_eq!(REVISION, "aa710c6");
         for clause in [
             129, 130, 131, 132, 137, 140, 141, 142, 148, 154, 155, 156, 157, 158, 159, 161, 162,
             163, 165, 168, 169, 173, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186, 190, 191,
@@ -244,7 +244,7 @@ mod tests {
         }
         for clause in [
             126, 127, 128, 133, 134, 135, 136, 138, 139, 151, 153, 160, 164, 174, 178, 179, 187,
-            188, 189, 192, 196, 201, 205, 206, 207, 210, 211, 215, 222,
+            188, 189, 192, 196, 201, 205, 206, 207, 210, 211, 215, 222, 225,
         ] {
             assert!(part_b().contains(&clause), "{clause} is not in Part B");
         }
