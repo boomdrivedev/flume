@@ -806,11 +806,12 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
 /// The move a live base place waits on its caller for: none while a
 /// place on its branch is live, since it waits on them and is never
 /// stalled for it, or while its submission is open, since it waits on
-/// the merge queue; else a retry of its submission, with the merge
-/// queue's words where its last submission failed, conflicted, was
-/// withdrawn or refused, with a hold's words where its submission is
-/// held, and otherwise since the settle that read none live (47, 112,
-/// 130, 203).
+/// the merge queue; else a retry of its submission, with the forge's
+/// words where the merge queue holds its landing, which the forge
+/// refused, with the merge queue's words where its last submission
+/// failed, conflicted, was withdrawn or refused, with a hold's words
+/// where its submission is held, and otherwise since the settle that
+/// read none live (47, 112, 130, 203; core.58).
 fn base_waiting_on(held: &HeldState, on_branch: usize) -> Option<WaitingOn> {
     let submission = &held.submission;
     let waits = |why, since, words| {
@@ -828,11 +829,12 @@ fn base_waiting_on(held: &HeldState, on_branch: usize) -> Option<WaitingOn> {
         return None;
     }
     if let Some(words) = &submission.waiting {
-        return waits(
-            Waits::Submission,
-            submission.waiting_since,
-            Some(words.clone()),
-        );
+        let why = if submission.landing_refused {
+            Waits::ForgeRefused
+        } else {
+            Waits::Submission
+        };
+        return waits(why, submission.waiting_since, Some(words.clone()));
     }
     if let Some(hold) = held.submission_hold() {
         return waits(Waits::OnHold, Some(hold.since), hold.words.clone());
