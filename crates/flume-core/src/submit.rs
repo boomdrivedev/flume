@@ -45,7 +45,12 @@ impl Engine {
     /// a place flume has not submitted, or whose outcome it holds, has
     /// nothing pending in the merge queue for a settle to collect, and
     /// its withdrawal and its landing by hand are read from the record
-    /// (99, 111, 133; record 0012).
+    /// (99, 111, 133; record 0012). Collecting the place's outcomes counts
+    /// as a change only where it moved the place's held state: an outcome
+    /// the merge queue hands again, one flume acted on before, changes
+    /// nothing, so the step goes on, and the settle reads the place's
+    /// stage, its prompt's receipt and its end, rather than spending its
+    /// steps on the inbox (40, 46, 74, 133).
     pub(crate) fn submission(&self, held: &HeldState) -> bool {
         let place = &held.place;
         if !place.kind.lands {
@@ -57,8 +62,12 @@ impl Engine {
         let id = &place.id;
         let ours = &held.submission;
         let base = base_place(&place.kind);
-        if !base && submission_open(held) && self.collect(id, queue.as_ref(), &place.place_ref()) {
-            return true;
+        if !base && submission_open(held) {
+            let version = || self.store.read(id).map(|read| read.version);
+            let before = version();
+            if self.collect(id, queue.as_ref(), &place.place_ref()) && version() != before {
+                return true;
+            }
         }
         match own_read(
             held,

@@ -55,6 +55,9 @@ if [ -f "$control/hang" ]; then
   rm -f "$control/hang"
   exec sleep 60
 fi
+if [ -f "$control/slow" ]; then
+  sleep "$(cat "$control/slow")"
+fi
 records='{records}'
 n=0
 while ! mkdir "$records/lock.$n" 2>/dev/null; do n=$((n + 1)); done
@@ -105,6 +108,13 @@ fi
         std::fs::write(self.control.join("hang"), "").expect("the hang scripted");
     }
 
+    /// Every run from now waits `seconds` before recording, as a run
+    /// started on a loaded host may.
+    pub fn slow(&self, seconds: f32) {
+        std::fs::write(self.control.join("slow"), seconds.to_string())
+            .expect("the slowness scripted");
+    }
+
     /// Every run from now waits after recording until [`StandIn::release`],
     /// or for thirty seconds.
     pub fn hold(&self) {
@@ -132,7 +142,10 @@ fi
     }
 
     /// The runs once no new one has come for half a second, within five,
-    /// for a program its caller does not wait on.
+    /// for a program its caller does not wait on: only to check that none
+    /// ran, since a run slower to come than that is missed. A check of the
+    /// runs that came waits for as many as it knows to have been started,
+    /// by [`StandIn::runs_at_least`].
     pub fn runs_settled(&self) -> Vec<Run> {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut seen = self.runs().len();
@@ -150,7 +163,8 @@ fi
         self.runs()
     }
 
-    /// The runs once `count` have come, within ten seconds.
+    /// The runs once `count` have come, within ten seconds, however slow
+    /// each is to come.
     pub fn runs_at_least(&self, count: usize) -> Vec<Run> {
         let deadline = Instant::now() + Duration::from_secs(10);
         while self.runs().len() < count && Instant::now() < deadline {
