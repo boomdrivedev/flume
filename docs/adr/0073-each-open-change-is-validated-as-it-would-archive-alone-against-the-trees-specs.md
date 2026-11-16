@@ -1,5 +1,5 @@
 ---
-number: 72
+number: 73
 title: Each open change is validated as it would archive, alone against the tree's specs
 status: proposed
 date: 2026-11-15
@@ -44,7 +44,7 @@ For where the script lives, how its cases run and what becomes of the leftover c
 
 ## Decision outcome
 
-1. **`root:changes` holds each open change to OpenSpec's validation as it would archive (the user's).** It still runs `openspec validate --changes --strict`. Then, for each open change, it runs `openspec archive` in a scratch copy and holds the specs that result to `openspec validate --strict`. A change that fails is named with OpenSpec's words. `check-changes.sh` does it, and core.58 says so.
+1. **`root:changes` holds each open change to OpenSpec's validation as it would archive (the user's).** It still runs `openspec validate --changes --strict`. Then, for each open change, it runs `openspec archive` in a scratch copy and holds the specs that result to `openspec validate --strict`. A change that fails is named with OpenSpec's words. `check-changes.sh` does it, and core.59 says so.
 2. **Each change is applied alone to a scratch copy of the tree's specs (Boomdrive's record 0050, its first option).** The copy holds the tree's specs, `openspec/config.yaml` and that change, and is made under `mktemp -d`, in the temporary folder the merge queue gives the place (core.51). Each change archives at its own merge onto its base as it stands then.
    - Not taken: every open change applied in turn. It judges a change by the other open changes and the order they are applied in, and neither is the change's own. Two open changes that conflict are found by the gate on the branch that lands second.
    - Not taken: the tree's own specs, put back after. A check writes nothing into the tree.
@@ -62,7 +62,8 @@ For where the script lives, how its cases run and what becomes of the leftover c
    - Not taken: editing `openspec/specs` to match, which core.19 forbids.
 9. **The-gate's spec gains an ADDED requirement, "Each open change is validated as it would archive" (the construction agent's).** `bolt/flumes-checks-read-no-markdown` removes "The root project checks what spans the tree" and adds it again under a new name, and a MODIFIED of the old name would be refused at whichever archive lands second, by this very check.
    - Not taken: a MODIFIED root requirement.
-10. **The record is 0072 (the construction agent's).** 0071 is taken on `bolt/flumes-checks-read-no-markdown` and on `bolt/flumes-places-need-no-hand`.
+10. **The record is 0073 and its rule core.59 (the construction agent's).** main holds records 0071, a submission whose landing the forge refused, and 0072, flume's confirming of a merge queue's outcome, and rule core.58, the first's; 0071 is taken on `bolt/flumes-checks-read-no-markdown` too, and 0072 on `bolt/flumes-places-need-no-hand`. The change `the-gates-archive-check-cites-core-59` gives the-gate's requirement its rule's number.
+   - Not taken: the archived change `root-changes-validates-each-open-change-as-archived` rewritten to these numbers. It says what was archived, as its commits do, under the numbers it was written with.
 
 ### Consequences
 
@@ -70,4 +71,4 @@ For where the script lives, how its cases run and what becomes of the leftover c
 - Good: a delta that adds a capability has to carry its own `## Purpose`, since archive reads a delta's Purpose only when it creates the capability and the placeholder fails `--strict`.
 - Bad: `root:changes` runs `openspec` once more for each open change and once for each spec its archive writes, and `root:changes-cases` runs it for five trees. Each run reads a few files.
 - Bad: flume's `check-changes.sh` and Boomdrive's can drift; the design is Boomdrive's record 0050's to change first.
-- Rule core.58 says so, in the commit that writes this record, and the site's rules page mirrors it.
+- Rule core.59 says so, in the commit that writes this record, and the site's rules page mirrors it.

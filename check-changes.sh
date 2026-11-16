@@ -1,6 +1,6 @@
 #!/bin/sh
 # Every open change under openspec/changes is valid as OpenSpec takes it
-# (record 0072, core.58; boomdrivedev/blueprints design/principles.md 16
+# (record 0073, core.59; boomdrivedev/blueprints design/principles.md 16
 # as amended on 2026-11-15), copied from boomdrivedev/boomdrive's
 # check-changes.sh, the design of its record 0050 and core.61, which a
 # change to it amends first: each passes openspec validate --strict, and

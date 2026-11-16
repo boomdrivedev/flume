@@ -54,6 +54,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_fixs_failed_submission,
         },
         Scenario {
+            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, so the next settle is given none; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again, each acted on once",
+            cites: &["225", "133", "111", "112", "124", "74"],
+            run: an_outcome_is_confirmed_once_acted_on,
+        },
+        Scenario {
             name: "fix round: a conflict starts code with words naming the files and the base's revision, and flume merges nothing",
             cites: &["112", "14", "133"],
             run: a_conflict,
@@ -353,6 +358,119 @@ fn a_fixs_failed_submission(_: &()) -> Outcome {
     Ok(())
 }
 
+fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_begun(&world, "one")?;
+    let location = world.held(&id).ok_or("no place")?.place.location;
+    let gone_back = |world: &World| {
+        world
+            .held(&id)
+            .map(|held| (held.stages[0].starts, held.submission.send_backs))
+    };
+    world.queue.plan_submits(vec![
+        Plan::Fail("check x failed".into()),
+        Plan::Hold,
+        Plan::Hold,
+    ]);
+
+    // The failure sends code back, and is confirmed once that is held.
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(
+        gone_back(&world),
+        Some((2, 1)),
+        "code's starts, goings-back"
+    );
+    let first = world.queue.submissions(REPOSITORY, "fix/one")[0].id.clone();
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {first}:failed")],
+        "the confirms"
+    );
+    ensure_eq!(
+        world.queue.pending(&location),
+        vec![],
+        "outcomes left for the next settle"
+    );
+
+    // The next settle reads the inbox and is given nothing.
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure!(world.queue.log.count("inbox") > 0, "no inbox read");
+    ensure_eq!(world.queue.log.count("confirm"), 0, "confirms");
+    ensure_eq!(gone_back(&world), Some((2, 1)), "after the next settle");
+
+    // Submitted again, the first failure given again, as a flume that
+    // never confirmed it left it, decides nothing of the place now.
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    let second = world.held(&id).and_then(|held| held.submission.id);
+    ensure!(
+        second.as_ref().is_some_and(|second| *second != first),
+        "the second submission {second:?}"
+    );
+    world.queue.leave_pending(
+        &location,
+        &first,
+        SubmissionOutcome::Failed {
+            words: "check x failed".into(),
+        },
+    );
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((2, 1)), "after the earlier failure");
+    ensure_eq!(
+        world.status(&id)?.submission.and_then(|s| s.verdict),
+        None,
+        "the verdict of the open submission"
+    );
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {first}:failed")],
+        "the earlier failure confirmed"
+    );
+    ensure_eq!(world.queue.pending(&location), vec![], "left pending");
+
+    // A failure the settle could not act on is not confirmed.
+    world
+        .queue
+        .decide(REPOSITORY, "fix/one", Plan::Fail("check y failed".into()));
+    let second = second.ok_or("no second submission")?;
+    world.store.refuse_writes_of(&id, true);
+    world.queue.log.clear();
+    world.settle(&id);
+    world.store.refuse_writes_of(&id, false);
+    ensure_eq!(gone_back(&world), Some((2, 1)), "with no write taken");
+    ensure_eq!(world.queue.log.count("confirm"), 0, "confirms of no act");
+    ensure_eq!(
+        world.queue.pending(&location).len(),
+        1,
+        "the failure left pending"
+    );
+
+    // Acted on at the next settle, whose confirm the merge queue cannot
+    // take: given again, it sends nothing back again, and is confirmed.
+    world.queue.refuse_confirms(Some("down"));
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((3, 2)), "acted on");
+    ensure_eq!(
+        world.queue.pending(&location).len(),
+        1,
+        "the failure whose confirm was refused"
+    );
+    world.queue.refuse_confirms(None);
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((3, 2)), "acted on once");
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {second}:failed")],
+        "the confirm taken"
+    );
+    ensure_eq!(world.queue.pending(&location), vec![], "left pending");
+    Ok(())
+}
+
 fn a_conflict(_: &()) -> Outcome {
     let world = World::new();
     let id = fix_begun(&world, "one")?;
@@ -510,7 +628,7 @@ fn a_requests_failure_acted_on_once(_: &()) -> Outcome {
     // The record gives the failure first; the inbox gives it after.
     deliver_fix(&world, &id);
     world.settle(&id);
-    world
+    let failed = world
         .queue
         .take_in(REPOSITORY, "fix/one")
         .ok_or("no request")?;
@@ -526,6 +644,7 @@ fn a_requests_failure_acted_on_once(_: &()) -> Outcome {
     ensure!(prompt.contains("check x failed"), "{prompt}");
     world.queue.leave_pending(
         &location,
+        &failed.id,
         SubmissionOutcome::Failed {
             words: "check x failed".into(),
         },

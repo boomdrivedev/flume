@@ -1,5 +1,5 @@
 #!/bin/sh
-# The cases of check-changes.sh (record 0072, core.58; the change
+# The cases of check-changes.sh (record 0073, core.59; the change
 # root-changes-validates-each-open-change-as-archived, design 4), which
 # root:changes-cases runs: each runs sh check-changes.sh over a scratch
 # tree of its own, holding OpenSpec's configuration, a spec alpha and the
