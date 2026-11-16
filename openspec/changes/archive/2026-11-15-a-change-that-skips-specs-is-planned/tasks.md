@@ -12,7 +12,7 @@ this change's `design.md`.
 
 ## 2. The record and the rule
 
-- [x] 2.1 Write record 0071, proposed, at the next free number in `docs/adr/`: flume takes whether a change is planned from OpenSpec's own reading of it, whatever its schema, and counts none of its files for it, with the options, consequences and decision makers design section 6 names, citing the signal 2026-11-10-agentplot-design-cd548984/01, principles 14 and C.3 at blueprints 4de08fb; and add to core.15's details in `docs/architecture/core.md`, among what it rules out, a change's planning complete counted from its files where its tool reads it otherwise, as flume read a spec-driven change that declares `skip_specs` never planned on 2026-11-10, with record 0071 among its sources. True when `sluice exec <base> -- moon run root:adrs` passes.
+- [x] 2.1 Write record 0072, proposed, at the next free number in `docs/adr/`: flume takes whether a change is planned from OpenSpec's own reading of it, whatever its schema, and counts none of its files for it, with the options, consequences and decision makers design section 6 names, citing the signal 2026-11-10-agentplot-design-cd548984/01, principles 14 and C.3 at blueprints 4de08fb; and add to core.15's details in `docs/architecture/core.md`, among what it rules out, a change's planning complete counted from its files where its tool reads it otherwise, as flume read a spec-driven change that declares `skip_specs` never planned on 2026-11-10, with record 0072 among its sources. True when `sluice exec <base> -- moon run root:adrs` passes.
 
 ## 3. The spec as the base archives it
 

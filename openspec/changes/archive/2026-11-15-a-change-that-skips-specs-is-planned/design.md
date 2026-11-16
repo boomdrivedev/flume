@@ -139,7 +139,7 @@ it.
 
 ## 6. The record and the rule
 
-Record 0071, proposed, at the next free number: flume takes whether a
+Record 0072, proposed, at the next free number: flume takes whether a
 change is planned from OpenSpec's own reading of it, whatever its
 schema, and counts none of its files for it; its sources the signal,
 principles 14 and C.3 at 4de08fb; its considered options the read
@@ -153,4 +153,4 @@ proposed until the operator's yes.
 core.15's details gain, among what it rules out, a change's planning
 complete counted from its files where its tool reads it otherwise, as
 flume read a spec-driven change that declares `skip_specs` never planned
-on 2026-11-10, citing record 0071; its sources gain record 0071.
+on 2026-11-10, citing record 0072; its sources gain record 0072.
