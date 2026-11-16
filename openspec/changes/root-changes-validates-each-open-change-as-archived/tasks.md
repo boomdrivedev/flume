@@ -20,7 +20,7 @@ merge queue gives the place (core.51).
 
 ## 3. The check
 
-- [ ] 3.1 Add `check-changes.sh` at the root, Boomdrive's at `d9414da6` copied whole, its header citing record 0072, core.58 and boomdrivedev/boomdrive's record 0050 as design section 1 says; have `root:changes` in `moon.yml` run `sh check-changes.sh`, its `env` dropped and `/check-changes.sh` among its inputs, its comment saying it validates each open change as it would archive (record 0072, core.58). True when `sluice exec <base> -- moon run root:changes` passes, this change the tree's one open change, and `sluice exec <base> -- moon run root:format` passes over the new script.
+- [x] 3.1 Add `check-changes.sh` at the root, Boomdrive's at `d9414da6` copied whole, its header citing record 0072, core.58 and boomdrivedev/boomdrive's record 0050 as design section 1 says; have `root:changes` in `moon.yml` run `sh check-changes.sh`, its `env` dropped and `/check-changes.sh` among its inputs, its comment saying it validates each open change as it would archive (record 0072, core.58). True when `sluice exec <base> -- moon run root:changes` passes, this change the tree's one open change, and `sluice exec <base> -- moon run root:format` passes over the new script.
 
 ## 4. The check's cases
 
