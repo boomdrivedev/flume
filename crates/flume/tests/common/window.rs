@@ -4,9 +4,10 @@
 //! the test scripts it. It opens no window of the host's display.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// The variables the stand-in's own shell sets for itself, left out of
@@ -85,7 +86,7 @@ fi
             control = control.display(),
             records = records.display(),
         );
-        std::fs::write(&program, script).expect("the stand-in");
+        written_apart(&program, &script);
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
             .expect("the stand-in made runnable");
         StandIn {
@@ -179,6 +180,28 @@ fi
         }
         self.runs()
     }
+}
+
+/// `text` written to `file` by a shell of its own, so this process never
+/// holds the file open for writing: a process another test starts while
+/// it did would hold it so until that process runs its program, and
+/// Linux refuses to run a file held so, a stand-in's run among them,
+/// "Text file busy".
+fn written_apart(file: &Path, text: &str) {
+    let mut writer = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"", "sh"])
+        .arg(file)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("a shell to write the stand-in");
+    writer
+        .stdin
+        .take()
+        .expect("the shell's input")
+        .write_all(text.as_bytes())
+        .expect("the stand-in's text handed to the shell");
+    let status = writer.wait().expect("the shell that writes the stand-in");
+    assert!(status.success(), "the stand-in written: {status}");
 }
 
 /// The run recorded in `dir`.
