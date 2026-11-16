@@ -53,7 +53,16 @@
 //! base revision its `tested.on` where it holds one; a branch whose
 //! status sluice refuses, as it refuses one whose policy it no longer
 //! reads, is passed over with sluice's words, and every other branch is
-//! read still (99, 101). step is
+//! read still (99, 101). A `refused` record, a landing the forge refused
+//! that sluice holds, reads as held with the record's `refused.words`;
+//! one that carries no `refused`, as sluice `44e33d4` prints every record
+//! but a waiting submit's report, is held still, with [`HELD_UNSAID`] as
+//! its words, never read as not understood, never passed over and never
+//! read through `sluice wait` or a submit that waits (C.6's
+//! read-submission row at `8b73d11` as `04e5a1a` amends it; core.6,
+//! core.13, core.58). A submit's answer is never `refused`, its landing
+//! coming after the rounds a submit with `--no-wait` does not wait on;
+//! were one so, it is answered submitted, open and undecided. step is
 //! `sluice step <base>`, which takes in the base's pull requests before
 //! its round, and beside a live `sluice run` finds the branch's lock held
 //! and does nothing, so no liveness is read (124, 125). The base lives at `<remote>/<base>` after one fetch where
@@ -104,6 +113,12 @@ pub const NAME: &str = "sluice";
 
 /// Where a repository's sluice policy lives in its tree.
 pub const POLICY: &str = ".config/sluice.toml";
+
+/// The words of a `refused` record that carries none of the forge's, as
+/// sluice `44e33d4` prints every record but a waiting submit's report
+/// (99, C.6 at `04e5a1a`; core.58).
+pub const HELD_UNSAID: &str =
+    "the forge refused its landing; sluice's record gives none of its words";
 
 /// The variables a multiplexer's session is named by: a submission made
 /// with one would be recorded as that session's and its outcome pushed
@@ -532,6 +547,13 @@ fn state(record: &Value) -> Result<SubmissionState, String> {
             words: said(record),
         },
         "withdrawn" => SubmissionState::Withdrawn,
+        // 152: held, the forge having refused its landing.
+        "refused" => SubmissionState::Held {
+            words: record
+                .get("refused")
+                .and_then(|refused| text(refused, "words"))
+                .unwrap_or_else(|| HELD_UNSAID.into()),
+        },
         other => return Err(format!("sluice gave a submission in the state {other:?}")),
     })
 }

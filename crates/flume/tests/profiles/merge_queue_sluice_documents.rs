@@ -6,7 +6,7 @@
 //! (99, 133, C.6; core.22, core.58).
 
 use crate::common::*;
-use flume::profiles::merge_queue::sluice::Sluice;
+use flume::profiles::merge_queue::sluice::{Sluice, HELD_UNSAID};
 use flume_seams::*;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -25,7 +25,6 @@ const FORGE: &str = "GH013: Repository rule violations found for refs/heads/main
 /// A scratch repository and place, and the profile over a stand-in
 /// `sluice` that answers from the fixtures it was given.
 struct StandIn {
-    #[allow(dead_code)]
     repository: Repository,
     seam: Sluice,
     place: PlaceRef,
@@ -105,6 +104,42 @@ exit 2
             .map(str::to_string)
             .collect()
     }
+
+    /// read-submission of `branches` at once.
+    fn read(&self, branches: &[&str]) -> Vec<ReadAcross> {
+        self.seam
+            .read_submissions(&self.repository.dir.to_string_lossy(), branches)
+    }
+
+    /// Whether the stand-in was asked to wait, or for one submission's
+    /// status by its number, which read nothing through a wait (core.6,
+    /// core.13).
+    fn waited(&self) -> bool {
+        self.asked().iter().any(|asked| {
+            let mut words = asked.split_whitespace();
+            match (words.next(), words.next()) {
+                (Some("wait"), _) => true,
+                (Some("status"), Some(second)) => second.parse::<u64>().is_ok(),
+                (Some("submit"), _) => !asked.contains("--no-wait"),
+                _ => false,
+            }
+        })
+    }
+}
+
+/// A submission of `branch` to main, number `id`, held with `words`.
+fn held(id: &str, branch: &str, words: &str) -> SubmissionRead {
+    SubmissionRead::Found {
+        submission: Submission {
+            id: id.into(),
+            branch: branch.into(),
+            target: "main".into(),
+            state: SubmissionState::Held {
+                words: words.into(),
+            },
+            request: None,
+        },
+    }
 }
 
 /// The landing the inbox fixtures give, #6 on main.
@@ -162,5 +197,62 @@ fn an_outcome_in_a_state_flume_does_not_read_is_left_owed_and_named() {
         stand_in.asked(),
         vec!["inbox --json", "confirm 6:landed --json"],
         "8:parked left owed"
+    );
+}
+
+#[test]
+fn a_refused_record_is_held_with_its_refused_words() {
+    // merge-queue-profile "A refused record with its words" (99, C.6).
+    let stand_in = StandIn::new(&[
+        ("overview.json", "overview.json"),
+        ("status-main.json", "status-main-refused-words.json"),
+        ("status-train-x.json", "status-train-x.json"),
+    ]);
+    let read = stand_in.read(&["fix/one"]);
+    assert_eq!(
+        read,
+        vec![ReadAcross {
+            read: held("7", "fix/one", FORGE),
+            passed_over: vec![],
+        }]
+    );
+    assert!(
+        !stand_in.waited(),
+        "read through a wait: {:?}",
+        stand_in.asked()
+    );
+}
+
+#[test]
+fn a_refused_record_without_them_is_held_saying_sluices_record_gives_none() {
+    // merge-queue-profile "A refused record without its words": the
+    // place's and the base place's, by `from.head`, each held, neither
+    // unread nor passed over (99, 203, C.6; core.58).
+    let stand_in = StandIn::new(&[
+        ("overview.json", "overview.json"),
+        ("status-main.json", "status-main.json"),
+        ("status-train-x.json", "status-train-x.json"),
+    ]);
+    assert_eq!(
+        stand_in.read(&["fix/one", "train/x"]),
+        vec![
+            ReadAcross {
+                read: held("7", "fix/one", HELD_UNSAID),
+                passed_over: vec![],
+            },
+            ReadAcross {
+                read: held("9", "train/x", HELD_UNSAID),
+                passed_over: vec![],
+            },
+        ]
+    );
+    assert!(
+        HELD_UNSAID.contains("gives none"),
+        "the words say sluice's record gives none: {HELD_UNSAID}"
+    );
+    assert!(
+        !stand_in.waited(),
+        "read through a wait: {:?}",
+        stand_in.asked()
     );
 }
