@@ -14,7 +14,7 @@ Status: proposed. The brief of the fix `main--flume-confirms-a-sluice-outcome-it
 
 Deciders: the brief, in its words: "Confirm each outcome once Flume has acted on it (recorded the submission's end and handed it to the place's recipients), so a later settle is handed only what is new; a test shows a second settle hands over no outcome already acted on." The code stage of that fix, on the rest.
 
-Sources: `boomdrivedev/blueprints:design/flume/requirements.md` 74, 99, 101, 111, 112, 124, 133, 225 and C.6 at `aa710c6`; sluice 0.93.2's `sluice inbox` and `sluice confirm`, their help and exits read on deneb on 2026-11-15; sluice 51 and sluice record 0102; the change `the-sluice-profile-confirms-what-it-collects`; rules core.2, core.6 and core.17.
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` 74, 99, 101, 111, 112, 124, 133, 225 and C.6 at `aa710c6`; sluice 0.93.2's `sluice inbox` and `sluice confirm`, their help and exits read on deneb on 2026-11-15; sluice 51 and sluice record 0102; the change `the-sluice-profile-confirms-what-it-collects`; record 0071; rules core.2, core.6, core.17 and core.58.
 
 ## Context and problem statement
 
@@ -42,4 +42,5 @@ Since 0.79.0 sluice keeps each outcome owed to the worktree it decides until its
 - Good: a later settle is given only what is new, and an outcome is lost to no refused write or ended settle.
 - Good: the eight places' unconfirmed outcomes on deneb are confirmed at the first settle of a flume with this record, an earlier submission's sending nothing back and the current one's acted on at most once.
 - Bad: one more sluice call for each outcome, once.
+- Holds record 0071's last point and core.58's: the profile gives the core only the states it reads, landed, failed and in conflict, and nothing is confirmed but what the core acted on, so a state it does not read, sluice's `refused` among them, stays owed. Reading `refused` as held, and naming it in status, is record 0071's to build.
 - Elsewhere: deneb runs flume 0.21.2, which confirms nothing; the repeats end only once the host runs a flume with this record.
