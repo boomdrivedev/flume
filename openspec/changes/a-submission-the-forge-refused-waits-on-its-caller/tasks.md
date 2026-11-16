@@ -39,4 +39,4 @@ its spec names and cites the clauses its spec scenario cites.
 
 ## 6. The change
 
-- [ ] 6.1 Validate the change. True when `devenv shell -- openspec validate a-submission-the-forge-refused-waits-on-its-caller --strict` passes.
+- [x] 6.1 Validate the change. True when `devenv shell -- openspec validate a-submission-the-forge-refused-waits-on-its-caller --strict` passes.
