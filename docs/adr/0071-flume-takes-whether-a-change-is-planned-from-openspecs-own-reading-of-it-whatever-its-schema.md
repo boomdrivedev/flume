@@ -1,5 +1,5 @@
 ---
-number: 70
+number: 71
 title: flume takes whether a change is planned from OpenSpec's own reading of it, whatever its schema, and counts none of its files for it
 status: proposed
 date: 2026-11-14

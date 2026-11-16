@@ -802,6 +802,8 @@ impl Engine {
                 }),
                 answered: 0,
                 counts,
+                span: None,
+                asking_since: None,
             });
             if !held
                 .terminals
@@ -864,7 +866,7 @@ impl Engine {
             own,
         } = claim;
         let folder = self.store.folder(id);
-        let command = agent.command(
+        let mut command = agent.command(
             &folder,
             &settings,
             mode.as_deref(),
@@ -876,6 +878,7 @@ impl Engine {
             &secret,
             &text,
         );
+        self.give_telemetry(id, &identity, &mut command.env);
         if let Err(failure) = self.write_files(id, &folder, &command) {
             self.with_start(id, &identity, |start, _| start.opening = None);
             self.not_opened(

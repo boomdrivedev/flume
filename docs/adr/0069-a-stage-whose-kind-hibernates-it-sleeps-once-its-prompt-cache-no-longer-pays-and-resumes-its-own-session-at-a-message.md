@@ -1,7 +1,7 @@
 ---
 number: 69
 title: A stage whose kind hibernates it sleeps once its prompt cache no longer pays and resumes its own session at a message, and every message to a role waits at the role's address
-status: proposed
+status: accepted
 date: 2026-11-14
 decision-makers:
 - Chuck Swanberg
@@ -9,7 +9,7 @@ decision-makers:
 
 # A stage whose kind hibernates it sleeps once its prompt cache no longer pays and resumes its own session at a message, and every message to a role waits at the role's address
 
-Status: proposed to the user on 2026-11-14, from their own words and choices of 2026-11-11 and 2026-11-12 in the talk `boomdrivedev/blueprints:design/research/2026-11-11-a-session-sleeps-and-wakes.md`, where this record was drafted under the number 0065; accepted on their yes. Its statement is flume's clauses 212 to 215 and their amendments, merged to boomdrivedev/blueprints' main on the user's word of 2026-11-13.
+Status: accepted by the user on 2026-11-14, on their card. Drawn from their own words and choices of 2026-11-11 and 2026-11-12 in the talk `boomdrivedev/blueprints:design/research/2026-11-11-a-session-sleeps-and-wakes.md`, where it was drafted under the number 0065. Its statement is flume's clauses 212 to 215 and their amendments, merged to boomdrivedev/blueprints' main on the user's word of 2026-11-13.
 
 Deciders: the user, the operator in flume's words. Their words: "Call it hibernate and resume, and keep
 it separate from the standard state machine concept. They're two different
@@ -129,10 +129,9 @@ for which an agent may pass on, which no host has yet.
 
 ### Consequences
 
-- Rules to amend: core.10, so a resume is one fresh agent of a start that
-  counts none; core.32,
-  for a resume's account and carry, its "no other retry carries one" still
-  true of retries.
+- Rules core.10 and core.32 are amended with it: a resume is one fresh
+  agent carrying its stage's own session, on the account clause 213
+  names, and is no retry.
 - The deliver row needs a Claude Code release that runs hooks modules: read
   on 2.1.322, and flume pins 2.1.296.
 - Open: a resume's identity, and how a resumed Claude Code agent passes
@@ -142,8 +141,11 @@ for which an agent may pass on, which no host has yet.
   defined in a source's roles package or the host's configuration; the
   word for a standing role, which the operator wants to be "agent",
   where the statement gives that word to one process of one stage.
-- Elsewhere: the host's setup sets `cleanupPeriodDays` in every home
-  (boomdrivedev/boomdrive); crew's tells become deliveries, its roles move
+- Elsewhere: Boomdrive's set keeps every session's transcripts a year,
+  by `cleanupPeriodDays` in a document of its own in Claude Code's
+  managed settings, which every home reads, a new one among them
+  (boomdrivedev/boomdrive's the-set-keeps-claude-codes-transcripts-a-year,
+  as its record 0013 does telemetry); crew's tells become deliveries, its roles move
   into a roles package, each entry naming its related kinds, and their
   instructions launch their projects as places (boomdrivedev/crew); the
   control plane shows each role under its label's column with its live
