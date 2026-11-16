@@ -6,14 +6,9 @@ The profile SHALL collect a place's pending outcomes by `sluice inbox
 --json` in the place, never with `--confirm`: landed with its commit,
 failed with the merge queue's words, in conflict with the files
 contested, or held, its landing refused by the forge, each carrying
-sluice's `notice` whole as its words, a conflict's base revision read
-from the record's `tested.on`; and SHALL then confirm every outcome it
-read by one `sluice confirm` of each one's `delivery.key`, run in the
-place. An outcome in a state the profile does not read, or whose
-outcome it cannot read, SHALL be left owed, unconfirmed, and passed over
-by its branch with words naming it. The profile SHALL read a withdrawal
-from read-submission, never from the inbox (99, 101, 133, C.6 at
-boomdrivedev/blueprints `8b73d11` and `fc4323b`; sluice 51; core.58).
+sluice's `notice` whole as its words. The profile SHALL read a
+withdrawal from read-submission, never from the inbox (99, 101, 133, C.6
+at boomdrivedev/blueprints `8b73d11` and `fc4323b`; sluice 51; core.58).
 
 #### Scenario: A conflict's base revision
 
@@ -35,12 +30,21 @@ boomdrivedev/blueprints `8b73d11` and `fc4323b`; sluice 51; core.58).
 - **WHEN** a stand-in `sluice` answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome under `7:refused` beside a `landed` one under `6:landed`
 - **THEN** the inbox gives the landing and the outcome held with its `notice` whole, runs `sluice inbox --json` with no `--confirm`, and then one `sluice confirm` naming `6:landed` and `7:refused` (112, 133, C.6)
 
+## ADDED Requirements
+
+### Requirement: Outcomes read are confirmed by key, and one unread is left owed
+
+The profile SHALL confirm every outcome its inbox read by one `sluice
+confirm` of each one's `delivery.key`, run in the place. An outcome in a
+state the profile does not read, or whose outcome it cannot read, SHALL
+be left owed, unconfirmed, and passed over by its branch with words
+naming it (101, 133, C.6 at boomdrivedev/blueprints `fc4323b`; sluice
+51; core.58).
+
 #### Scenario: An outcome in a state flume does not read
 
 - **WHEN** the stand-in's inbox holds a `landed` outcome under `6:landed` and one in the state `parked` under `8:parked` on `main`
 - **THEN** the inbox gives the landing, passes `main` over with words naming #8 and `parked`, and confirms `6:landed` alone, leaving `8:parked` owed (133; core.58)
-
-## ADDED Requirements
 
 ### Requirement: read-submission reads a refused record as held
 

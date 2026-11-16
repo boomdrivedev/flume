@@ -258,4 +258,11 @@ taken:
   landing to read back in the queue;
 - core.58 on the rules page in its section after core.53, where
   `core.md` places it; not after core.57, which is another section's
-  rule.
+  rule;
+- the three requirements whose text the archive writes over openspec's
+  500 characters brought under them by giving confirming by key and an
+  unread outcome, and a held submission's standing, requirements of
+  their own, and by leaving a conflict's `tested.on` and the merge
+  queue's wait from a return to the scenarios that already say them;
+  not by cutting the clauses' words, which would drop what they say
+  (core.21).
