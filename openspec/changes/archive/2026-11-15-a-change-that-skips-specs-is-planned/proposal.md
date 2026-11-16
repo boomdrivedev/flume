@@ -71,7 +71,7 @@ None.
 - `crates/flume/tests/profiles/change_openspec.rs`: a change that skips
   specs read as the pinned `openspec` reads it, with and without its
   marker and with a marker OpenSpec cannot honour.
-- `docs/adr/`: record 0071, proposed; `docs/architecture/core.md`:
+- `docs/adr/`: record 0072, proposed; `docs/architecture/core.md`:
   core.15's details.
 - The statement: C.3's read-change row amended on boomdrivedev/blueprints
   branch `design/flume-a-change-that-skips-specs-is-planned` at 4de08fb.
