@@ -2015,10 +2015,12 @@ fn own_at(version: u32) -> Vec<Kind> {
 }
 
 /// A world whose own kinds are the profile's built in, `change` at
-/// `version`.
+/// `version`, its fake agent mapping `full` to `all`, so change@5's agents
+/// start (162, 169; record 0064).
 fn world_with_own_kinds(version: u32) -> World {
     let world = World::new();
     world.kinds.set_own(own_at(version));
+    world.agent.map_mode(Mode::Full, "all");
     world
 }
 
@@ -2052,10 +2054,10 @@ fn asks_nothing_it_may_not(prompt: &str) {
 
 #[test]
 fn no_prompt_of_flumes_own_asks_to_submit() {
-    // 28, 71, 112: every prompt of fix@1, chore@1, change@1, change@2 and
-    // change@3 rendered for a place.
+    // 28, 71, 112: every prompt of fix@1, chore@1, change@1, change@2,
+    // change@3 and change@5 rendered for a place.
     let mut prompts = vec![];
-    for version in [1, 2, 3] {
+    for version in [1, 2, 3, 5] {
         let world = world_with_own_kinds(version);
         fix_begun(&world, "one").expect("a fix begun");
         prompts.push(opened(&world, "fix", "one", "code", 1));
