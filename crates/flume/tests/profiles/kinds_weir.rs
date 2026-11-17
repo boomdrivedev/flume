@@ -2571,6 +2571,68 @@ fn change_5s_code_prompt_undoes_an_archive_whole() {
     assert!(undo < fix, "the fix before the archive's undoing: {words}");
 }
 
+#[test]
+fn change_5s_verify_prompt_archives_through_openspec() {
+    // 22, 131, C.2: change@5's verify prompt rendered for a place named
+    // `plan` runs the repository's whole checks once before it reads the
+    // tasks through OpenSpec's apply instructions and the strict check,
+    // names the whole checks' outcome and OpenSpec's in `verify.md`, and
+    // archives by OpenSpec's own archive after the report, never by moving
+    // the change or writing its specs itself.
+    let (_, _, [_, _, verify]) = change_5_rendered();
+    names_each(
+        "change@5's verify",
+        &verify,
+        &[
+            "First run the repository's whole checks once",
+            "run them no second time",
+            "`openspec instructions apply --change plan --json`",
+            "`openspec validate plan --strict`",
+            "every requirement and scenario of its specs met by the work",
+            "verify.md",
+            "the whole checks' outcome and OpenSpec's among it",
+            "`openspec archive plan --yes`",
+            "never by moving the change or writing its specs yourself",
+            "the report and every spec it wrote with it",
+        ],
+    );
+    let checks = verify.find("whole checks once").expect("the whole checks");
+    let apply = verify
+        .find("openspec instructions apply")
+        .expect("the apply instructions");
+    let strict = verify
+        .find("openspec validate plan --strict")
+        .expect("the strict check");
+    let report = verify.find("verify.md").expect("the report");
+    let archive = verify
+        .find("openspec archive plan --yes")
+        .expect("the archive");
+    assert!(
+        checks < apply && checks < strict,
+        "OpenSpec read before the whole checks: {verify}"
+    );
+    assert!(report < archive, "the archive before the report: {verify}");
+}
+
+#[test]
+fn change_5s_verify_prompt_archives_nothing_where_the_archive_refuses() {
+    // 131: change@5's verify prompt rendered for a place asks that where
+    // the whole checks fail, the work falls short or the archive refuses,
+    // nothing be archived and the agent stop short having found work,
+    // naming what fails.
+    let (_, _, [_, _, verify]) = change_5_rendered();
+    names_each(
+        "change@5's verify",
+        &verify,
+        &[
+            "Where the whole checks fail, the work falls short or the archive refuses, archive \
+             nothing",
+            "stop short having found work, naming what fails",
+            "so the change goes back to its code stage with your words",
+        ],
+    );
+}
+
 /// The change place `name` launched at the change flume holds, written as
 /// `GROUPS` none ticked, and code's first start begun.
 fn change_code_begun(world: &World, name: &str) -> PlaceId {
