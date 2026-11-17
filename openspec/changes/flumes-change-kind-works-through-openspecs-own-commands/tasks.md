@@ -36,7 +36,7 @@ this change's `design.md`.
 ## 4. The walkthroughs
 
 - [x] 4.1 Have `a_change_runs_construct_code_and_verify` in `crates/flume/tests/profiles/tools/walkthroughs.rs` keep its bare `change` and read that the place runs `flume/change@5`, its code stage started once and its agents started in the mode `full` from `kind`, and have the module's doc comment name change@5 as flume's newest (S2, S35, 162). Check: `devenv shell -- cargo test -p flume --features tools --test tools a_change_runs_construct_code_and_verify`.
-- [ ] 4.2 Keep `verify_finding_work_sends_the_place_back_to_code`, `a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_later_start` and `s93_a_question_for_easts_ops_is_answered_once_by_its_woken_run` in `walkthroughs.rs`, which launch a bare `change`, passing with change@5 and its agents in `full` (131, 145, 162, S93). Check: `devenv shell -- cargo test -p flume --features tools --test tools -- verify_finding_work_sends_the_place_back_to_code a_pool_with_no_account_of_a_stages_program s93_a_question_for_easts_ops`.
+- [x] 4.2 Keep `verify_finding_work_sends_the_place_back_to_code`, `a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_later_start` and `s93_a_question_for_easts_ops_is_answered_once_by_its_woken_run` in `walkthroughs.rs`, which launch a bare `change`, passing with change@5 and its agents in `full` (131, 145, 162, S93). Check: `devenv shell -- cargo test -p flume --features tools --test tools -- verify_finding_work_sends_the_place_back_to_code a_pool_with_no_account_of_a_stages_program s93_a_question_for_easts_ops`.
 
 ## 5. The site
 
