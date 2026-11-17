@@ -21,10 +21,13 @@ use std::time::Duration;
 const REPOSITORY: &str = "/repository";
 
 /// flume's own kinds as Part C's table gives them: fix@1, chore@1,
-/// change@1, change@2 and change@3 side by side, each sent back to code,
-/// change@2's code stage repeating per task group with its group, notes
-/// and words last, and change@3's one agent for the whole change with a
-/// code prompt of its own (22, 140, 141, 157, C.2; core.31).
+/// change@1, change@2, change@3 and change@5 side by side, each sent back
+/// to code, change@2's code stage repeating per task group with its group,
+/// notes and words last, change@3's one agent for the whole change with a
+/// code prompt of its own, and change@5's stages each with a prompt of its
+/// own working the change through its change tool's own commands, naming
+/// no tool and giving no mode, as the fake's other versions give none
+/// (22, 140, 141, 157, C.2; core.1, core.31).
 pub fn flumes_own() -> Vec<Kind> {
     let stage = |name: &str, deliverable: Deliverable, prompt: &str| Stage {
         name: name.into(),
@@ -82,6 +85,11 @@ pub fn flumes_own() -> Vec<Kind> {
     let mut one_agent = change.clone();
     one_agent.version = 3;
     one_agent.stages[1].prompt = "Build {{change}}, every task of it, running each task's own check and ticking it once the check passes.\n\n{{needs}}{{#words}}\n\n{{words}}{{/words}}".into();
+    let mut through_its_tool = one_agent.clone();
+    through_its_tool.version = 5;
+    through_its_tool.stages[0].prompt = "Write the change {{change}} through its change tool's own commands, committing it once its strict check passes.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
+    through_its_tool.stages[1].prompt = "Build {{change}} as its change tool's apply instructions give it, every task of it, running each task's own check and ticking it once the check passes.\n\n{{needs}}{{#words}}\n\n{{words}}{{/words}}".into();
+    through_its_tool.stages[2].prompt = "Verify {{change}} against the work, commit the report, and archive it through its change tool's own archive.\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
     vec![
         Kind {
             name: "fix".into(),
@@ -110,6 +118,7 @@ pub fn flumes_own() -> Vec<Kind> {
         change,
         repeating,
         one_agent,
+        through_its_tool,
     ]
 }
 
