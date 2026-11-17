@@ -112,9 +112,14 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_change_name_taken,
         },
         Scenario {
-            name: "launch: a change launched naming no version runs change@3, the newest of flume's own, its code stage one agent for the whole change, and status names change@3",
-            cites: &["22", "154", "19", "S119"],
+            name: "launch: a change launched naming no version runs change@5, the newest of flume's own, its code stage one agent for the whole change, and status names change@5",
+            cites: &["22", "154", "19"],
             run: no_version_named,
+        },
+        Scenario {
+            name: "launch: a change launched as change@3 runs change@3, its code stage one agent for the whole change, and status names change@3",
+            cites: &["22", "154", "19", "S119"],
+            run: change_3_named,
         },
         Scenario {
             name: "launch: a change launched as change@2 runs change@2, its code stage repeating per task group, and status names change@2",
@@ -127,7 +132,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: change_1_named,
         },
         Scenario {
-            name: "launch: a launch naming change@4 is refused naming it and the versions flume holds, 1, 2 and 3, nothing made",
+            name: "launch: a launch naming change@6 is refused naming it and the versions flume holds, 1, 2, 3 and 5, nothing made",
             cites: &["4", "22", "154"],
             run: a_version_flume_does_not_hold,
         },
@@ -137,7 +142,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_version_the_repository_does_not_hold,
         },
         Scenario {
-            name: "launch: a change named with no version, in a repository that locks nothing, is named flume/change@3 by status, one named change@2 flume/change@2, and one named change@1 flume/change@1",
+            name: "launch: a change named with no version, in a repository that locks nothing, is named flume/change@5 by status, one named change@3 flume/change@3, one named change@2 flume/change@2, and one named change@1 flume/change@1",
             cites: &["22", "154", "19"],
             run: the_identity_status_names,
         },
@@ -368,11 +373,17 @@ fn a_place_held_with_no_address(_: &()) -> Outcome {
 
 fn the_identity_status_names(_: &()) -> Outcome {
     let world = World::new();
-    let three = launched_as(&world, "change", "three")?;
+    let five = launched_as(&world, "change", "five")?;
+    ensure_eq!(
+        five.identity.as_deref(),
+        Some("flume/change@5"),
+        "the identity of a change named with no version"
+    );
+    let three = launched_as(&world, "change@3", "three")?;
     ensure_eq!(
         three.identity.as_deref(),
         Some("flume/change@3"),
-        "the identity of a change named with no version"
+        "the identity of change@3"
     );
     let two = launched_as(&world, "change@2", "two")?;
     ensure_eq!(
@@ -433,10 +444,31 @@ fn no_version_named(_: &()) -> Outcome {
             status.version,
             status.identity.as_deref()
         ),
+        ("change", 5, Some("flume/change@5")),
+        "the kind status names"
+    );
+    let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
+    ensure!(
+        !held.place.kind.stages[1].repeats,
+        "change@5's code repeats"
+    );
+    Ok(())
+}
+
+fn change_3_named(_: &()) -> Outcome {
+    let world = World::new();
+    let status = launched_as(&world, "change@3", "plan")?;
+    ensure_eq!(
+        (
+            status.kind.as_str(),
+            status.version,
+            status.identity.as_deref()
+        ),
         ("change", 3, Some("flume/change@3")),
         "the kind status names"
     );
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
+    ensure_eq!(held.place.branch, "change/plan", "the place's branch");
     ensure!(
         !held.place.kind.stages[1].repeats,
         "change@3's code repeats"
@@ -484,9 +516,9 @@ fn change_1_named(_: &()) -> Outcome {
 
 fn a_version_flume_does_not_hold(_: &()) -> Outcome {
     let world = World::new();
-    let reason = refused(&world.engine.launch(&launch("change@4", "plan", Some("x"))))?;
+    let reason = refused(&world.engine.launch(&launch("change@6", "plan", Some("x"))))?;
     ensure!(
-        reason.contains("change@4") && reason.contains("versions 1, 2, 3"),
+        reason.contains("change@6") && reason.contains("versions 1, 2, 3, 5"),
         "the refusal names not the version and the versions held: {reason}"
     );
     nothing_made(&world)
