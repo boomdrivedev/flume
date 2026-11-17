@@ -10,10 +10,14 @@
 //! walkthrough asks, the stand-in for sluice is first on `PATH` too, the
 //! pinned sluice answering its first submit decided, or each submit a
 //! pull request that waits for the walkthrough to take it in. With the
-//! stand-in, the host user's login shell is the walk's own, which gives
-//! the walk's `PATH`, so a place's steps, sluice's equip and release, run
-//! the sluice the tree pins; and every sluice keeps its scratch in the
-//! walk's home, which the gate's sandbox lets it write. Every process
+//! stand-in, and on a tools walk whose test writes its own agent program,
+//! the host user's login shell is the walk's own, which gives the walk's
+//! `PATH`, so a place's steps, sluice's equip and release, run the sluice
+//! the tree pins and never the host's (core.22); every sluice the test
+//! starts keeps its scratch in the walk's own folder, which the gate's
+//! sandbox lets it write, and a place's steps, which run in the login
+//! environment alone (29), keep none, the pinned sluice's equip and
+//! release making no scratch where they have nothing to free. Every process
 //! the walkthrough starts, flume, sluice, git and the stand-in, runs in the
 //! scratch home with no multiplexer's session, no flume, sluice or Claude
 //! Code session of the caller's, no credential and no forge (core.6,
@@ -98,9 +102,9 @@ pub struct Walk {
     pub remote: PathBuf,
     home: PathBuf,
     path: String,
-    /// The host user's login shell, the walk's own, with the stand-in;
-    /// none for the check-live layer, whose host's own shell starts its
-    /// terminal's panes.
+    /// The host user's login shell, the walk's own, with the stand-in or
+    /// the test's own agent program; none for the check-live layer, whose
+    /// host's own shell starts its terminal's panes.
     shell: Option<PathBuf>,
     runs: std::cell::Cell<u32>,
     /// The stand-in's account's `CLAUDE_CONFIG_DIR`, none for the
@@ -125,6 +129,22 @@ impl Walk {
     #[allow(dead_code)]
     pub fn without_stand_in(label: &str) -> Walk {
         Walk::made(label, false)
+    }
+
+    /// The walkthrough's repository and host with no stand-in on `PATH`,
+    /// its test writing its own agent program into the walk's `bin`, and
+    /// the host user's login shell the walk's own: a place's steps run the
+    /// sluice the tree pins, as a walk with the stand-in's do, and never
+    /// the one the host's own login shell finds (core.22).
+    // The tools layer's, which the check-live layer does not use.
+    #[allow(dead_code)]
+    pub fn with_its_own_agent(label: &str) -> Walk {
+        let mut walk = Walk::made(label, false);
+        walk.shell = Some(login_shell(
+            &walk.repository.scratch.path("login"),
+            &walk.path,
+        ));
+        walk
     }
 
     fn made(label: &str, stand_in: bool) -> Walk {
@@ -210,7 +230,7 @@ impl Walk {
     pub fn login_shell(&self) -> &Path {
         self.shell
             .as_deref()
-            .expect("a walkthrough with the stand-in")
+            .expect("a walkthrough with a login shell of its own")
     }
 
     /// The stand-in for sluice first on `PATH` as `sluice`, so the

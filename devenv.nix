@@ -345,13 +345,18 @@ let
   # (core.22, core.51).
   rex = inputs.rex.packages.${pkgs.stdenv.hostPlatform.system}.rex or null;
 
-  # sluice, which the merge-queue profile drives: the release the hosts run,
-  # so the tree's sluice reads the host's configuration as theirs writes it;
-  # an older release refuses a key it does not know, and no place's checks
-  # run. sluice publishes no x86_64-darwin build. Its builds are Nix's: on
+  # sluice, which the merge-queue profile drives: a release that reads the
+  # host's configuration as the hosts' own sluice writes it; an older
+  # release refuses a key it does not know, and no place's checks run.
+  # sluice publishes no x86_64-darwin build. Its builds are Nix's: on
   # Linux the loader and libgcc_s, on macOS libiconv, are store paths of the
   # machine that built them, set here to this tree's. Bump the version and
-  # the three checksums from the release's assets.
+  # the three checksums from the release's assets. A walkthrough's place
+  # runs its equip and release in the login environment alone (29), with
+  # no SLUICE_USER_SCRATCH: 0.95.1's release makes /tmp/sluice-<uid>/<key>
+  # even with nothing to free, which the gate's sandbox refuses, where
+  # 0.93.2's makes nothing, so a pin to a release that makes it first gives
+  # those steps room in the gate's scratch (core.51).
   sluiceVersion = "0.93.2";
   sluiceHashes = {
     aarch64-darwin = "708225703851a928f0921e8bb2f9bb7a0b8c78565558550ab829b0c23a1bd53f";
