@@ -40,4 +40,4 @@ this change's `design.md`.
 
 ## 5. The site
 
-- [ ] 5.1 In `site/src/content/docs/guides/kinds.mdx`, list `flume/change@5` among flume's own kinds, say a bare `change` takes the newest, `change@5`, unless a lock records another, and say in a sentence how change@5 works, as design 9 has it, to any host's operator (22, 154; core.35). Check: `sluice exec <base> -- moon run site:build`.
+- [x] 5.1 In `site/src/content/docs/guides/kinds.mdx`, list `flume/change@5` among flume's own kinds, say a bare `change` takes the newest, `change@5`, unless a lock records another, and say in a sentence how change@5 works, as design 9 has it, to any host's operator (22, 154; core.35). Check: `sluice exec <base> -- moon run site:build`.
