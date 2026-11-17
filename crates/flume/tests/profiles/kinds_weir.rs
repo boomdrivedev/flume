@@ -4,8 +4,10 @@
 //! an agents table's session read as no setting (32, 158),
 //! an elaboration section, the binding
 //! from the default branch, a place profile flume does not hold, flume's
-//! own kinds, one declaration per version with change@1, change@2 and
-//! change@3 side by side, and what their prompts ask (22, 141, 157); a
+//! own kinds, one declaration per version with change@1, change@2,
+//! change@3 and change@5 side by side, what their prompts ask, and
+//! change@5's mode, its OpenSpec commands and its one way to ask (22, 28,
+//! 141, 157, 162, C.3; records 0064, 0077); a
 //! host's source's listing, its packages and their hashes wherever they
 //! lie, the repository's lock at a revision, a lock written and read
 //! back, and the packages refused at another identity, naming a part
@@ -1810,9 +1812,12 @@ type Summary = (
 
 #[test]
 fn flumes_own_kinds_are_built_in() {
-    // 22, 140, 157, C.2: fix@1, chore@1, change@1, change@2 and change@3,
-    // change@2's code stage repeating per task group and change@1's and
-    // change@3's not, all landing, each last stage's `on_fail` `code`.
+    // 22, 140, 157, 162, C.2: fix@1, chore@1, change@1, change@2, change@3
+    // and change@5, change@2's code stage repeating per task group and
+    // change@1's, change@3's and change@5's not, all landing, each last
+    // stage's `on_fail` `code`; every stage of change@5 gives its one agent
+    // `full` and nothing else, and every other version's one agent no
+    // setting (records 0064, 0077).
     let own = own_kinds();
     let summary: Vec<Summary> = own
         .iter()
@@ -1857,6 +1862,7 @@ fn flumes_own_kinds_are_built_in() {
             change(1, false),
             change(2, true),
             change(3, false),
+            change(5, false),
             (
                 "chore".into(),
                 1,
@@ -1875,12 +1881,23 @@ fn flumes_own_kinds_are_built_in() {
             ),
         ]
     );
+    let full = Settings {
+        mode: Some(ModeSetting::Flume(Mode::Full)),
+        ..Settings::default()
+    };
     for kind in &own {
         let last = kind.stages.last().expect("a stage");
         assert_eq!(last.send_back_to.as_deref(), Some("code"), "{}", kind.name);
+        let newest = (kind.name.as_str(), kind.version) == ("change", 5);
         for stage in &kind.stages {
-            assert_eq!(stage.agents.len(), 1, "{}'s {}", kind.name, stage.name);
-            assert!(stage.prompt.contains("{{needs}}"), "{}", stage.name);
+            let at = format!("{}@{}'s {}", kind.name, kind.version, stage.name);
+            assert!(stage.prompt.contains("{{needs}}"), "{at}");
+            let expected = if newest {
+                full.clone()
+            } else {
+                Settings::default()
+            };
+            assert_eq!(stage.agents, vec![expected], "{at}'s agents");
         }
     }
 }
