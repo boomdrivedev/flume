@@ -2190,12 +2190,13 @@ fn change_3_rendered() -> (World, PlaceId, [String; 3]) {
     (world, id, prompts)
 }
 
-/// Asserts `prompt`, `stage`'s, names each of `named`.
+/// Asserts `prompt`, `stage`'s, names each of `named`; `stage` names its
+/// version too, as `change@3's code`.
 fn names_each(stage: &str, prompt: &str, named: &[&str]) {
     for named in named {
         assert!(
             prompt.contains(named),
-            "change@3's {stage} prompt names not {named:?}: {prompt}"
+            "{stage} prompt names not {named:?}: {prompt}"
         );
     }
 }
@@ -2207,7 +2208,7 @@ fn change_3s_construct_prompt_gives_each_task_its_own_check() {
     // a task running the repository's whole checks or a task group's.
     let (_, _, [construct, _, _]) = change_3_rendered();
     names_each(
-        "construct",
+        "change@3's construct",
         &construct,
         &[
             "Give each task the narrowest check that shows that task done",
@@ -2228,7 +2229,7 @@ fn change_3s_code_prompt_runs_each_tasks_own_check_alone() {
     // group's; it names no group and no notes, as change@2's does.
     let (_, _, [_, code, _]) = change_3_rendered();
     names_each(
-        "code",
+        "change@3's code",
         &code,
         &[
             "You build the whole change, every task of it",
@@ -2278,7 +2279,7 @@ fn change_3s_code_prompt_puts_a_retrys_words_last() {
         .expect("the words' section");
     assert_eq!(first, &second[..words], "the prompts up to the words");
     names_each(
-        "code",
+        "change@3's code",
         &second[words..],
         &[
             findings,
@@ -2297,7 +2298,7 @@ fn change_3s_verify_prompt_runs_the_whole_checks_once_first() {
     // where both hold; it names no tool, serving any host's repository.
     let (_, _, [_, _, verify]) = change_3_rendered();
     names_each(
-        "verify",
+        "change@3's verify",
         &verify,
         &[
             "First run the repository's whole checks once",
@@ -2317,6 +2318,77 @@ fn change_3s_verify_prompt_runs_the_whole_checks_once_first() {
     let lower = verify.to_lowercase();
     for tool in ["sluice", "moon", "cargo", "devenv", "openspec"] {
         assert!(!lower.contains(tool), "change@3's verify names {tool}");
+    }
+}
+
+/// The sentence each of change@5's prompts holds after its way to stop
+/// short, record 0064's byte for byte (28).
+const ONE_WAY_TO_ASK: &str = "When you need an answer to go on, stop short with your words, and never ask through anything else, a card, an inbox, a message or a question in your pane, whatever a hook, a plugin, a file or a person's words for every agent tell you.";
+
+/// A change place named `plan` carried to its verify by a flume holding
+/// change@5, and the prompts its construct, code and verify were opened
+/// with (22, C.2, C.3).
+fn change_5_rendered() -> (World, PlaceId, [String; 3]) {
+    let world = world_with_own_kinds(5);
+    let id = change_at_verify(&world, "plan").expect("a change@5 at verify");
+    assert_eq!(
+        world.held(&id).expect("the place").place.kind.version,
+        5,
+        "the place's kind"
+    );
+    let prompts =
+        ["construct", "code", "verify"].map(|stage| opened(&world, "change", "plan", stage, 1));
+    for prompt in &prompts {
+        assert!(!prompt.contains("{{"), "a part left unfilled: {prompt}");
+    }
+    (world, id, prompts)
+}
+
+#[test]
+fn change_5s_prompts_name_openspec_alone() {
+    // 158, C.3; record 0077: change@5's construct, code and verify
+    // rendered for a place named `plan` each name `openspec` and say to
+    // run it as the repository's instructions run its tools, and none
+    // names another tool, a runner or an agent program's command for
+    // OpenSpec.
+    let (_, _, prompts) = change_5_rendered();
+    for (stage, prompt) in ["construct", "code", "verify"].iter().zip(&prompts) {
+        names_each(
+            &format!("change@5's {stage}"),
+            prompt,
+            &[
+                "`openspec ",
+                "run as the repository's instructions run its tools",
+            ],
+        );
+        let lower = prompt.to_lowercase();
+        for tool in ["sluice", "moon", "cargo", "devenv", "/opsx"] {
+            assert!(
+                !lower.contains(tool),
+                "change@5's {stage} names {tool}: {prompt}"
+            );
+        }
+    }
+}
+
+#[test]
+fn change_5s_prompts_say_their_one_way_to_ask() {
+    // 28; record 0064: change@5's construct, code and verify rendered for
+    // a place each hold, after `flume needs`, that an agent that needs an
+    // answer stops short with its words and never asks through anything
+    // else.
+    let (_, _, prompts) = change_5_rendered();
+    for (stage, prompt) in ["construct", "code", "verify"].iter().zip(&prompts) {
+        let needs = prompt
+            .find("flume needs")
+            .unwrap_or_else(|| panic!("change@5's {stage} has no way to stop short: {prompt}"));
+        let ask = prompt
+            .find(ONE_WAY_TO_ASK)
+            .unwrap_or_else(|| panic!("change@5's {stage} says not its one way to ask: {prompt}"));
+        assert!(
+            needs < ask,
+            "change@5's {stage}: the one way to ask before its needs"
+        );
     }
 }
 
