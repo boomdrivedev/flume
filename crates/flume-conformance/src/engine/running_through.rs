@@ -54,8 +54,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_fixs_failed_submission,
         },
         Scenario {
-            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, so the next settle is given none; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again, each acted on once",
-            cites: &["225", "133", "111", "112", "124", "74"],
+            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, and the next settle asks no inbox; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again as flume submits the place anew, each acted on once",
+            cites: &["225", "133", "111", "112", "124", "74", "99"],
             run: an_outcome_is_confirmed_once_acted_on,
         },
         Scenario {
@@ -393,10 +393,11 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
         "outcomes left for the next settle"
     );
 
-    // The next settle reads the inbox and is given nothing.
+    // The next settle asks no inbox, flume holding the outcome (111,
+    // 133; record 0012).
     world.queue.log.clear();
     world.settle(&id);
-    ensure!(world.queue.log.count("inbox") > 0, "no inbox read");
+    ensure_eq!(world.queue.log.count("inbox"), 0, "inboxes");
     ensure_eq!(world.queue.log.count("confirm"), 0, "confirms");
     ensure_eq!(gone_back(&world), Some((2, 1)), "after the next settle");
 
@@ -449,7 +450,9 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
     );
 
     // Acted on at the next settle, whose confirm the merge queue cannot
-    // take: given again, it sends nothing back again, and is confirmed.
+    // take: left pending while flume holds it and code runs, and given
+    // again as flume submits the place anew, it sends nothing back again
+    // and is confirmed (111, 133, 225; record 0012).
     world.queue.refuse_confirms(Some("down"));
     world.settle(&id);
     ensure_eq!(gone_back(&world), Some((3, 2)), "acted on");
@@ -460,6 +463,16 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
     );
     world.queue.refuse_confirms(None);
     world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.queue.log.count("inbox"),
+            world.queue.pending(&location).len()
+        ),
+        (0, 1),
+        "inboxes, and the failure pending, while code runs"
+    );
+    deliver_fix(&world, &id);
     world.settle(&id);
     ensure_eq!(gone_back(&world), Some((3, 2)), "acted on once");
     ensure_eq!(
