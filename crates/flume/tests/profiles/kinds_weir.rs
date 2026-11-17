@@ -1907,8 +1907,8 @@ fn each_versions_prompts_are_its_own() {
     // declaration of its own, under `own/<name>@<version>/`, whose prompts
     // lie beside it; what the binary holds is what each directory holds,
     // read as a launch's declaration is read from disk; change@1's and
-    // change@2's prompts are as before, and change@3's three are none of
-    // theirs.
+    // change@2's prompts are as before, change@3's three are none of
+    // theirs, and change@5's three are none of an earlier version's.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/profiles/kinds/weir/own");
     let mut versions: Vec<String> = std::fs::read_dir(&dir)
         .expect("flume's own kinds' directory")
@@ -1923,7 +1923,7 @@ fn each_versions_prompts_are_its_own() {
     versions.sort();
     assert_eq!(
         versions,
-        ["change@1", "change@2", "change@3", "chore@1", "fix@1"]
+        ["change@1", "change@2", "change@3", "change@5", "chore@1", "fix@1"]
     );
     let mut read = vec![];
     for version in &versions {
@@ -1968,6 +1968,16 @@ fn each_versions_prompts_are_its_own() {
             assert_ne!(
                 prompt, &earlier.prompt,
                 "change@3's {stage} is an earlier version's {}",
+                earlier.name
+            );
+        }
+    }
+    let five = own("change", 5);
+    for (stage, prompt) in five.stages.iter().map(|stage| (&stage.name, &stage.prompt)) {
+        for earlier in one.stages.iter().chain(&two.stages).chain(&three.stages) {
+            assert_ne!(
+                prompt, &earlier.prompt,
+                "change@5's {stage} is an earlier version's {}",
                 earlier.name
             );
         }
