@@ -2392,6 +2392,67 @@ fn change_5s_prompts_say_their_one_way_to_ask() {
     }
 }
 
+#[test]
+fn change_5s_construct_prompt_writes_through_openspec() {
+    // 22, C.2, C.3: change@5's construct prompt rendered for a place named
+    // `plan` makes the change with OpenSpec, reads its status and writes
+    // each part from its instructions, asks each task for the narrowest
+    // check that shows it done, and rules out a task running the
+    // repository's whole checks or a task group's.
+    let (_, _, [construct, _, _]) = change_5_rendered();
+    names_each(
+        "change@5's construct",
+        &construct,
+        &[
+            "`openspec new change plan`",
+            "`openspec status --change plan --json`",
+            "`openspec instructions <part> --change plan --json`",
+            "until it reads the change's planning complete",
+            "Give each task the narrowest check that shows that task done",
+            "one test by name, one package's tests, or a lint of the files the task touches",
+            "No task runs the repository's whole checks",
+            "no task checks a task group",
+        ],
+    );
+    let new = construct.find("openspec new change").expect("the new");
+    let status = construct.find("openspec status").expect("the status");
+    let part = construct
+        .find("openspec instructions <part>")
+        .expect("the part's instructions");
+    assert!(
+        new < status && status < part,
+        "the change made, its status read and each part written, in that order: {construct}"
+    );
+}
+
+#[test]
+fn change_5s_construct_prompt_commits_once_the_strict_check_passes() {
+    // 22, C.2: change@5's construct prompt rendered for a place named
+    // `plan` names OpenSpec's strict check before the change's commit, and
+    // gives its deliverable as the change with its planning complete and
+    // passing that check.
+    let (_, _, [construct, _, _]) = change_5_rendered();
+    names_each(
+        "change@5's construct",
+        &construct,
+        &[
+            "`openspec validate plan --strict`",
+            "fix the change until it passes",
+            "Commit the change on change/plan only once it passes",
+            "holds the change with its planning complete and passing `openspec validate plan \
+             --strict`",
+        ],
+    );
+    let strict = construct
+        .find("openspec validate plan --strict")
+        .expect("the strict check");
+    let commit = construct.find("Commit the change on").expect("the commit");
+    assert!(
+        strict < commit,
+        "the commit asked before the strict check: {construct}"
+    );
+}
+
 /// The change place `name` launched at the change flume holds, written as
 /// `GROUPS` none ticked, and code's first start begun.
 fn change_code_begun(world: &World, name: &str) -> PlaceId {
