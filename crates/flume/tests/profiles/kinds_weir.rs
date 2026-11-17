@@ -2453,6 +2453,124 @@ fn change_5s_construct_prompt_commits_once_the_strict_check_passes() {
     );
 }
 
+#[test]
+fn change_5s_code_prompt_works_through_the_apply_instructions() {
+    // 22, C.2, C.3: change@5's code prompt rendered for a place named
+    // `plan` takes its tasks from OpenSpec's apply instructions, runs each
+    // task's own check before its tick at the line the instructions give,
+    // holds any other write to the change to the strict check before its
+    // commit, and rules out the repository's whole checks and a task
+    // group's.
+    let (_, _, [_, code, _]) = change_5_rendered();
+    names_each(
+        "change@5's code",
+        &code,
+        &[
+            "You build the whole change, every task of it",
+            "`openspec instructions apply --change plan --json`",
+            "the task groups only headings",
+            "run the check it names as it names it",
+            "tick the task at the line the instructions give",
+            "Run no check but a task's own",
+            "not the repository's whole checks",
+            "not a task group's",
+            "run `openspec validate plan --strict` and commit what you wrote only once it passes",
+            "tasks ticked",
+        ],
+    );
+    let apply = code.find("openspec instructions apply").expect("the apply");
+    let check = code.find("run the check it names").expect("the check");
+    let tick = code.find("tick the task at the line").expect("the tick");
+    assert!(
+        apply < check && check < tick,
+        "the apply instructions read, each task's check run and its tick, in that order: {code}"
+    );
+    let strict = code
+        .find("openspec validate plan --strict")
+        .expect("the strict check");
+    let commit = code
+        .find("commit what you wrote only once it passes")
+        .expect("the commit");
+    assert!(
+        strict < commit,
+        "the commit before the strict check: {code}"
+    );
+    for named in ["The notes: ", "repetition", "Group 1"] {
+        assert!(
+            !code.contains(named),
+            "{named:?} in change@5's code: {code}"
+        );
+    }
+}
+
+/// change@5's code prompt opened without words and then with a verify's
+/// `findings`, by the verify stopping short having found work (131).
+fn change_5s_code_sent_back(findings: &str) -> (String, String) {
+    let (world, id, [_, first, _]) = change_5_rendered();
+    let verify = world.held(&id).expect("the place").stages[2]
+        .start
+        .clone()
+        .expect("verify's start");
+    let stopped = world.engine.needs(
+        &verify.identity.to_string(),
+        &verify.secret.0,
+        findings,
+        StopKind::FoundWork,
+    );
+    assert!(stopped.refusal().is_none(), "the stop-short: {stopped:?}");
+    world.settle(&id);
+    (first, opened(&world, "change", "plan", "code", 2))
+}
+
+#[test]
+fn change_5s_code_prompt_puts_a_retrys_words_last() {
+    // 131, core.33: change@5's code prompt rendered for one place without
+    // words, and again with its verify's words: the two are equal up to
+    // the first character of the words' section, and the second holds the
+    // words and asks the fix be recorded as a task naming its own check.
+    let findings = "Task 2.1 is ticked and its test fails.";
+    let (first, second) = change_5s_code_sent_back(findings);
+    let words = second
+        .find("This stage was started again with these words:")
+        .expect("the words' section");
+    assert_eq!(first, &second[..words], "the prompts up to the words");
+    names_each(
+        "change@5's code",
+        &second[words..],
+        &[
+            findings,
+            "record the fix as a task of the change naming its own check, ticked once that \
+             check passes",
+        ],
+    );
+}
+
+#[test]
+fn change_5s_code_prompt_undoes_an_archive_whole() {
+    // 22, 131: change@5's code prompt rendered for a place with a verify's
+    // words asks that a change archived on its branch have its archive
+    // undone first, in one commit, the change moved back to its directory
+    // and every spec the archive wrote returned to what it held before.
+    let (_, second) = change_5s_code_sent_back("The archive refused spec flume.");
+    let words = second
+        .find("This stage was started again with these words:")
+        .expect("the words' section");
+    let words = &second[words..];
+    names_each(
+        "change@5's code",
+        words,
+        &[
+            "Where the change has been archived on change/plan, undo its archive first, in one \
+             commit",
+            "move the change back out of the archive to ",
+            "return every spec the archive wrote to what it held before the archive",
+        ],
+    );
+    let undo = words.find("undo its archive first").expect("the undo");
+    let fix = words.find("Then fix").expect("the fix");
+    assert!(undo < fix, "the fix before the archive's undoing: {words}");
+}
+
 /// The change place `name` launched at the change flume holds, written as
 /// `GROUPS` none ticked, and code's first start begun.
 fn change_code_begun(world: &World, name: &str) -> PlaceId {
