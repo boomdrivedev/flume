@@ -2108,8 +2108,8 @@ fn sent_back_with_a_conflict(world: &World, kind: &str, name: &str) -> (String, 
 
 #[test]
 fn a_code_prompt_sent_back_with_a_conflict_merges_the_base_never_rebasing() {
-    // 112: fix@1's, chore@1's, change@2's and change@3's code prompts sent
-    // back with a conflict's words.
+    // 112: fix@1's, chore@1's, change@2's, change@3's and change@5's code
+    // prompts sent back with a conflict's words.
     let world = world_with_own_kinds(2);
     let mut prompts = vec![];
 
@@ -2139,6 +2139,14 @@ fn a_code_prompt_sent_back_with_a_conflict_merges_the_base_never_rebasing() {
     archive(&world, "plan");
     prompts.push((
         "change@3",
+        sent_back_with_a_conflict(&world, "change", "plan"),
+    ));
+
+    let world = world_with_own_kinds(5);
+    change_at_verify(&world, "plan").expect("a change@5 at verify");
+    archive(&world, "plan");
+    prompts.push((
+        "change@5",
         sent_back_with_a_conflict(&world, "change", "plan"),
     ));
 
