@@ -189,7 +189,7 @@ version (156, 157).
 #### Scenario: The hashes recorded
 
 - **WHEN** the check reads flume's own kinds
-- **THEN** fix@1, chore@1, change@1, change@2 and change@3 each hash to the value the check records, the first four to the values recorded before change@3 (156)
+- **THEN** fix@1, chore@1, change@1, change@2, change@3 and change@5 each hash to the value the check records, the first five to the values recorded before change@5 (156)
 
 #### Scenario: A lock of flume's own at another hash
 

@@ -799,7 +799,7 @@ fn a_lock_that_cannot_be_read(_: &()) -> Outcome {
 }
 
 /// The hash flume's own `name@version` has on the fake.
-fn own_hash(world: &World, name: &str, version: u32) -> Result<String, String> {
+pub fn own_hash(world: &World, name: &str, version: u32) -> Result<String, String> {
     world
         .kinds
         .flumes_own()
