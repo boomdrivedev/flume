@@ -2453,6 +2453,73 @@ fn a_place_launched_at_change_2_keeps_it() {
     );
 }
 
+#[test]
+fn a_place_launched_at_change_3_keeps_it() {
+    // 21, 22: a place launched by a flume holding change@1, change@2 and
+    // change@3 alone is settled by one holding change@5 too; it keeps
+    // change@3's stages and prompts as its launch read them, its kind
+    // giving its agents no mode, and status names change@3. The world's
+    // fake agent maps no mode, so a start in change@5's `full` would be
+    // refused.
+    let world = World::new();
+    world.kinds.set_own(
+        own_kinds()
+            .into_iter()
+            .filter(|kind| kind.name != "change" || kind.version <= 3)
+            .collect(),
+    );
+    let id = change_code_begun(&world, "old");
+    world.kinds.set_own_packages(Weir.flumes_own());
+    world.tick_groups("change/old", "old", GROUPS, 5);
+    world.settle(&id);
+    world.settle(&id);
+    assert_eq!(world.stage_state(&id, "verify"), Some(StageState::Begun));
+    let held = world.held(&id).expect("the place");
+    assert_eq!(held.place.kind.version, 3, "the place's kind");
+    let stages = |kind: &Kind| -> Vec<(String, String, Vec<Settings>)> {
+        kind.stages
+            .iter()
+            .map(|stage| {
+                (
+                    stage.name.clone(),
+                    stage.prompt.clone(),
+                    stage.agents.clone(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        stages(&held.place.kind),
+        stages(&own("change", 3)),
+        "change@3's stages and prompts as its launch read them"
+    );
+    assert_eq!(held.stages[1].starts, 1, "code's starts");
+    for stage in &held.stages {
+        if let Some(start) = &stage.start {
+            assert_eq!(
+                (&start.settings.mode, &start.start_record.mode),
+                (&None, &None),
+                "{}'s start's mode",
+                stage.name
+            );
+        }
+    }
+    let verify = opened(&world, "change", "old", "verify", 1);
+    assert!(
+        !verify.contains("openspec"),
+        "change@5's verify opened: {verify}"
+    );
+    let status = world.status(&id).expect("status");
+    assert_eq!(
+        (
+            status.kind.as_str(),
+            status.version,
+            status.identity.as_deref()
+        ),
+        ("change", 3, Some("flume/change@3"))
+    );
+}
+
 /// The package `<name>@<version>` of the source `acme` in `kinds_dir`,
 /// read; panics naming why where it could not be.
 fn package_at(kinds_dir: &Path, name: &str, version: u32) -> Packaged {
