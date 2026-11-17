@@ -55,8 +55,7 @@ says which and why. Where `docs/architecture/` and the narrative docs
 disagree, `docs/architecture/` wins. A rule is sent to `core.md` or its
 area page with an id, the next free number in its area, and its details
 to `core-details.md`, both amended in the same commit as the decision
-that changes it. The kit standard binds beside them as its `code`
-profile says (`.config/kit.toml`).
+that changes it.
 
 ## Checks
 
