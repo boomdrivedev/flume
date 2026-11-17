@@ -29,7 +29,7 @@ context: |
   with the decisions behind them in docs/adr/, one MADR record each
   (adrs.toml). Where docs/architecture/ and the narrative docs disagree,
   docs/architecture/ wins. Where flume has no rule of its
-  own, the kit standard binds as its code profile says (.config/kit.toml),
+  own, the kit standard binds as its code profile says (record 0077),
   cited as kit:<id> (kit:specs.3): its rules are docs/architecture/ in
   afterthought/kit-standard (local:
   ~/Code/github_afterthought/kit-standard/main/docs/architecture/).
