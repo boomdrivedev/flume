@@ -144,6 +144,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s30_a_landing_before_flume_submits,
         },
         Scenario {
+            name: "submit: a held submission's chore landed by a hand is read by no settle of a caller's watch, and a settle naming no place and stating no bound reads its work over and tidies it, never submitting it",
+            cites: &["S30", "63", "225"],
+            run: a_held_submission_landed_by_a_hand,
+        },
+        Scenario {
             name: "submit: after a restart a landing is collected by the next settle, never submitted anew",
             cites: &["S34", "124", "133", "120", "77"],
             run: s34_a_restart_while_under_test,
@@ -834,6 +839,50 @@ fn s30_a_landing_before_flume_submits(_: &()) -> Outcome {
     world.settle(&id);
     ensure_eq!(world.queue.log.count("submit"), 0, "submissions flume made");
     ensure!(world.held(&id).is_none(), "the landed place is kept");
+    Ok(())
+}
+
+/// The settling spec's "A held submission landed by a hand": a chore's
+/// launch held its submission, a hand lands the chore's branch through the
+/// fake merge queue, and a caller keeps watch; the watch's settles ask the
+/// merge queue nothing of the chore, and a settle naming no place and
+/// stating no bound reads its work over and tidies it, never making the
+/// held submission. The chore's caller's pane waits, so its ends are
+/// handed to it by notice (S30, 43, 63, 225; design 3).
+fn a_held_submission_landed_by_a_hand(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = World::id("chore", "one");
+    let mut chore = launch("chore", "one", Some("bump it"));
+    chore.hold_submission = true;
+    launched(&world.engine.launch(&chore))?;
+    world.settle(&id);
+    world.commit("chore/one", &["chore.rs"]);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Delivered),
+        "the chore's code"
+    );
+    world.queue.hand_landing(REPOSITORY, "chore/one", "main");
+    world.queue.log.clear();
+    for _ in 0..2 {
+        world.engine.settle_every(60);
+        world.host.advance(60);
+    }
+    let asked = world.queue.log.calls();
+    ensure!(
+        !asked.iter().any(|call| call.contains("chore/one")),
+        "the watch's settles asked the merge queue of the chore: {asked:?}"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.phase),
+        Some(Phase::Live),
+        "the chore under the watch"
+    );
+    world.engine.settle(None);
+    ensure!(world.held(&id).is_none(), "the landed chore is kept");
+    ensure_eq!(world.queue.log.count("submit"), 0, "submissions flume made");
     Ok(())
 }
 
