@@ -1,7 +1,7 @@
 use crate::{lock, Log};
 use flume_seams::{
-    Binding, BindingRead, Kind, KindIdentity, KindNamed, KindSettings, Kinds, KindsRead, LockEntry,
-    LockRead, PackageRead, Packaged, Revision, Settings, SourceRead,
+    Binding, BindingRead, Charts, Kind, KindIdentity, KindNamed, KindSettings, KindStatechart,
+    Kinds, KindsRead, LockEntry, LockRead, PackageRead, Packaged, Revision, Settings, SourceRead,
 };
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -374,6 +374,20 @@ impl Kinds for FakeKinds {
             })
     }
 
+    /// The held text and the template's, each read through weir-kinds to
+    /// exactly one statechart kind, as the weir profile reads them;
+    /// unlogged, since every settle of a statechart place reads it (176).
+    fn read_statechart(&self, kind: &KindStatechart, template: &str) -> Result<Charts, String> {
+        let chart = one_statechart(&kind.text)
+            .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
+        let template =
+            one_statechart(template).map_err(|why| format!("the stage template {why}"))?;
+        Ok(Charts {
+            chart,
+            templates: BTreeMap::from([(template.name.clone(), template)]),
+        })
+    }
+
     fn read_named(&self, text: &str) -> Result<KindNamed, String> {
         self.log.push(format!("read_named {text}"));
         if let Some(reason) = lock(&self.state).unnamed.get(text) {
@@ -550,5 +564,23 @@ fn read(kinds: Vec<Kind>) -> KindsRead {
         kinds,
         settings: BTreeMap::new(),
         agents: Box::default(),
+    }
+}
+
+/// The one statechart kind `text` declares, read through weir-kinds; or why
+/// it gives none (21, 85).
+fn one_statechart(text: &str) -> Result<weir_kinds::weir_engine::Statechart, String> {
+    let declaration = weir_kinds::read_kinds(text).map_err(|refusal| {
+        let problems: Vec<String> = refusal.problems.iter().map(ToString::to_string).collect();
+        format!("could not be read: {}", problems.join("; "))
+    })?;
+    let mut statecharts = declaration.statecharts.into_values();
+    match (
+        statecharts.next(),
+        statecharts.next(),
+        declaration.kinds.is_empty(),
+    ) {
+        (Some(kind), None, true) => Ok(kind.statechart),
+        _ => Err("holds other than one statechart kind".into()),
     }
 }
