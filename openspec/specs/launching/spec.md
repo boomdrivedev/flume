@@ -268,7 +268,7 @@ held, and leave nothing made (4, 19, 22, 154).
 #### Scenario: A version flume does not hold
 
 - **WHEN** a launch names `change@6`
-- **THEN** it is refused naming change@6 and the versions held, 1, 2, 3 and 5, and nothing is made (4)
+- **THEN** it is refused naming change@6 and the versions held, 1, 2, 3, 4 and 5, and nothing is made (4)
 
 #### Scenario: A version the repository's declaration does not hold
 

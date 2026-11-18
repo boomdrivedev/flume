@@ -794,7 +794,6 @@ fn the_agents_variables(_: &()) -> Outcome {
                 )]
                 .into(),
                 agents: None,
-                usage: None,
             }],
         }),
     );

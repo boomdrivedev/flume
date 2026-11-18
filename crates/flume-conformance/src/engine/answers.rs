@@ -741,13 +741,15 @@ fn host_status() -> HostStatus {
             queue: vec![queued()],
             labels: vec![LabelStatus {
                 name: "operation".into(),
+                owed: 2,
+                reserved: 1,
                 reserve: 2,
                 keep_free: 1,
                 running: 1,
                 waiting: 1,
             }],
             reserves: Reserves::Held,
-            refused: Some("the stream work's reserves, operation 3 and construction 3, 6 in all, pass its bound of 5".into()),
+            refused: Some("the stream work's labels are owed 6 in all, construction 3 and operation 3, past its bound of 5".into()),
             view_refused: None,
             answerer: Some(StreamAnswerer::Stands(DeclaredBy {
                 address: "work/operator".into(),
@@ -783,7 +785,7 @@ fn host_status() -> HostStatus {
                     spent_until: None,
                     spent_unread: None,
                     reading: Some(ReadingStatus::Unread {
-                        unread: "the file is missing".into(),
+                        unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
                 },
@@ -796,6 +798,8 @@ fn host_status() -> HostStatus {
                     spent_unread: Some("You've hit your limit".into()),
                     reading: Some(ReadingStatus::Read {
                         read_at: 53_880,
+                        agent: "flume:r:fix--one:code:1".into(),
+                        session: Some("s-1".into()),
                         fresh: true,
                         windows: vec![WindowStatus {
                             name: "5-hour".into(),
@@ -1477,7 +1481,9 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.streams[].labels",
             "status.host.streams[].labels[].keep_free",
             "status.host.streams[].labels[].name",
+            "status.host.streams[].labels[].owed",
             "status.host.streams[].labels[].reserve",
+            "status.host.streams[].labels[].reserved",
             "status.host.streams[].labels[].running",
             "status.host.streams[].labels[].waiting",
             "status.host.streams[].name",
@@ -1522,6 +1528,8 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.pools[].accounts[].spent_unread",
             "status.host.pools[].accounts[].reading",
             "status.host.pools[].accounts[].reading.read_at",
+            "status.host.pools[].accounts[].reading.agent",
+            "status.host.pools[].accounts[].reading.session",
             "status.host.pools[].accounts[].reading.fresh",
             "status.host.pools[].accounts[].reading.windows",
             "status.host.pools[].accounts[].reading.windows[].name",
