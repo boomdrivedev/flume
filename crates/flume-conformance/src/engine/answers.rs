@@ -828,6 +828,8 @@ fn host_status() -> HostStatus {
                     agents: RoleAgents::default(),
                     answers: None,
                     answerer: false,
+                    repositories: Vec::new(),
+                    kinds: BTreeMap::new(),
                 },
                 stream: "madswan".into(),
             }),

@@ -648,6 +648,8 @@ fn bare_run(source: &str, kind: &str) -> RoleRun {
         agents: RoleAgents::default(),
         answers: None,
         answerer: false,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     }
 }
 

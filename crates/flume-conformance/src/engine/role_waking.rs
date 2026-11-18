@@ -262,6 +262,8 @@ pub fn planner_run(base: Option<&str>, brief: Option<&str>) -> RoleRun {
         agents: RoleAgents::default(),
         answers: None,
         answerer: false,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     }
 }
 

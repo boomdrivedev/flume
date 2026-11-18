@@ -1682,6 +1682,8 @@ fn the_roles_its_sources_declare() {
         agents: RoleAgents::default(),
         answers: answers.map(str::to_string),
         answerer,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     };
     host.set_role(
         "east/planner",

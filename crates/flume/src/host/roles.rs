@@ -251,6 +251,8 @@ fn entry_of(
         },
         answers: entry.text("answers")?,
         answerer: entry.flag("answerer")?,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     })))
 }
 

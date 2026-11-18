@@ -3018,6 +3018,8 @@ fn a_role_run_as_its_source_declares_it() {
         },
         answers: Some("The work's scope.".into()),
         answerer: true,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     };
     round_trips(run.clone());
     let bare = RoleRun {
@@ -3041,6 +3043,46 @@ fn a_role_run_as_its_source_declares_it() {
     )
     .unwrap();
     assert_eq!(before.source, "", "a run status gave before sources");
+}
+
+#[test]
+fn a_standing_roles_entry_round_trips() {
+    // A standing role's entry gives its repositories, the first its
+    // repository, and the kinds its session launches its projects as; an
+    // entry written before reads neither (193, C.7).
+    let run = RoleRun {
+        source: "acme".into(),
+        repository: "/code/flume".into(),
+        repositories: vec!["/code/flume".into(), "/code/blueprints".into()],
+        kind: "desk".into(),
+        priority: 0,
+        base: None,
+        brief: None,
+        name: None,
+        intent: None,
+        agents: RoleAgents::default(),
+        answers: None,
+        answerer: false,
+        kinds: BTreeMap::from([
+            ("change".into(), "a change a design asks for".into()),
+            ("fix".into(), "a failing landing or check".into()),
+        ]),
+    };
+    round_trips(run.clone());
+    let json = serde_json::to_value(&run).unwrap();
+    assert_eq!(
+        json["repositories"],
+        serde_json::json!(["/code/flume", "/code/blueprints"])
+    );
+    assert_eq!(json["kinds"]["fix"], "a failing landing or check");
+    let before: RoleRun = serde_json::from_value(
+        serde_json::json!({"source": "acme", "repository": "/r", "kind": "turn", "priority": 0}),
+    )
+    .unwrap();
+    assert!(before.repositories.is_empty(), "no repositories before");
+    assert!(before.kinds.is_empty(), "no kinds before");
+    let bare = serde_json::to_value(&before).unwrap();
+    assert!(bare.get("repositories").is_none() && bare.get("kinds").is_none());
 }
 
 #[test]
@@ -3082,6 +3124,8 @@ fn what_a_source_declares_for_an_address() {
                     agents: RoleAgents::default(),
                     answers: None,
                     answerer: true,
+                    repositories: Vec::new(),
+                    kinds: BTreeMap::new(),
                 })),
             ),
         ]),
