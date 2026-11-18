@@ -1201,3 +1201,221 @@ fn a_base_place_is_given_its_location_and_nothing_is_made_there() {
         assert!(!mark(step).exists(), "the {step} ran");
     }
 }
+
+/// A post-checkout hook in the git directory `git_dir` that marks `ran`.
+fn hooked(git_dir: &Path, ran: &Path) {
+    let hook = git_dir.join("hooks/post-checkout");
+    std::fs::create_dir_all(hook.parent().unwrap()).expect("the hooks' folder");
+    std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", ran.display())).expect("the hook");
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+        .expect("the hook made executable");
+}
+
+/// A standing role's place of `repositories`, each `(location, folder)`,
+/// made by the profile at their heads under the location the profile
+/// gives the first's `desk--east-ops`: the location and the checkouts
+/// as the place seam is handed them (193, C.1).
+fn checkouts_made(profile: &GitWorktree, repositories: &[(&str, &str)]) -> (String, Vec<Checkout>) {
+    let location = profile
+        .location(repositories[0].0, "desk--east-ops")
+        .expect("the place's location");
+    let checkouts: Vec<Checkout> = repositories
+        .iter()
+        .map(|(repository, folder)| Checkout {
+            repository: repository.to_string(),
+            folder: folder.to_string(),
+            revision: Revision::new(
+                flume::git::Git::at(repository)
+                    .commit("refs/heads/main")
+                    .expect("main's head"),
+            ),
+        })
+        .collect();
+    assert_eq!(
+        profile.make_checkouts(&location, &checkouts),
+        MakeOutcome::Made
+    );
+    (location, checkouts)
+}
+
+/// The checkout `checkout` under `location` as the place seam reads it.
+fn checkout_ref(location: &str, checkout: &Checkout) -> PlaceRef {
+    PlaceRef {
+        repository: checkout.repository.clone(),
+        location: format!("{location}/{}", checkout.folder),
+        branch: String::new(),
+        base: "main".into(),
+    }
+}
+
+/// place-profile's "Checkouts of a bare repository and a clone": each a
+/// worktree of its repository, detached at its revision, and no hook of
+/// either repository ran (78, 193, C.1).
+#[test]
+fn checkouts_made_of_a_bare_repository_and_a_clone() {
+    let clone = Repository::new("checkouts-made");
+    let bare = clone.scratch.path("blueprints.git");
+    git(
+        &clone.scratch.root,
+        &[
+            "clone",
+            "--quiet",
+            "--bare",
+            &clone.name(),
+            &bare.to_string_lossy(),
+        ],
+    );
+    let ran = clone.scratch.path("hook-ran");
+    hooked(&clone.dir.join(".git"), &ran);
+    hooked(&bare, &ran);
+    let profile = profile(PlaceData::default(), &clone.scratch);
+    let bare_name = bare.to_string_lossy().into_owned();
+    let (location, checkouts) = checkouts_made(
+        &profile,
+        &[(&clone.name(), "repository"), (&bare_name, "blueprints")],
+    );
+    assert!(Path::new(&location).starts_with(own(&clone.scratch)));
+    for checkout in &checkouts {
+        let place = checkout_ref(&location, checkout);
+        let status = git(
+            Path::new(&place.location),
+            &["status", "--porcelain=v2", "--branch"],
+        );
+        assert!(status.contains("# branch.head (detached)"), "{status}");
+        assert!(status.contains(&format!("# branch.oid {}", checkout.revision.0)));
+        assert_eq!(
+            profile.read(&place),
+            PlaceRead::Live {
+                branch: "(detached)".into(),
+                head: checkout.revision.clone(),
+                holds: Holds::default(),
+            }
+        );
+        let listed = flume::git::Git::at(&checkout.repository)
+            .text(&["worktree", "list", "--porcelain"])
+            .expect("the worktrees listed");
+        assert!(listed.contains(&place.location), "{listed}");
+    }
+    assert!(!ran.exists(), "a hook ran at make");
+    assert_eq!(
+        profile.make_checkouts(&location, &checkouts),
+        MakeOutcome::LocationExists,
+        "a second make"
+    );
+}
+
+/// place-profile's "A move git refuses": an uncommitted change to a file
+/// the base's new head changes keeps the checkout where it stood, its
+/// change with it, answered kept with git's words (193, 213; core.18).
+#[test]
+fn checkouts_moved_where_git_refuses() {
+    let repository = Repository::new("checkouts-refused");
+    let profile = profile(PlaceData::default(), &repository.scratch);
+    let (location, checkouts) = checkouts_made(&profile, &[(&repository.name(), "repository")]);
+    let place = checkout_ref(&location, &checkouts[0]);
+    std::fs::write(Path::new(&place.location).join("README"), "mine\n").expect("a change");
+    repository.write("README", "the base's\n");
+    let tip = Revision::new(repository.commit("the base moves on"));
+    match profile.move_checkout(&place, &tip) {
+        Moved::Kept { reason } => {
+            assert!(reason.contains("would be overwritten"), "{reason}")
+        }
+        other => panic!("the move was {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read_to_string(Path::new(&place.location).join("README")).unwrap(),
+        "mine\n"
+    );
+    assert!(matches!(
+        profile.read(&place),
+        PlaceRead::Live { head, .. } if head == checkouts[0].revision
+    ));
+}
+
+/// place-profile's "A move git carries a change over": a change to a file
+/// the new head does not touch goes with the checkout (193, 213).
+#[test]
+fn checkouts_moved_carrying_a_change() {
+    let repository = Repository::new("checkouts-carried");
+    let profile = profile(PlaceData::default(), &repository.scratch);
+    let (location, checkouts) = checkouts_made(&profile, &[(&repository.name(), "repository")]);
+    let place = checkout_ref(&location, &checkouts[0]);
+    std::fs::write(Path::new(&place.location).join("README"), "mine\n").expect("a change");
+    repository.write("NEWS", "the base's\n");
+    let tip = Revision::new(repository.commit("the base moves on"));
+    assert_eq!(profile.move_checkout(&place, &tip), Moved::Moved);
+    match profile.read(&place) {
+        PlaceRead::Live {
+            branch,
+            head,
+            holds,
+        } => {
+            assert_eq!(branch, "(detached)");
+            assert_eq!(head, tip);
+            assert_eq!(holds.uncommitted, ["README"]);
+        }
+        other => panic!("read {other:?}"),
+    }
+    assert!(Path::new(&place.location).join("NEWS").is_file());
+    let gone = PlaceRef {
+        location: format!("{location}/elsewhere"),
+        ..place
+    };
+    assert_eq!(profile.move_checkout(&gone, &tip), Moved::Gone);
+}
+
+/// place-profile's "Removed to the group folder": neither worktree is
+/// listed, and neither the location nor its `places/<id>` stands; no
+/// branch was removed (81, 193; core.5; record 0057).
+#[test]
+fn checkouts_removed_to_the_group_folder() {
+    let repository = Repository::new("checkouts-removed");
+    let other = Repository::new("checkouts-removed-other");
+    let profile = profile(PlaceData::default(), &repository.scratch);
+    let (location, checkouts) = checkouts_made(
+        &profile,
+        &[(&repository.name(), "repository"), (&other.name(), "other")],
+    );
+    let group = Path::new(&location).parent().unwrap().to_path_buf();
+    let branches = |repository: &Repository| repository.git(&["branch", "--list"]);
+    let before = (branches(&repository), branches(&other));
+    let held = checkout_ref(&location, &checkouts[1]);
+    std::fs::write(Path::new(&held.location).join("notes.md"), "notes\n").expect("a file");
+    assert!(
+        matches!(
+            profile.remove_checkouts(&location, &checkouts),
+            Removed::Refused { .. }
+        ),
+        "a checkout holding a file removed"
+    );
+    assert!(Path::new(&held.location).join("notes.md").is_file());
+    for checkout in &checkouts {
+        assert!(
+            matches!(
+                profile.read(&checkout_ref(&location, checkout)),
+                PlaceRead::Live { .. }
+            ),
+            "a checkout removed beside one holding a file"
+        );
+    }
+    std::fs::remove_file(Path::new(&held.location).join("notes.md")).unwrap();
+
+    assert_eq!(
+        profile.remove_checkouts(&location, &checkouts),
+        Removed::Removed
+    );
+    for checkout in &checkouts {
+        let listed = flume::git::Git::at(&checkout.repository)
+            .text(&["worktree", "list", "--porcelain"])
+            .expect("the worktrees listed");
+        assert!(!listed.contains(&location), "{listed}");
+    }
+    assert!(!Path::new(&location).exists(), "the location still stands");
+    assert!(!group.exists(), "the group folder still stands");
+    assert_eq!((branches(&repository), branches(&other)), before);
+    assert_eq!(
+        profile.remove_checkouts(&location, &checkouts),
+        Removed::Removed,
+        "a second remove"
+    );
+}

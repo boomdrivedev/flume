@@ -18,6 +18,20 @@
 //! location goes, and the `places/<id>` folder with it once it holds no
 //! place (62; record 0057).
 //!
+//! A standing role's place is a folder at a place's location holding a
+//! checkout of each repository its entry names, each a worktree of its
+//! repository at `<location>/<folder>` detached at a revision on no
+//! branch (193, C.1; core.40). Each is made by `git worktree add
+//! --detach` with no hook run, the place made whole or not at all: a
+//! refused add undoes every checkout made, what stands at the location
+//! and each repository's entry of it (83). A checkout is moved by `git
+//! checkout --detach` with no `--force`, so git carries a change it can
+//! and refuses a move that would overwrite one, which is answered kept
+//! with git's words (core.18); and removed by `git worktree remove` with
+//! no `--force` and no teardown, then what stands at the location and its
+//! `places/<id>` folder once empty, as a place's (81; record 0057). No
+//! branch is made, moved or removed for one (core.5).
+//!
 //! The readiness, the teardown and where the base lives are the merge
 //! queue profile's to declare; the binary's resolver hands them to this
 //! profile as [`PlaceData`] when it binds a repository, the readiness
@@ -34,8 +48,8 @@
 use crate::git::Git;
 use crate::shell::tail;
 use flume_seams::{
-    BranchRemoved, Holds, MakeOutcome, Place, PlaceRead, PlaceRef, Readiness, ReadyStep, Removed,
-    Revision,
+    BranchRemoved, Checkout, Holds, MakeOutcome, Moved, Place, PlaceRead, PlaceRef, Readiness,
+    ReadyStep, Removed, Revision,
 };
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -317,13 +331,155 @@ impl GitWorktree {
                 words,
             };
         }
+        self.ungrouped(location);
+        Removed::Removed
+    }
+
+    /// The group folder of `location`, `places/<id>` under flume's own
+    /// data directory, removed once it holds no place (record 0057).
+    fn ungrouped(&self, location: &Path) {
         if let (Some(own), Some(group)) = (&self.own, location.parent()) {
             if group.parent().map(canonical) == Some(canonical(&own.join("places"))) {
                 // Only an empty folder goes: another place's keeps it.
                 let _ = std::fs::remove_dir(group);
             }
         }
-        Removed::Removed
+    }
+
+    /// A standing role's checkouts made under `location`, each a worktree
+    /// of its repository at `<location>/<folder>` detached at its revision,
+    /// by `git worktree add --detach` with no hook run; refused where
+    /// anything stands at the location, and a refused add undoing every
+    /// checkout made, what stands at the location and each repository's
+    /// entry, so the place is made whole or not at all (78, 83, 193, C.1).
+    pub fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        if Path::new(location).symlink_metadata().is_ok() {
+            return MakeOutcome::LocationExists;
+        }
+        for (at, checkout) in checkouts.iter().enumerate() {
+            let folder = format!("{location}/{}", checkout.folder);
+            let added = Git::at(&checkout.repository).text(&[
+                "-c",
+                "core.hooksPath=/dev/null",
+                "worktree",
+                "add",
+                "--quiet",
+                "--detach",
+                &folder,
+                &checkout.revision.0,
+            ]);
+            if let Err(reason) = added {
+                // All or nothing (83): every checkout made goes, with
+                // what stands at the location and git's entries of them.
+                let _ = clear(Path::new(location));
+                for made in &checkouts[..=at] {
+                    let _ = Git::at(&made.repository).text(&["worktree", "prune"]);
+                }
+                self.ungrouped(Path::new(location));
+                return MakeOutcome::Refused {
+                    reason: format!(
+                        "the checkout of {} at {} could not be made: {reason}",
+                        checkout.repository, checkout.revision.0
+                    ),
+                };
+            }
+        }
+        MakeOutcome::Made
+    }
+
+    /// The checkout `checkout` moved to `revision`, detached, by `git
+    /// checkout --detach` with no `--force` and no hook run: git carries a
+    /// change it can and refuses a move that would overwrite one, which
+    /// is kept with git's words; gone where git holds no worktree there
+    /// (193, 213; core.5, core.18).
+    pub fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        match self.entry(&checkout.repository, &checkout.location) {
+            Err(reason) => return Moved::Kept { reason },
+            Ok(None) => return Moved::Gone,
+            Ok(Some(entry)) if !entry.path.is_dir() => return Moved::Gone,
+            Ok(Some(_)) => {}
+        }
+        match Git::at(&checkout.location).text(&[
+            "-c",
+            "core.hooksPath=/dev/null",
+            "checkout",
+            "--quiet",
+            "--detach",
+            &revision.0,
+        ]) {
+            Ok(_) => Moved::Moved,
+            Err(reason) => Moved::Kept { reason },
+        }
+    }
+
+    /// A standing role's checkouts under `location` removed, each by `git
+    /// worktree remove` with no `--force` and no teardown, then what
+    /// stands at the location and its group folder once empty; or, with
+    /// nothing removed, the first checkout that cannot be read or holds
+    /// work, and otherwise the first git refused, with its words, nothing
+    /// at the location removed while git still holds a worktree there
+    /// (65, 81, 193; core.18; record 0057).
+    pub fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        let refused = |words: String| Removed::Refused {
+            step: REMOVE_STEP.into(),
+            words,
+        };
+        for checkout in checkouts {
+            let place = PlaceRef {
+                repository: checkout.repository.clone(),
+                location: format!("{location}/{}", checkout.folder),
+                branch: String::new(),
+                base: String::new(),
+            };
+            match self.read(&place) {
+                PlaceRead::CouldNotRead { reason } => return refused(reason),
+                PlaceRead::Live { holds, .. } if holds.any() => {
+                    return refused(held_words(&place.location, holds))
+                }
+                _ => {}
+            }
+        }
+        for checkout in checkouts {
+            let folder = format!("{location}/{}", checkout.folder);
+            let git = Git::at(&checkout.repository);
+            match self.entry(&checkout.repository, &folder) {
+                Err(reason) => return refused(reason),
+                Ok(None) => continue,
+                Ok(Some(entry)) if !entry.path.is_dir() => {
+                    let _ = git.text(&["worktree", "prune"]);
+                    continue;
+                }
+                Ok(Some(_)) => {}
+            }
+            let removed = git.text(&["worktree", "remove", &folder]);
+            match (removed, self.entry(&checkout.repository, &folder)) {
+                (_, Err(reason)) => return refused(reason),
+                (Err(words), Ok(Some(_))) => return refused(words),
+                (Ok(_), Ok(Some(_))) => {
+                    return refused(format!(
+                        "git still holds a worktree at {folder} once it removed it"
+                    ))
+                }
+                (_, Ok(None)) => {}
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(location) {
+            for entry in entries.flatten() {
+                if let Some(gitdir) = linked(&entry.path()) {
+                    return refused(format!(
+                        "{} is the worktree of {}, which git still holds",
+                        entry.path().display(),
+                        gitdir.display()
+                    ));
+                }
+            }
+        }
+        self.left(&PlaceRef {
+            repository: String::new(),
+            location: location.to_string(),
+            branch: String::new(),
+            base: String::new(),
+        })
     }
 }
 
@@ -384,6 +540,25 @@ fn writable(path: &Path) {
             writable(&entry.path());
         }
     }
+}
+
+/// The words of what the worktree at `location` holds that keeps it
+/// (65).
+fn held_words(location: &str, holds: Holds) -> String {
+    let mut words = vec![];
+    if !holds.uncommitted.is_empty() {
+        words.push(format!("uncommitted: {}", holds.uncommitted.join(", ")));
+    }
+    if !holds.untracked.is_empty() {
+        words.push(format!(
+            "neither committed nor ignored: {}",
+            holds.untracked.join(", ")
+        ));
+    }
+    if let Some(lock) = holds.lock {
+        words.push(format!("locked: {lock}"));
+    }
+    format!("{location} holds work: {}", words.join("; "))
 }
 
 /// A worktree as `git worktree list` gives it.
@@ -558,24 +733,7 @@ impl Place for GitWorktree {
             }
             PlaceRead::CouldNotRead { reason } => return refused(reason),
             PlaceRead::Live { holds, .. } if holds.any() => {
-                let mut words = vec![];
-                if !holds.uncommitted.is_empty() {
-                    words.push(format!("uncommitted: {}", holds.uncommitted.join(", ")));
-                }
-                if !holds.untracked.is_empty() {
-                    words.push(format!(
-                        "neither committed nor ignored: {}",
-                        holds.untracked.join(", ")
-                    ));
-                }
-                if let Some(lock) = holds.lock {
-                    words.push(format!("locked: {lock}"));
-                }
-                return refused(format!(
-                    "{} holds work: {}",
-                    place.location,
-                    words.join("; ")
-                ));
+                return refused(held_words(&place.location, holds));
             }
             PlaceRead::Live { .. } => {}
         }
