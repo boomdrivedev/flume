@@ -297,8 +297,10 @@ impl Engine {
     /// waiting for room with no words of its own, carrying its
     /// conversation as any resume does, and started, its start claiming
     /// the address's batch as its prompt; the place resumed, none where
-    /// nothing was. A stage ended short whose agent hibernated waiting on
-    /// its answer takes no delivery (42, 132, 213, 214; core.10, core.32).
+    /// nothing was. A stage ended short whose agent hibernated while it
+    /// was kept open waits on its answer and takes no delivery, its batch
+    /// pending until the answer resumes it and its agent next waits (42,
+    /// 132, 213, 214; core.10, core.32).
     pub(crate) fn resume_by_delivery(&self, address: &str) -> Option<PlaceId> {
         let (id, index) = self.store.read_every().into_iter().find_map(|read| {
             let held = read.state;

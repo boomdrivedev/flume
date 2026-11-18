@@ -404,8 +404,8 @@ pub fn talk_of(start: u32) -> Identity {
 
 /// east/ops woken and its talk begun, its first start's word naming the
 /// session `s-1`, which the login environment's configuration home
-/// reaches, then hibernated at its caller's word (193, 212).
-pub fn ops_hibernated(world: &World) -> Result<PlaceId, String> {
+/// reaches (179, 193).
+pub fn ops_talking(world: &World) -> Result<PlaceId, String> {
     world.agent.set_session(&talk_of(1), "s-1");
     world.agent.carry_to(
         FakeAgent::LOGIN,
@@ -420,6 +420,12 @@ pub fn ops_hibernated(world: &World) -> Result<PlaceId, String> {
         Some(StageState::Begun),
         "the talk once woken"
     );
+    Ok(id)
+}
+
+/// east/ops talking, then hibernated at its caller's word (193, 212).
+pub fn ops_hibernated(world: &World) -> Result<PlaceId, String> {
+    let id = ops_talking(world)?;
     taken(&world.engine().hibernate(&id, false))?;
     ensure_eq!(
         world.stage_state(&id, "talk"),

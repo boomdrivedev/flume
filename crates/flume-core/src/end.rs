@@ -150,11 +150,15 @@ impl Engine {
     /// `first_quiet` from flume's first reading of it so and cleared
     /// whenever it is read otherwise; once quiet its start's
     /// `hibernate_after`, hibernated for its idling, `0` hibernating it
-    /// never so. True when it was hibernated (44, 54, 90, 91, 212).
+    /// never so, nor a role's run while a batch handed to nothing is
+    /// pending at its address, whose quiet starts again then. True when
+    /// it was hibernated (44, 54, 90, 91, 212, 214).
     fn idle(&self, id: &PlaceId, start: &StartHeld, reading: &AgentReading) -> bool {
         let now = self.host.now();
         let handing = start.handing.is_some_and(|until| now < until);
-        let quiet = reading.quiet() && !handing;
+        // A batch waiting to be handed to a role's run is no idling: its
+        // quiet starts again once it has taken it (212, 214).
+        let quiet = reading.quiet() && !handing && !self.batch_waits_on(id);
         let since = match (quiet, start.first_quiet) {
             (false, None) => return false,
             (false, Some(_)) => {
@@ -173,6 +177,16 @@ impl Engine {
         due && self
             .hibernate_stage(id, HibernatedBy::Idle, false)
             .unwrap_or(false)
+    }
+
+    /// Whether the place is a role's run whose address holds a batch
+    /// handed to it by nothing, which waits to be handed to its session
+    /// (212, 214).
+    fn batch_waits_on(&self, id: &PlaceId) -> bool {
+        self.store
+            .read(id)
+            .and_then(|read| read.state.role)
+            .is_some_and(|address| self.batch_pending(&address))
     }
 
     /// A stuck stage's end carries what was read of its agent while it

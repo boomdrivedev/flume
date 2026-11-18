@@ -53,6 +53,9 @@ struct TerminalState {
     /// The next send to a session refused with these words, once what
     /// runs while it is in flight has run.
     send_refused: Option<(DuringSend, String)>,
+    /// Every send to a session of these names refused with its words,
+    /// nothing typed, until it is taken again.
+    sends_refused_to: BTreeMap<String, String>,
     during_send: Option<DuringSend>,
     open_refusal: Option<String>,
     close_refused: BTreeSet<String>,
@@ -222,6 +225,7 @@ impl FakeTerminal {
                 comes_up: AgentState::Waiting,
                 sends: true,
                 send_refused: None,
+                sends_refused_to: BTreeMap::new(),
                 during_send: None,
                 open_refusal: None,
                 close_refused: BTreeSet::new(),
@@ -297,6 +301,17 @@ impl FakeTerminal {
     /// as a terminal whose call fails before it types (43, 75).
     pub fn refuse_next_send(&self, reason: &str, during: impl FnOnce() + Send + 'static) {
         lock(&self.state).send_refused = Some((Box::new(during), reason.into()));
+    }
+
+    /// Every send to the session `name` refused with `reason`, nothing
+    /// typed, where a reason is given, and taken again as it would be
+    /// where none is (43, 214).
+    pub fn refuse_sends_to(&self, name: &str, reason: Option<&str>) {
+        let mut state = lock(&self.state);
+        match reason {
+            Some(reason) => state.sends_refused_to.insert(name.into(), reason.into()),
+            None => state.sends_refused_to.remove(name),
+        };
     }
 
     /// The next send to a session runs `during`, as what happens while it
@@ -698,6 +713,9 @@ impl Terminal for FakeTerminal {
         let refused = lock(&self.state).send_refused.take();
         if let Some((during, reason)) = refused {
             during();
+            return ToSession::Refused { reason };
+        }
+        if let Some(reason) = lock(&self.state).sends_refused_to.get(session).cloned() {
             return ToSession::Refused { reason };
         }
         let during = lock(&self.state).during_send.take();

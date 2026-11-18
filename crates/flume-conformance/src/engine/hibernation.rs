@@ -8,7 +8,7 @@ use super::account_pools::{account, fill_first_at_homes, home, pool, stops_at_li
 use super::carried_conversations::{by_hand, resumed as resumes_session};
 use super::open_sessions::{stops_short, QUESTION};
 use super::standing_roles::{
-    handovers_to_ops, message_ops, ops_hibernated, talk_of as ops_talk, OPS,
+    handovers_to_ops, message_ops, ops_hibernated, ops_talking, talk_of as ops_talk, OPS,
 };
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
@@ -163,6 +163,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: Handed meanwhile: a message the resume by delivery waited for room for, collected by east/ops' inbox before the resume fills its prompt, leaves the resume's prompt flume's words for a bare resume then the way to stop short",
             cites: &["43", "213"],
             run: handed_meanwhile,
+        },
+        Scenario {
+            name: "hibernation: A hibernated agent waiting on its answer: east/ops' talk ended short needing an answer and hibernated at the end of its keep-open time takes no message for east/ops, which stays pending until the answer resumes the talk and its agent next waits",
+            cites: &["42", "198", "213"],
+            run: a_hibernated_agent_waiting_on_its_answer,
+        },
+        Scenario {
+            name: "hibernation: A batch the terminal could not hand: east/ops' talk quiet past its hibernate time while the fake terminal refuses every send to east/ops and a message waits there is hibernated by no settle, and once the send is taken and the agent quiet its hibernate time again, a settle hibernates it",
+            cites: &["43", "212"],
+            run: a_batch_the_terminal_could_not_hand,
         },
     ]
 }
@@ -1620,5 +1630,110 @@ fn handed_meanwhile(_: &()) -> Outcome {
         "the resume's prompt carries a message handed meanwhile"
     );
     ensure_eq!(handovers_to_ops(&world, &key), 1, "hand-overs once resumed");
+    Ok(())
+}
+
+fn a_hibernated_agent_waiting_on_its_answer(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_talking(&world)?;
+    stops_short(
+        &world,
+        &id,
+        0,
+        &ops_talk(1),
+        QUESTION,
+        StopKind::NeedsAnswer,
+    )?;
+    world.settle(&id);
+    world.host.advance(KEEP_OPEN);
+    world.settle(&id);
+    let talk = stage_of(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            talk.state,
+            talk.start
+                .and_then(|start| start.hibernated)
+                .map(|held| held.why)
+        ),
+        (StageState::EndedShort, Some(HibernatedBy::KeptOpen)),
+        "talk once kept open its time"
+    );
+    let opens = world.terminal.log.count("open");
+    let key = message_ops(&world, "A note for later.")?;
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            world.terminal.log.count("open"),
+            handovers_to_ops(&world, &key)
+        ),
+        (Some(StageState::EndedShort), opens, 0),
+        "talk, the agents opened and the message's hand-overs once messaged"
+    );
+    taken(&world.engine().message(&id, "Ship it.", None))?;
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        start.resumes.last().map(|resume| resume.by),
+        Some(ResumedBy::Answer),
+        "what resumed talk"
+    );
+    ensure!(
+        !start.prompt.text.contains("A note for later."),
+        "the answer's resume took the message: {}",
+        start.prompt.text
+    );
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        0,
+        "hand-overs once answered"
+    );
+    world.settle(&id);
+    world.settle(&id);
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        1,
+        "hand-overs once talk's agent waits"
+    );
+    ensure!(
+        world
+            .terminal
+            .notices(OPS)
+            .iter()
+            .any(|notice| notice.contains("A note for later.")),
+        "the message was not sent to east/ops: {:?}",
+        world.terminal.notices(OPS)
+    );
+    Ok(())
+}
+
+fn a_batch_the_terminal_could_not_hand(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_talking(&world)?;
+    world
+        .terminal
+        .refuse_sends_to(OPS, Some("the pane is gone"));
+    let key = message_ops(&world, "A note for later.")?;
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        0,
+        "hand-overs once messaged"
+    );
+    settle_through(&world, &id, 10 * 60, 2 * HOUR, "talk")?;
+    world.terminal.refuse_sends_to(OPS, None);
+    world.settle(&id);
+    ensure_eq!(handovers_to_ops(&world, &key), 1, "hand-overs once sent");
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Begun),
+        "talk once its batch was sent"
+    );
+    settle_through(&world, &id, 10 * 60, HOUR - 10 * 60, "talk")?;
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Hibernating),
+        "talk once quiet its hibernate time again"
+    );
     Ok(())
 }
