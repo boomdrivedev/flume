@@ -688,6 +688,7 @@ impl Agent for FakeAgent {
             }),
             kind: self.kind().map(str::to_string),
             files,
+            launcher: vec![],
         }
     }
 

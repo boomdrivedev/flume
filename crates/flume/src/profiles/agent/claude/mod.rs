@@ -374,6 +374,7 @@ impl Agent for Claude {
             }),
             kind: self.kind().map(str::to_string),
             files,
+            launcher: vec![],
         }
     }
 

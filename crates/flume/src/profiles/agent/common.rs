@@ -124,6 +124,7 @@ impl Agent for Common {
             folder_trust: None,
             kind: self.kind().map(str::to_string),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 

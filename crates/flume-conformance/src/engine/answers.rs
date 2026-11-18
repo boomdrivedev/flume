@@ -463,6 +463,7 @@ fn place_status() -> PlaceStatus {
                     asked: "all".into(),
                     began: Some("ask-each".into()),
                 }),
+                process: false,
             },
         }],
         uncarried: vec![UncarriedStart {
