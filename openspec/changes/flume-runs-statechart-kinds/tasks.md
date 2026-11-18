@@ -17,6 +17,7 @@ names another file, and cites the clauses its spec scenario cites.
 ## 1. weir at one revision
 
 - [x] 1.1 In the workspace's `Cargo.toml`, move `weir-kinds`, `weir-delivery` and `weir-pack` to rev `cc9d41fba5e47b25ed1dde90c380d3c9f56a1785` and add `weir-engine` at that rev, the comment above them naming the four; add `time = "0.3"`; have `flume-seams` and `flume-core` take `weir-engine` and `time`, and `flume-fakes` take `weir-kinds` (core.22, core.42; design 1). Build every use of weir's types at that revision, the kinds profile mapping no `hibernate` of a simple stage and leaving `Declaration.statecharts` unread until 3.1. Check: `devenv shell -- cargo test -p flume --test profiles kinds_weir::the_kinds_profile_passes_the_kinds_scenarios`.
+- [x] 1.2 In `nix/packages/git-crates.nix`, move `weir-capture`, `weir-delivery`, `weir-kinds` and `weir-pack` to rev `cc9d41fba5e47b25ed1dde90c380d3c9f56a1785` and add `weir-cadence`, `weir-engine` and `weir-policy` there, each by the hash of fetchgit's tree at that revision, so every git package of Cargo.lock is fetched at Cargo.lock's revision; and build the locks of `nix/tests/packages.nix`'s "A git crate's revision moves without its hash" and "A git crate with no entry" from the crates `git-crates.nix` holds, so they follow its entries (core.22; design 1). Check: `sluice exec <base> -- moon run nix:test`.
 
 ## 2. The seams' types
 
