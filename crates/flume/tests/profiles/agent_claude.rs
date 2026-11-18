@@ -1481,7 +1481,9 @@ fn the_resolver_binds_the_program_by_name_or_path() {
     let resolver = BuiltIn::new();
     assert!(resolver.agent(DEFAULT_PROGRAM).is_some());
     assert!(resolver.agent("/opt/claude/bin/claude").is_some());
-    assert!(resolver.agent("codex").is_none());
+    // A program with no entry is bound to no profile; every entry's
+    // program is bound, `every_entry_is_bound` reads (105, 170).
+    assert!(resolver.agent("nonesuch").is_none());
 }
 
 #[test]
