@@ -45,7 +45,7 @@ outcome. Design sections are this change's `design.md`.
 ## 5. herdr's integration
 
 - [x] 5.1 In `crates/flume/src/profiles/terminal/herdr/mod.rs`, add `INTEGRATED`, `omp` and `mastracode`, and give `Herdr` `starts`: for an integrated kind, `herdr integration status` run within the profile's bound under the login environment with `env` over it, its line for the kind read, `not installed` refused naming `herdr integration install <kind>`, a status that does not answer or names no line for the kind refused naming what herdr gave, any other state started; every other kind started with no call (4, C.5; core.29; design 6). Add `integration_status_lines_read`, the terminal-profiles spec's "herdr's status lines read", and `integration_not_asked_of_a_kind_herdr_reads_on_its_own`, its "A kind herdr reads on its own", read with no `herdr` on the profile's `PATH`. Check: `devenv shell -- cargo test -p flume --lib profiles::terminal::herdr::tests::integration_`.
-- [ ] 5.2 Add `omp_starts_once_its_integration_is_installed` to `crates/flume/tests/profiles/tools/terminal_herdr.rs`, the terminal-profiles spec's "omp's integration not installed, then installed", over a scratch home under the pinned herdr (S75). Check: `devenv shell -- cargo test -p flume --features tools --test tools omp_starts_once_its_integration_is_installed`.
+- [x] 5.2 Add `omp_starts_once_its_integration_is_installed` to `crates/flume/tests/profiles/tools/terminal_herdr.rs`, the terminal-profiles spec's "omp's integration not installed, then installed", over a scratch home under the pinned herdr (S75). Check: `devenv shell -- cargo test -p flume --features tools --test tools omp_starts_once_its_integration_is_installed`.
 
 ## 6. The statement's clauses
 
