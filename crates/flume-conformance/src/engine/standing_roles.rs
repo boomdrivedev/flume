@@ -33,6 +33,31 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["4", "193"],
             run: one_repository_for_a_standing_roles_kind,
         },
+        Scenario {
+            name: "standing-roles: A standing role woken: an end for east/ops has the settle launch desk--east-ops, its role east/ops, its talk starting under the session name east/ops",
+            cites: &["132", "193"],
+            run: a_standing_role_woken,
+        },
+        Scenario {
+            name: "standing-roles: Two checkouts: the fake place holds repository and blueprints under the place's location, each detached at its main's head, the place's branch empty, no readiness run, and the held state naming both with their revisions",
+            cites: &["9", "193"],
+            run: two_checkouts,
+        },
+        Scenario {
+            name: "standing-roles: The base read where it lives: the world's repository's merge queue lands main ahead of the host's, and its checkout is detached at the merge queue's main, status giving where its base was read",
+            cites: &["9", "126", "193"],
+            run: the_base_read_where_it_lives,
+        },
+        Scenario {
+            name: "standing-roles: A checkout refused: the fake place refusing /blueprints' checkout refuses the wake naming it and why, no checkout and no held state of the place standing, and the end that woke east/ops still pending",
+            cites: &["2", "83", "193"],
+            run: a_checkout_refused,
+        },
+        Scenario {
+            name: "standing-roles: A repository with no default branch: git naming no default branch of /blueprints refuses the wake naming /blueprints, and nothing is made",
+            cites: &["2", "9", "193"],
+            run: a_repository_with_no_default_branch,
+        },
     ]
 }
 
@@ -67,9 +92,8 @@ pub fn ops_id() -> PlaceId {
 }
 
 /// acme holds `kinds` and declares `run` for `east/ops`, the host
-/// declaring `east`, and `/blueprints` stands on `main` (132, 193).
+/// declaring `east` (132, 193).
 pub fn declares(world: &World, kinds: Vec<Kind>, run: RoleRun) {
-    world.blueprints();
     world.acme_holds(kinds);
     world.host.set_stream("east", Some(Stream::default()));
     world.host.set_role(OPS, Some(run));
@@ -87,6 +111,7 @@ pub fn an_end_for_ops(world: &World, name: &str) -> Result<PlaceId, String> {
 /// checkout made, its wake refused naming the address and `named`, and
 /// status giving the address with why (4, 132, 193).
 fn not_woken(world: &World, named: &str) -> Outcome {
+    world.blueprints();
     an_end_for_ops(world, "one")?;
     ensure_eq!(runs(world), Vec::<PlaceId>::new(), "runs woken");
     ensure_eq!(world.place.log.count("make_checkouts"), 0, "checkouts made");
@@ -161,4 +186,187 @@ fn one_repository_for_a_standing_roles_kind(_: &()) -> Outcome {
         },
     );
     not_woken(&world, "gives repositories in its place")
+}
+
+/// acme declares `east/ops` a standing role of the kind `desk` over the
+/// world's repository and `/blueprints`, each on `main`, and an end
+/// comes for it: the place its settle woke (132, 193).
+pub fn ops_woken(world: &World) -> Result<PlaceId, String> {
+    world.blueprints();
+    declares(world, vec![desk()], ops_run());
+    an_end_for_ops(world, "one")?;
+    let id = ops_id();
+    ensure_eq!(runs(world), vec![id.clone()], "the runs woken");
+    Ok(id)
+}
+
+/// The checkout `folder` of the standing role's place `id` as the fake
+/// place holds it: its location and the revision it stands at.
+pub fn checkout_at(world: &World, id: &PlaceId, folder: &str) -> (String, Option<Revision>) {
+    let location = format!("{}/{folder}", id.0);
+    let revision = world.place.checkout(&location);
+    (location, revision)
+}
+
+fn a_standing_role_woken(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_woken(&world)?;
+    let held = world.held(&id).ok_or("no place")?;
+    ensure_eq!(held.role.as_deref(), Some(OPS), "the place's role");
+    ensure_eq!(held.place.short(), "desk--east-ops", "the place");
+    ensure!(
+        matches!(
+            world.stage_state(&id, "talk"),
+            Some(StageState::Started | StageState::Begun)
+        ),
+        "the talk is {:?}",
+        world.stage_state(&id, "talk")
+    );
+    let start = held.stages[0].start.as_ref().ok_or("no start")?;
+    ensure_eq!(
+        start.identity,
+        World::identity("desk", "east-ops", "talk", 1),
+        "the talk's identity"
+    );
+    ensure!(
+        world.terminal.session_state(OPS).is_some(),
+        "no session is named {OPS}"
+    );
+    Ok(())
+}
+
+fn two_checkouts(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_woken(&world)?;
+    let held = world.held(&id).ok_or("no place")?;
+    let main = world.git.branch_head(REPOSITORY, "main");
+    let blueprints = world.git.branch_head(BLUEPRINTS, "main");
+    ensure_eq!(
+        checkout_at(&world, &id, "repository").1,
+        main.clone(),
+        "the world's repository's checkout"
+    );
+    ensure_eq!(
+        checkout_at(&world, &id, "blueprints").1,
+        blueprints.clone(),
+        "blueprints' checkout"
+    );
+    ensure_eq!(held.place.branch, "", "the place's branch");
+    ensure!(
+        !world
+            .place
+            .log
+            .calls()
+            .iter()
+            .any(|call| call.starts_with(&format!("ready {}", id.0))),
+        "a readiness ran in the standing role's place"
+    );
+    ensure_eq!(
+        world.place.log.count("make"),
+        1,
+        "worktrees made: the fix's alone"
+    );
+    ensure!(held.readiness.steps.is_empty(), "the place's readiness");
+    let checkouts: Vec<(&str, &str, Option<Revision>)> = held
+        .place
+        .checkouts
+        .iter()
+        .map(|checkout| {
+            (
+                checkout.repository.as_str(),
+                checkout.folder.as_str(),
+                Some(checkout.revision.clone()),
+            )
+        })
+        .collect();
+    ensure_eq!(
+        checkouts,
+        vec![
+            (REPOSITORY, "repository", main.clone()),
+            (BLUEPRINTS, "blueprints", blueprints)
+        ],
+        "the held state's checkouts"
+    );
+    ensure_eq!(
+        (
+            held.place.repository.as_str(),
+            Some(held.place.base_revision.clone())
+        ),
+        (REPOSITORY, main),
+        "the place's repository and base's revision, its first checkout's"
+    );
+    Ok(())
+}
+
+fn the_base_read_where_it_lives(_: &()) -> Outcome {
+    let world = World::new();
+    let remote = world.git.commit(REPOSITORY, "remote-main", &["remote.rs"]);
+    world.queue.set_base(
+        REPOSITORY,
+        "main",
+        BaseRevision::At {
+            revision: remote.clone(),
+        },
+    );
+    let id = ops_woken(&world)?;
+    ensure_eq!(
+        checkout_at(&world, &id, "repository").1,
+        Some(remote),
+        "the world's repository's checkout"
+    );
+    let held = world.held(&id).ok_or("no place")?;
+    ensure_eq!(
+        held.place.checkouts[0].base_from,
+        Some(BaseFrom::MergeQueue),
+        "where the first checkout's base was read"
+    );
+    ensure_eq!(
+        held.place.checkouts[1].base_from,
+        Some(BaseFrom::NoOrigin),
+        "where blueprints' base was read"
+    );
+    ensure_eq!(
+        world.status(&id)?.base_from,
+        Some(BaseFrom::MergeQueue),
+        "where status gives the place's base was read"
+    );
+    Ok(())
+}
+
+fn a_checkout_refused(_: &()) -> Outcome {
+    let world = World::new();
+    world.blueprints();
+    declares(&world, vec![desk()], ops_run());
+    world.place.refuse_checkouts(BLUEPRINTS, "the disk is full");
+    an_end_for_ops(&world, "one")?;
+    let id = ops_id();
+    ensure!(world.held(&id).is_none(), "the place's held state stands");
+    ensure!(!world.place.stands(&id.0), "something stands at the place");
+    ensure_eq!(runs(&world), Vec::<PlaceId>::new(), "runs woken");
+    let ops = addresses(&world)?
+        .into_iter()
+        .find(|status| status.address == OPS)
+        .ok_or("status gives no east/ops")?;
+    ensure_eq!(ops.pending.len(), 1, "the ends pending for east/ops");
+    ensure!(
+        ops.unwoken
+            .as_deref()
+            .is_some_and(|why| why.contains(BLUEPRINTS) && why.contains("the disk is full")),
+        "why east/ops was not woken: {:?}",
+        ops.unwoken
+    );
+    Ok(())
+}
+
+fn a_repository_with_no_default_branch(_: &()) -> Outcome {
+    let world = World::new();
+    declares(&world, vec![desk()], ops_run());
+    let reason = refused(&world.engine.wake(OPS))?;
+    ensure!(
+        reason.contains(BLUEPRINTS) && reason.contains("default branch"),
+        "the wake refused as {reason}"
+    );
+    ensure!(world.held(&ops_id()).is_none(), "the place's held state");
+    ensure_eq!(world.place.log.count("make_checkouts"), 0, "checkouts made");
+    Ok(())
 }
