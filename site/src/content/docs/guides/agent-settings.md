@@ -1,6 +1,6 @@
 ---
 title: Agent settings
-description: The settings each agent starts with and the eight layers they come from; how long an agent is kept open for an answer; the mode an agent may act in; its program's own settings, a people's settings file and a commit's tagline among them; the streams a host runs its places in, the pools of accounts its agents run under, each account's reading of its allowance and its pool's threshold, and how a start is checked against what it was given.
+description: The settings each agent starts with and the eight layers they come from; the programs flume runs; how long an agent is kept open for an answer; the model, the effort and the mode an agent runs with; its program's own settings, a people's settings file and a commit's tagline among them; the streams a host runs its places in, the pools of accounts its agents run under, each account's reading of its allowance and its pool's threshold, and how a start is checked against what it was given.
 sidebar:
   order: 6
 ---
@@ -15,9 +15,9 @@ with the layer it came from, and the account with what chose it.
 
 | Setting | What it is |
 |---|---|
-| `program` | the agent program: `claude`, or a path to Claude Code |
-| `model` | the model, passed as `--model` |
-| `effort` | how hard the model works on each turn, in its program's own word, passed as `--effort` ([the effort](#the-effort)) |
+| `program` | the agent program: any program herdr starts, by its name or a path to it, such as `claude`, `codex` or `amp` ([the program](#the-program)) |
+| `model` | the model, in its program's own name, or a table of programs ([the model](#the-model)) |
+| `effort` | how hard the model works on each turn, in its program's own word, or a table of programs ([the effort](#the-effort)) |
 | `instructions` | text appended to the agent's system prompt, written to a file of the start's own and passed as `--append-system-prompt-file`, so it may hold newlines |
 | `beside` | a pane the agent's pane opens beside, under herdr |
 | `mode` | how far the agent may act in its place without asking a person: one of flume's four modes, or a table of programs ([the mode](#the-mode)) |
@@ -104,6 +104,23 @@ gives one entry of a table of programs, and several such entries build
 one table: `--agent mode.claude=auto`. A mode word and a table for the
 same stage, or for every stage, refuse the launch naming both, since a
 mode is one word or one table.
+
+`model.<program>=<name>` and `effort.<program>=<word>` each give one
+entry of a table of programs, and several entries for one stage, or for
+every stage, build one table:
+
+```sh
+flume launch --kind fix --name parser --brief "Fix the parser." \
+  --agent model.claude=opus \
+  --agent model.codex=gpt-5.5 \
+  --agent code.effort.claude=xhigh
+```
+
+Every stage's model here is `{ claude = "opus", codex = "gpt-5.5" }`,
+and code's effort `{ claude = "xhigh" }`, each from the `launch` layer
+([the model](#the-model)). A name and a table for one stage's model, or
+a word and a table for its effort, refuse the launch naming both, and
+so does an entry that names no program, as `model.=opus`.
 
 `keep_open=<time>` gives how long the agent is kept open for an answer,
 as `<n>`, `<n>s`, `<n>m` or `<n>h`: `--agent keep_open=3h` for an
@@ -327,14 +344,97 @@ An agent is kept open only where its multiplexer can type words into a
 running agent: under herdr, and never under the printed command
 ([places and herdr](/flume/guides/places-and-herdr/#an-agent-kept-open)).
 
+## The program
+
+`program` names the agent program a stage runs, by its name or by a
+path whose file name is its name. flume runs every program herdr
+starts, each by an entry of its own: `pi`, `claude`, `codex`, `gemini`,
+`cursor`, `devin`, `agy`, `cline`, `omp`, `mastracode`, `opencode`,
+`copilot`, `kimi`, `kiro`, `droid`, `amp`, `grok`, `hermes`, `kilo`,
+`qodercli`, `qwen`, `letta`, `maki` and `muse`, each herdr's name for
+the program. A program no entry names refuses the launch, naming the
+program, the stage and the layer.
+
+An entry holds its program's name and herdr's kind for it, and gives a
+way to pass a model, an effort or a mode only once that way is checked
+against a release of the program flume pins. Claude Code is the one
+program flume pins, and its own agent profile passes all three
+([Claude Code](/flume/guides/claude-code/)). Every other entry holds its
+name and kind alone, so a model, an effort or a mode given in any layer
+for a stage that runs such a program refuses the launch, or the stage at
+a later start, naming the program:
+
+```text
+the stage `code`'s model `opus`, from the layer `launch`, cannot run on `amp`: the entry for `amp` names no way to give it a model
+```
+
+A stage that gives such a program none of the three is taken. flume
+starts it in the place under herdr's kind for it, with its account's
+environment and flume's own variables, and passes it nothing else.
+flume reads nothing of such a program yet, not whether it started, so it
+sends it no prompt: its agent opens in its pane, and `flume status` names
+what flume cannot read of it.
+
+herdr reads the state of OMP, `omp`, and MastraCode, `mastracode`, only
+through its integration for each. While `herdr integration status`
+reports that integration not installed, under the home the agent's
+account gives, a launch of a stage that runs the program is refused,
+and so is the stage at a later start, naming `herdr integration install
+<name>`. Run it under that home, then launch again or retry the stage
+([places and herdr](/flume/guides/places-and-herdr/#programs-herdr-reads-through-its-integration)).
+
+## The model
+
+`model` names the model the agent runs on, in its program's own name,
+passed as written: flume maps no name from one program to another.
+Claude Code takes every name, passed as `--model <name>`. Where no
+layer gives a model, flume passes none, and the account's own
+configuration decides.
+
+A layer may give a table of programs instead, each entry a model in
+that program's own name, so a host whose agents run more than one
+program gives each its own:
+
+```toml
+[kinds.change.agents]
+model = { claude = "opus", codex = "gpt-5.5" }
+```
+
+The table is taken whole from its layer, and the agent's entry is its
+program's: a `claude` agent here runs on `opus`. A table that names no
+entry for the agent's program refuses the stage, naming the table as
+written, the program, the stage and the layer: the model never passes
+to a later layer.
+
+```text
+the stage `code`'s model `{ codex = "gpt-5.5" }`, from the layer `host-kind`, names no entry for `claude`
+```
+
+A table that names no program, an entry that is not a string, or any
+other value refuses its table, naming it and `model`. A model given for
+a program whose entry names no way to give one refuses, naming the
+program ([the program](#the-program)).
+
+`flume status` gives the model on the agent's line with the layer it
+came from, and for a table the entry its agent took and the name
+passed:
+
+```text
+  agent flume:f5f5e14159a8:change--csv-export:code:1 (claude): working, on the model { claude = "opus", codex = "gpt-5.5" } (from host-kind), the entry claude, passed as opus
+```
+
 ## The effort
 
 `effort` says how hard the agent's model works on each turn. It is one
-word, its program's own, given in any layer beside the model and taken
-whole from the first layer that gives it, a stage's own before every
-stage's. flume has no scale of its own and maps no word from one
-program to another. A table, a number or any other value refuses its
-table, naming it and `effort`.
+word, its program's own, or a table of programs as a model's is
+([the model](#the-model)), given in any layer beside the model and
+taken whole from the first layer that gives it, a stage's own before
+every stage's. The agent's entry of a table is its program's, and a
+table that names no entry for it refuses the stage, naming the table,
+the program, the stage and the layer. flume has no scale of its own and
+maps no word from one program to another. A number, a table that names
+no program, an entry that is not a string, or any other value refuses
+its table, naming it and `effort`.
 
 Claude Code takes the five words of the release flume pins, `low`,
 `medium`, `high`, `xhigh` and `max`, each passed as `--effort <word>`.
@@ -408,9 +508,13 @@ the stage `code`'s effort `med`, from the layer `host-kind`, cannot run on `clau
 
 A host's table changed after the launch leaves the stage refused at its
 next start in the same words, starting no agent until a retry. Every
-other program's agent profile names no way to give an effort until its
-way is built and checked against the release flume pins, so an effort
-for a stage that runs one refuses it, naming the program.
+other program's entry names no way to give an effort until its way is
+checked against a release flume pins, so an effort for a stage that runs
+one refuses it, naming the program ([the program](#the-program)).
+
+Status gives the effort on the agent's line with the layer it came
+from, and for a table the entry its agent took: `at the effort { claude
+= "xhigh" } (from kind), the entry claude, passed as xhigh`.
 
 ## The mode
 
@@ -436,6 +540,10 @@ mode its program has no setting for. Claude Code's are its
 | `ask` | `--permission-mode manual` |
 | `edits` | `--permission-mode acceptEdits` |
 | `full` | `--permission-mode bypassPermissions` |
+
+Every other program's entry names no mode setting checked against a
+release flume pins, so a mode given for a stage that runs one refuses
+it, naming the program ([the program](#the-program)).
 
 `plan` suits a conversation, whose agent plans with you and asks in its
 pane to leave plan mode, which you answer there. A launch that gives
@@ -1507,7 +1615,7 @@ program differed and the modes asked and begun, never a value.
 
 ```text
   stream work (from host-repository), label construction (from host-kind), intent of /home/you/src/acme on main
-  agent flume:f5f5e14159a8:fix--the-parser-reads-tabs:code:1 (claude) on the account work-1 of work (from the strategy): working, in the mode edits (from host-kind) passed as acceptEdits, at the effort high (from host-kind) passed as high, not read back
+  agent flume:f5f5e14159a8:fix--the-parser-reads-tabs:code:1 (claude) on the account work-1 of work (from the strategy): working, on the model sonnet (from host-kind), in the mode edits (from host-kind) passed as acceptEdits, at the effort high (from host-kind) passed as high, not read back
     in the session work, the stream's name
     its terminal herdr, the host's
     effort = high (from host-kind)
@@ -1526,9 +1634,11 @@ which, as `in the session work-design (stream work, kind research)` or
 `(stream work, stage release.review)`. Its
 current agent gives its account, with `from` saying whether the
 intent's affinity for the agent's program or the pool's strategy chose
-it, and each variable `env.<NAME>` from `account` as `<set>`, and its
-`mode` with the value passed and whether it was read back. Its `effort`
-gives the word passed, which nothing reads back, and the account's
+it, and each variable `env.<NAME>` from `account` as `<set>`, its
+`model` with its layer, and for a table the entry it took and the name
+passed, and its `mode` with the value passed and whether it was read
+back. Its `effort` gives the word passed, and for a table the entry it
+took, which nothing reads back, and the account's
 variable that outranks it where its account's `env` names one ([give it
 in the layers](#give-it-in-the-layers-not-the-account)), and its
 `keep_open` gives its time with its layer. It gives its
