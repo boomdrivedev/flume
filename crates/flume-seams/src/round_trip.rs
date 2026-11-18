@@ -2364,6 +2364,29 @@ fn a_profile_that_reads_no_running_session() {
     }
 }
 
+/// The seam-contracts spec's scenario "The process's answers in JSON"
+/// (C.5).
+#[test]
+fn the_processs_answers_round_trip() {
+    for process in [
+        ProgramProcess::Runs { pid: 41 },
+        ProgramProcess::Nothing,
+        ProgramProcess::Unknown {
+            why: "herdr did not answer within 5 seconds".into(),
+        },
+    ] {
+        round_trips(process);
+    }
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Runs { pid: 41 }).unwrap(),
+        serde_json::json!({ "runs": { "pid": 41 } })
+    );
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Nothing).unwrap(),
+        serde_json::json!("nothing")
+    );
+}
+
 /// The seam-contracts spec's scenario "A profile that keeps the seam's
 /// defaults names no launcher" (35).
 #[test]

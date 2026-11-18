@@ -270,6 +270,22 @@ pub const NO_NAMED_AGENTS: &str = "the terminal holds no agent a name finds";
 /// (222).
 pub const NO_RELAY: &str = "the terminal offers no relay";
 
+/// program process: the process the terminal reads running an agent's
+/// program, by its id; that nothing runs it, where the agent's part holds
+/// no such process or is gone; or unknown, in the terminal's words (35,
+/// 171, C.5).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramProcess {
+    Runs { pid: u32 },
+    Nothing,
+    Unknown { why: String },
+}
+
+/// What the seam's default `program_process` answers: the terminal reads
+/// no process (35, C.5).
+pub const NO_PROCESS: &str = "the terminal reads no process";
+
 /// A key flume names, as a person's input gives it to a relay (222): a
 /// key by flume's own name, never a terminal's, so no caller names a
 /// multiplexer's keys and a profile maps it to its terminal's own
@@ -630,6 +646,19 @@ pub trait Terminal: Send + Sync {
         Err(NO_RELAY.into())
     }
 
+    /// The process the terminal reads running `agent`'s program, by its
+    /// id, so the core takes a start through flume's launcher only once
+    /// its program runs in the process the launcher's word names; nothing
+    /// where the agent's part holds no such process or is gone; or unknown
+    /// in the terminal's words (35, 171, C.5). Unknown by default, saying
+    /// the terminal reads no process, [`NO_PROCESS`]. It reads only, so it
+    /// is safe to ask at every settle (core.17).
+    fn program_process(&self, _agent: &crate::Identity) -> ProgramProcess {
+        ProgramProcess::Unknown {
+            why: NO_PROCESS.into(),
+        }
+    }
+
     /// Whether the terminal can start a program of `kind` now, under the
     /// login environment with `env` over it, or why not in its tool's
     /// words; every kind by default, which `open` refuses as it does now
@@ -798,5 +827,24 @@ mod tests {
             assert_eq!(NoRelay.starts(kind, &BTreeMap::new()), Ok(()), "{kind}");
             assert_eq!(NoRelay.starts(kind, &env), Ok(()), "{kind}");
         }
+    }
+
+    /// The seam-contracts scenario "A terminal that keeps the seam's
+    /// default reads no process" (35, C.5).
+    #[test]
+    fn a_terminal_that_keeps_the_seams_default_reads_no_process() {
+        let agent = crate::Identity {
+            repository: "r1".into(),
+            place: "fix--one".into(),
+            stage: "code".into(),
+            start: 1,
+        };
+        assert_eq!(
+            NoRelay.program_process(&agent),
+            ProgramProcess::Unknown {
+                why: "the terminal reads no process".into()
+            }
+        );
+        assert_eq!(NO_PROCESS, "the terminal reads no process");
     }
 }
