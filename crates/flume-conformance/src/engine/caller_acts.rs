@@ -16,9 +16,9 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_retry_with_words_answers_a_hibernated_agent,
         },
         Scenario {
-            name: "tell: A tell to a hibernating stage: a tell \"go on\" to a place whose talk hibernates is taken at once, and talk resumes with \"go on\" as its prompt",
+            name: "message: A message to a hibernating stage: a message \"go on\" to a place whose talk hibernates is taken at once, and talk resumes with \"go on\" as its prompt",
             cites: &["53", "213"],
-            run: a_tell_to_a_hibernating_stage,
+            run: a_message_to_a_hibernating_stage,
         },
         Scenario {
             name: "retry: A retry of a hibernating conversation: a caller's retry with no words of a place whose talk hibernates starts a fresh talk:2 resuming no conversation, its hibernation over",
@@ -26,7 +26,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_retry_of_a_hibernating_conversation,
         },
         Scenario {
-            name: "stop: A hibernating conversation stopped: a stop of a place whose talk hibernates is taken and talk reads stopped, and a tell after it is refused naming the place's want of a live agent, nothing typed and nothing started",
+            name: "stop: A hibernating conversation stopped: a stop of a place whose talk hibernates is taken and talk reads stopped, and a message after it is refused naming the place's want of a live agent, nothing typed and nothing started",
             cites: &["51", "53", "212"],
             run: a_hibernating_conversation_stopped,
         },
@@ -1408,7 +1408,7 @@ fn a_retry_with_words_answers_a_hibernated_agent(_: &()) -> Outcome {
     code_resumed(&world, &id, 1, "notes.md")
 }
 
-fn a_tell_to_a_hibernating_stage(_: &()) -> Outcome {
+fn a_message_to_a_hibernating_stage(_: &()) -> Outcome {
     use super::hibernation::{hibernated_talk, resumed_as, talk_resumed};
     let world = World::new();
     let (id, _) = hibernated_talk(&world, "one")?;
@@ -1418,7 +1418,7 @@ fn a_tell_to_a_hibernating_stage(_: &()) -> Outcome {
             status: Some(_),
             ..
         } => {}
-        other => return Err(format!("the tell answered {other:?}")),
+        other => return Err(format!("the message answered {other:?}")),
     }
     resumed_as(
         &world,
@@ -1481,7 +1481,7 @@ fn a_hibernating_conversation_stopped(_: &()) -> Outcome {
     let reason = refused(&world.engine().message(&id, "go on", None))?;
     ensure!(
         reason.contains(&id.to_string()) && reason.contains("no live agent"),
-        "the tell's refusal names not the place's want of a live agent: {reason}"
+        "the message's refusal names not the place's want of a live agent: {reason}"
     );
     ensure_eq!(
         (
@@ -1490,7 +1490,7 @@ fn a_hibernating_conversation_stopped(_: &()) -> Outcome {
             world.stage_state(&id, "talk")
         ),
         (opens, sent, Some(StageState::Stopped)),
-        "the agents opened, the words sent and talk after the tell"
+        "the agents opened, the words sent and talk after the message"
     );
     Ok(())
 }

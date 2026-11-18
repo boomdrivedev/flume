@@ -32,7 +32,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_hibernating_conversations_status,
         },
         Scenario {
-            name: "status: A resumed stage: status of a place whose talk was resumed by a tell, carrying its conversation, gives talk's one resume, by tell, its agent's identity ending talk:1.1, carried",
+            name: "status: A resumed stage: status of a place whose talk was resumed by a message, carrying its conversation, gives talk's one resume, by message, its agent's identity ending talk:1.1, carried",
             cites: &["56", "213"],
             run: a_resumed_stages_status,
         },

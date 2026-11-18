@@ -2,7 +2,7 @@
 //! once its conversation idles past its hibernate time, at its caller's
 //! word or at the end of its keep-open wait, its agent ended and its
 //! session kept, its room and its account freed; and resumed in its own
-//! session by its caller's resume, a tell or the answer it waits on.
+//! session by its caller's resume, a message or the answer it waits on.
 
 use super::account_pools::{account, fill_first_at_homes, home, pool, stops_at_limit};
 use super::carried_conversations::{by_hand, resumed as resumes_session};
@@ -47,7 +47,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_turn_between_two_settles,
         },
         Scenario {
-            name: "hibernation: Asking, own work, a tell: no settle hibernates a talk agent past its time while it asks, its own work runs or a tell is handed to it, until none holds and it has been quiet its time again",
+            name: "hibernation: Asking, own work, a message: no settle hibernates a talk agent past its time while it asks, its own work runs or a message is handed to it, until none holds and it has been quiet its time again",
             cites: &["54", "90", "91", "212"],
             run: asking_own_work_a_tell_hold_a_settle_off,
         },
@@ -67,7 +67,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: two_settles_at_once,
         },
         Scenario {
-            name: "hibernation: Asking, own work, a tell: a caller's unforced hibernate of a talk agent asking, with its own work running, or being handed a tell, is refused, and the tell's mark is cleared once it ends",
+            name: "hibernation: Asking, own work, a message: a caller's unforced hibernate of a talk agent asking, with its own work running, or being handed a message, is refused, and the message's mark is cleared once it ends",
             cites: &["54", "90", "91", "212"],
             run: asking_own_work_a_tell_refuse_a_callers_hibernate,
         },
@@ -107,7 +107,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_process_runs_the_conversation,
         },
         Scenario {
-            name: "hibernation: Forty days hibernated: talk hibernated forty days ago, the fake agent's carry answering its transcript is gone, and the place told \"carry on\", talk's second start is fresh, its prompt talk's with flume's words that its conversation could not be carried before \"carry on\", status giving the resume not carried and why",
+            name: "hibernation: Forty days hibernated: talk hibernated forty days ago, the fake agent's carry answering its transcript is gone, and the place messaged \"carry on\", talk's second start is fresh, its prompt talk's with flume's words that its conversation could not be carried before \"carry on\", status giving the resume not carried and why",
             cites: &["179", "213", "S127"],
             run: forty_days_hibernated,
         },
@@ -117,12 +117,12 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_resume_never_begun,
         },
         Scenario {
-            name: "hibernation: A message next morning: talk hibernated idle, and next morning its caller's tell \"where were we?\" starts talk:1.1 on the account it ran under, resuming its session with the tell's words, talk's starts still 1, the tell answered with the place's status",
+            name: "hibernation: A message next morning: talk hibernated idle, and next morning its caller's message \"where were we?\" starts talk:1.1 on the account it ran under, resuming its session with the message's words, talk's starts still 1, the message answered with the place's status",
             cites: &["53", "213", "S124"],
             run: a_message_next_morning,
         },
         Scenario {
-            name: "hibernation: The answer three hours later: code hibernated at the end of its keep-open time, and a tell naming its stop-short's key three hours later is recorded on the stop-short and resumes code's session with the question then the answer, code delivering once its agent commits",
+            name: "hibernation: The answer three hours later: code hibernated at the end of its keep-open time, and a message naming its stop-short's key three hours later is recorded on the stop-short and resumes code's session with the question then the answer, code delivering once its agent commits",
             cites: &["42", "198", "213", "S125"],
             run: the_answer_three_hours_later,
         },
@@ -137,7 +137,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: hibernating_again,
         },
         Scenario {
-            name: "hibernation: Spent after a resume: a code agent resumed by a tell \"use notes.md\" stops at its account's usage limit with no account of its pool reaching its conversation, and code starts afresh with flume's words, then the start's, then \"use notes.md\"",
+            name: "hibernation: Spent after a resume: a code agent resumed by a message \"use notes.md\" stops at its account's usage limit with no account of its pool reaching its conversation, and code starts afresh with flume's words, then the start's, then \"use notes.md\"",
             cites: &["42", "146", "213"],
             run: spent_after_a_resume,
         },
@@ -335,8 +335,8 @@ fn room_freed(_: &()) -> Outcome {
     Ok(())
 }
 
-/// What a hibernate asked during a tell answered, and the start's mark
-/// that the tell is being handed as it then stood.
+/// What a hibernate asked during a message answered, and the start's
+/// mark that the message is being handed as it then stood.
 type During = (Answer, Option<Seconds>);
 
 fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
@@ -357,7 +357,7 @@ fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
         "the refusal names not the agent's own work: {reason}"
     );
     world.agent.set_own_work(&talk, Reading::No);
-    // A tell handed to the agent while it works: the caller's hibernate
+    // A message handed to the agent while it works: the caller's hibernate
     // asked while it waits for the agent to take it.
     world.terminal.set_state(&talk, AgentState::Working);
     let during: Arc<Mutex<Option<During>>> = Arc::default();
@@ -387,12 +387,12 @@ fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take()
-        .ok_or("the hibernate was not asked during the tell")?;
+        .ok_or("the hibernate was not asked during the message")?;
     ensure!(mark.is_some(), "the start was not marked handing");
     let reason = refused(&answer)?;
     ensure!(
-        reason.contains("a tell is being handed") && reason.contains(&talk.to_string()),
-        "the refusal names not the tell being handed: {reason}"
+        reason.contains("a message is being handed") && reason.contains(&talk.to_string()),
+        "the refusal names not the message being handed: {reason}"
     );
     ensure_eq!(
         (
@@ -401,7 +401,7 @@ fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
             closed(&world).len()
         ),
         (None, Some(StageState::Begun), 0),
-        "the mark once the tell ended, talk, and the agents closed"
+        "the mark once the message ended, talk, and the agents closed"
     );
     taken(&world.engine().hibernate(&id, false))
 }
@@ -526,9 +526,9 @@ fn asking_own_work_a_tell_hold_a_settle_off(_: &()) -> Outcome {
         world.settle(&id);
         settle_through(&world, &id, 20 * 60, HOUR - 20 * 60, "talk")?;
     }
-    // A tell being handed to the agent once it is past its time: the
+    // A message being handed to the agent once it is past its time: the
     // settle beside it passes it over, and its quiet starts again. A
-    // caller keeps watch, so the tell settles nothing first.
+    // caller keeps watch, so the message settles nothing first.
     world.keep_watch();
     world.host.advance(HOUR);
     world.agent.receives_at(&talk, Some(2));
@@ -541,7 +541,7 @@ fn asking_own_work_a_tell_hold_a_settle_off(_: &()) -> Outcome {
     ensure_eq!(
         (world.stage_state(&id, "talk"), closed(&world).len()),
         (Some(StageState::Begun), 0),
-        "talk once a settle read it while a tell was handed"
+        "talk once a settle read it while a message was handed"
     );
     world.settle(&id);
     settle_through(&world, &id, 20 * 60, HOUR - 20 * 60, "talk")?;
@@ -1130,7 +1130,7 @@ fn a_message_next_morning(_: &()) -> Outcome {
             status: Some(status),
             ..
         } if status.place == id => {}
-        other => return Err(format!("the tell answered {other:?}")),
+        other => return Err(format!("the message answered {other:?}")),
     }
     resumed_as(
         &world,
