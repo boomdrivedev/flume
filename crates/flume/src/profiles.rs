@@ -38,6 +38,7 @@ pub mod agent {
     pub mod claude;
     pub mod common;
     pub mod programs;
+    pub mod start;
 }
 
 // ---- the terminal seam's profiles: a profile unit appends its module line below ----

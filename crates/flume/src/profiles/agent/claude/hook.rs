@@ -24,7 +24,8 @@ use super::{
     PLACE, SECRET, STAGE,
 };
 use crate::host::process::{parent_executable, program_path};
-use flume_core::{variable_digest, Answer, Engine};
+use crate::profiles::agent::start;
+use flume_core::{Answer, Engine};
 use flume_seams::{ModeBegan, Secret, StartRecord, Unsettled};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -99,7 +100,8 @@ impl Start {
 
 /// How this process began otherwise than the start's record says its
 /// agent runs: each variable the record names that `variable` finds
-/// unset, each whose digest keyed by `secret` differs, by name alone,
+/// unset, each whose digest keyed by `secret` differs, by name alone, as
+/// [`start::variables`] compares them,
 /// whether the program the record names, found on `path` as the command
 /// finds it and run in a nix wrapper's place, is another than `ran`, the
 /// program this process's parent runs, and whether `session`, the session
@@ -114,16 +116,7 @@ pub fn compare(
     path: &str,
     session: &str,
 ) -> Unsettled {
-    let mut unsettled = Unsettled::default();
-    for (name, digest) in &recorded.env {
-        match variable(name) {
-            None => unsettled.missing.push(name.clone()),
-            Some(value) if &variable_digest(secret, name, &value) != digest => {
-                unsettled.different.push(name.clone());
-            }
-            Some(_) => {}
-        }
-    }
+    let mut unsettled = start::variables(recorded, secret, variable);
     let named = program_path(&recorded.program, path)
         .map(|file| wrapper::unwrapped(&file).map_or(file, |wrapped| wrapped.program));
     let canonical = |file: &Path| file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
