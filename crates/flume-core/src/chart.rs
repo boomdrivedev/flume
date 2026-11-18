@@ -120,8 +120,10 @@ impl Engine {
     /// served at it, the engine's tick run over the held state, and, where
     /// anything fired, the next state written by compare-and-set with
     /// `start_sessions` performed for each stage it was planned at, then
-    /// each session it recorded started (74, 75, 175, 176, 178). True when
-    /// the tick fired anything.
+    /// each session it recorded started (74, 75, 175, 176, 178); whether
+    /// the run is over held, a run turned over submitted or ended, and a
+    /// failure no transition takes left waiting on the caller (111, 112,
+    /// 114, 130). True when it wrote anything.
     fn tick_chart(&self, id: &PlaceId) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
