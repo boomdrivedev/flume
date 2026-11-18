@@ -764,7 +764,7 @@ impl Engine {
         let deadline = self.host.now() + bound.unwrap_or(TELL_BOUND);
         loop {
             let state = self.state_of(Some(agent.as_ref()), &folder, start);
-            let asking = agent.asking(&folder, identity);
+            let asking = self.read_asking(agent.as_ref(), &folder, start);
             if state == AgentState::Asking || asking == Reading::Yes {
                 return Err(format!(
                     "the agent {identity} is asking a person; nothing was typed"

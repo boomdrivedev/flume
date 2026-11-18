@@ -246,7 +246,7 @@ impl Engine {
             return None;
         }
         if agent.own_work(&folder, &start.identity) != Reading::No
-            || agent.asking(&folder, &start.identity) != Reading::No
+            || self.read_asking(agent.as_ref(), &folder, start) != Reading::No
         {
             return None;
         }

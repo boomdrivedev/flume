@@ -24,6 +24,7 @@
 //! not received, is read as a carried start that did not begin, its agent
 //! sent nothing more, and its stage starts afresh (146, 179).
 
+use crate::reading::shown;
 use crate::start::Starts;
 use crate::uncarried::{carries, uncarried, ENDED_FIRST, NOT_BY_THE_LIMIT, NOT_RECEIVED};
 use crate::{Engine, Step, POLL, QUIET_LIMIT, RECEIVED_WITHIN};
@@ -198,7 +199,7 @@ impl Engine {
             }
             if dialog
                 || state != AgentState::Waiting
-                || agent.asking(&folder, identity) != Reading::No
+                || self.read_asking(agent.as_ref(), &folder, &start) != Reading::No
             {
                 return sent;
             }
@@ -402,16 +403,4 @@ impl Engine {
         })
         .unwrap_or(false)
     }
-}
-
-/// What a terminal shows, each line's trailing blanks and the blank lines
-/// around it taken off, so a dialog's words read as it draws them.
-fn shown(screen: &str) -> String {
-    screen
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim_matches('\n')
-        .to_string()
 }
