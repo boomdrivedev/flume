@@ -157,17 +157,19 @@ impl Engine {
     /// The settle's step for a stage ended short needing an answer whose
     /// agent was kept open for it: the agent read let go and recorded so,
     /// then ended once quiet; true when it changed something (198).
-    pub(crate) fn close_session(&self, id: &PlaceId) -> bool {
+    /// It reads the stage at `at`, else the current stage: a session of a
+    /// statechart kind's stage among them (175).
+    pub(crate) fn close_session(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
-        let Some(kept) = Kept::of(&read.state) else {
+        let Some(kept) = Kept::at(&read.state, at) else {
             return false;
         };
         if kept.end.closed.is_none() && !self.let_go(id, &read.state, &kept) {
             return false;
         }
-        self.end_let_go(id)
+        self.end_let_go(id, at)
     }
 
     /// Records the agent `kept` holds open let go, where it is, in one
@@ -249,12 +251,12 @@ impl Engine {
     /// Ends the agent of a stage ended short whose letting go is recorded,
     /// once it is quiet, and records when; true when it changed something
     /// (31, 77; core.10).
-    fn end_let_go(&self, id: &PlaceId) -> bool {
+    fn end_let_go(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
         let held = read.state;
-        let Some(kept) = Kept::of(&held) else {
+        let Some(kept) = Kept::at(&held, at) else {
             return false;
         };
         let Some(closed) = kept.end.closed else {
@@ -415,7 +417,13 @@ pub(crate) struct Kept {
 
 impl Kept {
     fn of(held: &HeldState) -> Option<Kept> {
-        let index = held.current?;
+        Kept::at(held, None)
+    }
+
+    /// The stage at `at`, else the current stage, where it ended short
+    /// needing an answer and its agent is kept open (175, 198).
+    fn at(held: &HeldState, at: Option<usize>) -> Option<Kept> {
+        let index = at.or(held.current)?;
         let stage = &held.stages[index];
         if held.phase != Phase::Live || stage.state != StageState::EndedShort {
             return None;
@@ -438,7 +446,11 @@ impl Kept {
     /// the place moved on, its stage no longer ended short under the same
     /// start, or its end no longer the one kept open (75).
     fn end_in<'a>(&self, held: &'a mut HeldState) -> Option<&'a mut StageEnd> {
-        if held.phase != Phase::Live || held.current != Some(self.index) {
+        // A simple kind's place has moved on once another stage is its
+        // current one; a statechart kind's sessions stand side by side
+        // (175).
+        let moved_on = !held.place.kind.is_statechart() && held.current != Some(self.index);
+        if held.phase != Phase::Live || moved_on {
             return None;
         }
         let stage = &mut held.stages[self.index];

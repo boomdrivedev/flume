@@ -596,11 +596,15 @@ impl Engine {
                     }
                 }
             }
-            if held
-                .stages
-                .iter()
-                .any(|stage| stage.start.as_ref().is_some_and(|start| start.live))
-            {
+            // A simple kind's place has one agent at a time; a statechart
+            // kind's runs one per session, never two of the same (30;
+            // core.10).
+            let live = if held.place.kind.is_statechart() {
+                held.live_starts().any(|(at, _)| at == index)
+            } else {
+                held.live_starts().next().is_some()
+            };
+            if live {
                 return Step::Write(Err(Start::AgentLive));
             }
             let (resolution, (terminal, named), opens_in) = match &resolution {
@@ -1059,6 +1063,10 @@ fn passed(command: &AgentCommand) -> Option<String> {
 pub(crate) trait Starts {
     fn index_of(&self, identity: &Identity) -> Option<usize>;
     fn live_start(&self) -> Option<(usize, &StartHeld)>;
+    /// Every live start of the place, by its stage's index, in order: one
+    /// at most for a simple kind's place, one per session for a statechart
+    /// kind's (30; core.10).
+    fn live_starts(&self) -> impl Iterator<Item = (usize, &StartHeld)>;
 }
 
 impl Starts for HeldState {
@@ -1072,7 +1080,11 @@ impl Starts for HeldState {
     }
 
     fn live_start(&self) -> Option<(usize, &StartHeld)> {
-        self.stages.iter().enumerate().find_map(|(index, stage)| {
+        self.live_starts().next()
+    }
+
+    fn live_starts(&self) -> impl Iterator<Item = (usize, &StartHeld)> {
+        self.stages.iter().enumerate().filter_map(|(index, stage)| {
             stage
                 .start
                 .as_ref()

@@ -22,13 +22,15 @@ use crate::{Engine, Step, QUIET_LIMIT};
 use flume_seams::*;
 
 impl Engine {
-    /// Reads the current begun stage; true when it ended or was lost.
-    pub(crate) fn read_end(&self, id: &PlaceId) -> bool {
+    /// Reads the begun stage at `at`, else the current one: a session of a
+    /// statechart kind's stage among them; true when it ended or was lost
+    /// (31, 175).
+    pub(crate) fn read_end(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
         let held = read.state;
-        let Some(index) = held.current else {
+        let Some(index) = at.or(held.current) else {
             return false;
         };
         let declared = held.declared(index).clone();

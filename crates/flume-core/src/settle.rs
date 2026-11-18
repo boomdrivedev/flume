@@ -336,14 +336,17 @@ impl Engine {
         let Some(index) = held.current else {
             return false;
         };
+        let current = held.current;
         match held.stages[index].state {
-            StageState::Starting | StageState::Started => self.deliver(id),
-            StageState::NeverBegun => self.begun_after(id),
-            StageState::Begun | StageState::Stuck | StageState::Lost => self.read_end(id),
+            StageState::Starting | StageState::Started => self.deliver(id, current),
+            StageState::NeverBegun => self.begun_after(id, current),
+            StageState::Begun | StageState::Stuck | StageState::Lost => self.read_end(id, current),
             StageState::Delivered | StageState::Finished | StageState::Repeating => {
                 self.run_over(id) || self.advance(id)
             }
-            StageState::EndedShort => self.found_work(id) || self.close_session(id),
+            StageState::EndedShort => {
+                self.found_work(id, current) || self.close_session(id, current)
+            }
             _ => false,
         }
     }

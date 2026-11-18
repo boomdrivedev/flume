@@ -126,7 +126,7 @@ impl Engine {
     /// session. The refusal names the agent and the stop that ends it
     /// first; none where the agent is not so (31, 35, 50, 51).
     fn working(&self, id: &PlaceId) -> Option<String> {
-        self.begun_after(id);
+        self.begun_after(id, None);
         let read = self.store.read(id)?;
         let (index, start) = read.state.live_start()?;
         let stage = &read.state.stages[index];
