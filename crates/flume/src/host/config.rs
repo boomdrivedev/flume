@@ -1564,8 +1564,10 @@ fn refuse(table: &Table, at: &str, whose: &str, names: &[&str]) -> Result<(), St
 }
 
 /// One agents table's `model`, `effort`, `instructions`, `mode`,
-/// `keep_open` and `programs`, each as written, the effort a string, its
-/// program's own word, which the agent's profile takes or refuses (197),
+/// `keep_open` and `programs`, each as written, the model and the effort
+/// each a string, its program's own name or word, or a table of programs
+/// whose entries are strings, which the agent's profile takes or refuses,
+/// read by flume's one reader of them as a declaration's are (172, 197),
 /// the mode read as a declaration's is (162, 169), `keep_open` by
 /// [`keep_open_of`] (198), and `programs` by flume's one reader of them, a
 /// file read by [`host_file`] (195); any other key, `stages` among them,
@@ -1575,6 +1577,13 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         None => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
         Some(_) => Err(format!("[{at}] {name} is not a string")),
+    };
+    let per_program = |name: &str| {
+        table
+            .get(name)
+            .map(crate::per_program::read)
+            .transpose()
+            .map_err(|reason| format!("[{at}] {name}: {reason}"))
     };
     let mode = table
         .get("mode")
@@ -1587,8 +1596,8 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         .transpose()?
         .unwrap_or_default();
     Ok(Settings {
-        model: text("model")?.map(Into::into),
-        effort: text("effort")?.map(Into::into),
+        model: per_program("model")?,
+        effort: per_program("effort")?,
         instructions: text("instructions")?,
         mode,
         programs,
@@ -1954,11 +1963,11 @@ mod tests {
     #[test]
     fn an_effort_for_a_kind_and_one_for_a_repositorys_stage() {
         // 32, 197, C.7: an effort for a kind at the host-kind layer, and
-        // one for a repository's stage at the host-repository layer, each
-        // its program's own word kept as written.
+        // a table of programs for a repository's stage at the
+        // host-repository layer, each kept as written.
         let config = HostConfig::parse(
             "[kinds.fix.agents]\neffort = \"high\"\n\
-             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = \"xhigh\"\n",
+             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = { claude = \"xhigh\" }\n",
         )
         .unwrap();
         assert_eq!(
@@ -1969,15 +1978,13 @@ mod tests {
                 .and_then(|effort| effort.one()),
             Some("high")
         );
+        let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([(
+            "claude".to_string(),
+            "xhigh".to_string(),
+        )])));
         let repository = &config.repos["/r"]["fix"];
         assert_eq!(repository.every_stage, Settings::default());
-        assert_eq!(
-            repository.stages["code"]
-                .effort
-                .as_ref()
-                .and_then(|effort| effort.one()),
-            Some("xhigh")
-        );
+        assert_eq!(repository.stages["code"].effort, table);
         let scratch = Scratch::new("effort-layers");
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let settings = flume_seams::Host::settings(&host, &folder("/r"), "fix", "default");
@@ -1992,24 +1999,65 @@ mod tests {
             "the host-kind layer"
         );
         assert_eq!(
-            settings
-                .repository
-                .for_stage("code")
-                .effort
-                .as_ref()
-                .and_then(|effort| effort.one()),
-            Some("xhigh"),
+            settings.repository.for_stage("code").effort,
+            table,
             "the host-repository layer"
         );
     }
 
     #[test]
+    fn a_model_for_a_kind_and_a_table_for_a_repositorys_stage() {
+        // The store-profile spec's "A model for a kind and a table for a
+        // repository's stage" (32, 172, C.7).
+        let config = HostConfig::parse(
+            "[kinds.fix.agents]\nmodel = \"sonnet\"\n\
+             [repos.\"/r\".kinds.fix.agents.stages.code]\nmodel = { claude = \"opus\", codex = \"gpt-5.5\" }\n",
+        )
+        .unwrap();
+        let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([
+            ("claude".to_string(), "opus".to_string()),
+            ("codex".to_string(), "gpt-5.5".to_string()),
+        ])));
+        let scratch = Scratch::new("model-layers");
+        let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
+        let settings = flume_seams::Host::settings(&host, &folder("/r"), "fix", "default");
+        assert_eq!(
+            settings.kind.every_stage.model,
+            Some("sonnet".into()),
+            "the host-kind layer"
+        );
+        assert_eq!(
+            settings.repository.for_stage("code").model,
+            table,
+            "the host-repository layer"
+        );
+    }
+
+    #[test]
+    fn a_model_that_is_neither_is_refused_naming_the_table_and_model() {
+        // The store-profile spec's "A model that is neither" (172, C.7).
+        for text in [
+            "[kinds.fix.agents]\nmodel = 4\n",
+            "[kinds.fix.agents]\nmodel = {}\n",
+            "[kinds.fix.agents]\nmodel = { claude = 4 }\n",
+        ] {
+            let refused = HostConfig::parse(text).unwrap_err();
+            assert!(
+                refused.contains("kinds.fix.agents") && refused.contains("model"),
+                "{text}: {refused}"
+            );
+        }
+    }
+
+    #[test]
     fn an_effort_that_is_no_word_is_refused_naming_the_table_and_effort() {
-        // 197, C.7: a number, and a table of programs until the model's
-        // is built with it, in a kind's table and every other.
+        // 197, C.7: a number, a table naming no program and a table whose
+        // entry is no string, in a kind's table and every other; a table
+        // of programs whose entries are strings is taken.
         for text in [
             "[kinds.fix.agents]\neffort = 3\n",
-            "[kinds.fix.agents]\neffort = { agent = \"high\" }\n",
+            "[kinds.fix.agents]\neffort = {}\n",
+            "[kinds.fix.agents]\neffort = { agent = 3 }\n",
         ] {
             let refused = HostConfig::parse(text).unwrap_err();
             assert!(
@@ -2017,6 +2065,15 @@ mod tests {
                 "{text}: {refused}"
             );
         }
+        let taken = HostConfig::parse("[kinds.fix.agents]\neffort = { agent = \"high\" }\n")
+            .expect("a table of programs taken");
+        assert_eq!(
+            taken.kinds["fix"].every_stage.effort,
+            Some(flume_seams::PerProgram::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "high".to_string()
+            )])))
+        );
         for (text, table) in [
             ("[agents]\neffort = 3\n", "[agents]"),
             (
