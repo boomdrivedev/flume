@@ -13,13 +13,13 @@ clause, an invariant or a scenario of the statement is cited by nothing
 The suite SHALL hold the numbers of every clause of Part A and Part B,
 the invariants I1 to I8 and the scenarios of section 11, with the
 statement's revision they were read at, and SHALL name each clause no
-change has built yet, each named as the change that builds it. A clause the statement adds or
-removes SHALL change this list in the commit that adopts it.
+change has built yet, each named as the change that builds it. A clause the statement adds or removes SHALL
+change this list in the commit that adopts it.
 
 #### Scenario: The clauses listed
 
 - **WHEN** the suite's list is read
-- **THEN** it names boomdrivedev/blueprints main at 48a94da; Parts A and B hold every clause that revision states, 174 in Part B; the scenarios run to S131; and it names 170 to 173 and S71 to S75 as unbuilt, left to record 0026's common profile, and nothing of 174
+- **THEN** it names the revision it named before this change, 48a94da; Parts A and B hold every clause that revision states; and it names as unbuilt what it named before this change but 170, 172 and S75, and nothing of 170, 172 or S75
 
 ### Requirement: Every scenario cites its clauses
 
@@ -48,7 +48,7 @@ and SHALL fail naming any of those a scenario cites.
 #### Scenario: The suite as this change leaves it
 
 - **WHEN** the coverage check runs over the suite as this change lands it
-- **THEN** it passes: every clause of Parts A and B, I1 to I8 and every scenario the list holds but those named as unbuilt is cited, 174 by the agent seam's parts scenarios
+- **THEN** it passes: every clause of Parts A and B, I1 to I8 and every scenario the list holds but those named as unbuilt is cited, 170 and S75 by the engine's scenarios of every program the terminal starts and 172 by its scenarios of a model
 
 ### Requirement: Seam scenarios run against any profile
 
