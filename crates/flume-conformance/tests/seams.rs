@@ -38,6 +38,11 @@ fn the_fake_agent_passes_the_agent_scenarios() {
         &agent::scenarios(),
         FakeAgentHarness::taking_no_effort,
     );
+    pass_all(
+        "agent",
+        &agent::scenarios(),
+        FakeAgentHarness::reporting_no_windows,
+    );
 }
 
 #[test]
@@ -118,7 +123,7 @@ fn the_fake_merge_queue_holds_a_landing_the_forge_refused() {
     // 124).
     use flume_fakes::{Plan, HELD_WITHOUT_WORDS};
     use flume_seams::{
-        MergeQueue, PlaceRef, SubmissionOutcome, SubmissionState, SubmitHead, Submitted,
+        MergeQueue, Owed, PlaceRef, SubmissionOutcome, SubmissionState, SubmitHead, Submitted,
     };
     let harness = FakeMergeQueueHarness::default();
     let (git, queue) = (&harness.git, &harness.queue);
@@ -167,13 +172,26 @@ fn the_fake_merge_queue_holds_a_landing_the_forge_refused() {
     let flume_seams::Inbox::Outcomes { outcomes, .. } = queue.inbox(&place) else {
         panic!("read")
     };
+    let key = format!("{}:held", first.id);
     assert_eq!(
         outcomes,
-        vec![SubmissionOutcome::Held {
-            words: words.into()
+        vec![Owed {
+            submission: first.id.clone(),
+            outcome: SubmissionOutcome::Held {
+                words: words.into()
+            },
+            key: Some(key.clone()),
         }]
     );
-    assert_eq!(queue.pending(&place.location), vec![], "given once");
+    assert_eq!(
+        queue.pending(&place.location),
+        vec![SubmissionOutcome::Held {
+            words: words.into()
+        }],
+        "given until it is confirmed"
+    );
+    queue.confirm(&place, &key);
+    assert_eq!(queue.pending(&place.location), vec![], "confirmed");
     queue.run_round(&place.repository, "main");
     assert_eq!(
         state_of(&first.id),
@@ -195,7 +213,7 @@ fn the_fake_merge_queue_holds_a_landing_the_forge_refused() {
         queue.pending(&place.location),
         vec![SubmissionOutcome::Landed { commit }]
     );
-    queue.inbox(&place);
+    queue.confirm(&place, &format!("{}:landed", first.id));
 
     queue.plan_submits(vec![held(false)]);
     let second = submit();

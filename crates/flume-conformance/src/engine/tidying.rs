@@ -8,6 +8,7 @@ use super::carried_conversations::{by_hand, talk, talking};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Answer, Retry, Tidied};
+use flume_fakes::Plan;
 use flume_seams::*;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
@@ -38,8 +39,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_scripted_refusal,
         },
         Scenario {
-            name: "tidy: a place read gone is removed through the place seam all the same, kept while that remove is refused",
-            cites: &["62", "66", "81"],
+            name: "tidy: a place read gone is removed through the place seam all the same, kept while that remove is refused and removed by the next settle",
+            cites: &["62", "66", "76", "81"],
             run: a_place_read_gone,
         },
         Scenario {
@@ -62,7 +63,57 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["S117", "64", "207"],
             run: a_dropped_place_whose_session_a_person_runs,
         },
+        Scenario {
+            name: "tidy: a landed fix's document kept for its recipient's pending end stands through the watch's settles while that end is pending, and the watch's settle after the recipient confirms it removes it",
+            cites: &["62", "225"],
+            run: a_kept_document_let_go,
+        },
     ]
+}
+
+/// The documents kept for their ends once their places were tidied.
+fn kept_documents(world: &World) -> Vec<HeldState> {
+    world
+        .store
+        .read_every()
+        .into_iter()
+        .map(|read| read.state)
+        .filter(|held| matches!(held.phase, Phase::Tidied { .. }))
+        .collect()
+}
+
+/// The settling spec's "A kept document let go": a fix landed and was
+/// tidied, its document kept for its recipient's pending end, and the
+/// recipient then confirms that end; the watch's next settle removes the
+/// kept document (62, 225).
+fn a_kept_document_let_go(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session("ops", AgentState::Waiting);
+    world.queue.plan_submits(vec![Plan::Land]);
+    let mut fix = launch("fix", "one", Some("mend it"));
+    fix.recipients = vec!["ops".into()];
+    launched(&world.engine.launch(&fix))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    world.commit("fix/one", &["fix.rs"]);
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed place's own document");
+    ensure_eq!(kept_documents(&world).len(), 1, "documents kept for ops");
+    for _ in 0..2 {
+        world.engine.settle_every(60);
+        ensure_eq!(
+            kept_documents(&world).len(),
+            1,
+            "documents kept for ops while its ends are pending"
+        );
+    }
+    world.confirm_every("ops");
+    world.engine.settle_every(60);
+    ensure!(
+        kept_documents(&world).is_empty(),
+        "a document kept with nothing pending, after the watch's settle"
+    );
+    Ok(())
 }
 
 fn tidied(answer: Answer) -> Result<Tidied, String> {
@@ -296,7 +347,8 @@ fn a_scripted_refusal(_: &()) -> Outcome {
 fn a_place_read_gone(_: &()) -> Outcome {
     // A place whose worktree its repository no longer holds may still
     // leave something at its location: its remove clears it, and a
-    // refused remove keeps the place for the next tidy (62; record 0057).
+    // refused remove keeps the place, which the next settle tidies again
+    // with no caller's word (62, 76; record 0057 and its amendment).
     let world = World::new();
     let id = world.begun("notes", Some(Deliverable::Commits), "one")?;
     world.place.vanish(&id.0);
@@ -321,7 +373,10 @@ fn a_place_read_gone(_: &()) -> Outcome {
         "the removes"
     );
     world.place.mend_teardown(&id.0);
-    let tidy = tidied(world.engine.tidy(Some(&id)))?;
+    let tidy = match world.engine.settle(Some(&id)) {
+        Answer::Settled { tidy, .. } => tidy,
+        other => return Err(format!("the settle answered {other:?}")),
+    };
     ensure_eq!(
         tidy.removed,
         vec![id.clone()],

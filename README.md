@@ -116,12 +116,11 @@ gives them.
 | `site/` | the project `site`: the site, Astro with Starlight; its diagrams are drawn at build time (`site/README.md`) |
 | `docs/diagrams/` | the README's diagram, generated from the site's |
 | `devenv.nix` | the shell: moon through proto, Vale, bun, and Playwright with its Chromium |
-| `styles/Flume` | the prose rules, the design books' voice in Vale |
-| `.config/kit.toml` | the kit standard's profile this repository follows |
+| `styles/Flume` | the prose rules, the design books' voice in Vale, for the pages' writers to run |
 
 moon runs the checks (`.moon/workspace.yml`), each tagged with its
 layer: `check-fast` (every crate's format, lint and tests, the plugin's,
-the site's prose and build, and the root's checks over the whole tree),
+the site's build, and the root's checks over the whole tree),
 `check-tools` (the sluice and herdr profiles against the pinned tools,
 and the walkthroughs) and `check-live` (the walkthroughs with the pinned
 Claude Code under herdr, run by hand with a test account's token in
@@ -130,7 +129,7 @@ Claude Code under herdr, run by hand with a test account's token in
 ```sh
 devenv shell -- moon run :#check-fast
 devenv shell -- site-build   # the site, through moon
-devenv shell -- prose        # the prose, through Vale
+devenv shell -- prose        # the prose, through Vale, for its writers
 ```
 
 ## License

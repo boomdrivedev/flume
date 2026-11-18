@@ -150,8 +150,10 @@ fn landed() -> SubmissionOutcome {
 }
 
 #[test]
-fn a_refused_outcome_is_held_with_its_notice_and_confirmed_by_key() {
-    // merge-queue-profile "A refused outcome" (112, 133, C.6).
+fn a_refused_outcome_is_held_with_its_notice_and_owed_until_confirmed() {
+    // merge-queue-profile "A refused outcome" (112, 133, C.6): collected
+    // with no --confirm, each outcome owed under its key until flume
+    // confirms it once it has acted on it (record 0072; core.58).
     let stand_in = StandIn::new(&[
         ("inbox.json", "inbox-refused.json"),
         ("confirm.json", "confirm.json"),
@@ -164,14 +166,34 @@ fn a_refused_outcome_is_held_with_its_notice_and_confirmed_by_key() {
     assert_eq!(
         stand_in.seam.inbox(&stand_in.place),
         Inbox::Outcomes {
-            outcomes: vec![landed(), SubmissionOutcome::Held { words: notice }],
+            outcomes: vec![
+                Owed {
+                    submission: "6".into(),
+                    outcome: landed(),
+                    key: Some("6:landed".into()),
+                },
+                Owed {
+                    submission: "7".into(),
+                    outcome: SubmissionOutcome::Held { words: notice },
+                    key: Some("7:refused".into()),
+                },
+            ],
             passed_over: vec![],
         }
     );
     assert_eq!(
         stand_in.asked(),
-        vec!["inbox --json", "confirm 6:landed 7:refused --json"],
-        "collected with no --confirm, then confirmed by key"
+        vec!["inbox --json"],
+        "collected with no --confirm, confirming nothing"
+    );
+    assert_eq!(
+        stand_in.seam.confirm(&stand_in.place, "7:refused"),
+        Confirmed::Confirmed
+    );
+    assert_eq!(
+        stand_in.asked(),
+        vec!["inbox --json", "confirm 7:refused --json"],
+        "confirmed by its key once asked"
     );
 }
 
@@ -179,14 +201,15 @@ fn a_refused_outcome_is_held_with_its_notice_and_confirmed_by_key() {
 fn an_outcome_in_a_state_flume_does_not_read_is_left_owed_and_named() {
     // merge-queue-profile "An outcome in a state flume does not read"
     // (133; core.58).
-    let stand_in = StandIn::new(&[
-        ("inbox.json", "inbox-parked.json"),
-        ("confirm.json", "confirm.json"),
-    ]);
+    let stand_in = StandIn::new(&[("inbox.json", "inbox-parked.json")]);
     assert_eq!(
         stand_in.seam.inbox(&stand_in.place),
         Inbox::Outcomes {
-            outcomes: vec![landed()],
+            outcomes: vec![Owed {
+                submission: "6".into(),
+                outcome: landed(),
+                key: Some("6:landed".into()),
+            }],
             passed_over: vec![PassedOver {
                 branch: "main".into(),
                 words: "#8: sluice gave an outcome in the state \"parked\"".into(),
@@ -195,8 +218,8 @@ fn an_outcome_in_a_state_flume_does_not_read_is_left_owed_and_named() {
     );
     assert_eq!(
         stand_in.asked(),
-        vec!["inbox --json", "confirm 6:landed --json"],
-        "8:parked left owed"
+        vec!["inbox --json"],
+        "8:parked left owed, nothing confirmed"
     );
 }
 

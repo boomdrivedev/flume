@@ -746,6 +746,7 @@ pub(crate) mod tests {
                 since: None,
                 room: None,
                 made_from: None,
+                counts: None,
             }],
             current: Some(0),
             submission: SubmissionHeld::default(),
@@ -833,6 +834,7 @@ pub(crate) mod tests {
             terminal: None,
             own: None,
             answered: 0,
+            counts: None,
             span: None,
             asking_since: None,
         }
@@ -1701,7 +1703,6 @@ pub(crate) mod tests {
                         "team=ops,flume.stage=x".to_string(),
                     )]),
                     agents: None,
-                    usage: None,
                 }],
             }),
         );
@@ -1775,10 +1776,12 @@ pub(crate) mod tests {
     }
     #[test]
     fn the_hosts_reading_names_no_place() {
-        // A settle of every place hands on one reading of the host: the
-        // places standing by kind, state and whom they wait on, and each
-        // stream's agents running and room; a settle of one place none
-        // (220, 121, 208).
+        // A settle of the watch's hands on one reading of the host: the
+        // places standing by kind, state and whom they wait on, those
+        // with nothing pending among them, and each stream's agents
+        // running and room; a settle of one place, a settle of every place
+        // a caller asks with no bound and the settle an acting command
+        // runs first where none keeps watch none (220, 121, 208, 225).
         use flume_seams::{PlaceId, Stream};
         let world = World::new();
         world.host.set_stream(
@@ -1816,6 +1819,20 @@ pub(crate) mod tests {
         );
         world.telemetry.clear();
         world.engine().settle(None);
+        assert!(
+            hosts(&world).is_empty(),
+            "a settle of every place reads no host"
+        );
+        world.engine().settle_attended();
+        assert!(
+            hosts(&world).is_empty(),
+            "an acting command's settle where none keeps watch reads no host"
+        );
+        let settled = world.engine().settle_every(60);
+        assert!(
+            matches!(&settled, crate::Answer::Settled { places, .. } if *places == [id.clone()]),
+            "the watch settled the places where something is pending: {settled:?}"
+        );
         let read = hosts(&world);
         assert_eq!(read.len(), 1, "{:?}", world.telemetry.signals());
         assert_eq!(
@@ -1856,9 +1873,6 @@ pub(crate) mod tests {
         ] {
             assert!(!shown.contains(word), "{word} in {shown}");
         }
-        world.telemetry.clear();
-        world.engine().settle_all();
-        assert_eq!(hosts(&world).len(), 1, "settle_all reads the host once");
     }
     #[test]
     fn a_log_line_goes_as_a_warning() {

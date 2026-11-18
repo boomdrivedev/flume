@@ -27,45 +27,15 @@ C.6, core.6).
 - **WHEN** the profile submits from a process whose environment carries `REX_SERVER`, `REX_SESSION` and `REX_BLOCK`
 - **THEN** sluice's entry names the place's worktree as its submitter and no session, and the answer comes before any verdict (C.6)
 
-### Requirement: Outcomes collected from sluice's inbox
-
-The profile SHALL collect a place's pending outcomes by `sluice inbox
---json` in the place, never with `--confirm`: landed with its commit,
-failed with the merge queue's words, in conflict with the files
-contested, or held, its landing refused by the forge, each carrying
-sluice's `notice` whole as its words. The profile SHALL read a
-withdrawal from read-submission, never from the inbox (99, 101, 133, C.6
-at boomdrivedev/blueprints `8b73d11` and `fc4323b`; sluice 51; core.58).
-
-#### Scenario: A conflict's base revision
-
-- **WHEN** sluice records a place's entry in conflict, tested on a base revision
-- **THEN** the outcome's base is the record's `tested.on`, its words sluice's `notice`, and nothing is parsed from the notice (112)
-
-#### Scenario: A failed entry collected once
-
-- **WHEN** sluice fails a submitted place's entry and the inbox is collected twice
-- **THEN** the first collect gives the failure with sluice's notice and confirms it by its key, and the second gives nothing (101, 133)
-
-#### Scenario: Seam scenarios against sluice
-
-- **WHEN** the merge-queue seam's scenarios run against the profile on scratch repositories landing through the pinned sluice
-- **THEN** each passes: landed is said only of an entry sluice landed, and nothing of the place is removed (101, 113)
-
-#### Scenario: A refused outcome
-
-- **WHEN** a stand-in `sluice` answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome under `7:refused` beside a `landed` one under `6:landed`
-- **THEN** the inbox gives the landing and the outcome held with its `notice` whole, runs `sluice inbox --json` with no `--confirm`, and then one `sluice confirm` naming `6:landed` and `7:refused` (112, 133, C.6)
-
 ### Requirement: Read, base and the place's data
 
-The profile SHALL read the newest entry of a branch from `sluice status
-<base> --json`; answer the base at `origin/<base>` after one fetch
-where `.config/sluice.toml` lands the base on a remote and the local
-base otherwise; and give the place profile the readiness, `sluice equip
-<base> --at <revision> --json` with the reading of its steps, the
-teardown (`sluice release`) and the base's ref, reading no `[tests]`
-key for a place (9, 11, 20, 126, C.1, C.6, core.3).
+The profile SHALL read each branch's newest entry as "One read for every
+branch asked at once" says; answer the base at `origin/<base>` after one
+fetch where `.config/sluice.toml` lands the base on a remote and the
+local base otherwise; and give the place profile the readiness, `sluice
+equip <base> --at <revision> --json` with the reading of its steps, the
+teardown (`sluice release`) and the base's ref, reading no `[tests]` key
+for a place (9, 11, 20, 126, C.1, C.6, core.3).
 
 #### Scenario: A queue nothing drives
 
@@ -192,28 +162,89 @@ words carry them (112, 210, C.6; sluice 65).
 ### Requirement: A submit's decided answer is confirmed
 
 Where sluice answers a submit with a decided entry's record, the profile
-SHALL confirm it by `sluice confirm <key>` of the record's `delivery`
-where it is owed, run where the submit ran, so no later inbox gives it
-(101, 112, 133, C.6; sluice 51; sluice record 0102).
+SHALL answer it with the key of the record's `delivery` where it is
+owed, and SHALL confirm nothing itself: the core confirms it by that key
+once it has acted on it, and until then an inbox gives it too (101, 112,
+133, C.6; sluice 51; sluice record 0102).
 
 #### Scenario: A decided answer is confirmed
 
 - **WHEN** sluice answers the place's submit with its entry's record in conflict with an entry queued ahead
-- **THEN** submit answers the conflict, and the inbox collected after it gives nothing (112, 133)
+- **THEN** submit answers the conflict with the key `<id>:conflict`, the inbox collected after it gives that entry's conflict under that key, and once it is confirmed by that key the inbox gives nothing (112, 133)
 
-### Requirement: Outcomes read are confirmed by key, and one unread is left owed
+### Requirement: Outcomes collected from sluice's inbox until confirmed
 
-The profile SHALL confirm every outcome its inbox read by one `sluice
-confirm` of each one's `delivery.key`, run in the place. An outcome in a
-state the profile does not read, or whose outcome it cannot read, SHALL
-be left owed, unconfirmed, and passed over by its branch with words
-naming it (101, 133, C.6 at boomdrivedev/blueprints `fc4323b`; sluice
-51; core.58).
+The profile SHALL collect a place's pending outcomes by `sluice inbox
+--json` in the place, never with `--confirm`, each with its entry's `id`
+and its `delivery`'s key where owed, given again until confirmed:
+landed with its commit, or failed or in conflict with sluice's `notice`
+as its words, a conflict's base revision its `tested.on`; and SHALL read
+a withdrawal from read-submission (99, 101, 133, C.6; sluice 51).
+
+#### Scenario: A conflict's base revision
+
+- **WHEN** sluice records a place's entry in conflict, tested on a base revision
+- **THEN** the outcome's base is the record's `tested.on`, its words sluice's `notice`, and nothing is parsed from the notice (112)
+
+#### Scenario: A failed entry given until it is confirmed
+
+- **WHEN** sluice fails a submitted place's entry and the inbox is collected twice, the outcome confirmed by its key, and the inbox collected again
+- **THEN** the first two collects give the failure with sluice's notice, its entry's id and the key `<id>:failed`, the confirm answers confirmed, the third collect gives nothing, and a second confirm of the key answers confirmed (101, 133)
+
+#### Scenario: Seam scenarios against sluice
+
+- **WHEN** the merge-queue seam's scenarios run against the profile on scratch repositories landing through the pinned sluice
+- **THEN** each passes: landed is said only of an entry sluice landed, and nothing of the place is removed (101, 113)
+
+### Requirement: An outcome confirmed by sluice confirm
+
+The profile SHALL confirm an outcome by `sluice confirm <key> --json` in
+the place, reading exit 0, confirmed now or before, and exit 1, nothing
+owed under the key, as confirmed, and any other exit as sluice unread in
+its words, the outcome left owed for the next inbox (101, 133, C.6;
+sluice 51).
+
+#### Scenario: A failed submission's outcome confirmed once flume acted on it
+
+- **WHEN** the gate fails a fix's first submission through the pinned sluice, flume sends the place back to code, and the place is settled again
+- **THEN** sluice reads the failed entry's delivery `done`, and the second settle sends nothing back again (112, 133)
+
+### Requirement: A refused outcome is held
+
+The profile SHALL read an inbox's `refused` record, a landing the forge
+refused that sluice holds, as held with its `notice` whole as its words,
+or what a record with none says, owed under its key until confirmed as
+any outcome is (112, 133, C.6 at boomdrivedev/blueprints `8b73d11` and
+`fc4323b`; sluice 152; core.58).
+
+#### Scenario: A refused outcome
+
+- **WHEN** a stand-in `sluice` answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome of #7 under `7:refused` beside a `landed` one of #6 under `6:landed`, and `7:refused` is then confirmed
+- **THEN** the inbox gives the landing and the outcome held with its `notice` whole, each with its entry's id and key, runs `sluice inbox --json` with no `--confirm` and confirms nothing, and the confirm runs `sluice confirm 7:refused --json` (112, 133, C.6)
+
+### Requirement: An outcome the profile cannot read is left owed
+
+An outcome in a state the profile does not read, or whose outcome it
+cannot read, SHALL be left owed, unconfirmed, and passed over by its
+branch with words naming it (133, C.6 at boomdrivedev/blueprints
+`fc4323b`; core.58).
 
 #### Scenario: An outcome in a state flume does not read
 
 - **WHEN** the stand-in's inbox holds a `landed` outcome under `6:landed` and one in the state `parked` under `8:parked` on `main`
-- **THEN** the inbox gives the landing, passes `main` over with words naming #8 and `parked`, and confirms `6:landed` alone, leaving `8:parked` owed (133; core.58)
+- **THEN** the inbox gives the landing under `6:landed`, passes `main` over with words naming #8 and `parked`, and confirms nothing, leaving `8:parked` owed (133; core.58)
+
+### Requirement: One read for every branch asked at once
+
+The profile SHALL read the newest entry of each branch asked from
+`sluice overview --json` and `sluice status <base> --all --json` for
+each base the overview names, run once for every branch of one
+repository asked at once (99, C.6).
+
+#### Scenario: Every branch asked at once
+
+- **WHEN** read-submission is asked at once of `fix/one` and `fix/two`, each submitted to main, and `fix/none`, submitted nowhere
+- **THEN** sluice runs `overview` once and `status main --all` once, and the answer gives `fix/one` and `fix/two` each its own entry and `fix/none` none (99, C.6)
 
 ### Requirement: read-submission reads a refused record as held
 

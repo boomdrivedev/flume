@@ -1059,6 +1059,8 @@ fn readings(terminal: Arc<dyn Terminal>) -> (Vec<bool>, usize) {
     let watched = Watched {
         began: world.host.now(),
         bound: 60,
+        by: None,
+        ended: None,
     };
     world
         .store

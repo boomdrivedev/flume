@@ -2,7 +2,7 @@
 //! scenarios a profile does (106).
 
 use crate::seams::{
-    agent::{AgentHarness, CarryAccounts, Efforts, LiveSessions, Modes, OwnWay},
+    agent::{AgentHarness, CarryAccounts, Efforts, LiveSessions, Modes, OwnWay, WindowsFrom},
     change::ChangeHarness,
     history::HistoryHarness,
     kinds::{KindsHarness, SourceDir},
@@ -24,7 +24,13 @@ const REPOSITORY: &str = "/repository";
 /// change@1, change@2 and change@3 side by side, each sent back to code,
 /// change@2's code stage repeating per task group with its group, notes
 /// and words last, and change@3's one agent for the whole change with a
-/// code prompt of its own (22, 140, 141, 157, C.2; core.31).
+/// code prompt of its own; then change@4, chore@2 and fix@2, each the
+/// version before it at the next version with every stage's agent given
+/// `full`, appended after the five so a lookup by name alone still finds
+/// the oldest version; then change@5, change@4's stages each with a prompt
+/// of its own working the change through its change tool's own commands,
+/// naming no tool (22, 140, 141, 157, 162, C.2; core.1, core.31; records
+/// 0064, 0077).
 pub fn flumes_own() -> Vec<Kind> {
     let stage = |name: &str, deliverable: Deliverable, prompt: &str| Stage {
         name: name.into(),
@@ -82,7 +88,7 @@ pub fn flumes_own() -> Vec<Kind> {
     let mut one_agent = change.clone();
     one_agent.version = 3;
     one_agent.stages[1].prompt = "Build {{change}}, every task of it, running each task's own check and ticking it once the check passes.\n\n{{needs}}{{#words}}\n\n{{words}}{{/words}}".into();
-    vec![
+    let mut own = vec![
         Kind {
             name: "fix".into(),
             version: 1,
@@ -110,7 +116,38 @@ pub fn flumes_own() -> Vec<Kind> {
         change,
         repeating,
         one_agent,
-    ]
+    ];
+    let full = Settings {
+        mode: Some(ModeSetting::Flume(Mode::Full)),
+        ..Settings::default()
+    };
+    let newest: Vec<Kind> = [("change", 3), ("chore", 1), ("fix", 1)]
+        .into_iter()
+        .map(|(name, version)| {
+            let mut kind = own
+                .iter()
+                .find(|kind| kind.name == name && kind.version == version)
+                .cloned()
+                .unwrap_or_else(|| panic!("the fake's own kinds hold {name}@{version}"));
+            kind.version += 1;
+            for stage in &mut kind.stages {
+                stage.agents = vec![full.clone()];
+            }
+            kind
+        })
+        .collect();
+    own.extend(newest);
+    let mut through_its_tool = own
+        .iter()
+        .find(|kind| kind.name == "change" && kind.version == 4)
+        .cloned()
+        .expect("the fake's own kinds hold change@4");
+    through_its_tool.version = 5;
+    through_its_tool.stages[0].prompt = "Write the change {{change}} through its change tool's own commands, committing it once its strict check passes.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
+    through_its_tool.stages[1].prompt = "Build {{change}} as its change tool's apply instructions give it, every task of it, running each task's own check and ticking it once the check passes.\n\n{{needs}}{{#words}}\n\n{{words}}{{/words}}".into();
+    through_its_tool.stages[2].prompt = "Verify {{change}} against the work, commit the report, and archive it through its change tool's own archive.\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
+    own.push(through_its_tool);
+    own
 }
 
 pub struct FakePlaceHarness {
@@ -371,6 +408,10 @@ pub struct FakeAgentHarness {
     /// The efforts the harness scripted the fake to take, by
     /// [`fake_efforts`], or none where it keeps the seam's defaults (197).
     efforts: Efforts,
+    /// Whether the harness left the fake reporting windows, or scripted
+    /// it to build none, as a profile that keeps the seam's defaults (171,
+    /// 211).
+    windows: bool,
 }
 
 impl FakeAgentHarness {
@@ -383,6 +424,23 @@ impl FakeAgentHarness {
         };
         harness.agent.live_not_read();
         harness
+    }
+
+    /// The fake scripted to report no windows, as a profile that keeps
+    /// the seam's defaults (171, 174, 211).
+    pub fn reporting_no_windows() -> Self {
+        let harness = FakeAgentHarness {
+            windows: false,
+            ..FakeAgentHarness::default()
+        };
+        harness.agent.reports_no_windows();
+        harness
+    }
+
+    /// The session the harness gives `identity`'s word that it started
+    /// where it reports windows (211).
+    fn session_of(identity: &Identity) -> String {
+        format!("session-of-{}-{}", identity.stage, identity.start)
     }
 
     /// The fake left taking no own settings and reserving no key, as a
@@ -401,6 +459,7 @@ impl FakeAgentHarness {
             carries: true,
             own: OwnWay::default(),
             efforts: fake_efforts(),
+            windows: true,
         }
     }
 
@@ -417,6 +476,7 @@ impl FakeAgentHarness {
             carries: true,
             own,
             efforts: Efforts::default(),
+            windows: true,
         }
     }
 }
@@ -507,6 +567,7 @@ impl Default for FakeAgentHarness {
             carries: true,
             own,
             efforts: fake_efforts(),
+            windows: true,
         }
     }
 }
@@ -568,6 +629,18 @@ impl AgentHarness for FakeAgentHarness {
 
     fn say_last(&self, identity: &Identity, words: &str) {
         self.agent.set_last_words(identity, words);
+    }
+
+    fn report_windows(&self, identity: &Identity, taken_at: Seconds, windows: &[UsageWindow]) {
+        self.agent
+            .set_session(identity, &FakeAgentHarness::session_of(identity));
+        self.agent.report_windows(identity, taken_at, windows);
+    }
+
+    fn windows_from(&self, identity: &Identity) -> Option<WindowsFrom> {
+        self.windows.then(|| WindowsFrom {
+            session: Some(FakeAgentHarness::session_of(identity)),
+        })
     }
 
     fn hit_usage_limit(&self, identity: &Identity) -> Seconds {

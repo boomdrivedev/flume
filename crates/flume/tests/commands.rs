@@ -190,6 +190,9 @@ impl MergeQueue for StandInQueue {
             passed_over: vec![],
         }
     }
+    fn confirm(&self, _place: &PlaceRef, _key: &str) -> Confirmed {
+        Confirmed::Confirmed
+    }
     fn read_submissions(&self, _repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
         branches
             .iter()
@@ -265,6 +268,9 @@ impl MergeQueue for HoldingQueue {
             outcomes: vec![],
             passed_over: vec![],
         }
+    }
+    fn confirm(&self, _place: &PlaceRef, _key: &str) -> Confirmed {
+        Confirmed::Confirmed
     }
     fn read_submissions(&self, _repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
         let record = std::fs::read_to_string(Self::log()).unwrap_or_default();
@@ -909,8 +915,9 @@ fn a_refusal() {
 fn a_watch_over_a_scratch_repository() {
     // The command-line spec's "A watch over a scratch repository": a
     // caller's settle with a bound steps the submitted place's base once,
-    // and status gives the host's watch with its bound and when that
-    // settle began (56, 208).
+    // and status gives the host's watch with its bound, when that settle
+    // began and when it ended, and says the places where something is
+    // pending settle (56, 208, 225).
     let host = Host::new("settle-every");
     let repository = repository("settle-every", Some(HOLDING_QUEUE));
     let kinds = kinds_file(&host, true);
@@ -968,12 +975,17 @@ fn a_watch_over_a_scratch_repository() {
         (began..began + 60).contains(&settled_at),
         "the watch settled at {settled_at}, the settle began at {began}"
     );
+    let ended_at = watch["watch_ended"].as_u64().expect("watch_ended");
+    assert!(
+        ended_at >= settled_at,
+        "the watch's settle ended at {ended_at}, before it began at {settled_at}"
+    );
     assert!(watch.get("watch_lapsed").is_none(), "{watch}");
     let person = host.stand_in(&repository.dir, &["status"], &env);
     assert!(
-        person
-            .text
-            .contains("a caller keeps watch: every place settles every 2m, last at "),
+        person.text.contains(
+            "a caller keeps watch: the places where something is pending settle every 2m, last at "
+        ),
         "{}",
         person.text
     );
@@ -982,9 +994,9 @@ fn a_watch_over_a_scratch_repository() {
 #[test]
 fn a_watch_with_a_place_named() {
     // The command-line spec's "A watch with a place named": refused
-    // naming `--every` and the place, nothing settled and no watch
-    // recorded; a bound that is no positive duration refused the same
-    // (208).
+    // naming `--every`, the places it settles and the place, nothing
+    // settled and no watch recorded; a bound that is no positive duration
+    // refused the same (208, 225).
     let host = Host::new("settle-every-named");
     let repository = repository("settle-every-named", None);
     let kinds = kinds_file(&host, false);
@@ -1013,9 +1025,9 @@ fn a_watch_with_a_place_named() {
         .refusal()
         .map(str::to_string)
         .expect("a refusal");
-    assert!(
-        reason.contains("--every") && reason.contains("fix--one"),
-        "{reason}"
+    assert_eq!(
+        reason,
+        "--every settles the places where something is pending as a caller's watch over the host, and takes no place: fix--one was named"
     );
     for bound in ["0", "0m", "soon"] {
         let ran = host.stand_in(
@@ -2623,8 +2635,9 @@ fn a_wait_exits_by_its_outcome() {
 fn the_recipient_a_wait_and_an_inbox_default_to() {
     // 7, 132, design 7: $FLUME_RECIPIENT, then a role's run's address read
     // from the place $FLUME_PLACE names, and a refusal where none names
-    // one; the terminal's session is its profile's to name, tested beside
-    // it under profiles/.
+    // one, naming each way to; the terminal's session and the standing
+    // agent's pane are the terminal profile's to name, tested beside it
+    // under profiles/.
     let host = Host::new("recipients");
     let repository = repository("recipients", None);
     let kinds = kinds_file(&host, false);
@@ -2664,12 +2677,21 @@ fn the_recipient_a_wait_and_an_inbox_default_to() {
         &host.stand_in(&repository.dir, &["inbox", "--json"], &[]),
         1,
     );
-    assert!(
-        unnamed["refused"]["refusal"]["reason"]
-            .as_str()
-            .is_some_and(|reason| reason.contains("--recipient")),
-        "{unnamed}"
-    );
+    let reason = unnamed["refused"]["refusal"]["reason"]
+        .as_str()
+        .unwrap_or_default();
+    for way in [
+        "--recipient",
+        "$FLUME_RECIPIENT",
+        "a terminal's session",
+        "a role's run",
+        "a standing agent's pane",
+    ] {
+        assert!(
+            reason.contains(way),
+            "the refusal names no {way}: {unnamed}"
+        );
+    }
 
     let by_variable = answered(
         &host.stand_in(
@@ -3583,11 +3605,11 @@ fn a_lock_that_cannot_be_read() {
 
 #[test]
 fn a_source_file_with_no_kinds_dir() {
-    // S96, 4, 191: the host's sources hold `bad.toml` with no `kinds_dir`
-    // beside acme's, whose review@1 the host locks; a launch of `bad/x@1`
-    // is refused naming the file and `kinds_dir`, and makes nothing, and
-    // launches of flume's own `fix` and of `acme/review@1` are made;
-    // status names the fault.
+    // S96, 4, 154, 191: the host's sources hold `bad.toml` with no
+    // `kinds_dir` beside acme's, whose review@1 the host locks; a launch
+    // of `bad/x@1` is refused naming the file and `kinds_dir`, and makes
+    // nothing, and launches of flume's own `fix`, its newest, fix@2, and
+    // of `acme/review@1` are made; status names the fault.
     let (host, _) = acme_host("bad-source");
     let repository = repository("bad-source", Some(STAND_IN_QUEUE));
     std::fs::write(sources_of(&host).join("bad.toml"), "# no kinds_dir\n").expect("bad.toml");
@@ -3608,7 +3630,7 @@ fn a_source_file_with_no_kinds_dir() {
     assert!(reason.contains(&*bad.to_string_lossy()), "{reason}");
     assert!(reason.contains("kinds_dir"), "{reason}");
     made_nothing(&host, &repository, "x--one", "x/one");
-    for (kind, identity) in [("fix", "flume/fix@1"), ("acme/review@1", "acme/review@1")] {
+    for (kind, identity) in [("fix", "flume/fix@2"), ("acme/review@1", "acme/review@1")] {
         let launched = answered(
             &host.stand_in(
                 &repository.dir,

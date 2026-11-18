@@ -1,8 +1,8 @@
 use crate::{lock, FakeGit, Log};
 use flume_seams::{
-    BaseRevision, BranchClosed, BranchOpened, Forecast, Inbox, MergeQueue, PassedOver, PlaceRef,
-    ReadAcross, Revision, Stepped, Submission, SubmissionOutcome, SubmissionRead, SubmissionState,
-    SubmitHead, Submitted,
+    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, MergeQueue, Owed,
+    PassedOver, PlaceRef, ReadAcross, Revision, Stepped, Submission, SubmissionOutcome,
+    SubmissionRead, SubmissionState, SubmitHead, Submitted,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -21,8 +21,9 @@ pub enum Plan {
     /// It conflicts with its base on the files named, with the words.
     Conflict(Vec<String>, String),
     /// Submit finds it in conflict with its base as it takes it in, on
-    /// the files named, and answers with the outcome, which it delivers
-    /// so no inbox gives it (133).
+    /// the files named, and answers with the outcome and its key, which
+    /// it keeps owed to the place, so an inbox gives it too until the
+    /// place confirms it (133).
     ConflictAtSubmit(Vec<String>, String),
     /// It is withdrawn, which no inbox gives (99).
     Withdraw,
@@ -68,8 +69,10 @@ struct Requested {
 /// each submission comes to, every submission of each branch whoever
 /// made it, and each place's pending outcomes. Submit holds no wait: a
 /// submission is decided by a round, which `step` drives unless the
-/// queue moves on its own, and its outcome is delivered once through
-/// the place's inbox; or, where submit opens a request, its entry is
+/// queue moves on its own, and its outcome is given through the place's
+/// inbox under a key, `<id>:<state>`, at every inbox until the place
+/// confirms it, logged as `confirm <key>`; or, where submit opens a
+/// request, its entry is
 /// made only once `take_in` takes the request in, and its outcome is
 /// delivered to the request. A branch it is told it cannot read is passed
 /// over by read-submission and the inbox, with its words, and decides
@@ -105,13 +108,16 @@ struct QueueState {
     submissions: BTreeMap<(String, String), Vec<Submission>>,
     /// Each submission's plan and the place it came from, by id.
     plans: BTreeMap<String, (Plan, Option<String>)>,
-    /// Each place's outcomes not yet delivered, by location, each with
+    /// Each place's outcomes not yet confirmed, by location, each with
     /// the branch its submission was to, none where it was left pending
     /// with no branch.
-    inboxes: BTreeMap<String, Vec<(Option<String>, SubmissionOutcome)>>,
+    inboxes: BTreeMap<String, Vec<(Option<String>, Owed)>>,
     /// Each branch's request, by repository and branch.
     requests: BTreeMap<(String, String), Requested>,
     unreadable: Option<String>,
+    /// The words every confirm is refused with, none while confirms are
+    /// taken.
+    confirms_refused: Option<String>,
     /// The words of each branch it cannot read, by repository and branch.
     refused: BTreeMap<(String, String), String>,
     moves_on_its_own: bool,
@@ -153,6 +159,13 @@ impl FakeMergeQueue {
     /// queue could not be read.
     pub fn unreadable(&self, reason: &str) {
         lock(&self.state).unreadable = Some(reason.into());
+    }
+
+    /// Every confirm answers that the merge queue could not be read, with
+    /// `words`, leaving its outcome pending; none takes confirms again
+    /// (133).
+    pub fn refuse_confirms(&self, words: Option<&str>) {
+        lock(&self.state).confirms_refused = words.map(str::to_string);
     }
 
     pub fn readable(&self) {
@@ -329,11 +342,10 @@ impl FakeMergeQueue {
         let Some((_, Some(location))) = queue.plans.get(&submission.id).cloned() else {
             return;
         };
-        queue
-            .inboxes
-            .entry(location)
-            .or_default()
-            .push((Some(submission.target.clone()), outcome));
+        queue.inboxes.entry(location).or_default().push((
+            Some(submission.target.clone()),
+            Self::handed(&submission.id, outcome),
+        ));
     }
 
     pub fn submissions(&self, repository: &str, branch: &str) -> Vec<Submission> {
@@ -344,25 +356,41 @@ impl FakeMergeQueue {
             .unwrap_or_default()
     }
 
-    /// The outcomes pending for the place at `location`, undelivered.
+    /// The outcomes pending for the place at `location`, unconfirmed.
     pub fn pending(&self, location: &str) -> Vec<SubmissionOutcome> {
         lock(&self.state)
             .inboxes
             .get(location)
             .into_iter()
             .flatten()
-            .map(|(_, outcome)| outcome.clone())
+            .map(|(_, handed)| handed.outcome.clone())
             .collect()
     }
 
-    /// `outcome` left pending for the place at `location`, as a merge
-    /// queue leaves one it could not deliver to its request (133).
-    pub fn leave_pending(&self, location: &str, outcome: SubmissionOutcome) {
+    /// `outcome` of `submission` left pending for the place at
+    /// `location`, as a merge queue leaves one it could not deliver to
+    /// its request, or one a place never confirmed (133).
+    pub fn leave_pending(&self, location: &str, submission: &str, outcome: SubmissionOutcome) {
         lock(&self.state)
             .inboxes
             .entry(location.into())
             .or_default()
-            .push((None, outcome));
+            .push((None, Self::handed(submission, outcome)));
+    }
+
+    /// An outcome as the inbox gives it, under its key.
+    fn handed(submission: &str, outcome: SubmissionOutcome) -> Owed {
+        let state = match &outcome {
+            SubmissionOutcome::Landed { .. } => "landed",
+            SubmissionOutcome::Failed { .. } => "failed",
+            SubmissionOutcome::Conflict { .. } => "conflict",
+            SubmissionOutcome::Held { .. } => "held",
+        };
+        Owed {
+            submission: submission.into(),
+            key: Some(format!("{submission}:{state}")),
+            outcome,
+        }
     }
 
     /// `branch`'s request taken in as an entry, as an intake on whichever
@@ -526,7 +554,10 @@ impl FakeMergeQueue {
                 .inboxes
                 .entry(location)
                 .or_default()
-                .push((Some(submission.target.clone()), outcome));
+                .push((
+                    Some(submission.target.clone()),
+                    Self::handed(&submission.id, outcome),
+                ));
         }
     }
 }
@@ -582,9 +613,26 @@ impl MergeQueue for FakeMergeQueue {
                 },
                 None,
             );
+            let outcome = SubmissionOutcome::Conflict { files, base, words };
+            // Owed to the place it came from until it confirms it; a
+            // submission by name has no place to owe it to (203, 133).
+            let key = match location {
+                Some(location) => {
+                    let handed = Self::handed(&submission.id, outcome.clone());
+                    let key = handed.key.clone();
+                    queue
+                        .inboxes
+                        .entry(location)
+                        .or_default()
+                        .push((Some(place.base.clone()), handed));
+                    key
+                }
+                None => None,
+            };
             return Submitted::Decided {
                 submission,
-                outcome: SubmissionOutcome::Conflict { files, base, words },
+                outcome,
+                key,
             };
         }
         if let Plan::Request { then, to_place } = plan {
@@ -621,7 +669,7 @@ impl MergeQueue for FakeMergeQueue {
 
     fn inbox(&self, place: &PlaceRef) -> Inbox {
         self.log.push(format!("inbox {}", place.location));
-        let mut queue = lock(&self.state);
+        let queue = lock(&self.state);
         if let Some(reason) = &queue.unreadable {
             return Inbox::CouldNotRead {
                 reason: reason.clone(),
@@ -635,19 +683,39 @@ impl MergeQueue for FakeMergeQueue {
                     .any(|over| over.branch.as_str() == target.as_str())
             })
         };
-        let (kept, outcomes): (Vec<_>, Vec<_>) = queue
+        let outcomes = queue
             .inboxes
-            .remove(&place.location)
-            .unwrap_or_default()
+            .get(&place.location)
             .into_iter()
-            .partition(|(target, _)| refused(target));
-        if !kept.is_empty() {
-            queue.inboxes.insert(place.location.clone(), kept);
-        }
+            .flatten()
+            .filter(|(target, _)| !refused(target))
+            .map(|(_, handed)| handed.clone())
+            .collect();
         Inbox::Outcomes {
-            outcomes: outcomes.into_iter().map(|(_, outcome)| outcome).collect(),
+            outcomes,
             passed_over,
         }
+    }
+
+    fn confirm(&self, place: &PlaceRef, key: &str) -> Confirmed {
+        self.log.push(format!("confirm {key}"));
+        let mut queue = lock(&self.state);
+        if let Some(reason) = queue
+            .unreadable
+            .as_ref()
+            .or(queue.confirms_refused.as_ref())
+        {
+            return Confirmed::CouldNotRead {
+                reason: reason.clone(),
+            };
+        }
+        if let Some(pending) = queue.inboxes.get_mut(&place.location) {
+            pending.retain(|(_, handed)| handed.key.as_deref() != Some(key));
+            if pending.is_empty() {
+                queue.inboxes.remove(&place.location);
+            }
+        }
+        Confirmed::Confirmed
     }
 
     fn read_submissions(&self, repository: &str, branches: &[&str]) -> Vec<ReadAcross> {

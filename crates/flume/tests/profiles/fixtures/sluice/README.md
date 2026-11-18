@@ -17,4 +17,4 @@ code prints; its value is made up.
 | `status-train-x.json` | `sluice status train/x --all --json`, its queue empty | `status_json` |
 | `inbox-refused.json` | `sluice inbox --json`: #6 landed under `6:landed` and #7 refused under `7:refused`, each owed | `inbox` in `crates/sluice/src/lib.rs`, each outcome `decided_document(sub, Some(decided))` with its `delivery` as `OwedOutcome::left("inbox", at, false)` of `crates/sluice-core/src/owed.rs` gives it; #7's `notice` as `sluice_core::notice` words `Decided::Refused` |
 | `inbox-parked.json` | `sluice inbox --json`: #6 landed under `6:landed` and #8 in the state `parked`, which sluice has no word for at `44e33d4`, under `8:parked` | as `inbox-refused.json`, standing for a state a later sluice may add |
-| `confirm.json` | `sluice confirm <key>… --json` | `confirm` in `crates/sluice/src/lib.rs`, its `confirmed` document |
+| `confirm.json` | `sluice confirm <key> --json` | `confirm` in `crates/sluice/src/lib.rs`, its `confirmed` document |
