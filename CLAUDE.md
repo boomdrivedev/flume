@@ -44,14 +44,18 @@ Never edit a spec file directly.
 
 The rules are in `docs/architecture/`: `core.md` binds wherever a change
 is made, and an area page, when one exists, binds the paths its
-frontmatter names. The decisions behind them are `docs/adr/`, one MADR
-record each, proposed until the operator's yes. A design or a commit
-that relies on a rule cites its id; one that departs from a rule says
-which and why. Where `docs/architecture/` and the narrative docs
+frontmatter names. Each rule of `core.md` is one sentence; its details,
+what it rules out, what it leaves open and its sources, are on
+`core-details.md`, which `.claude/rules/` loads once a file under
+`docs/architecture/` is read, so a session's rules stay under 100,000
+characters (core.61). The decisions behind them are `docs/adr/`, one
+MADR record each, proposed until the operator's yes. A design or a
+commit that relies on a rule cites its id; one that departs from a rule
+says which and why. Where `docs/architecture/` and the narrative docs
 disagree, `docs/architecture/` wins. A rule is sent to `core.md` or its
-area page with an id, the next free number in its area, amended in the
-same commit as the decision that changes it. The kit standard binds
-beside them as its `code` profile says (`.config/kit.toml`).
+area page with an id, the next free number in its area, and its details
+to `core-details.md`, both amended in the same commit as the decision
+that changes it.
 
 ## Checks
 

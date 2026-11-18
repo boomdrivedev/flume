@@ -117,7 +117,6 @@ gives them.
 | `docs/diagrams/` | the README's diagram, generated from the site's |
 | `devenv.nix` | the shell: moon through proto, Vale, bun, and Playwright with its Chromium |
 | `styles/Flume` | the prose rules, the design books' voice in Vale, for the pages' writers to run |
-| `.config/kit.toml` | the kit standard's profile this repository follows |
 
 moon runs the checks (`.moon/workspace.yml`), each tagged with its
 layer: `check-fast` (every crate's format, lint and tests, the plugin's,

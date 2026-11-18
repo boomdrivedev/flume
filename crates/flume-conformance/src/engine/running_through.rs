@@ -41,9 +41,9 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s119_a_locked_change_3_codes_with_one_agent,
         },
         Scenario {
-            name: "run through: a bare change in a repository that locks nothing runs change@4, each stage's agent in full from the kind, its code stage one start of one agent for a change of four task groups, its line `change--plan · change@4 · code · run 1 · tasks 0/7 · working`, and the place submitted once verify archives the change",
+            name: "run through: a bare change in a repository that locks nothing runs change@5, each stage's agent in full from the kind, its code stage one start of one agent for a change of four task groups, its line `change--plan · change@5 · code · run 1 · tasks 0/7 · working`, and the place submitted once verify archives the change",
             cites: &["22", "154", "162", "S119"],
-            run: s119_a_bare_change_runs_change_4_through,
+            run: s119_a_bare_change_runs_change_5_through,
         },
         Scenario {
             name: "run through: two fixes launched with notes as briefs each land with no further word",
@@ -61,8 +61,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_fixs_failed_submission,
         },
         Scenario {
-            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, so the next settle is given none; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again, each acted on once",
-            cites: &["225", "133", "111", "112", "124", "74"],
+            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, and the next settle asks no inbox; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again as flume submits the place anew, each acted on once",
+            cites: &["225", "133", "111", "112", "124", "74", "99"],
             run: an_outcome_is_confirmed_once_acted_on,
         },
         Scenario {
@@ -209,11 +209,11 @@ fn s119_a_locked_change_3_codes_with_one_agent(_: &()) -> Outcome {
     one_agent_codes_the_change(&world, 3, None)
 }
 
-fn s119_a_bare_change_runs_change_4_through(_: &()) -> Outcome {
+fn s119_a_bare_change_runs_change_5_through(_: &()) -> Outcome {
     let world = World::with_every_own_version();
     one_agent_codes_the_change(
         &world,
-        4,
+        5,
         Some(Given {
             layer: Layer::Kind,
             value: "full".into(),
@@ -433,10 +433,11 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
         "outcomes left for the next settle"
     );
 
-    // The next settle reads the inbox and is given nothing.
+    // The next settle asks no inbox, flume holding the outcome (111,
+    // 133; record 0012).
     world.queue.log.clear();
     world.settle(&id);
-    ensure!(world.queue.log.count("inbox") > 0, "no inbox read");
+    ensure_eq!(world.queue.log.count("inbox"), 0, "inboxes");
     ensure_eq!(world.queue.log.count("confirm"), 0, "confirms");
     ensure_eq!(gone_back(&world), Some((2, 1)), "after the next settle");
 
@@ -489,7 +490,9 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
     );
 
     // Acted on at the next settle, whose confirm the merge queue cannot
-    // take: given again, it sends nothing back again, and is confirmed.
+    // take: left pending while flume holds it and code runs, and given
+    // again as flume submits the place anew, it sends nothing back again
+    // and is confirmed (111, 133, 225; record 0012).
     world.queue.refuse_confirms(Some("down"));
     world.settle(&id);
     ensure_eq!(gone_back(&world), Some((3, 2)), "acted on");
@@ -500,6 +503,16 @@ fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
     );
     world.queue.refuse_confirms(None);
     world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.queue.log.count("inbox"),
+            world.queue.pending(&location).len()
+        ),
+        (0, 1),
+        "inboxes, and the failure pending, while code runs"
+    );
+    deliver_fix(&world, &id);
     world.settle(&id);
     ensure_eq!(gone_back(&world), Some((3, 2)), "acted on once");
     ensure_eq!(
