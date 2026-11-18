@@ -13,7 +13,7 @@ use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
     Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
     Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
-    ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
+    PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
     StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
     Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
 };
@@ -363,11 +363,17 @@ fn place_lines(place: &PlaceStatus) -> Vec<String> {
         ),
         format!("  {}", place.line.full),
     ];
-    let mut facts = vec![format!(
-        "branch {} from {}",
-        place.branch,
-        base_words(&place.base, place.base_from)
-    )];
+    // A standing role's place has no branch: its checkouts stand in its
+    // branch's line's place (56, 193).
+    let mut facts = if place.checkouts.is_empty() {
+        vec![format!(
+            "branch {} from {}",
+            place.branch,
+            base_words(&place.base, place.base_from)
+        )]
+    } else {
+        vec![]
+    };
     lines.extend(kind_line(place.kind_from.as_ref()));
     if let Some(mark) = &place.mark {
         facts.push(format!("mark {mark}"));
@@ -378,7 +384,12 @@ fn place_lines(place: &PlaceStatus) -> Vec<String> {
     if let Some(head) = &place.head {
         facts.push(format!("head {head}"));
     }
-    lines.push(format!("  {}", facts.join(", ")));
+    if !facts.is_empty() {
+        lines.push(format!("  {}", facts.join(", ")));
+    }
+    for checkout in &place.checkouts {
+        lines.extend(checkout_lines(checkout));
+    }
     if let Phase::Over {
         kept: Some(kept), ..
     } = &place.phase
@@ -1009,6 +1020,59 @@ fn plain(words: &str) -> String {
 /// from, and its intent (56, 143, 147, 180).
 /// The base a place was cut from, with where the launch read its revision
 /// (56, C.1).
+/// A standing role's checkout as a person reads it: its folder, its
+/// repository, its revision, its base and where it was read, and when it
+/// was moved; its last move not made, with when, the tip and the words;
+/// and what it holds, or why it could not be read (56, 80, 193, 213).
+fn checkout_lines(checkout: &flume_core::CheckoutStatus) -> Vec<String> {
+    let moved = match checkout.moved_at {
+        Some(at) => format!("moved at {at}"),
+        None => "not moved since it was made".to_string(),
+    };
+    let mut lines = vec![format!(
+        "  checkout {}: {} at {}, from {}, {moved}",
+        checkout.folder,
+        checkout.repository,
+        checkout.revision,
+        base_words(&checkout.base, checkout.base_from)
+    )];
+    if let Some(unmoved) = &checkout.unmoved {
+        let tip = unmoved
+            .tip
+            .as_ref()
+            .map(|tip| format!(" to {tip}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    not moved{tip} at {}: {}",
+            unmoved.at, unmoved.reason
+        ));
+    }
+    match &checkout.read {
+        PlaceRead::Live { holds, .. } => {
+            if !holds.uncommitted.is_empty() {
+                lines.push(format!(
+                    "    holds uncommitted: {}",
+                    holds.uncommitted.join(", ")
+                ));
+            }
+            if !holds.untracked.is_empty() {
+                lines.push(format!(
+                    "    holds neither committed nor ignored: {}",
+                    holds.untracked.join(", ")
+                ));
+            }
+            if let Some(lock) = &holds.lock {
+                lines.push(format!("    locked: {lock}"));
+            }
+        }
+        PlaceRead::Gone => lines.push("    gone: no checkout stands there".to_string()),
+        PlaceRead::CouldNotRead { reason } => {
+            lines.push(format!("    could not be read: {reason}"));
+        }
+    }
+    lines
+}
+
 fn base_words(base: &str, from: Option<BaseFrom>) -> String {
     let from = match from {
         None => return base.to_string(),
@@ -1690,6 +1754,16 @@ fn host_lines(host: &HostStatus) -> Vec<String> {
             address.pending.len(),
             address.address
         ));
+        if let Some(role) = &address.standing_role {
+            let since = role
+                .hibernating_since
+                .map(|since| format!(", hibernating since {since}"))
+                .unwrap_or_default();
+            lines.push(format!(
+                "    its standing role's place {}{since}",
+                role.place
+            ));
+        }
         for end in &address.pending {
             lines.push(format!("    {}: {}", end.place, end.what));
         }
@@ -3499,6 +3573,97 @@ mod tests {
                 first,
                 "    its roles (/s/acme/roles.toml): east/operator",
                 "    declares nothing for east/ops: its kind beta/ops is not acme's"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_standing_roles_place_and_its_checkouts() {
+        // 56, 193, 212, 214: a standing role's place with no branch line
+        // and a line for each checkout, a move not made with its words
+        // and what it holds; and its address with its place, hibernating
+        // since when.
+        let checkout = |folder: &str| flume_core::CheckoutStatus {
+            repository: format!("/code/{folder}"),
+            address: None,
+            folder: folder.into(),
+            base: "main".into(),
+            revision: flume_seams::Revision::new("c1"),
+            moved_at: Some(3600),
+            base_from: Some(BaseFrom::Origin),
+            unmoved: None,
+            read: PlaceRead::Live {
+                branch: "(detached)".into(),
+                head: flume_seams::Revision::new("c1"),
+                holds: flume_seams::Holds::default(),
+            },
+        };
+        let place = PlaceStatus {
+            branch: String::new(),
+            checkouts: vec![
+                checkout("flume"),
+                flume_core::CheckoutStatus {
+                    unmoved: Some(flume_seams::Unmoved {
+                        at: 7200,
+                        tip: Some(flume_seams::Revision::new("c9")),
+                        reason: "your local changes would be overwritten".into(),
+                    }),
+                    read: PlaceRead::Live {
+                        branch: "(detached)".into(),
+                        head: flume_seams::Revision::new("c1"),
+                        holds: flume_seams::Holds {
+                            untracked: vec!["notes.md".into()],
+                            ..flume_seams::Holds::default()
+                        },
+                    },
+                    ..checkout("blueprints")
+                },
+            ],
+            ..a_place()
+        };
+        let lines = place_lines(&place);
+        assert!(
+            !lines.iter().any(|line| line.starts_with("  branch ")),
+            "a branch line: {lines:?}"
+        );
+        let at = lines
+            .iter()
+            .position(|line| line.starts_with("  checkout flume:"))
+            .expect("the flume checkout's line");
+        assert_eq!(
+            lines[at..at + 4],
+            [
+                "  checkout flume: /code/flume at c1, from main (at origin), moved at 3600",
+                "  checkout blueprints: /code/blueprints at c1, from main (at origin), moved at 3600",
+                "    not moved to c9 at 7200: your local changes would be overwritten",
+                "    holds neither committed nor ignored: notes.md",
+            ]
+        );
+        let lines = host_lines(&HostStatus {
+            addresses: vec![AddressStatus {
+                address: "east/ops".into(),
+                role: None,
+                run: Some(PlaceId::new("/places/desk--east-ops")),
+                pending: vec![],
+                unwoken: None,
+                standing: None,
+                carried: None,
+                wakes_nothing: None,
+                messages: vec![],
+                reporting: vec![],
+                stalled: None,
+                standing_role: Some(flume_core::StandingRoleStatus {
+                    place: PlaceId::new("/places/desk--east-ops"),
+                    hibernating_since: Some(7200),
+                }),
+            }],
+            ..HostStatus::default()
+        });
+        assert_eq!(
+            lines[1..lines.len() - 1],
+            [
+                "  0 ends pending for east/ops, its run /places/desk--east-ops",
+                "    its standing role's place /places/desk--east-ops, hibernating since 7200",
             ]
         );
     }
