@@ -1,8 +1,8 @@
 use crate::{lock, FakeTerminal, Log};
 use flume_seams::{
     no_effort, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, LiveProcess, Mode,
-    ModeBegan, ModeEntry, Offered, PlaceRef, Reading, Received, Reserved, Seconds, Secret,
-    Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
+    ModeBegan, ModeEntry, Offered, PerProgram, PlaceRef, Reading, Received, Reserved, Seconds,
+    Secret, Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
 };
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -617,11 +617,11 @@ impl Agent for FakeAgent {
             None => format!("command {identity}"),
         });
         let mut args = vec![];
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(PerProgram::one) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(effort) = &settings.effort {
-            args.extend(["--effort".to_string(), effort.clone()]);
+        if let Some(effort) = settings.effort.as_ref().and_then(PerProgram::one) {
+            args.extend(["--effort".to_string(), effort.to_string()]);
         }
         if let Some(mode) = mode {
             args.extend(["--mode".to_string(), mode.to_string()]);

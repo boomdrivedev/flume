@@ -84,11 +84,12 @@ fn written(kinds: &[Kind]) -> (String, Vec<(String, String)>) {
                 .iter()
                 .map(|agent| {
                     let mut fields = vec![];
+                    let model = agent.model.as_ref().and_then(|model| model.one());
                     for (name, value) in [
-                        ("program", &agent.program),
-                        ("model", &agent.model),
-                        ("instructions", &agent.instructions),
-                        ("beside", &agent.beside),
+                        ("program", agent.program.as_deref()),
+                        ("model", model),
+                        ("instructions", agent.instructions.as_deref()),
+                        ("beside", agent.beside.as_deref()),
                     ] {
                         if let Some(value) = value {
                             fields.push(format!("{name} = \"{value}\""));
@@ -460,7 +461,14 @@ agents = [{ instructions = "keep it short" }]
         "settings apart from the kinds"
     );
     let change = &settings["change"];
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -468,7 +476,11 @@ agents = [{ instructions = "keep it short" }]
     let bump = &kinds[0];
     assert_eq!(bump.agents.every_stage.program.as_deref(), Some("agent"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -511,7 +523,14 @@ fn a_kind_that_lands_with_no_stages_beside_one_that_does_not_and_settings() {
         vec!["fix"],
         "fix's table, settings for a kind declared elsewhere"
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     repository.write(
         DECLARATION,
         &format!("{declared}\n[kinds.idle]\nlands = false\nstages = []\n"),
@@ -1063,8 +1082,21 @@ agents = [{ effort = "xhigh" }]
         panic!("the declaration did not read");
     };
     let bump = &kinds[0];
-    assert_eq!(bump.agents.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(bump.stages[0].agents[0].effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        bump.agents
+            .every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        bump.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("xhigh")
+    );
 }
 
 #[test]
@@ -1088,8 +1120,18 @@ effort = "high"
     else {
         panic!("the declaration did not read");
     };
-    assert_eq!(agents.effort.as_deref(), Some("medium"));
-    assert_eq!(settings["fix"].every_stage.effort.as_deref(), Some("high"));
+    assert_eq!(
+        agents.effort.as_ref().and_then(|effort| effort.one()),
+        Some("medium")
+    );
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
 }
 
 #[test]
@@ -1180,7 +1222,14 @@ agents = [{ session = "z", instructions = "keep it short" }]
     let change = &settings["change"];
     assert_eq!(change.every_stage.session, None, "change's every stage");
     assert_eq!(change.for_stage("verify").session, None, "change's verify");
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -1189,9 +1238,20 @@ agents = [{ session = "z", instructions = "keep it short" }]
     assert_eq!(bump.agents.every_stage.session, None, "bump's every stage");
     assert_eq!(bump.agents.for_stage("code").session, None, "bump's code");
     assert_eq!(bump.stages[0].agents[0].session, None, "code's own agent");
-    assert_eq!(bump.agents.every_stage.model.as_deref(), Some("sonnet"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
+    assert_eq!(
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -1485,14 +1545,24 @@ model = "sonnet"
         panic!("the declaration did not read");
     };
     assert!(kinds.is_empty());
-    assert_eq!(agents.model.as_deref(), Some("opus"));
+    assert_eq!(
+        agents.model.as_ref().and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(agents.mode, Some(ModeSetting::Flume(Mode::Edits)));
     assert_eq!(agents.instructions.as_deref(), Some("Mind the tagline."));
     assert_eq!(
         agents.programs["claude"].settings["attribution"],
         serde_json::json!({ "commit": "Assisted-by: Claude Code", "pr": "" })
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
     assert!(settings["fix"].every_stage.programs.is_empty(), "apart");
     let scratch = Scratch::new("launch-agents");
     let file = scratch.path("kinds.toml");
@@ -1682,7 +1752,10 @@ makes = ["preview"]
     );
     assert_eq!(kind.stages[0].agents[0].program.as_deref(), Some("agent"));
     assert_eq!(
-        kind.stages[0].agents[0].effort.as_deref(),
+        kind.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
         Some("high"),
         "the stage's effort, read as written (197)"
     );

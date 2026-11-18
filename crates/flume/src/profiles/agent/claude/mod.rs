@@ -32,8 +32,8 @@ pub mod withheld;
 pub mod wrapper;
 
 use flume_seams::{
-    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Offered, PlaceRef,
-    Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
+    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Offered,
+    PerProgram, PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
 };
 use record::Record;
 use sha2::{Digest, Sha256};
@@ -324,11 +324,11 @@ impl Agent for Claude {
         if let Some(session) = resume {
             args.extend([carry::FLAG.to_string(), session.to_string()]);
         }
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(PerProgram::one) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(word) = &settings.effort {
-            args.extend([effort::FLAG.to_string(), word.clone()]);
+        if let Some(word) = settings.effort.as_ref().and_then(PerProgram::one) {
+            args.extend([effort::FLAG.to_string(), word.to_string()]);
         }
         if let Some(mode) = mode {
             args.extend([mode::FLAG.to_string(), mode.to_string()]);

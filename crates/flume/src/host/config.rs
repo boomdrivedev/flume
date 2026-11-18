@@ -1587,8 +1587,8 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         .transpose()?
         .unwrap_or_default();
     Ok(Settings {
-        model: text("model")?,
-        effort: text("effort")?,
+        model: text("model")?.map(Into::into),
+        effort: text("effort")?.map(Into::into),
         instructions: text("instructions")?,
         mode,
         programs,
@@ -1888,11 +1888,23 @@ mod tests {
         )
         .unwrap();
         let kind = &config.kinds["change"];
-        assert_eq!(kind.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            kind.every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(kind.every_stage.instructions.as_deref(), Some("be brief"));
         let repository = &config.repos["/r"]["change"];
         assert_eq!(repository.every_stage, Settings::default());
-        assert_eq!(repository.stages["verify"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            repository.stages["verify"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
     }
 
     #[test]
@@ -1950,22 +1962,42 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            config.kinds["fix"].every_stage.effort.as_deref(),
+            config.kinds["fix"]
+                .every_stage
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("high")
         );
         let repository = &config.repos["/r"]["fix"];
         assert_eq!(repository.every_stage, Settings::default());
-        assert_eq!(repository.stages["code"].effort.as_deref(), Some("xhigh"));
+        assert_eq!(
+            repository.stages["code"]
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
+            Some("xhigh")
+        );
         let scratch = Scratch::new("effort-layers");
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let settings = flume_seams::Host::settings(&host, &folder("/r"), "fix", "default");
         assert_eq!(
-            settings.kind.every_stage.effort.as_deref(),
+            settings
+                .kind
+                .every_stage
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("high"),
             "the host-kind layer"
         );
         assert_eq!(
-            settings.repository.for_stage("code").effort.as_deref(),
+            settings
+                .repository
+                .for_stage("code")
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("xhigh"),
             "the host-repository layer"
         );
@@ -2706,7 +2738,10 @@ label = "inception"
         assert_eq!(config.streams["work"].session.as_deref(), Some("office"));
         let fix = &config.kinds["fix"];
         assert_eq!(fix.every_stage.session, None);
-        assert_eq!(fix.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            fix.every_stage.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(fix.stages["code"], Settings::default());
         assert_eq!(config.repos["/r"]["fix"].every_stage, Settings::default());
         let refused = HostConfig::parse("[streams.work]\nsession = 3\n").unwrap_err();
@@ -3067,7 +3102,11 @@ label = "inception"
             }
         );
         assert_eq!(
-            config.repos["/r"]["fix"].every_stage.model.as_deref(),
+            config.repos["/r"]["fix"]
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("sonnet"),
             "a kind's table holds its stream beside its agents"
         );
@@ -3340,7 +3379,10 @@ label = "inception"
         )
         .unwrap();
         let change = &config.kinds["change"].every_stage;
-        assert_eq!(change.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            change.model.as_ref().and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(change.instructions.as_deref(), Some("be brief"));
         assert_eq!(
             value_at(&config, "kinds.change.agents.model"),
@@ -3362,8 +3404,22 @@ label = "inception"
             Some("[agents]\neffort = \"high\"\n"),
         )
         .unwrap();
-        assert_eq!(config.every_agent.effort.as_deref(), Some("high"));
-        assert_eq!(config.every_agent.model.as_deref(), Some("opus"));
+        assert_eq!(
+            config
+                .every_agent
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
+            Some("high")
+        );
+        assert_eq!(
+            config
+                .every_agent
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             value_at(&config, "agents.effort"),
             Some(("\"high\"".into(), ConfigLayer::Local))
@@ -3393,7 +3449,13 @@ label = "inception"
             )]))),
             "the managed table's other program goes with it"
         );
-        assert_eq!(fix.stages["code"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            fix.stages["code"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(
             fix.stages["code"].instructions.as_deref(),
             Some("test first")
@@ -4118,7 +4180,10 @@ label = "inception"
         );
         let config = HostConfig::read(&config).unwrap();
         let every = &config.every_agent;
-        assert_eq!(every.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            every.model.as_ref().and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(every.mode, Some(ModeSetting::Flume(Mode::Edits)));
         assert_eq!(every.instructions.as_deref(), Some("Be brief."));
         let agent = &every.programs["agent"];
@@ -4131,7 +4196,10 @@ label = "inception"
         assert_eq!(file.read, home(&written), "the home read for ~/");
         assert_eq!(file.keys["tui"], serde_json::json!("fullscreen"));
         let work = &config.streams_agents["work"];
-        assert_eq!(work.model.as_deref(), Some("opus"));
+        assert_eq!(
+            work.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             work.programs["agent"].settings["tui"],
             serde_json::json!("default")
@@ -4140,7 +4208,10 @@ label = "inception"
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let in_work = flume_seams::Host::settings(&host, &folder("/r"), "fix", "work");
         assert_eq!(in_work.every_agent, every);
-        assert_eq!(in_work.stream.model.as_deref(), Some("opus"));
+        assert_eq!(
+            in_work.stream.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             in_work.every_kind.instructions.as_deref(),
             Some("Mind the tagline.")
@@ -4148,7 +4219,14 @@ label = "inception"
         let in_default = flume_seams::Host::settings(&host, &folder("/s"), "fix", "default");
         assert_eq!(in_default.stream, Settings::default());
         assert_eq!(in_default.every_kind, Settings::default());
-        assert_eq!(in_default.every_agent.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            in_default
+                .every_agent
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
     }
 
     #[test]
@@ -4184,7 +4262,10 @@ label = "inception"
         }
         let config = HostConfig::parse("[agents.streams.default]\nmodel = \"opus\"\n").unwrap();
         assert_eq!(
-            config.streams_agents["default"].model.as_deref(),
+            config.streams_agents["default"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("opus"),
             "default always stands"
         );
@@ -4319,7 +4400,11 @@ label = "inception"
             serde_json::json!({ "commit": "", "pr": "", "sessionUrl": false })
         );
         assert_eq!(
-            config.repos[&fork]["fix"].every_stage.model.as_deref(),
+            config.repos[&fork]["fix"]
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("opus"),
             "beside its kinds' tables"
         );
@@ -4384,11 +4469,18 @@ label = "inception"
             serde_json::json!("plain")
         );
         assert_eq!(
-            config.streams_agents["work"].model.as_deref(),
+            config.streams_agents["work"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("haiku")
         );
         let r = &config.repos_agents["/r"];
-        assert_eq!(r.model.as_deref(), Some("opus"), "the managed key kept");
+        assert_eq!(
+            r.model.as_ref().and_then(|model| model.one()),
+            Some("opus"),
+            "the managed key kept"
+        );
         assert_eq!(
             r.programs["agent"].settings["attribution"],
             serde_json::json!({ "commit": "" })
@@ -4465,7 +4557,12 @@ label = "inception"
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let settings = flume_seams::Host::settings(&host, &acme, "fix", "default");
         assert_eq!(
-            settings.repository.every_stage.model.as_deref(),
+            settings
+                .repository
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("haiku")
         );
         assert_eq!(settings.every_kind.keep_open.as_deref(), Some("2h"));

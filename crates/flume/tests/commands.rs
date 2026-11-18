@@ -99,11 +99,11 @@ impl Agent for StandInAgent {
         prompt: &str,
     ) -> AgentCommand {
         let mut args = vec![];
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(|model| model.one()) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(effort) = &settings.effort {
-            args.extend(["--effort".to_string(), effort.clone()]);
+        if let Some(effort) = settings.effort.as_ref().and_then(|effort| effort.one()) {
+            args.extend(["--effort".to_string(), effort.to_string()]);
         }
         if let Some(instructions) = &settings.instructions {
             args.extend(["--instructions".to_string(), instructions.clone()]);
@@ -1427,8 +1427,20 @@ fn an_effort_for_every_stage_and_for_one_at_the_launch() {
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "change--one");
     let held = held_of(&host, &place).state.place;
-    assert_eq!(held.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(held.settings["verify"].effort.as_deref(), Some("max"));
+    assert_eq!(
+        held.every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        held.settings["verify"]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("max")
+    );
     for (stage, effort) in [("construct", "high"), ("code", "high"), ("verify", "max")] {
         let agent = current_agent(&host, &repository.dir, &place);
         assert_eq!(agent["stage"], stage, "{agent}");

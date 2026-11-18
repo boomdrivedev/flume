@@ -378,8 +378,8 @@ fn settings_of(
         .unwrap_or_default();
     Ok(Settings {
         program: entry.name("program")?,
-        model: entry.text("model")?,
-        effort: entry.text("effort")?,
+        model: entry.text("model")?.map(Into::into),
+        effort: entry.text("effort")?.map(Into::into),
         instructions: entry.text("instructions")?,
         beside: entry.name("beside")?,
         session: entry.name("session")?,

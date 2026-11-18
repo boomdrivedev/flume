@@ -873,7 +873,7 @@ fn the_agents_efforts_are_scripted() {
         agent.command(
             "/state/fix--one",
             &Settings {
-                effort: effort.map(str::to_string),
+                effort: effort.map(Into::into),
                 ..Settings::default()
             },
             None,

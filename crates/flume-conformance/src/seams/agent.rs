@@ -376,7 +376,7 @@ fn the_command_passes_the_effort<H: AgentHarness>(harness: &H) -> Outcome {
         harness.seam().command(
             &harness.folder(),
             &Settings {
-                effort: effort.map(str::to_string),
+                effort: effort.map(Into::into),
                 ..Settings::default()
             },
             None,

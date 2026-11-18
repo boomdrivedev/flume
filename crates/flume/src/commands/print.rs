@@ -2639,7 +2639,7 @@ mod tests {
         AgentStatus {
             settings: AgentSettings {
                 settings: flume_seams::Settings {
-                    effort: word.map(str::to_string),
+                    effort: word.map(Into::into),
                     ..flume_seams::Settings::default()
                 },
                 env,

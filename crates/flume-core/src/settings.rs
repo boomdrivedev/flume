@@ -29,7 +29,7 @@ use crate::own::{fold, Table};
 use crate::{Engine, KEEP_OPEN};
 use flume_seams::{
     Account, Agent, Deliverable, Given, Kind, KindSettings, Layer, Mode, ModeEntry, OwnFile,
-    PlaceRecord, ProgramSettings, Settings, Stage,
+    PerProgram, PlaceRecord, ProgramSettings, Settings, Stage,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -244,7 +244,8 @@ fn effort_taken(resolved: &Resolved, agent: &dyn Agent, stage: &str) -> Result<(
     };
     let layer = resolved.layer_of("effort");
     let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
-    agent.effort(effort).map_err(|words| {
+    let effort = effort.written();
+    agent.effort(&effort).map_err(|words| {
         format!(
             "the stage `{stage}`'s effort `{effort}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
         )
@@ -399,11 +400,11 @@ impl Engine {
                 .rev()
                 .fold(Settings::default(), |under, table| under.under(table));
             let whole = [
-                ("program", &given.program),
-                ("model", &given.model),
-                ("effort", &given.effort),
-                ("instructions", &given.instructions),
-                ("keep_open", &given.keep_open),
+                ("program", given.program.clone()),
+                ("model", given.model.as_ref().map(PerProgram::written)),
+                ("effort", given.effort.as_ref().map(PerProgram::written)),
+                ("instructions", given.instructions.clone()),
+                ("keep_open", given.keep_open.clone()),
             ];
             for (key, value) in whole {
                 if let Some(value) = value {
@@ -411,7 +412,7 @@ impl Engine {
                         key.into(),
                         Given {
                             layer,
-                            value: value.clone(),
+                            value,
                             file: None,
                         },
                     );

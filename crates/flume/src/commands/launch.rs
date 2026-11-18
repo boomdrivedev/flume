@@ -68,8 +68,8 @@ pub fn agent(
     let text = Some(value.to_string());
     match field {
         "program" => settings.program = text,
-        "model" => settings.model = text,
-        "effort" => settings.effort = text,
+        "model" => settings.model = text.map(Into::into),
+        "effort" => settings.effort = text.map(Into::into),
         "instructions" => settings.instructions = text,
         "beside" => settings.beside = text,
         "session" => settings.session = text,
@@ -261,9 +261,18 @@ mod tests {
             "instructions=be brief",
         ])
         .unwrap();
-        assert_eq!(every.model.as_deref(), Some("opus"));
+        assert_eq!(
+            every.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(every.instructions.as_deref(), Some("be brief"));
-        assert_eq!(stages["verify"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            stages["verify"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(stages["code"].instructions.as_deref(), Some("a=b"));
     }
 
@@ -272,8 +281,17 @@ mod tests {
         // 7, 32, 197: `effort=high` for every stage and `verify.effort=max`
         // for one, each its program's own word kept as written.
         let (every, stages) = given(&["effort=high", "verify.effort=max"]).unwrap();
-        assert_eq!(every.effort.as_deref(), Some("high"));
-        assert_eq!(stages["verify"].effort.as_deref(), Some("max"));
+        assert_eq!(
+            every.effort.as_ref().and_then(|effort| effort.one()),
+            Some("high")
+        );
+        assert_eq!(
+            stages["verify"]
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
+            Some("max")
+        );
         assert_eq!(stages["verify"].model, None);
     }
 

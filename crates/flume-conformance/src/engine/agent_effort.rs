@@ -143,7 +143,12 @@ fn a_word_kept_as_written(_: &()) -> Outcome {
     world.settle(&id);
     let agent = world.status(&id)?.agent.ok_or("no agent")?;
     ensure_eq!(
-        agent.settings.settings.effort.as_deref(),
+        agent
+            .settings
+            .settings
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
         Some("xhigh"),
         "the agent's effort"
     );
@@ -304,7 +309,11 @@ fn the_hosts_table_changed_after_the_launch(_: &()) -> Outcome {
             .as_ref()
             .ok_or(format!("no start of {stage}"))?;
         ensure_eq!(
-            start.settings.effort.as_deref(),
+            start
+                .settings
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("high"),
             format!("{stage}'s start keeps its effort")
         );

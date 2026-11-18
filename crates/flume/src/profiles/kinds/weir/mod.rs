@@ -1005,8 +1005,8 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
     }
     Settings {
         program,
-        model,
-        effort,
+        model: model.map(Into::into),
+        effort: effort.map(Into::into),
         instructions,
         beside: pane,
         mode,

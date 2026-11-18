@@ -39,9 +39,9 @@ fn effort_status(start: &StartHeld, variable: Option<&'static str>) -> Option<Ef
         })
         .map(str::to_string);
     Some(EffortStatus {
-        word: word.clone(),
+        word: word.written(),
         layer: given.layer,
-        passed: word.clone(),
+        passed: word.written(),
         read_back: false,
         outranked_by,
     })

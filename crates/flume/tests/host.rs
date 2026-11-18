@@ -1418,8 +1418,22 @@ fn the_modules_files_read_whole() {
     );
 
     let change = &config.kinds["change"];
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
-    assert_eq!(change.every_stage.effort.as_deref(), Some("high"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
+    assert_eq!(
+        change
+            .every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
     assert_eq!(
         change.every_stage.mode,
         Some(ModeSetting::Flume(Mode::Edits))
@@ -1457,7 +1471,10 @@ fn the_modules_files_read_whole() {
         ])
     );
     let code = &change.stages["code"];
-    assert_eq!(code.model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        code.model.as_ref().and_then(|model| model.one()),
+        Some("sonnet")
+    );
     assert_eq!(
         code.mode,
         Some(ModeSetting::Programs(BTreeMap::from([(
@@ -1470,19 +1487,47 @@ fn the_modules_files_read_whole() {
         ["change"],
         "research's table gives no agents"
     );
-    assert_eq!(config.repos_agents[&acme].effort.as_deref(), Some("medium"));
+    assert_eq!(
+        config.repos_agents[&acme]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("medium")
+    );
     let fix = &config.repos[&acme]["fix"];
-    assert_eq!(fix.every_stage.effort.as_deref(), Some("low"));
-    assert_eq!(fix.stages["code"].model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        fix.every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("low")
+    );
+    assert_eq!(
+        fix.stages["code"]
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
     assert_eq!(config.repos[&fork], BTreeMap::new());
-    assert_eq!(config.every_agent.model.as_deref(), Some("opus"));
+    assert_eq!(
+        config
+            .every_agent
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(config.every_agent.keep_open.as_deref(), Some("1h"));
     assert_eq!(
         config.every_agent.programs["scribe"].settings,
         BTreeMap::from([("theme".to_string(), serde_json::json!("dark"))])
     );
     assert_eq!(
-        config.streams_agents["work"].effort.as_deref(),
+        config.streams_agents["work"]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
         Some("high")
     );
 
