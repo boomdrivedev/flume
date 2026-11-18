@@ -74,22 +74,19 @@ The sluice profile SHALL submit a branch by name by `sluice submit
 <base> --head <branch> --no-wait --json` run in the repository, read as
 any submit's answer, and SHALL run no `sluice inbox` for it, reading its
 outcome from read-submission's entry whose `from.head` is the branch,
-with its words, files and `tested.on`, against the pinned sluice that
-takes `--head` without `--check` and records no worktree as its
-submitter. Its queue SHALL move as any queue of sluice's does, by
+with its words, files and `tested.on`. Its queue SHALL move by
 sluice's host process, which the submit starts, with no round run by
 flume (99, 117, 124, 125, 133, 203, C.6; sluice 124, 135).
 
 #### Scenario: A base place's branch over a scratch repository
 
-- **WHEN** the pinned sluice lands `main` and `train/*` of a scratch repository with a stand-in origin, flume opens `train/a` from `main`, a fix cut from `train/a` is submitted to it and read until it is decided, and the base place's submission of `train/a` by name is read until it is decided, no sluice command of the test's or flume's stepping either queue
+- **WHEN** the pinned sluice, which takes `--head` without `--check` and records no worktree as the submitter of a branch submitted by name, lands `main` and `train/*` of a scratch repository with a stand-in origin, flume opens `train/a` from `main`, a fix cut from `train/a` is submitted to it and read until it is decided, and the base place's submission of `train/a` by name is read until it is decided, no sluice command of the test's or flume's stepping either queue
 - **THEN** sluice made `train/a` at `main`'s revision on the stand-in origin, sluice's host process landed the fix on `train/a` and `train/a` on `main` with no worktree on it anywhere, flume read the landing from `sluice status` with no `sluice inbox` run for it, and closing it into `main` removed it there and on the host, no command of flume's pushing or moving a branch itself (14, 202 to 206, S110)
 
 ### Requirement: A submitted place with no agent lands by a watch's settles
 
 Against the pinned sluice, a place submitted with no agent in it SHALL
-land by sluice's host process, which its submit started, and SHALL be
-read and tidied by the settles a caller keeping watch runs, `flume
+land by sluice's host process and SHALL be read and tidied by the settles a caller keeping watch runs, `flume
 settle --every`, with no other caller's act, no `sluice wait` and no
 sluice command of any settle's that moves a queue. Where that host
 process ended before the submission was decided, a settle's read SHALL
@@ -98,7 +95,7 @@ C.6, S109; sluice 135).
 
 #### Scenario: Settled by a watch, no agent
 
-- **WHEN** a chore in a scratch repository delivers, its agent ends and it is submitted to the pinned sluice, its check held until the watch's first settle has read it open, and the test then runs `flume settle --every 1m` until it lands
+- **WHEN** a chore in a scratch repository delivers, its agent ends and it is submitted to the pinned sluice, whose host process the submit starts, its check held until the watch's first settle has read it open, and the test then runs `flume settle --every 1m` until it lands
 - **THEN** no settle ran a `sluice step`, `run`, `daemon` or `wait`, the chore landed with no agent started after its code stage, and the settle after the landing tidied it (124, 208, S109)
 
 #### Scenario: A host process started again by a settle's read
