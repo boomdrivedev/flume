@@ -4078,9 +4078,10 @@ mod tests {
 
     #[test]
     fn an_agents_degraded_parts() {
-        // 56, 174: each part its profile does not build on a line of its
-        // own after the agent's notes, with how flume reads it, and none
-        // for an agent whose profile builds every part.
+        // 56, 171, 174: each part its profile does not build on a line of
+        // its own after the agent's notes, in 171's order, with how flume
+        // reads it, the five it reads from the terminal among them, and
+        // none for an agent whose profile builds every part.
         let none = in_mode(
             "edits",
             Layer::Kind,
@@ -4092,12 +4093,21 @@ mod tests {
         );
         let agent = AgentStatus {
             notes: vec!["the agent runs flume's plugin version 0.1".into()],
-            degraded: [Part::SendBack, Part::Guard, Part::OnQuiet]
-                .map(|part| DegradedPart {
-                    part,
-                    read: part.read().into(),
-                })
-                .to_vec(),
+            degraded: [
+                Part::Received,
+                Part::Asking,
+                Part::OwnWork,
+                Part::Ended,
+                Part::LastWords,
+                Part::SendBack,
+                Part::Guard,
+                Part::OnQuiet,
+            ]
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
             ..none.clone()
         };
         let lines = agent_lines(&agent, "work", "fix");
@@ -4108,6 +4118,11 @@ mod tests {
         assert_eq!(
             lines[note + 1..],
             [
+                "    received degraded: read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+                "    asking degraded: read from the terminal, asking while it reads the agent waiting on a question",
+                "    own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+                "    ended degraded: read from the terminal, ended once it reads the agent stopped",
+                "    last words degraded: read from the terminal, what it shows of the agent",
                 "    send-back degraded: not offered, so it may go quiet with its deliverable missing",
                 "    guard degraded: not offered, so nothing refuses its submitting, merging or pushing its place's branch",
                 "    on-quiet degraded: not offered, so the host's watch, or a command where none keeps watch, settles its place",
