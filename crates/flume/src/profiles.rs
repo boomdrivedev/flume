@@ -522,14 +522,19 @@ pub fn window(name: &str, login: Option<&[(String, String)]>) -> Option<Arc<dyn 
 /// `$XDG_CONFIG_HOME/flume/config.toml` and `config.local.toml` over it,
 /// and the recipient
 /// `$FLUME_RECIPIENT` names; a configuration that cannot be read is
-/// refused, naming its fault (C.7; design 16).
+/// refused, naming its fault (C.7; design 16); its signals handed to the
+/// command's telemetry, which the managed layer's `[telemetry]` chose as
+/// the command's first engine was built (216).
 pub fn core() -> Result<Engine, String> {
-    core_over(
+    let config = HostConfig::of_host()?;
+    let telemetry = crate::telemetry::held(config.telemetry.as_ref());
+    Ok(core_over(
         &config::flume_state()?,
-        HostConfig::of_host()?,
+        config,
         host::recipient(),
         BuiltIn::new(),
-    )
+    )?
+    .with_telemetry(telemetry))
 }
 
 /// The core over `resolver`, the terminal `config` binds, built through
@@ -604,18 +609,22 @@ fn core_built(
 }
 
 /// The words `flume hook` takes, one per hook of the agent program's
-/// plugin, and the status line its module pins (C.4; design 5).
+/// plugin, the status line its module pins and the usage windows its
+/// module passes (184, 211, C.4; design 5).
 pub fn hook_events() -> Vec<&'static str> {
     agent::claude::hook::EVENTS
         .iter()
         .map(|(word, _)| *word)
-        .chain([agent::claude::status_line::EVENT])
+        .chain([
+            agent::claude::status_line::EVENT,
+            agent::claude::windows::EVENT,
+        ])
         .collect()
 }
 
 /// Whether the hook for `event` reads its input on standard input: every
-/// hook of the agent program's does, and the status line reads none
-/// (design 5).
+/// hook of the agent program's does, and the usage windows' report, and
+/// the status line reads none (211; design 5).
 pub fn hook_reads_input(event: &str) -> bool {
     event != agent::claude::status_line::EVENT && event != agent::claude::hook::DELIVER
 }

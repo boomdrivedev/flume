@@ -42,7 +42,7 @@ write either file (32, C.7; core.16).
 
 The local layer SHALL set only a stream's `agents`, `priority`,
 `points`, `pace`, `session` and `multiplexer`, the `session` a stream
-names for a kind and for a kind's stage, a label's `reserve` and `keep_free`, the `stream` and
+names for a kind and for a kind's stage, a label's `owed` and `reserved`, the `stream` and
 `label` a repository's kind or a kind is given, the `stream` a
 repository is given, and a kind's agents table; a local file setting any
 other key, unreadable, or setting a value its key refuses, SHALL not be
@@ -87,6 +87,16 @@ taken at all, the managed layer read alone (C.7, 199).
 
 - **WHEN** the managed layer gives `[streams.work.kinds.research] session = "work-design"` and pins `"streams.work.kinds"`, and the local layer gives research `session = "work-research"` and `work` three agents
 - **THEN** `work`'s three agents are taken, research's session is passed over and reads `work-design` from the managed layer, and status names `streams.work.kinds.research.session` with its pin (199, C.7)
+
+#### Scenario: A label's share set locally
+
+- **WHEN** the local layer gives `streams.work.labels.operation.owed = 3` and `streams.work.labels.operation.reserved = 1`
+- **THEN** the local layer is taken, `operation` is owed three in `work` and holds one reserved, each from the local layer (181, C.7, S85)
+
+#### Scenario: A label's old key set locally
+
+- **WHEN** the local layer gives `streams.work.labels.operation.reserve = 3`
+- **THEN** no key of it is taken, and status names `streams.work.labels.operation.reserve` (181, C.7)
 
 ### Requirement: The managed layer pins keys
 
@@ -199,3 +209,51 @@ other (C.7; core.45).
 
 - **WHEN** the managed layer gives `[repos."acme/acme"] stream = "work"` and the local layer gives `[repos."acme/acme"] stream = "personal"`, and then the managed layer also gives `[host] pin = ["repos.\"acme/acme\".stream"]`
 - **THEN** the host names `personal` from the local layer for the repository whose address is `acme/acme`, and with the pin `work` from the managed layer, status naming the key passed over (C.7; core.45)
+
+### Requirement: The managed layer's telemetry table
+
+The managed layer MAY give `[telemetry]`: `send`, a boolean, `false`
+where unset; `collector`, the address flume sends to; `service`, a
+non-empty string, `flume` where unset; `traces`, `metrics` and `logs`,
+each a boolean, `true` where unset; and `[telemetry.attributes]`, each
+a string. Status SHALL give each value with its layer (216, C.7).
+
+#### Scenario: A table that sends
+
+- **WHEN** the managed layer gives `[telemetry]` with `send = true`, `collector = "http://localhost:4318/"` and `traces = false`
+- **THEN** the host reads telemetry sent to `http://localhost:4318` as the service `flume`, with metrics and logs and no traces, and status gives each value from `managed` (216, C.7)
+
+### Requirement: A telemetry table that does not read is refused
+
+A `[telemetry]` SHALL be refused naming the key, as any key of the
+managed layer that does not read is, where it gives a key it does not
+read, a value its key does not take, a `send` of `true` with no
+collector, an attribute shaped as a credential, or a collector that is
+not `http://`, a host of the loopback (`localhost`, an address of
+`127.0.0.0/8` or `[::1]`), a port and at most a path (C.7; core.50,
+core.56).
+
+#### Scenario: A table that sends names its collector
+
+- **WHEN** the managed layer gives `[telemetry] send = true` with no collector
+- **THEN** the configuration is refused naming `[telemetry] collector` and `send = true` (C.7)
+
+#### Scenario: A collector off the loopback
+
+- **WHEN** the managed layer gives `[telemetry]` a collector of `https://localhost:4318`, `http://otel.example:4318`, `http://localhost` or `localhost:4318`
+- **THEN** each is refused naming `[telemetry] collector` and what it lacks: plain HTTP, the host's loopback, or a port (C.7; core.56)
+
+#### Scenario: A key telemetry does not read
+
+- **WHEN** the managed layer gives `[telemetry] headers = "x"`, or an attribute `token` whose value is shaped as a credential
+- **THEN** the configuration is refused naming `telemetry.headers`, and in the second `telemetry.attributes.token` and never its value (C.7; core.50)
+
+### Requirement: The local layer sets no telemetry
+
+A local layer that sets any key of `[telemetry]` SHALL not be taken,
+as for any key outside C.7's list (C.7, 216; core.45).
+
+#### Scenario: The local layer turns telemetry on
+
+- **WHEN** the local layer gives `[telemetry] send = true`
+- **THEN** no key of it is taken, status names `telemetry.send`, and nothing is sent (C.7, 216; core.45)

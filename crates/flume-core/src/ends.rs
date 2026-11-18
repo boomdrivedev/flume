@@ -207,7 +207,7 @@ impl Engine {
                     match answer {
                         Ok(true) => recorded = true,
                         Ok(false) => {}
-                        Err(why) => self.host.log(&format!(
+                        Err(why) => self.log(&format!(
                             "the notice claimed of {}'s end to {} was not recorded: {why}",
                             held.place.id, claim.recipient
                         )),

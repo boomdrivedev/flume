@@ -24,7 +24,7 @@ start ([two layers](/flume/guides/agent-settings/#two-layers)):
 - `config.local.toml`, the local layer, read over the managed one key
   by key. It sets only a stream's `agents`, `priority`, `session` and
   `multiplexer`, the `session` it names for a kind or a kind's stage, a
-  label's `reserve` and `keep_free`, the `stream` and `label` of a
+  label's `owed` and `reserved`, the `stream` and `label` of a
   repository's kind, a repository or a kind, and every agents table.
   Each of a program's own settings and each program's `file` is a key
   of its own there. A local file that sets any other key, or that
@@ -97,13 +97,13 @@ attribution = { commit = "", pr = "", sessionUrl = false }
 
 | Key | Values | Meaning |
 |---|---|---|
-| `agents` | a whole number from 0 | The bound on agents running at once on the host, every caller's and every stream's counted together. A stage starts only while the host is under it and otherwise waits for room. With none, and no stream's bound, every stage starts at once and the host has no queue. |
+| `agents` | a whole number from 1 | The bound on agents running at once on the host, every caller's and every stream's counted together. A stage starts only while the host is under it and otherwise waits for room. With none, and no stream's bound, every stage starts at once and the host has no queue. |
 | `multiplexer` | `"herdr"`, `"rex"`, `"printed"` | The multiplexer a stream's agents run in where the stream names none: herdr panes, blocks in Rex servers of flume's own, each session's at `<state>/terminal/rex/<session>.sock`, or a command flume prints for you to run. `"printed"` where none is given. Any other name makes every command refuse, naming the terminal profiles there are. |
 | `terminal` | as `multiplexer` | The word written before `multiplexer`, read as it. A `[host]` giving both is refused. |
 | `view` | `"terminal"`, `"app"` | How `flume open` shows a stream's agents where the stream names none: in a window of a terminal app, or in the multiplexer's own app. `"terminal"` where none is given. |
 | `terminal_app` | `"ghostty"`, `"terminal"`, `"printed"` | The program that opens a stream's window where the stream names none: Ghostty, Terminal.app on macOS, or none, `flume open` printing the line to run. `"printed"` where none is given. Any other name refuses each stream's `flume open` that takes it, naming the window profiles there are; every other command runs. |
 | `pool` | a pool's name | The pool of a place whose stream names none. With none, such a place's agents run under no account. |
-| `ends_expire` | a string, `<n>`, `<n>s`, `<n>m` or `<n>h`, at least one second | How long an end may stay pending for a recipient before status shows it expired: a week, `"168h"`, where none is given. An expired end is never dropped; it stays pending, shown expired with its recipient and whether anything was ever confirmed under that name, until the recipient confirms it ([flume confirm](/flume/reference/commands/#flume-confirm)). Each end's delivery takes the span as it stands when the end's delivery is recorded. `"0"` and any other form refuse the configuration, naming `host.ends_expire`. |
+| `ends_expire` | a string, `<n>` or `<n>s` seconds, `<n>m` minutes or `<n>h` hours, `<n>` from 1 | How long an end may stay pending for a recipient before status shows it expired: a week, `"168h"`, where none is given. An expired end is never dropped; it stays pending, shown expired with its recipient and whether anything was ever confirmed under that name, until the recipient confirms it ([flume confirm](/flume/reference/commands/#flume-confirm)). Each end's delivery takes the span as it stands when the end's delivery is recorded. `"0"` and any other form refuse the configuration, naming `host.ends_expire`. |
 | `pin` | a list of dotted keys, such as `"streams.work.agents"` | The keys the local layer may not set over the managed one. Each names a key the local layer could set, or a table of such keys, as `"streams.work"` does. A local key a pin holds is passed over, status naming it with its pin, and the rest of the local file is taken. |
 
 ### `[streams.<stream>]`
@@ -115,8 +115,8 @@ for; a `[streams.default]` table gives it keys of its own.
 
 | Key | Values | Meaning | Left out |
 |---|---|---|---|
-| `agents` | a whole number above 0 | the bound on the stream's agents running at once, within the host's | the host's bound alone |
-| `priority` | a whole number, negative allowed | the stream's priority: waiting stages start by it first, then by their place's | `0` |
+| `agents` | a whole number from 1 | the bound on the stream's agents running at once, within the host's | the host's bound alone |
+| `priority` | a whole number, negative allowed | the stream's priority among streams, higher starting first: waiting stages start by it first, then by their place's | `0` |
 | `pool` | a pool's name | the pool its places' agents take accounts from | `[host] pool` |
 | `session` | a string herdr takes as a session's name | the herdr session its agents open in, but those of a kind or a stage it names another for ([a stream's sessions](/flume/guides/agent-settings/#a-streams-sessions)) | the stream's own name, and flume's own session for `default` |
 | `multiplexer` | `"herdr"`, `"rex"`, `"printed"` | the multiplexer its agents run in, read at each start; an agent stays in the one it opened in ([a stream's multiplexer](/flume/guides/agent-settings/#a-streams-multiplexer-and-view)); under Rex each of its sessions is a Rex server of flume's own at `<state>/terminal/rex/<session>.sock` ([places under Rex](/flume/guides/places-and-herdr/#places-under-rex)) | `[host] multiplexer` |
@@ -137,12 +137,17 @@ and the profiles there are, and every other stream runs. One whose
 
 A label's share of the stream's agents
 ([labels](/flume/guides/agent-settings/#labels)). The stream holds it
-only where it states `agents`.
+only where it states `agents`, and what its labels are owed together
+is no more than its `agents`.
 
 | Key | Values | Meaning | Left out |
 |---|---|---|---|
-| `reserve` | a whole number from 0 | the stream's agents owed to the label: while it runs fewer, its stages start before the stream's others | `0` |
-| `keep_free` | a whole number from 0, no more than `reserve` | the stream's slots kept free for the label while it runs fewer agents than that | `0` |
+| `owed` | a whole number of agents from 0 | how many of the stream's agents the label's places are first in line for: while it runs fewer, its stages start before the stream's others, whatever their priorities; one it does not use is lent while it has nothing waiting, and is its own again at the next agent to end | `0` |
+| `reserved` | a whole number of agents from 0, no more than `owed` | how many of those are held for the label alone: an agent it holds reserved and does not use stays empty for its own next stage and is never lent | `0` |
+
+A label's table holds `owed` and `reserved` alone. Any other key,
+`reserve` and `keep_free` among them, refuses each start of the stream,
+naming it ([what refuses](#what-refuses)).
 
 ### `[streams.<stream>.kinds.<kind>]`
 
@@ -185,7 +190,7 @@ A pool of accounts
 | Key | Values | Meaning |
 |---|---|---|
 | `strategy` | `"fill-first"`, `"least-busy"`, `"most-left"` | how an account is chosen. `fill-first`: the first usable one in order. `least-busy`: the usable one running the fewest of flume's agents, equals in order. `most-left`: the usable one with the most of its allowance left by its reading ([an account's reading](/flume/guides/agent-settings/#an-accounts-reading)). Required. |
-| `threshold` | a whole number from 1 to 100 | the percentage of any window of an account's reading at which the account takes no new start until that window resets, under every strategy ([a threshold](/flume/guides/agent-settings/#a-threshold)). `90` where left out. |
+| `threshold` | a whole percent from 1 to 100 | of any of an account's usage windows, past which the account takes no new start until that window resets, under every strategy ([a threshold](/flume/guides/agent-settings/#a-threshold)). `90` where left out. |
 | `accounts` | a list of tables | the pool's accounts, in order, at least one |
 
 Each account:
@@ -195,19 +200,108 @@ Each account:
 | `name` | a string | the account's name, unique in its pool | refused |
 | `program` | a string | the program it runs, such as `claude`; it takes only stages of that program, and a pool with no account of a stage's program refuses that stage | refused |
 | `env` | a table of strings | its agents' environment, over the login environment | no variable |
-| `agents` | a whole number above 0 | the bound on agents running under it at once | no bound of its own |
-| `usage` | a path | the file of its reading, written by something of the host's and read by flume, never written | no reading |
+| `agents` | a whole number from 1 | the bound on agents running under it at once | no bound of its own |
 
 In `env`, a leading `~` is your home and `$VAR` or `${VAR}` a variable
 of your login environment, read at each start. A variable the login
 environment lacks refuses that start, naming it and the account.
 
-`usage` reads `~` and `$VAR` the same way, at each choice of an account
-and whenever status is asked. A variable the login environment lacks
-leaves the account with no reading, and status names the variable; it
-refuses no start. A file that is missing or not in the reading's form
-is no reading either, and status says why. Status gives `usage` as
-`<set>`, never its path.
+An account names nothing for its reading: its reading is the usage
+windows its agent program reports in the sessions flume starts, which
+flume keeps in the account's own document ([an account's
+reading](/flume/guides/agent-settings/#an-accounts-reading)). An
+account that names any other key, `usage` among them, is refused.
+
+### `[telemetry]`
+
+Whether flume reports its places to a collector of OpenTelemetry's
+format on the host, and to which
+([what flume reports off the host](#what-flume-reports-off-the-host)).
+The managed layer alone gives it: a local layer that sets any key of it
+is not taken, as for any key the local layer may not set. With no
+`[telemetry]` table, flume sends nothing.
+
+```toml
+[telemetry]
+send = true
+collector = "http://localhost:4318"
+logs = false
+
+[telemetry.attributes]
+"deployment.environment" = "lab"
+```
+
+| Key | Values | Meaning | Left out |
+|---|---|---|---|
+| `send` | `true`, `false` | whether flume sends anything | `false` |
+| `collector` | `http://`, a host of the loopback (`localhost`, an address of `127.0.0.0/8` or `[::1]`), `:` and a port, then at most a path | where flume sends, as OTLP over HTTP in protobuf, at its `/v1/traces`, `/v1/metrics` and `/v1/logs`; a final `/` is taken off | none, and a table whose `send` is `true` refuses |
+| `service` | a string | the service flume reports as | `"flume"` |
+| `traces`, `metrics`, `logs` | `true`, `false` | whether that signal goes | `true` |
+| `[telemetry.attributes]` | a table of strings | attributes every signal's resource names beside flume's own; a `host.name` among them names the host in place of its own name | none |
+
+`OTEL_SDK_DISABLED=true` in a command's environment turns every signal
+off for that command, and `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`
+or `OTEL_LOGS_EXPORTER` at `none` turns that one off. No variable turns
+a signal on or names where one goes: flume reads no other of
+OpenTelemetry's variables, and a caller's `OTEL_EXPORTER_OTLP_*` never
+reaches what flume sends. Status gives each key with its layer.
+
+### What flume reports off the host
+
+Where `[telemetry]` sends, flume reports each place as one trace. The
+place has a span of its own from its launch to its tidy, its drop or
+its done. Beneath it, each start of a stage is a span from the start to
+how it ended. It ended delivered, short, finished, lost, stopped or
+never begun, or a fresh start replaced it; a short end says whether it
+needs an answer or found work.
+
+Each wait of the place is a span too, naming whom the place waited on
+and for what. Its caller is waited on for an answer, a hold or another
+move, and the host for room. The merge queue is waited on from the
+submission to its landing or its refusal. A person is waited on while
+the agent asks or its program shows a dialog. A wait's span says whether
+a hold stood over it and whether it stalled.
+
+A record goes at each change: a start, an end, a wait begun or ended, a
+hold, a stall and a stuck stage. A backend so shows a place as it stands
+before its spans end.
+
+```text
+place  fix--accounts   intent accounts
+├─ code, start 1        1h00   ended short, needs an answer
+├─ wait: caller, answer 0h40
+├─ code, start 2        0h38   delivered
+└─ wait: merge queue    0h50   landed
+```
+
+Every span and record names the place's repository, kind and its
+version, name, base, stream, intent and mark. It names the stage and
+start it concerns. A start's span also names its agent's program, the
+conversation the agent runs, as `session.id`, and its account.
+
+While flume sends, each agent it starts gets the place's facts, its
+stage and its start in `OTEL_RESOURCE_ATTRIBUTES`, after the pairs its
+own environment gives there. While traces go, it also gets a
+`TRACEPARENT` naming its start's span. What the agent program reports,
+and what a command the agent runs reports, so names the place and nests
+under the start.
+
+No word of a brief, a prompt, a stop-short, an answer, a hold or a
+failure leaves the host, and no path does. flume's own warnings go as
+records in its own words, each path replaced by `<path>` and each value
+shaped as a credential by `<set>`.
+
+flume's metrics give each start's time, each wait's time, the stalls
+and the stuck stages. A settle of every place adds the places standing
+by kind, state and whom they wait on, and each stream's agents and
+room. No metric names a place, an intent, a mark, a conversation or an
+account, so the metrics grow with the kinds a host runs and never with
+its places.
+
+flume reads nothing back. A command writes its answer, then sends what
+it holds, within three seconds. A collector that refuses or never
+answers loses those signals and changes nothing flume does, and nothing
+is sent again. Status and the list send nothing.
 
 ### A repository's name
 
@@ -261,9 +355,10 @@ are strings. `effort` is a string, its agent program's own word, as
 Claude Code's `low`, `medium`, `high`, `xhigh` and `max`
 ([the effort](/flume/guides/agent-settings/#the-effort)). `mode` is one of `plan`, `ask`, `edits` and `full`, or a
 table of programs whose values are strings, as `mode = { claude =
-"auto" }`. `keep_open` is a string, `<n>`, `<n>s`, `<n>m` or `<n>h`:
-how long an agent is kept open for an answer once it stops short
-needing one, `0` keeping none
+"auto" }`. `keep_open` is a string, `<n>` or `<n>s` seconds, `<n>m`
+minutes or `<n>h` hours: how long an agent is kept open for an answer
+once it stops short needing one, `0` keeping none, and one hour where
+no layer gives one
 ([how long an agent is kept open](/flume/guides/agent-settings/#how-long-an-agent-is-kept-open)).
 It is one time for every program, never a table of programs.
 `hibernate_after` is a string of the same form: how long a
@@ -361,13 +456,16 @@ flume refuses the file, naming the key, for:
 
 - a `strategy` other than `fill-first`, `least-busy` and `most-left`;
 - a `threshold` that is not a whole number from 1 to 100;
-- a `usage` that is not a string, or is empty;
+- an account naming a key other than `name`, `program`, `env` and
+  `agents`, such as `usage`, refused as `[pools.<pool>.accounts[<n>]]
+  usage is no word of an account`;
 - a stream's `pool` or `[host] pool` naming a pool no `[pools]` table
   declares;
 - a pool with no accounts, or two accounts of one name;
 - an account with no `name` or no `program`;
-- an `agents` of a stream or an account that is not a whole number
-  above zero;
+- an `agents` of the host, a stream or an account that is not a whole
+  number from 1, naming it, `[host] agents is not a whole number from
+  1` say;
 - an `effort` in an agents table that is not a string, a table of
   programs among them, naming the table and `effort`;
 - a `mode` in an agents table that is neither one of `plan`, `ask`,
@@ -378,6 +476,11 @@ flume refuses the file, naming the key, for:
   programs among them, naming the table and the key;
 - a `[host] ends_expire` that is not such a string, or is `"0"`, naming
   `host.ends_expire`;
+- a `[telemetry]` whose `send` is `true` with no `collector`, a
+  `collector` that is not `http://`, a host of the loopback and a port,
+  a key `[telemetry]` does not read, a value its key does not take, or
+  an attribute shaped as a credential, naming the key and never its
+  value;
 - a `programs` in an agents table that is not a table of entries, an
   entry's key other than `file` and `settings`, or a TOML date or time
   in one, naming the key;
@@ -413,10 +516,21 @@ stage so refused waits for a retry
 ([a pool that cannot run a stage](/flume/guides/agent-settings/#a-pool-that-cannot-run-a-stage)).
 
 A stream's labels can refuse each of its starts, naming the stream and
-why. They refuse where their reserves together pass the stream's
-`agents`, where a label keeps more free than its reserve, and where a
-label's table holds another key, such as a `pool`. A stage so refused
-waits for a retry once the file is mended.
+why:
+
+- a label's table holding any key but `owed` and `reserved`, such as a
+  `pool`, a `reserve` or a `keep_free`:
+  `streams.work.labels.operation.reserve: a label's table holds owed
+  and reserved alone; its stream's pool, points and pace are its
+  budget`;
+- a label holding more reserved than it is owed: `the label operation
+  of the stream work holds 2 reserved of the 1 it is owed, and a label
+  holds reserved no more than it is owed`;
+- labels owed more together than the stream's `agents`: `the stream
+  work's labels are owed 6 in all, construction 3 and operation 3, past
+  its bound of 5`.
+
+A stage so refused waits for a retry once the file is mended.
 
 A stream's table for a kind or a stage refuses each start that reads
 it, and no other, where it holds any key but `session` and a kind's

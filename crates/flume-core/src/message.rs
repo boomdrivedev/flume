@@ -100,7 +100,7 @@ impl Engine {
                 Ok(true) => {}
                 Ok(false) => continue,
                 Err(why) => {
-                    self.host.log(&format!(
+                    self.log(&format!(
                         "the message {} was not handed to {recipient} by the inbox: {why}",
                         delivery.key
                     ));
@@ -236,7 +236,7 @@ impl Engine {
         for address in addresses {
             if matches!(roles.declared(&address), Ok(RoleEntry::Run(_))) {
                 if let Err(why) = self.wake_address(&address, &roles) {
-                    self.host.log(&format!(
+                    self.log(&format!(
                         "{address}, a message pending for it, was not woken: {why}"
                     ));
                 }
@@ -302,7 +302,7 @@ impl Engine {
         if let Some(why) = refused {
             return Err(why);
         }
-        self.host.log(&format!(
+        self.log(&format!(
             "recorded the delivery {key}, a message owed to {address}, expiring at {expires}"
         ));
         Ok(key)

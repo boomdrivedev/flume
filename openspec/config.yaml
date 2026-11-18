@@ -29,7 +29,7 @@ context: |
   with the decisions behind them in docs/adr/, one MADR record each
   (adrs.toml). Where docs/architecture/ and the narrative docs disagree,
   docs/architecture/ wins. Where flume has no rule of its
-  own, the kit standard binds as its code profile says (.config/kit.toml),
+  own, the kit standard binds as its code profile says (record 0077),
   cited as kit:<id> (kit:specs.3): its rules are docs/architecture/ in
   afterthought/kit-standard (local:
   ~/Code/github_afterthought/kit-standard/main/docs/architecture/).
@@ -45,12 +45,12 @@ context: |
   appears in this repository (core.20).
 
   Stack: devenv for the shell, moon (through proto) for the checks,
-  treefmt for formatting and Vale for prose (styles/Flume). Every tool
-  runs through the shell, one command at a time:
-  devenv shell -- <command>. Each check is a moon task tagged with its
-  layer; CLAUDE.md names the layers, and check-fast (the site's prose and
-  its build) runs in seconds. Every crate, every directory under
-  plugins/, and site/ is a moon project of its own in
+  treefmt for formatting, and Vale for prose (styles/Flume), which the
+  pages' writers run and no check does (core.21). Every tool runs
+  through the shell, one command at a time: devenv shell -- <command>.
+  Each check is a moon task tagged with its layer; CLAUDE.md names the
+  layers, and check-fast runs in seconds. Every crate, every directory
+  under plugins/, and site/ is a moon project of its own in
   .moon/workspace.yml (core.21), and every tool a task runs is the
   version the tree pins (core.22). sluice gates every merge into a bolt
   and onto main on the layers .config/sluice.toml requires. treefmt fails

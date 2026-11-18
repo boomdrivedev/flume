@@ -318,7 +318,7 @@ impl Engine {
         }) {
             Ok(()) => Some(id),
             Err(why) => {
-                self.host.log(&format!(
+                self.log(&format!(
                     "the run of {address} was not resumed by its delivery: {why}"
                 ));
                 None

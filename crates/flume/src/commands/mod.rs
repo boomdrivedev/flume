@@ -8,6 +8,7 @@ mod launch;
 pub mod mcp;
 pub mod place;
 mod print;
+pub mod relay;
 
 use clap::{Args, Parser, Subcommand};
 use flume_core::{Answer, Answering, Engine, KindsLock, LockOf, Retry, WaitFor};
@@ -174,7 +175,8 @@ enum Command {
     /// Remove what is over (63 to 68).
     Tidy { place: Option<String> },
     /// Move a place, or every place, on (46, 119 to 121); with `--every`,
-    /// every place as a caller's watch over the host (208).
+    /// the places where something is pending, as a caller's watch over the
+    /// host (208, 225).
     Settle {
         place: Option<String>,
         /// Read the place's agent until it is quiet, for up to 60 seconds,
@@ -183,10 +185,10 @@ enum Command {
         /// ended (121, 212).
         #[arg(long)]
         on_quiet: bool,
-        /// Settle every place as a watch over the host whose settles come
-        /// within this bound, as `<n>`, `<n>s`, `<n>m` or `<n>h`: flume
-        /// runs unattended while the newest such settle began less than
-        /// twice it ago.
+        /// Settle the places where something is pending as a watch over
+        /// the host whose settles come within this bound, as `<n>`, `<n>s`,
+        /// `<n>m` or `<n>h`: flume runs unattended while that settle runs
+        /// and until twice the bound after it ended.
         #[arg(long)]
         every: Option<String>,
     },
@@ -215,8 +217,9 @@ enum Command {
     /// From an agent program's hook: what the hook for `event` does with
     /// the input on standard input, in an agent flume started; nothing
     /// elsewhere. `status-line` reads no input and prints the place's
-    /// line, and `deliver` reads none and prints what the agent takes at
-    /// its wait. It always exits 0 (215, C.4).
+    /// line, `deliver` reads none and prints what the agent takes at its
+    /// wait, and `usage` keeps the usage windows on its input as its
+    /// account's reading. It always exits 0 (184, 211, 215, C.4).
     Hook {
         /// One of the plugin's hooks; any other does nothing.
         event: String,
@@ -249,7 +252,9 @@ enum Command {
         #[arg(long)]
         submission: bool,
         /// The recipient waited as; `$FLUME_RECIPIENT`, a role's run's
-        /// address, or the terminal's session, where none is named.
+        /// address, the address the standing agent whose pane it runs in
+        /// holds, or the terminal's session, where none is named. In the
+        /// pane of an agent standing for several addresses, name which.
         #[arg(long)]
         recipient: Option<String>,
         /// How long to follow the host's state, as `<n>`, `<n>s`, `<n>m`
@@ -276,7 +281,10 @@ enum Command {
         /// alone; every place on the host where none is named.
         place: Option<String>,
         /// The recipient collected for; `$FLUME_RECIPIENT`, a role's
-        /// run's address, or the terminal's session, where none is named.
+        /// run's address, the address the standing agent whose pane it
+        /// runs in holds, or the terminal's session, where none is named.
+        /// In the pane of an agent standing for several addresses, name
+        /// which.
         #[arg(long)]
         recipient: Option<String>,
         /// Confirm each end given as its recipient, on receipt, so it is
@@ -298,7 +306,9 @@ enum Command {
         #[arg(required = true, value_name = "KEY")]
         keys: Vec<String>,
         /// The recipient confirmed as; `$FLUME_RECIPIENT`, a role's run's
-        /// address, or the terminal's session, where none is named.
+        /// address, the address the standing agent whose pane it runs in
+        /// holds, or the terminal's session, where none is named. In the
+        /// pane of an agent standing for several addresses, name which.
         #[arg(long)]
         recipient: Option<String>,
     },
@@ -334,6 +344,28 @@ enum Command {
     /// flume's status over MCP on standard input and output, one tool,
     /// `status`, settling nothing (57, 60).
     Mcp,
+    /// Relay the place's live agent's terminal for a program that carries
+    /// a person's screen and keys, in JSON lines both ways (221, 222).
+    ///
+    /// It writes what the terminal shows of the agent to standard output
+    /// as it changes, one JSON line each, {"screen": "<what it shows>"},
+    /// with {"unread": "<why>"} where a read is not answered and
+    /// {"untyped": "<why>"} for an input not typed, and last its answer,
+    /// which `--json` gives as for any command. It reads standard input
+    /// one JSON line at a time and types each as the person typed it,
+    /// nothing cleared first: {"text": "<text>"}, or {"keys": ["<key>",
+    /// …]} by flume's key names: enter, tab, esc, backspace, delete,
+    /// insert, home, end, pageup, pagedown, up, down, left, right, space,
+    /// f1 to f12 or one printable character, each led by any of ctrl+,
+    /// alt+ and shift+ in that order. An empty line is passed over. It
+    /// ends when its input closes, or its output is no longer read, or
+    /// once the agent's terminal goes; a place with no live agent, and a
+    /// terminal that offers no relay, are refused. It settles, writes and
+    /// keeps nothing.
+    Relay {
+        /// A location, or `<kind>--<name>` in the repository.
+        place: String,
+    },
     /// The kinds a lock records, by which a kind from outside flume and
     /// the repository runs (155, C.2).
     Kinds {
@@ -434,9 +466,11 @@ struct LaunchArgs {
     /// a drop's or a done's among them, wait for it, the place's record
     /// kept once it is tidied, until it collects them by `flume inbox` or
     /// `flume wait` as that name. Where none is named, `$FLUME_RECIPIENT`,
+    /// else the address the standing agent whose pane it runs in holds,
     /// else the terminal's session, else the answerer behind the place's
     /// stream, the role a source of the host declares to stand behind it;
-    /// a launch none of them gives is refused. Every stall reaches the
+    /// a launch none of them gives, or one in the pane of an agent
+    /// standing for several addresses, is refused. Every stall reaches the
     /// answerer behind the place's stream too (7, 43, 62, 130, 132, 193).
     #[arg(long, value_name = "SESSION OR ADDRESS")]
     recipient: Vec<String>,
@@ -483,13 +517,19 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// Prints the words and gives the exit status.
+    /// Prints the words, then sends what the command's telemetry holds,
+    /// within its bound, and gives the exit status: the answer is never
+    /// held for a signal (216; core.13).
     pub fn exit(self) -> ExitCode {
+        use std::io::Write;
         if self.usage {
             eprintln!("{}", self.text.trim_end());
         } else if !self.text.is_empty() {
             println!("{}", self.text);
         }
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        crate::telemetry::finish();
         ExitCode::from(self.code)
     }
 }
@@ -549,6 +589,20 @@ where
                     usage: false,
                     code: 1,
                 },
+            };
+        }
+        Command::Relay { place } => {
+            let code = relay::serve(
+                place,
+                std::io::stdin(),
+                std::io::stdout().lock(),
+                build,
+                cli.repository.as_deref(),
+            );
+            return Outcome {
+                text: String::new(),
+                usage: false,
+                code,
             };
         }
         Command::Mcp => {
@@ -692,7 +746,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             ..
         } => {
             return Err(format!(
-                "--every settles every place as a caller's watch over the host, and takes no place: {given_place} was named"
+                "--every settles the places where something is pending as a caller's watch over the host, and takes no place: {given_place} was named"
             ));
         }
         Command::Settle {
@@ -784,7 +838,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             })
         }
         Command::Open { session } => build()?.open_session(session.as_deref()),
-        Command::Hook { .. } | Command::Ack { .. } | Command::Mcp => {
+        Command::Hook { .. } | Command::Ack { .. } | Command::Mcp | Command::Relay { .. } => {
             unreachable!("answered before the core's acts")
         }
     })
@@ -792,7 +846,10 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
 
 /// The recipient named, else the one the core reads for a command that
 /// names none: `$FLUME_RECIPIENT`, the address of the role's run
-/// `$FLUME_PLACE` names, or the terminal's session (7, 132; design 7).
+/// `$FLUME_PLACE` names, the address the standing agent the command runs
+/// in holds, or the terminal's session; the core's refusal, where the
+/// agent stands for several addresses, is the command's (7, 132;
+/// core.28).
 fn recipient_of(core: &Engine, named: &Option<String>) -> Result<String, String> {
     if let Some(named) = named {
         return Ok(named.clone());
@@ -801,15 +858,17 @@ fn recipient_of(core: &Engine, named: &Option<String>) -> Result<String, String>
         .ok()
         .filter(|place| !place.is_empty())
         .map(PlaceId::new);
-    core.recipient(here.as_ref()).ok_or_else(|| {
-        format!("no recipient is named: name one with --recipient or ${}, or run in a terminal's session or a role's run", crate::host::RECIPIENT)
+    core.recipient(here.as_ref())?.ok_or_else(|| {
+        format!("no recipient is named: name one with --recipient or ${}, or run in a terminal's session, a role's run or a standing agent's pane", crate::host::RECIPIENT)
     })
 }
 
 /// What a retry's or a message's answer names beside its words: the key of
 /// the stop-short it answers, where `--answers` gives one, and who gives
 /// it, the recipient the command acts as where it names none, recorded on
-/// the stop-short it answers; none where no recipient is read (42).
+/// the stop-short it answers; none where no recipient is read or the
+/// reading is refused, so a retry or a message is never refused for its
+/// giver (42, 49, 132).
 fn answering(core: &Engine, key: Option<EndKey>) -> Answering {
     Answering {
         key,

@@ -94,20 +94,22 @@ pub enum Submitted {
         request: String,
     },
     /// The merge queue decided the submission as it took it in, and its
-    /// answer gave the outcome, which it records delivered to the place,
-    /// so no inbox gives it again (112, 133).
+    /// answer gave the outcome, with the key the place confirms it by
+    /// once it has acted on it, none where the merge queue keeps nothing
+    /// to confirm; until then an inbox may give it too (112, 133).
     Decided {
         submission: Submission,
         outcome: SubmissionOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
     },
     Refused {
         reason: String,
     },
 }
 
-/// One outcome of a place's submission, delivered to the place once
-/// (133). A withdrawal is never one: it is read from read-submission
-/// (99).
+/// One outcome of a place's submission (133). A withdrawal is never
+/// one: it is read from read-submission (99).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubmissionOutcome {
@@ -135,21 +137,44 @@ pub struct PassedOver {
     pub words: String,
 }
 
-/// inbox: the outcomes pending for a place, each given once, from every
-/// branch the merge queue could read, and each branch it passed over,
-/// whose outcomes stay pending for a later inbox; or why the merge queue
-/// could not be read (133, 68).
+/// An outcome the inbox gives a place: the submission it decides, by the
+/// merge queue's id, the outcome, and the key the place confirms it by
+/// once it has acted on it, none where the merge queue keeps nothing to
+/// confirm and gives it once (133).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Owed {
+    pub submission: String,
+    pub outcome: SubmissionOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// inbox: the outcomes pending for a place, each given again at every
+/// inbox until the place confirms it, from every branch the merge queue
+/// could read, and each branch it passed over, whose outcomes stay
+/// pending for a later inbox; or why the merge queue could not be read
+/// (133, 68).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Inbox {
     Outcomes {
-        outcomes: Vec<SubmissionOutcome>,
+        outcomes: Vec<Owed>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         passed_over: Vec<PassedOver>,
     },
     CouldNotRead {
         reason: String,
     },
+}
+
+/// confirm: the outcome under a key given no more, confirmed now or
+/// before; or why the merge queue could not be read, the outcome left
+/// pending for the next inbox (133).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Confirmed {
+    Confirmed,
+    CouldNotRead { reason: String },
 }
 
 /// step: one round of the base's queue driven, or that the merge queue
@@ -285,8 +310,13 @@ pub trait MergeQueue: Send + Sync {
     fn submit(&self, place: &crate::PlaceRef, head: &SubmitHead) -> Submitted;
 
     /// The outcomes of the place's submissions pending for it, each
-    /// given once (133).
+    /// given again until the place confirms it (133).
     fn inbox(&self, place: &crate::PlaceRef) -> Inbox;
+
+    /// The outcome the inbox or a decided submit gave the place under
+    /// `key` confirmed, once the place has acted on it, so no inbox gives
+    /// it again (133).
+    fn confirm(&self, place: &crate::PlaceRef, key: &str) -> Confirmed;
 
     /// The newest submission of each of `branches`, whoever made it, on
     /// the branches the merge queue could read, passing over each it

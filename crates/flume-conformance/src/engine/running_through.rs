@@ -9,10 +9,12 @@
 //! no stage before it being able to do that work again, and waits on a
 //! retry of that stage, which counts no going-back (41, 42, 48, 49).
 
+use super::agent_modes::mode_from;
 use super::settling::{
     archive, change_at_verify, construct_begun, deliver_fix, fix_begun, write_change,
 };
 use super::world::*;
+use crate::seams::kinds::entry;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Retry, Waits};
 use flume_fakes::Plan;
@@ -34,9 +36,14 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s35_a_change_runs_through,
         },
         Scenario {
-            name: "run through: a bare change runs change@3, its code stage one start of one agent for a change of four task groups, status and its line giving `code` with no group count, and the place submitted once verify archives the change",
-            cites: &["22", "154", "S119"],
-            run: s119_one_agent_codes_the_change,
+            name: "run through: a bare change in a repository whose lock records flume/change@3 runs change@3, its code stage one start of one agent for a change of four task groups, status and its line giving `code` with no group count, and the place submitted once verify archives the change",
+            cites: &["22", "154", "155", "S119"],
+            run: s119_a_locked_change_3_codes_with_one_agent,
+        },
+        Scenario {
+            name: "run through: a bare change in a repository that locks nothing runs change@5, each stage's agent in full from the kind, its code stage one start of one agent for a change of four task groups, its line `change--plan · change@5 · code · run 1 · tasks 0/7 · working`, and the place submitted once verify archives the change",
+            cites: &["22", "154", "162", "S119"],
+            run: s119_a_bare_change_runs_change_5_through,
         },
         Scenario {
             name: "run through: two fixes launched with notes as briefs each land with no further word",
@@ -52,6 +59,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "fix round: a fix's failed submission starts code, the stage its code names for a failed submission, with a fresh agent and the merge queue's words, counting one going-back, and the fix is submitted again once code delivers",
             cites: &["112", "131", "23"],
             run: a_fixs_failed_submission,
+        },
+        Scenario {
+            name: "fix round: a failed submission's outcome is confirmed once flume acted on it, and the next settle asks no inbox; an earlier submission's outcome given again is confirmed and sends nothing back; one a settle could not act on is left unconfirmed, and one it could not confirm is given again as flume submits the place anew, each acted on once",
+            cites: &["133", "111", "112", "124", "74", "99"],
+            run: an_outcome_is_confirmed_once_acted_on,
         },
         Scenario {
             name: "fix round: a conflict starts code with words naming the files and the base's revision, and flume merges nothing",
@@ -182,15 +194,48 @@ fn code_as_status_gives_it(
     Ok((code.label(), code.group.clone(), code.starts))
 }
 
-fn s119_one_agent_codes_the_change(_: &()) -> Outcome {
-    let world = World::new();
-    let id = construct_begun(&world, "plan")?;
+fn s119_a_locked_change_3_codes_with_one_agent(_: &()) -> Outcome {
+    let world = World::with_every_own_version();
+    let hash = world
+        .kinds
+        .flumes_own()
+        .into_iter()
+        .find(|own| own.identity.spelled == "flume/change@3")
+        .map(|own| own.hash)
+        .ok_or("flume holds no change@3")?;
+    world
+        .kinds
+        .set_lock(REPOSITORY, vec![entry("flume", "change", 3, &hash)]);
+    one_agent_codes_the_change(&world, 3, None)
+}
+
+fn s119_a_bare_change_runs_change_5_through(_: &()) -> Outcome {
+    let world = World::with_every_own_version();
+    one_agent_codes_the_change(
+        &world,
+        5,
+        Some(Given {
+            layer: Layer::Kind,
+            value: "full".into(),
+            file: None,
+        }),
+    )
+}
+
+/// A bare change run through in `world` as change@`version`, its code
+/// stage one start of one agent for a change of four task groups, each
+/// stage's agent given `mode` as status gives where it came from, and the
+/// place submitted once verify archives the change (22, 154, 162, S119).
+fn one_agent_codes_the_change(world: &World, version: u32, mode: Option<Given>) -> Outcome {
+    let id = construct_begun(world, "plan")?;
     let status = world.status(&id)?;
+    let identity = format!("flume/change@{version}");
     ensure_eq!(
         (status.version, status.identity.as_deref()),
-        (3, Some("flume/change@3")),
+        (version, Some(identity.as_str())),
         "the kind a bare change runs"
     );
+    ensure_eq!(mode_from(world, &id)?, mode, "construct's mode");
     world.tick_groups("change/plan", "plan", FOUR_GROUPS, 0);
     world.settle(&id);
     ensure_eq!(
@@ -199,17 +244,16 @@ fn s119_one_agent_codes_the_change(_: &()) -> Outcome {
         "code once construct delivered"
     );
     ensure_eq!(
-        code_as_status_gives_it(&world, &id)?,
+        code_as_status_gives_it(world, &id)?,
         ("code".to_string(), None, 1),
         "code as status gives it"
     );
+    ensure_eq!(mode_from(world, &id)?, mode, "code's mode");
     let line = world.status(&id)?.line;
+    let full = format!("change--plan · change@{version} · code · run 1 · tasks 0/7 · working");
     ensure_eq!(
         (line.stage.as_deref(), line.full.as_str()),
-        (
-            Some("code"),
-            "change--plan · change@3 · code · run 1 · tasks 0/7 · working"
-        ),
+        (Some("code"), full.as_str()),
         "the place's line"
     );
     world.tick_groups("change/plan", "plan", FOUR_GROUPS, 4);
@@ -220,7 +264,7 @@ fn s119_one_agent_codes_the_change(_: &()) -> Outcome {
         "code once two of its groups are ticked"
     );
     ensure_eq!(
-        code_as_status_gives_it(&world, &id)?,
+        code_as_status_gives_it(world, &id)?,
         ("code".to_string(), None, 1),
         "code as status gives it once two of its groups are ticked"
     );
@@ -233,11 +277,12 @@ fn s119_one_agent_codes_the_change(_: &()) -> Outcome {
         "verify did not start in code's settle"
     );
     ensure_eq!(
-        code_as_status_gives_it(&world, &id)?.2,
+        code_as_status_gives_it(world, &id)?.2,
         1,
         "code's starts once every task is ticked"
     );
-    archive(&world, "plan");
+    ensure_eq!(mode_from(world, &id)?, mode, "verify's mode");
+    archive(world, "plan");
     world.settle(&id);
     ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
     ensure!(world.held(&id).is_none(), "the landed place is kept");
@@ -350,6 +395,132 @@ fn a_fixs_failed_submission(_: &()) -> Outcome {
     deliver_fix(&world, &id);
     world.settle(&id);
     ensure_eq!(world.queue.log.count("submit"), 2, "submissions");
+    Ok(())
+}
+
+fn an_outcome_is_confirmed_once_acted_on(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_begun(&world, "one")?;
+    let location = world.held(&id).ok_or("no place")?.place.location;
+    let gone_back = |world: &World| {
+        world
+            .held(&id)
+            .map(|held| (held.stages[0].starts, held.submission.send_backs))
+    };
+    world.queue.plan_submits(vec![
+        Plan::Fail("check x failed".into()),
+        Plan::Hold,
+        Plan::Hold,
+    ]);
+
+    // The failure sends code back, and is confirmed once that is held.
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(
+        gone_back(&world),
+        Some((2, 1)),
+        "code's starts, goings-back"
+    );
+    let first = world.queue.submissions(REPOSITORY, "fix/one")[0].id.clone();
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {first}:failed")],
+        "the confirms"
+    );
+    ensure_eq!(
+        world.queue.pending(&location),
+        vec![],
+        "outcomes left for the next settle"
+    );
+
+    // The next settle asks no inbox, flume holding the outcome (111,
+    // 133; record 0012).
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("inbox"), 0, "inboxes");
+    ensure_eq!(world.queue.log.count("confirm"), 0, "confirms");
+    ensure_eq!(gone_back(&world), Some((2, 1)), "after the next settle");
+
+    // Submitted again, the first failure given again, as a flume that
+    // never confirmed it left it, decides nothing of the place now.
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    let second = world.held(&id).and_then(|held| held.submission.id);
+    ensure!(
+        second.as_ref().is_some_and(|second| *second != first),
+        "the second submission {second:?}"
+    );
+    world.queue.leave_pending(
+        &location,
+        &first,
+        SubmissionOutcome::Failed {
+            words: "check x failed".into(),
+        },
+    );
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((2, 1)), "after the earlier failure");
+    ensure_eq!(
+        world.status(&id)?.submission.and_then(|s| s.verdict),
+        None,
+        "the verdict of the open submission"
+    );
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {first}:failed")],
+        "the earlier failure confirmed"
+    );
+    ensure_eq!(world.queue.pending(&location), vec![], "left pending");
+
+    // A failure the settle could not act on is not confirmed.
+    world
+        .queue
+        .decide(REPOSITORY, "fix/one", Plan::Fail("check y failed".into()));
+    let second = second.ok_or("no second submission")?;
+    world.store.refuse_writes_of(&id, true);
+    world.queue.log.clear();
+    world.settle(&id);
+    world.store.refuse_writes_of(&id, false);
+    ensure_eq!(gone_back(&world), Some((2, 1)), "with no write taken");
+    ensure_eq!(world.queue.log.count("confirm"), 0, "confirms of no act");
+    ensure_eq!(
+        world.queue.pending(&location).len(),
+        1,
+        "the failure left pending"
+    );
+
+    // Acted on at the next settle, whose confirm the merge queue cannot
+    // take: left pending while flume holds it and code runs, and given
+    // again as flume submits the place anew, it sends nothing back again
+    // and is confirmed (111, 133; record 0012).
+    world.queue.refuse_confirms(Some("down"));
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((3, 2)), "acted on");
+    ensure_eq!(
+        world.queue.pending(&location).len(),
+        1,
+        "the failure whose confirm was refused"
+    );
+    world.queue.refuse_confirms(None);
+    world.queue.log.clear();
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.queue.log.count("inbox"),
+            world.queue.pending(&location).len()
+        ),
+        (0, 1),
+        "inboxes, and the failure pending, while code runs"
+    );
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(gone_back(&world), Some((3, 2)), "acted on once");
+    ensure_eq!(
+        world.queue.log.of("confirm"),
+        vec![format!("confirm {second}:failed")],
+        "the confirm taken"
+    );
+    ensure_eq!(world.queue.pending(&location), vec![], "left pending");
     Ok(())
 }
 
@@ -510,7 +681,7 @@ fn a_requests_failure_acted_on_once(_: &()) -> Outcome {
     // The record gives the failure first; the inbox gives it after.
     deliver_fix(&world, &id);
     world.settle(&id);
-    world
+    let failed = world
         .queue
         .take_in(REPOSITORY, "fix/one")
         .ok_or("no request")?;
@@ -526,6 +697,7 @@ fn a_requests_failure_acted_on_once(_: &()) -> Outcome {
     ensure!(prompt.contains("check x failed"), "{prompt}");
     world.queue.leave_pending(
         &location,
+        &failed.id,
         SubmissionOutcome::Failed {
             words: "check x failed".into(),
         },

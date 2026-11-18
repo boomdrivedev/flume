@@ -4,7 +4,10 @@
 //! a command of flume's, started by an agent going quiet, by a caller
 //! keeping watch over the host, or by any other caller, never by a
 //! terminal or a plugin of one, and waits on no merge queue (120, 122,
-//! 208, core.13). Each end it or an act reads is recorded once as it is
+//! 208, core.13). A watch's settle, and the settle an acting command or a
+//! wait runs first where none keeps watch, settle only the places where
+//! something is pending, read from held state alone; a settle naming no
+//! place and stating no bound settles every place (225; core.62). Each end it or an act reads is recorded once as it is
 //! written, and the settle delivers each end pending for a recipient,
 //! then wakes each role's address one stands pending for with no run;
 //! a role's run is done once its last stage delivers, with no caller's
@@ -12,6 +15,7 @@
 
 use crate::held::read_stall;
 use crate::hibernate::hibernation_claimed;
+use crate::pending::pending;
 use crate::{Answer, Engine, Step, Tidied};
 use flume_seams::*;
 
@@ -23,7 +27,12 @@ const STEPS: usize = 64;
 const TRIES: usize = 8;
 
 impl Engine {
-    /// Settles the place, or every place on the host.
+    /// Settles the place, or, naming none, every place on the host, a
+    /// place with nothing pending among them, at a caller's or a person's
+    /// asking; a move a hand made outside flume of a place that waits only
+    /// on its caller is read here, and never by a watch. No reading of the
+    /// host is handed on, which goes at a settle of the watch's alone (63,
+    /// 121, 220, 225).
     pub fn settle(&self, place: Option<&PlaceId>) -> Answer {
         let places: Vec<PlaceId> = match place {
             Some(id) => vec![id.clone()],
@@ -44,24 +53,34 @@ impl Engine {
         Answer::Settled { places, tidy }
     }
 
-    /// Settles every place on the host as a caller's watch over it,
-    /// whose bound is `bound`: the host's watch written first, when this
-    /// settle began and its bound, by compare-and-set, then every place
-    /// settled as [`Engine::settle`] naming none settles them. A caller
-    /// keeps watch while its newest such settle began less than twice its
-    /// bound ago; the watch decides nothing of what the settle does (46,
-    /// 119, 120, 208; core.13).
+    /// Settles the places where something is pending as a caller's watch
+    /// over the host, whose bound is `bound`: the host's watch written
+    /// first, when this settle began, its bound and this command, by
+    /// compare-and-set; then the places where something is pending
+    /// settled and the stages waiting for room started, and the host's
+    /// reading handed on; and when the settle ended written last, only
+    /// where the watch held is still this settle's (220, 225; core.62). A caller keeps watch while its newest
+    /// such settle runs and until twice its bound after it ended, or after
+    /// it began where its command died with no end; the watch is renewed
+    /// by that settle alone and decides nothing of what it does (46, 119,
+    /// 120, 208; core.13, core.16).
     pub fn settle_every(&self, bound: Seconds) -> Answer {
         if bound == 0 {
             return Answer::refused(
                 "a watch's bound is a positive duration, and 0 seconds is none",
             );
         }
-        self.keep_watch(Watched {
+        let watched = Watched {
             began: self.host.now(),
             bound,
-        });
-        self.settle(None)
+            by: Some(self.host.command()),
+            ended: None,
+        };
+        self.keep_watch(watched.clone());
+        let (places, tidy) = self.settle_pending();
+        self.read_host();
+        self.end_watch(&watched);
+        Answer::Settled { places, tidy }
     }
 
     /// Writes the host's watch as `watched`, by compare-and-set, reading
@@ -80,15 +99,48 @@ impl Engine {
                 }
             }
             let at = read.map(|read| read.version);
-            if let Written::Written { .. } =
-                self.store
-                    .write_host(&HostKey::Watch, at, Some(&HostDocument::Watch(watched)))
-            {
+            if let Written::Written { .. } = self.store.write_host(
+                &HostKey::Watch,
+                at,
+                Some(&HostDocument::Watch(watched.clone())),
+            ) {
                 return;
             }
         }
-        self.host.log(&format!(
+        self.log(&format!(
             "the host's watch was not written: its version moved {TRIES} times"
+        ));
+    }
+
+    /// Writes when the watch's settle `watched` ended, by compare-and-set,
+    /// reading it again where its version moved, only where the watch held
+    /// still names its `began` and its command: a watch another settle
+    /// wrote since is that settle's to end (208; core.16).
+    fn end_watch(&self, watched: &Watched) {
+        for _ in 0..TRIES {
+            let Some(read) = self.store.read_host(&HostKey::Watch) else {
+                return;
+            };
+            let HostDocument::Watch(standing) = read.document else {
+                return;
+            };
+            if standing.began != watched.began || standing.by != watched.by {
+                return;
+            }
+            let ended = Watched {
+                ended: Some(self.host.now()),
+                ..standing
+            };
+            if let Written::Written { .. } = self.store.write_host(
+                &HostKey::Watch,
+                Some(read.version),
+                Some(&HostDocument::Watch(ended)),
+            ) {
+                return;
+            }
+        }
+        self.log(&format!(
+            "the end of the host's watch was not written: its version moved {TRIES} times"
         ));
     }
 
@@ -102,46 +154,71 @@ impl Engine {
     }
 
     /// The host's watch as status gives it: the bound a caller keeping
-    /// watch stated, or none; when its newest settle began; and, while
-    /// flume runs attended after a watch lapsed, when it lapsed, read
-    /// from the watch held (56, 119, 208).
-    pub(crate) fn watch_status(&self) -> (Watch, Option<Seconds>, Option<Seconds>) {
+    /// watch stated, or none; when its newest settle began; when that
+    /// settle ended, none while it runs; and, while flume runs attended
+    /// after a watch lapsed, when it lapsed, read from the watch held and
+    /// whether the command running its settle lives (56, 76, 119, 208).
+    pub(crate) fn watch_status(
+        &self,
+    ) -> (Watch, Option<Seconds>, Option<Seconds>, Option<Seconds>) {
         let Some(watched) = self.watched() else {
-            return (Watch::None, None, None);
+            return (Watch::None, None, None, None);
         };
-        if watched.kept(self.host.now()) {
+        let alive = |by: &str| self.host.alive(by);
+        if watched.kept(self.host.now(), alive) {
             let watch = Watch::Bound {
                 seconds: watched.bound,
             };
-            (watch, Some(watched.began), None)
+            (watch, Some(watched.began), watched.ended, None)
         } else {
-            (Watch::None, Some(watched.began), Some(watched.lapses()))
+            let lapsed = watched.lapses(alive);
+            (Watch::None, Some(watched.began), watched.ended, lapsed)
         }
     }
 
     /// Whether flume runs attended: no caller keeps watch over the host,
     /// none being held or the newest lapsed, twice its bound having
-    /// passed since it began. No terminal is read (119, 208).
+    /// passed since its settle ended, or since it began where the command
+    /// running it died with no end. No terminal is read (76, 119, 208).
     pub fn attended(&self) -> bool {
         !self
             .watched()
-            .is_some_and(|watched| watched.kept(self.host.now()))
+            .is_some_and(|watched| watched.kept(self.host.now(), |by| self.host.alive(by)))
     }
 
-    /// Settles every place on the host, then lets go of every done
-    /// delivery whose place has no document (62; weir 107).
-    pub(crate) fn settle_all(&self) -> Tidied {
+    /// Settles the places where something is pending: every document read
+    /// once, the host's deliveries once and the clock once, each place
+    /// where something is pending settled as [`Engine::settle_place`]
+    /// settles it, reading nothing of any other, neither its merge queue,
+    /// its terminal nor its agent; then the stages waiting for room the
+    /// host now has started, whether or not a place was pending, every
+    /// done delivery whose place has no document let go of, and the host's
+    /// own steps of [`Engine::settle_host`], which read only the host's
+    /// deliveries and the recipients a delivery is pending for. Gives the
+    /// places it settled and what its tidies did (43, 62, 70, 119, 132,
+    /// 208, 214, 225; core.62).
+    pub(crate) fn settle_pending(&self) -> (Vec<PlaceId>, Tidied) {
+        let documents = self.store.read_every();
+        let owing = self.owing();
+        let now = self.host.now();
+        let places: Vec<PlaceId> = documents
+            .into_iter()
+            .filter(|read| pending(&read.state, &owing, now).is_some())
+            .map(|read| read.state.place.id)
+            .collect();
         let mut tidy = Tidied::default();
-        for read in self.store.read_every() {
-            tidy.add(self.settle_place(&read.state.place.id));
+        for id in &places {
+            tidy.add(self.settle_place(id));
         }
+        self.start_waiting();
         self.let_go_of_the_gone();
         self.settle_host();
-        tidy
+        (places, tidy)
     }
 
-    /// What a settle of every place does once for the host, after each
-    /// place's own steps: each message its reader confirmed let go of, its
+    /// What a settle of every place, and a settle of the places where
+    /// something is pending, does once for the host, after each place's
+    /// own steps: each message its reader confirmed let go of, its
     /// known name kept; each role's address a message is pending for,
     /// handed to it by nothing, woken where its source gives it a run and
     /// none stands; and the batch of every recipient a delivery is pending
@@ -155,12 +232,13 @@ impl Engine {
     }
 
     /// Where no caller keeps watch over the host, every command of
-    /// flume's that acts on places settles every place first, whatever
-    /// terminals it binds (119, 190, 208, I8); where one keeps watch its
-    /// settles settle them.
+    /// flume's that acts on places settles the places where something is
+    /// pending first, whatever terminals it binds, handing on no reading
+    /// of the host (119, 190, 208, 220, 225, I8); where one keeps watch
+    /// its settles settle them.
     pub(crate) fn settle_attended(&self) -> Tidied {
         if self.attended() {
-            return self.settle_all();
+            return self.settle_pending().1;
         }
         Tidied::default()
     }
@@ -251,8 +329,7 @@ impl Engine {
         };
         match shown {
             Shown::Failed { reason } => {
-                self.host
-                    .log(&format!("the clues of {id} did not show: {reason}"));
+                self.log(&format!("the clues of {id} did not show: {reason}"));
             }
             Shown::Shown | Shown::ShowsNone => {
                 self.update(id, |held| {
@@ -402,7 +479,7 @@ impl Engine {
             if let Removed::Refused { step, words } =
                 bound.place.remove_checkouts(&place.location, &checkouts)
             {
-                self.host.log(&format!(
+                self.log(&format!(
                     "the checkouts of {}, whose wake died, were kept at {step}: {words}",
                     place.id
                 ));
@@ -415,7 +492,7 @@ impl Engine {
                 if let BranchClosed::Kept { reason } =
                     queue.close(&place.repository, &place.branch, &place.base)
                 {
-                    self.host.log(&format!(
+                    self.log(&format!(
                         "the branch {} of {}, whose launch died, was kept: {reason}",
                         place.branch, place.id
                     ));

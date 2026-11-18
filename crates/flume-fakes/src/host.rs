@@ -4,8 +4,8 @@ use flume_seams::{
     ConfigLayer, ConfigValue, Host, HostConfiguration, HostSettings, HostSource, HostSourceRead,
     KindSessions, KindSettings, LabelFrom, LabelHeld, NamedBy, Pool, PoolFrom, PoolNamed,
     ProfileHeld, RepositoryName, RoleEntry, RoleRefused, RoleRun, RolesUnread, RoomGuard, Seconds,
-    Secret, Settings, Share, StandingAgent, Stream, StreamDisplay, StreamFrom, StreamHeld, Usage,
-    View, ViewHeld, DEFAULT_STREAM,
+    Secret, Settings, Share, StandingAgent, Stream, StreamDisplay, StreamFrom, StreamHeld,
+    TelemetryTable, View, ViewHeld, DEFAULT_STREAM,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Condvar, Mutex};
@@ -15,7 +15,7 @@ use std::sync::{Arc, Condvar, Mutex};
 /// flume's that live, the bound on agents and the agents' settings its
 /// configuration states, its streams with their sessions, their kinds'
 /// and stages' sessions, labels' shares, titles and displays, the host's own display, its pools of
-/// accounts, each account's reading by its path, the labels it gives
+/// accounts, the labels it gives
 /// kinds, its configuration's values with their layers, the sources of
 /// its kinds with where their files and its lock lie, what its sources
 /// declare for roles' addresses, a run, a standing agent or a carrying,
@@ -23,7 +23,8 @@ use std::sync::{Arc, Condvar, Mutex};
 /// read, the recipient the calling command's environment names, the
 /// host user's login environment, an exclusive room lock, and what
 /// another process does while a command sleeps. It reads no
-/// configuration file and no reading's file (106, 184).
+/// configuration file, and holds no account's reading, which is the
+/// windows its agent program reports (106, 184, 211).
 pub struct FakeHost {
     state: Mutex<HostState>,
     room: Arc<Room>,
@@ -72,6 +73,8 @@ struct HostState {
     bound: Option<u32>,
     /// The host's span for an end pending for a recipient (43, C.7).
     ends_expire: Seconds,
+    /// The managed layer's `[telemetry]`, none until set (216, C.7).
+    telemetry: Option<TelemetryTable>,
     recipient: Option<String>,
     /// The agents' settings by kind, for every repository.
     kinds: BTreeMap<String, KindSettings>,
@@ -100,9 +103,6 @@ struct HostState {
     display: Display,
     /// The pools the configuration declares, by name (144).
     pools: BTreeMap<String, Pool>,
-    /// The reading, or why there is none, by the path it is read at
-    /// (184).
-    usage: BTreeMap<String, Result<Usage, String>>,
     /// The label named for a repository and kind, or a kind, by the
     /// repository, none for every repository, and the kind (180).
     labels_named: BTreeMap<(Option<String>, String), String>,
@@ -160,6 +160,7 @@ impl Default for FakeHost {
                 alive: BTreeSet::from(["command-1".to_string()]),
                 bound: None,
                 ends_expire: flume_seams::ENDS_EXPIRE,
+                telemetry: None,
                 recipient: None,
                 kinds: BTreeMap::new(),
                 repos: BTreeMap::new(),
@@ -174,7 +175,6 @@ impl Default for FakeHost {
                 display: Display::default(),
                 pools: BTreeMap::new(),
                 sources: BTreeMap::new(),
-                usage: BTreeMap::new(),
                 labels_named: BTreeMap::new(),
                 configuration: HostConfiguration::default(),
             }),
@@ -241,6 +241,11 @@ impl FakeHost {
     /// set (43, C.7).
     pub fn set_ends_expire(&self, span: Seconds) {
         lock(&self.state).ends_expire = span;
+    }
+
+    /// The managed layer's `[telemetry]`, or none (216, C.7).
+    pub fn set_telemetry(&self, table: Option<TelemetryTable>) {
+        lock(&self.state).telemetry = table;
     }
 
     /// The recipient the calling command's environment names, or none.
@@ -568,13 +573,6 @@ impl FakeHost {
         );
     }
 
-    /// The reading at `path`, or why there is none, in place of any set
-    /// before; every path no test set answers that the file is missing
-    /// (184).
-    pub fn set_usage(&self, path: &str, usage: Result<Usage, String>) {
-        lock(&self.state).usage.insert(path.to_string(), usage);
-    }
-
     /// Whether the room lock is held now.
     pub fn room_taken(&self) -> bool {
         *lock(&self.room.taken)
@@ -621,6 +619,10 @@ impl Host for FakeHost {
 
     fn ends_expire(&self) -> Seconds {
         lock(&self.state).ends_expire
+    }
+
+    fn telemetry(&self) -> Option<TelemetryTable> {
+        lock(&self.state).telemetry.clone()
     }
 
     fn recipient(&self) -> Option<String> {
@@ -766,15 +768,6 @@ impl Host for FakeHost {
     fn pool(&self, name: &str) -> Option<Pool> {
         self.log.push(format!("pool {name}"));
         lock(&self.state).pools.get(name).cloned()
-    }
-
-    fn usage(&self, path: &str) -> Result<Usage, String> {
-        self.log.push(format!("usage {path}"));
-        lock(&self.state)
-            .usage
-            .get(path)
-            .cloned()
-            .unwrap_or_else(|| Err("the file is missing".to_string()))
     }
 
     fn settings(&self, repository: &RepositoryName, kind: &str, stream: &str) -> HostSettings {

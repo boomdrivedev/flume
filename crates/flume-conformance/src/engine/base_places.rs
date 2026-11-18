@@ -152,6 +152,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: forecast_while_it_waits_on_its_caller,
         },
         Scenario {
+            name: "base places: a base place whose kind names a fix, waiting on its caller with no place on its branch, is forecast once at each of two settles of a caller's watch",
+            cites: &["203", "225"],
+            run: a_base_place_at_each_watch,
+        },
+        Scenario {
             name: "base places: a forecast that could not be read launches nothing and fails no settle, each settle asking again, and the base place holds it unread with the merge queue's words",
             cites: &["17", "203", "210"],
             run: a_forecast_that_could_not_be_read,
@@ -1380,6 +1385,31 @@ fn forecast_while_it_waits_on_its_caller(_: &()) -> Outcome {
             forecast: Forecast::Clear { head, onto: main },
         }),
         "the forecast held"
+    );
+    Ok(())
+}
+
+/// The settling spec's "A base place at each watch": a base place whose
+/// kind names a fix waits on its caller with no place on its branch, and a
+/// caller keeping watch settles twice; each settle forecasts the base
+/// place's branch against its base through the fake merge queue (203,
+/// 225).
+fn a_base_place_at_each_watch(_: &()) -> Outcome {
+    let world = World::new();
+    let spring = spring_mended(&world, None)?;
+    ensure!(
+        world.status(&spring)?.waiting_on.is_some(),
+        "the base place waits on no move of its caller's"
+    );
+    world.queue.log.clear();
+    for _ in 0..2 {
+        world.engine().settle_every(60);
+        world.host.advance(60);
+    }
+    ensure_eq!(
+        forecasts(&world),
+        vec!["forecast train/spring onto main".to_string(); 2],
+        "the forecasts of the watch's settles"
     );
     Ok(())
 }

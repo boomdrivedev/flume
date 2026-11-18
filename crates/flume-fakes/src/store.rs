@@ -31,6 +31,8 @@ pub struct FakeStore {
     during_read_every: Mutex<Vec<Interleaved>>,
     /// The places whose next write is refused, each once.
     refused: Mutex<Vec<PlaceId>>,
+    /// The places every write of which is refused while they are named.
+    refusing: Mutex<Vec<PlaceId>>,
     root: String,
     pub log: Log,
 }
@@ -66,6 +68,7 @@ impl FakeStore {
             after_read: Mutex::default(),
             during_read_every: Mutex::default(),
             refused: Mutex::default(),
+            refusing: Mutex::default(),
             root: root.into(),
             log: Log::default(),
         }
@@ -119,6 +122,17 @@ impl FakeStore {
     /// as a store refuses one whose file it could not write.
     pub fn refuse_next_write_of(&self, place: &PlaceId) {
         lock(&self.refused).push(place.clone());
+    }
+
+    /// Every write of `place` refused from now while `refuses`, as moved,
+    /// nothing written, as a store refuses writes to a file it cannot
+    /// write, and taken again once it is false.
+    pub fn refuse_writes_of(&self, place: &PlaceId, refuses: bool) {
+        let mut refusing = lock(&self.refusing);
+        refusing.retain(|named| named != place);
+        if refuses {
+            refusing.push(place.clone());
+        }
     }
 
     /// Takes out and runs the first hook whose test holds of `held`.
@@ -187,6 +201,34 @@ impl FakeStore {
 }
 
 impl FakeStore {
+    /// Every document the store holds as it stands, past the log, each
+    /// as its text: each place's held state and the host's documents
+    /// written as JSON, each line of what a place made and each file
+    /// written into a place's folder, for a scenario that reads what
+    /// was kept (56, 221).
+    pub fn every_text(&self) -> Vec<String> {
+        let state = lock(&self.state);
+        let mut texts: Vec<String> = state
+            .documents
+            .values()
+            .map(|versioned| serde_json::to_string(&versioned.state).unwrap_or_default())
+            .collect();
+        texts.extend(
+            state
+                .host
+                .values()
+                .map(|versioned| serde_json::to_string(&versioned.document).unwrap_or_default()),
+        );
+        texts.extend(state.made.values().flatten().cloned());
+        texts.extend(
+            state
+                .files
+                .values()
+                .flat_map(|files| files.values().map(|(text, _)| text.clone())),
+        );
+        texts
+    }
+
     /// The host's document under `key` as it stands, past the log.
     pub fn host_document(&self, key: &HostKey) -> Option<HostDocument> {
         lock(&self.state)
@@ -249,7 +291,7 @@ impl Store for FakeStore {
         let refused = {
             let mut refused = lock(&self.refused);
             let at = refused.iter().position(|refused| refused == place);
-            at.map(|at| refused.remove(at)).is_some()
+            at.map(|at| refused.remove(at)).is_some() || lock(&self.refusing).contains(place)
         };
         if refused {
             self.log
