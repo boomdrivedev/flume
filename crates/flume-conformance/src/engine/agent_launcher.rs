@@ -17,7 +17,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
             name: "agent launcher: a fix on an agent that starts through the launcher, its word naming the process 41 and the terminal reading the program running in 41 and the agent waiting, starts and is sent its prompt",
-            cites: &["35", "C.4"],
+            cites: &["35"],
             run: the_word_and_its_process_read,
         },
         Scenario {
@@ -63,6 +63,10 @@ pub(crate) fn fix(world: &World, name: &str) -> Result<PlaceId, String> {
     Ok(id)
 }
 
+/// The agent-launcher spec's scenario "The word and its process read"
+/// (35, C.4): Part C's profiles are cited in words alone, since the suite
+/// cites as data only the clauses of Parts A and B, the invariants and
+/// section 11's scenarios.
 fn the_word_and_its_process_read(_: &()) -> Outcome {
     let world = World::new();
     let who = through_the_launcher(&world, "one");
