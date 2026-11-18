@@ -788,9 +788,15 @@ pub struct HostStatus {
     /// host's clock; none where the host holds no watch (56, 208).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch_settled: Option<Seconds>,
+    /// When that settle ended, by the host's clock; none while it runs,
+    /// where its command died with no end and where the host holds no
+    /// watch (56, 208).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch_ended: Option<Seconds>,
     /// When the watch lapsed, twice its bound after its newest settle
-    /// began, given while flume runs attended after one; none while a
-    /// watch is kept or none was ever held (56, 119, 208).
+    /// ended, or after it began where its command died with no end, given
+    /// while flume runs attended after one; none while a watch is kept or
+    /// none was ever held (56, 119, 208).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch_lapsed: Option<Seconds>,
     /// Each terminal the host binds, its own first, then each stream's
@@ -869,6 +875,7 @@ impl Default for HostStatus {
             addresses: vec![],
             watch: Watch::None,
             watch_settled: None,
+            watch_ended: None,
             watch_lapsed: None,
             terminals: vec![],
             bases: vec![],

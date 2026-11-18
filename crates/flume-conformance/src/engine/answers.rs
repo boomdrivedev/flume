@@ -895,6 +895,7 @@ fn host_status() -> HostStatus {
         }],
         watch: Watch::Bound { seconds: 30 },
         watch_settled: Some(47_400),
+        watch_ended: Some(47_410),
         watch_lapsed: Some(47_460),
         terminals: vec![TerminalStatus {
             profile: Some("fake".into()),
@@ -1539,6 +1540,7 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.watch",
             "status.host.watch.bound",
             "status.host.watch.bound.seconds",
+            "status.host.watch_ended",
             "status.host.watch_lapsed",
             "status.host.watch_settled",
             "status.host.terminals",

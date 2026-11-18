@@ -143,22 +143,25 @@ impl Engine {
     }
 
     /// The host's watch as status gives it: the bound a caller keeping
-    /// watch stated, or none; when its newest settle began; and, while
-    /// flume runs attended after a watch lapsed, when it lapsed, read
-    /// from the watch held and whether the command running its settle
-    /// lives (56, 76, 119, 208).
-    pub(crate) fn watch_status(&self) -> (Watch, Option<Seconds>, Option<Seconds>) {
+    /// watch stated, or none; when its newest settle began; when that
+    /// settle ended, none while it runs; and, while flume runs attended
+    /// after a watch lapsed, when it lapsed, read from the watch held and
+    /// whether the command running its settle lives (56, 76, 119, 208).
+    pub(crate) fn watch_status(
+        &self,
+    ) -> (Watch, Option<Seconds>, Option<Seconds>, Option<Seconds>) {
         let Some(watched) = self.watched() else {
-            return (Watch::None, None, None);
+            return (Watch::None, None, None, None);
         };
         let alive = |by: &str| self.host.alive(by);
         if watched.kept(self.host.now(), alive) {
             let watch = Watch::Bound {
                 seconds: watched.bound,
             };
-            (watch, Some(watched.began), None)
+            (watch, Some(watched.began), watched.ended, None)
         } else {
-            (Watch::None, Some(watched.began), watched.lapses(alive))
+            let lapsed = watched.lapses(alive);
+            (Watch::None, Some(watched.began), watched.ended, lapsed)
         }
     }
 

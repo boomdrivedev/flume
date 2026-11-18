@@ -912,7 +912,7 @@ fn a_stage_waiting_for_room_starts_at_the_next_command_once_the_host_gives_room(
     let said = walk.person(&["status"]);
     assert!(
         said.contains(
-            "no caller keeps watch: every place settles at each command of flume's that acts"
+            "no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
         ),
         "{said}"
     );

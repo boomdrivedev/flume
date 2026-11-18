@@ -1649,20 +1649,22 @@ fn confirm_words(end: &flume_core::EndStatus, recipient: &str) -> String {
 }
 
 /// Whether a caller keeps watch over the host, with its bound and when
-/// its newest settle began, or since when none has (56, 119, 208).
+/// its newest settle began, or since when none has, each saying which
+/// places settle: the places where something is pending (56, 119, 208,
+/// 225; core.35).
 fn watch_line(host: &HostStatus) -> String {
     match (host.watch, host.watch_lapsed) {
         (Watch::Bound { seconds }, _) => format!(
-            "  a caller keeps watch: every place settles every {}, last at {}",
+            "  a caller keeps watch: the places where something is pending settle every {}, last at {}",
             duration(seconds),
             host.watch_settled
                 .map_or_else(|| "an unknown time".to_string(), |at| at.to_string())
         ),
         (Watch::None, Some(lapsed)) => format!(
-            "  no caller keeps watch since {lapsed}: every place settles at each command of flume's that acts"
+            "  no caller keeps watch since {lapsed}: the places where something is pending settle at each command of flume's that acts"
         ),
         (Watch::None, None) => {
-            "  no caller keeps watch: every place settles at each command of flume's that acts"
+            "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
                 .into()
         }
     }
@@ -2948,7 +2950,7 @@ mod tests {
                     .to_string(),
                 "      spent an hour: no reset read in \"You've hit your weekly limit \u{b7} resets Nov 8, 12am (UTC)\""
                     .to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
@@ -3492,7 +3494,7 @@ mod tests {
                 "  source bad (/c/flume/sources/bad.toml): cannot be read: gives no `kinds_dir`, the directory holding the source's packages".to_string(),
                 "  source beta (/c/flume/sources/beta.toml) at /k/beta: holds no kind".to_string(),
                 "  source gamma (/c/flume/sources/gamma.toml) at /k/gamma: cannot be read: /k/gamma, the directory of the source gamma, does not exist".to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
@@ -3631,7 +3633,7 @@ mod tests {
         };
         assert_eq!(
             person(&status),
-            "no place stands on this host\nhost: 0 agents running, no bound\n  no caller keeps watch: every place settles at each command of flume's that acts"
+            "no place stands on this host\nhost: 0 agents running, no bound\n  no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
         );
     }
 
@@ -3808,30 +3810,35 @@ mod tests {
     #[test]
     fn a_host_under_a_watch() {
         // The place-status spec's watched host: a caller's bound and when
-        // its newest settle began (56, 208).
+        // its newest settle began, the places where something is pending
+        // settling (56, 208, 225).
         let host = HostStatus {
             watch: Watch::Bound { seconds: 120 },
             watch_settled: Some(47_400),
+            watch_ended: Some(47_460),
             ..HostStatus::default()
         };
         assert_eq!(
             host_lines(&host)[1],
-            "  a caller keeps watch: every place settles every 2m, last at 47400"
+            "  a caller keeps watch: the places where something is pending settle every 2m, last at 47400"
         );
     }
 
     #[test]
     fn a_host_whose_watch_lapsed() {
         // The place-status spec's unwatched host: since when no caller
-        // keeps watch, the watch's lapse (119, 208).
+        // keeps watch, the watch's lapse twice its bound after its settle
+        // ended, the places where something is pending settling at each
+        // command that acts (119, 208, 225).
         let host = HostStatus {
             watch_settled: Some(47_400),
-            watch_lapsed: Some(47_640),
+            watch_ended: Some(47_460),
+            watch_lapsed: Some(47_700),
             ..HostStatus::default()
         };
         assert_eq!(
             host_lines(&host)[1],
-            "  no caller keeps watch since 47640: every place settles at each command of flume's that acts"
+            "  no caller keeps watch since 47700: the places where something is pending settle at each command of flume's that acts"
         );
     }
 
@@ -3857,7 +3864,7 @@ mod tests {
         assert_eq!(
             lines[lines.len() - 2..],
             [
-                "  a caller keeps watch: every place settles every 30s, last at 100".to_string(),
+                "  a caller keeps watch: the places where something is pending settle every 30s, last at 100".to_string(),
                 format!("    {key}"),
             ]
         );
@@ -4996,7 +5003,7 @@ mod tests {
                 "  stream default, priority 0: 0 agents running, no bound of its own".to_string(),
                 "    its agents open in the terminal's own session".to_string(),
                 "    multiplexer printed (the host's), view terminal (the default), terminal app printed (the default), title \"default\" (the stream's name)".to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
