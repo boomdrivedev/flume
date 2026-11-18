@@ -25,4 +25,4 @@ change's `design.md`.
 
 ## 3. The site
 
-- [ ] 3.1 In `site/src/content/docs/guides/merge-queue.md`, extend the paragraph that says flume needs sluice 0.97.0 or later as design section 6 says: flume reads sluice's version before each submit; from an older sluice, or one whose version names no release, it submits nothing, and the place waits on its caller with words naming the release flume needs; once sluice is updated, `flume retry <place> --submission` submits it. Name sluice only as a product flume integrates with (core.35). True when `sluice exec <base> -- moon run site:build` passes.
+- [x] 3.1 In `site/src/content/docs/guides/merge-queue.md`, extend the paragraph that says flume needs sluice 0.97.0 or later as design section 6 says: flume reads sluice's version before each submit; from an older sluice, or one whose version names no release, it submits nothing, and the place waits on its caller with words naming the release flume needs; once sluice is updated, `flume retry <place> --submission` submits it. Name sluice only as a product flume integrates with (core.35). True when `sluice exec <base> -- moon run site:build` passes.

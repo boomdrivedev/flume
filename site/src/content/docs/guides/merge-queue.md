@@ -86,6 +86,11 @@ machine or another, or a forge's jobs. flume runs no round of it. Each
 settle only reads the outcome, and that read starts sluice's host
 process again where work waits and none runs. So flume needs sluice
 0.97.0 or later, the first release whose own process moves its queues.
+flume reads sluice's version, `sluice --version`, before each submit.
+From an older sluice, or one whose version names no release, as a build
+of sluice's main does, it submits nothing: the place waits for you, with
+words naming what sluice said and the release flume needs. Once sluice
+is updated, `flume retry <place> --submission` submits it.
 
 sluice can decide a submission as it takes it in, as it can on a base
 that takes pull requests when the work conflicts with the base. Its
