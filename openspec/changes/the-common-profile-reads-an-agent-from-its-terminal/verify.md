@@ -69,7 +69,7 @@ since the checks run only once.
 
 ## The change's tasks
 
-All 25 tasks, 1.1 to 4.1, are ticked `[x]`. Each task has its commit on
+All 20 tasks, 1.1 to 4.1, are ticked `[x]`. Each task has its commit on
 this branch (17 commits since the base).
 
 ## The change's specs
