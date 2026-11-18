@@ -734,12 +734,19 @@ fn a_base_places_branch_over_a_scratch_repository() {
         "fix/a",
         "train/a's work on main"
     );
+    // The merge-queue-profile scenario "The pinned sluice is handed the
+    // work": its version read first, then the submit by name (203, C.6;
+    // core.22).
     let asked = fs::read_to_string(&asked).expect("sluice was asked");
-    assert!(
-        asked
-            .lines()
-            .next()
-            .is_some_and(|line| line == "submit main --head train/a --no-wait --json"),
+    let mut commands = asked.lines();
+    assert_eq!(
+        commands.next(),
+        Some("--version"),
+        "the version read before the submit by name: {asked}"
+    );
+    assert_eq!(
+        commands.next(),
+        Some("submit main --head train/a --no-wait --json"),
         "the submit by name: {asked}"
     );
     assert!(
@@ -1209,8 +1216,15 @@ fn a_queue_the_settles_never_step_is_decided_by_sluices_host_process() {
         matches!(decided.state, SubmissionState::Landed { .. }),
         "the entry came to {decided:?}"
     );
+    // The version is read before the submit, and every command after it is
+    // a read (C.6; record 0080).
     let asked = fs::read_to_string(&asked).expect("sluice was asked");
     let mut commands = asked.lines();
+    assert_eq!(
+        commands.next(),
+        Some("--version"),
+        "the version read before the submit: {asked}"
+    );
     assert!(
         commands
             .next()

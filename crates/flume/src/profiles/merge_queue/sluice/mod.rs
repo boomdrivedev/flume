@@ -5,7 +5,14 @@
 //! every multiplexer's session stripped from its environment, so sluice
 //! records the place's worktree as the submitter, pushes into no pane and
 //! answers at once; never `--check` to a submit, never `wt submit` (111,
-//! 113, 117, core.6). Where sluice finds the submission decided as it takes it in,
+//! 113, 117, core.6). Before each submit, a place's from its worktree and
+//! a base place's by name, the profile reads the sluice it runs by `sluice
+//! --version`, in the directory the submit runs in: where that names a
+//! release before [`MERGES_BY_ITSELF`], the first whose own host process
+//! moves its queues, or names no release, as a build of sluice's main says
+//! 0.0.0, it runs no `sluice submit` and answers the submit refused, its
+//! words naming what sluice said and the release flume needs (111, 112,
+//! 203, C.6's submit and version rows; sluice 135; record 0080). Where sluice finds the submission decided as it takes it in,
 //! as on a base that takes pull requests, it answers with the entry's
 //! record, exiting as the outcome does, so the outcome is read from that
 //! answer as the inbox reads one, never as a refusal, with the key of the
@@ -130,6 +137,36 @@ pub const POLICY: &str = ".config/sluice.toml";
 pub const HELD_UNSAID: &str =
     "the forge refused its landing; sluice's record gives none of its words";
 
+/// The first sluice release whose own host process moves its queues, so
+/// work submitted to it is merged by itself: flume hands no work to an
+/// earlier one (sluice 135; sluice record 0093; record 0080).
+pub const MERGES_BY_ITSELF: (u64, u64, u64) = (0, 97, 0);
+
+/// The release a `sluice --version` that exited 0 names on `line`, its
+/// first line, as sluice wrote it and read part by part: the line, trimmed,
+/// is exactly `sluice` and a version of three parts joined by `.`, each of
+/// ASCII digits alone; anything else, and 0.0.0, which a build of sluice's
+/// main says, names none (C.6; sluice record 0111).
+fn release(line: &str) -> Option<(&str, (u64, u64, u64))> {
+    let mut words = line.split_whitespace();
+    let (Some("sluice"), Some(version), None) = (words.next(), words.next(), words.next()) else {
+        return None;
+    };
+    let part = |part: &str| {
+        (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            .then(|| part.parse::<u64>().ok())
+            .flatten()
+    };
+    let mut parts = version.split('.');
+    let (Some(major), Some(minor), Some(patch), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return None;
+    };
+    let release = (part(major)?, part(minor)?, part(patch)?);
+    (release != (0, 0, 0)).then_some((version, release))
+}
+
 /// The variables a multiplexer's session is named by: a submission made
 /// with one would be recorded as that session's and its outcome pushed
 /// into its pane (C.6, core.6).
@@ -222,6 +259,38 @@ impl Sluice {
             Some(answer) if success && answer.get("error").is_none() => Ok(answer),
             _ => Err(words(args, &stdout, &stderr)),
         }
+    }
+
+    /// Whether the sluice run in `dir` merges work by itself: where
+    /// `sluice --version` names a release from [`MERGES_BY_ITSELF`] on, and
+    /// otherwise the words a submit is refused with, what sluice said and
+    /// the release flume needs (C.6; sluice 135; record 0080).
+    fn merges_by_itself(&self, dir: &Path) -> Result<(), String> {
+        let said = match self.exited(dir, &["--version"]) {
+            Ok((Some(0), stdout, _)) => {
+                let line = stdout.lines().next().unwrap_or_default();
+                match release(line) {
+                    Some((_, release)) if release >= MERGES_BY_ITSELF => return Ok(()),
+                    Some((version, _)) => {
+                        format!("sluice {version} is too old to merge this work by itself")
+                    }
+                    None => format!("sluice --version said \"{line}\", which names no release"),
+                }
+            }
+            Ok((_, stdout, stderr)) => {
+                let said = refusal(&stdout, &stderr);
+                let said = match said.is_empty() {
+                    true => "it said nothing",
+                    false => said.as_str(),
+                };
+                format!("sluice --version gave no release: {said}")
+            }
+            Err(reason) => format!("sluice --version gave no release: {reason}"),
+        };
+        let (major, minor, patch) = MERGES_BY_ITSELF;
+        Err(format!(
+            "{said}; flume needs sluice {major}.{minor}.{patch} or later, the first release whose own process moves its queues"
+        ))
     }
 
     /// A decided record's outcome: landed with its commit, failed with
@@ -756,6 +825,11 @@ impl MergeQueue for Sluice {
                 vec!["submit", place.base.as_str(), "--no-wait", "--json"],
             ),
         };
+        // No work is handed to a sluice too old to merge it by itself, its
+        // version read where the submit would run (C.6; record 0080).
+        if let Err(reason) = self.merges_by_itself(dir) {
+            return Submitted::Refused { reason };
+        }
         let (success, stdout, stderr) = match self.run(dir, &args) {
             Ok(output) => output,
             Err(reason) => return Submitted::Refused { reason },
@@ -1092,6 +1166,158 @@ mod tests {
             Stepped::MovesOnItsOwn
         );
         assert!(!ran.exists(), "a sluice command was run");
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    /// A scratch folder of the test's own, named for it and the process.
+    fn scratch(test: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("fsl-{test}-{}", std::process::id()))
+    }
+
+    /// A stand-in `sluice` made afresh in `scratch` and put first on the
+    /// seam's `PATH`: it answers `--version` with the line `says`, nothing
+    /// where it is empty, exiting `code`, and appends any other command to
+    /// the `ran` file beside it, answering a submit with the entry 7. The
+    /// seam over it and the `ran` file.
+    fn stand_in(scratch: &Path, says: &str, code: i32) -> (Sluice, PathBuf) {
+        let _ = std::fs::remove_dir_all(scratch);
+        let bin = scratch.join("bin");
+        std::fs::create_dir_all(&bin).expect("a scratch folder");
+        let ran = scratch.join("ran");
+        let version = match says.is_empty() {
+            true => String::new(),
+            false => format!("echo '{says}'\n"),
+        };
+        let program = bin.join("sluice");
+        std::fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then\n{version}exit {code}\nfi\necho \"$*\" >> '{}'\nif [ \"$1\" = submit ]; then\necho '{{\"id\":7,\"branch\":\"main\",\"ahead\":[]}}'\nexit 0\nfi\nexit 1\n",
+                ran.display()
+            ),
+        )
+        .expect("the stand-in sluice");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .expect("a PATH");
+        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
+        (seam, ran)
+    }
+
+    /// The place `fix/one` onto main, its repository and its worktree
+    /// `scratch`.
+    fn a_place(scratch: &Path) -> PlaceRef {
+        let at = scratch.to_string_lossy().into_owned();
+        PlaceRef {
+            repository: at.clone(),
+            location: at,
+            branch: "fix/one".into(),
+            base: "main".into(),
+        }
+    }
+
+    /// The commands the stand-in was asked but `--version`, in order.
+    fn ran_lines(ran: &Path) -> Vec<String> {
+        std::fs::read_to_string(ran)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// A place's head from its worktree.
+    fn from_its_worktree() -> SubmitHead {
+        SubmitHead::Worktree {
+            head: Revision::new("aaa111"),
+        }
+    }
+
+    #[test]
+    fn a_sluice_before_its_host_process_is_handed_no_work() {
+        // C.6; sluice 135; record 0080: a sluice before 0.97.0 has no host
+        // process to move its queues, so neither a place's submit nor a
+        // base place's by name is handed to it.
+        let scratch = scratch("too-old");
+        let (seam, ran) = stand_in(&scratch, "sluice 0.95.1", 0);
+        let place = a_place(&scratch);
+        let by_name = SubmitHead::Branch {
+            branch: "train/a".into(),
+            revision: Revision::new("aaa111"),
+        };
+        for head in [from_its_worktree(), by_name] {
+            assert_eq!(
+                seam.submit(&place, &head),
+                Submitted::Refused {
+                    reason: "sluice 0.95.1 is too old to merge this work by itself; flume needs sluice 0.97.0 or later, the first release whose own process moves its queues".into(),
+                },
+                "{head:?}"
+            );
+        }
+        let ran_lines = ran_lines(&ran);
+        assert!(
+            !ran_lines.iter().any(|line| line.starts_with("submit")),
+            "sluice 0.95.1 was handed the work: {ran_lines:?}"
+        );
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_sluice_that_names_no_release_is_handed_no_work() {
+        // C.6; sluice record 0111: a build of sluice's main says 0.0.0, and
+        // a pre-release, a version alone or nothing names no release.
+        let scratch = scratch("no-release");
+        let says = [
+            ("sluice 0.0.0", 0, "sluice 0.0.0"),
+            ("sluice 0.97.0-rc.1", 0, "sluice 0.97.0-rc.1"),
+            ("sluice", 0, "said \"sluice\""),
+            ("", 64, "it said nothing"),
+        ];
+        for (n, (line, code, named)) in says.into_iter().enumerate() {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, code);
+            let Submitted::Refused { reason } = seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} exiting {code} was handed the work");
+            };
+            assert!(
+                reason.contains(named) && reason.contains("0.97.0"),
+                "{line:?}: {reason}"
+            );
+            let ran_lines = ran_lines(&ran);
+            assert!(
+                !ran_lines.iter().any(|line| line.starts_with("submit")),
+                "{line:?} was handed the work: {ran_lines:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_sluice_with_its_host_process_is_handed_the_work() {
+        // 111, C.6: a release is compared part by part as numbers, so
+        // 0.100.0 and 1.0.0 are each later than 0.97.0.
+        let scratch = scratch("handed");
+        for (n, line) in ["sluice 0.97.0", "sluice 0.100.0", "sluice 1.0.0"]
+            .into_iter()
+            .enumerate()
+        {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, 0);
+            let Submitted::Submitted { submission } =
+                seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} was handed no work");
+            };
+            assert_eq!(submission.id, "7", "{line:?}");
+            assert_eq!(
+                ran_lines(&ran),
+                vec!["submit main --no-wait --json"],
+                "{line:?}"
+            );
+        }
         let _ = std::fs::remove_dir_all(scratch);
     }
 
