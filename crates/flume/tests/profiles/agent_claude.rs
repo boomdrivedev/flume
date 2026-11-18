@@ -564,6 +564,11 @@ impl AgentHarness for Harness {
         }
     }
 
+    /// Every name, since 2.1.296's model names are open (172, C.4).
+    fn models(&self) -> bool {
+        true
+    }
+
     /// The plugin's module passes the windows in the engine's form, and
     /// `flume hook usage` keeps them on the start's record as it keeps
     /// them, taken at `taken_at` (211, C.4).

@@ -1,8 +1,9 @@
 use crate::{lock, FakeTerminal, Log};
 use flume_seams::{
-    no_effort, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, LiveProcess, Mode,
-    ModeBegan, ModeEntry, Offered, PerProgram, PlaceRef, Reading, Received, Reserved, Seconds,
-    Secret, Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
+    no_effort, no_model, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live,
+    LiveProcess, Mode, ModeBegan, ModeEntry, Offered, PerProgram, PlaceRef, Reading, Received,
+    Reserved, Seconds, Secret, Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN,
+    READS_NO_SESSION,
 };
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -33,7 +34,11 @@ use std::sync::{Arc, Mutex};
 /// refusing every word in the seam's default words, and names no
 /// variable read over the effort until scripted to; its command passes
 /// the effort its settings give as `--effort <word>`, and each effort
-/// asked of it is logged (197). An agent scripted to end its session
+/// asked of it is logged (197). It takes every model until scripted to
+/// take none, then refusing every name in the seam's default words; its
+/// command passes the model its settings give as `--model <name>`, each
+/// model asked of it is logged, and its program's kind is `agent` (88,
+/// 172). An agent scripted to end its session
 /// after a stop-short reads stopped and ended once a test says it
 /// stopped short (96, 134). Its program reports the windows a test
 /// scripts for a start, read in the folder the start's record is kept in
@@ -87,6 +92,9 @@ struct AgentModel {
     efforts: Vec<String>,
     /// The variable the program reads over its effort, as scripted (197).
     effort_variable: Option<&'static str>,
+    /// The program takes no model, as a profile that names no way to give
+    /// one, as scripted (172).
+    no_model: bool,
     /// The profile builds no windows, as scripted (171, 211).
     no_windows: bool,
 }
@@ -464,6 +472,12 @@ impl FakeAgent {
         lock(&self.state).efforts = words.iter().map(|word| word.to_string()).collect();
     }
 
+    /// The program takes no model, refusing every name in the seam's
+    /// default words, as a profile that names no way to give one (172).
+    pub fn take_no_model(&self) {
+        lock(&self.state).no_model = true;
+    }
+
     /// The program reads the variable `name` of its environment over the
     /// effort its command passes (197).
     pub fn read_effort_over(&self, name: &'static str) {
@@ -666,7 +680,7 @@ impl Agent for FakeAgent {
                 next: "down".into(),
                 confirm: "enter".into(),
             }),
-            kind: Some("agent".into()),
+            kind: self.kind().map(str::to_string),
             files,
         }
     }
@@ -915,6 +929,22 @@ impl Agent for FakeAgent {
                 }
             )),
         }
+    }
+
+    /// Every name taken, or every name refused in the seam's default words
+    /// once scripted to take none, each asking logged (172).
+    fn model(&self, name: &str) -> Result<(), String> {
+        self.log.push(format!("model {name}"));
+        if lock(&self.state).no_model {
+            Err(no_model(name))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// `agent`, by which the fake terminal names it (C.4).
+    fn kind(&self) -> Option<&str> {
+        Some("agent")
     }
 
     /// Each word scripted taken, any other refused naming it and the

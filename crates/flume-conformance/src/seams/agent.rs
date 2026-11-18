@@ -1,5 +1,5 @@
 //! The agent seam's scenarios (B.4, 88 to 93, 115, 116, 121, 128, 134,
-//! 135, 151, 161, 162, 169, 171, 174, 179, 196, 197, 207, 211).
+//! 135, 151, 161, 162, 169, 171, 172, 174, 179, 196, 197, 207, 211).
 
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_seams::*;
@@ -86,6 +86,11 @@ pub trait AgentHarness {
     /// them or the harness scripted them; none of either where it keeps
     /// the seam's defaults (197).
     fn efforts(&self) -> Efforts;
+
+    /// Whether the profile takes a name as its program's model, as its
+    /// program's release has it or the harness scripted it; false where
+    /// it keeps the seam's default, refusing every name (172).
+    fn models(&self) -> bool;
 
     /// The agent's program reports `windows` for its account, taken at
     /// `taken_at` by the host's clock, kept as flume's own part of the
@@ -324,7 +329,101 @@ pub fn scenarios<H: AgentHarness>() -> Vec<Scenario<H>> {
             cites: &["197", "88"],
             run: the_command_passes_the_effort::<H>,
         },
+        Scenario {
+            name: "agent: model takes a name its program takes, or refuses every name where its profile names no way, the command passing the model taken",
+            cites: &["88", "172"],
+            run: model_takes_a_name_or_refuses_every_name::<H>,
+        },
+        Scenario {
+            name: "agent: kind names the program's kind",
+            cites: &["88", "172"],
+            run: kind_names_the_programs_kind::<H>,
+        },
     ]
+}
+
+fn model_takes_a_name_or_refuses_every_name<H: AgentHarness>(harness: &H) -> Outcome {
+    let who = identity("code");
+    let command = |model: Option<&str>| {
+        harness.seam().command(
+            &harness.folder(),
+            &Settings {
+                model: model.map(Into::into),
+                ..Settings::default()
+            },
+            None,
+            &BTreeMap::new(),
+            None,
+            &BTreeMap::new(),
+            &harness.place(),
+            &who,
+            &Secret("secret".into()),
+            "begin",
+        )
+    };
+    // A name passed as written, alone or as an option's value.
+    let passes = |command: &AgentCommand, name: &str| {
+        command
+            .args
+            .iter()
+            .any(|arg| arg == name || arg.ends_with(&format!("={name}")))
+    };
+    let name = "large";
+    if harness.models() {
+        ensure_eq!(
+            harness.seam().model(name),
+            Ok::<(), String>(()),
+            format!("the model {name}")
+        );
+        ensure!(
+            passes(&command(Some(name)), name),
+            "the command passes no {name}"
+        );
+        ensure!(
+            !passes(&command(None), name),
+            "a command given no model passes {name}"
+        );
+        return Ok(());
+    }
+    // A profile that names no way to give a model refuses every name,
+    // and the core asks the model first, so its command is never given
+    // one (172).
+    for name in [name, "another-model"] {
+        match harness.seam().model(name) {
+            Ok(()) => {
+                return Err(format!(
+                    "the model {name} taken by a profile that names no way to give one"
+                ))
+            }
+            Err(words) => ensure!(
+                words.contains(&format!("`{name}`")),
+                "the refusal of {name} does not name it: {words}"
+            ),
+        }
+    }
+    Ok(())
+}
+
+fn kind_names_the_programs_kind<H: AgentHarness>(harness: &H) -> Outcome {
+    let who = identity("code");
+    let command = harness.seam().command(
+        &harness.folder(),
+        &Settings::default(),
+        None,
+        &BTreeMap::new(),
+        None,
+        &BTreeMap::new(),
+        &harness.place(),
+        &who,
+        &Secret("secret".into()),
+        "begin",
+    );
+    ensure_eq!(
+        harness.seam().kind().map(str::to_string),
+        command.kind,
+        "the kind the profile names beside its command's"
+    );
+    Ok(())
 }
 
 fn effort_takes_its_programs_words<H: AgentHarness>(harness: &H) -> Outcome {

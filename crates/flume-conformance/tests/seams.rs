@@ -41,6 +41,11 @@ fn the_fake_agent_passes_the_agent_scenarios() {
     pass_all(
         "agent",
         &agent::scenarios(),
+        FakeAgentHarness::taking_no_model,
+    );
+    pass_all(
+        "agent",
+        &agent::scenarios(),
         FakeAgentHarness::reporting_no_windows,
     );
 }

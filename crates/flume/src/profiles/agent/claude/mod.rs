@@ -600,6 +600,12 @@ impl Agent for Claude {
         mode::map(entry).map(str::to_string)
     }
 
+    /// Every name, since the release's model names are open, passed by
+    /// `--model` as written (172, C.4).
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Each of 2.1.296's five `--effort` words, and any other refused
     /// naming it, `claude` and the five ([`effort`]; 197, C.4).
     fn effort(&self, word: &str) -> Result<(), String> {
