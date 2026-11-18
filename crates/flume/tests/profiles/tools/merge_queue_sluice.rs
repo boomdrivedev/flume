@@ -3,10 +3,14 @@
 //! base lands on a remote, a local bare remote: nothing reaches a forge,
 //! a credential or the host's own sluice state, sluice's checkouts keep
 //! their scratch in the test's own folder, and no multiplexer's session
-//! reaches sluice. The merge-queue seam's scenarios run against
+//! reaches sluice. Each test's queues are moved by the host process of
+//! its own state folder, which its first submit starts, and no test or
+//! settle steps them; a check waits while the test holds it, so a test
+//! reads a submission open for as long as it needs (124, 125, C.6;
+//! sluice 135). The merge-queue seam's scenarios run against
 //! it; then a submission from a herdr pane's hook, a failed entry
-//! collected once, a queue nothing drives, a step beside a live driver, a
-//! conflict's base revision, a conflict sluice answers at the submit
+//! collected once, a queue the settles never step decided by sluice's
+//! host process, a conflict's base revision, a conflict sluice answers at the submit
 //! itself, through the stand-in for sluice, and a settle beside that
 //! submit, which the inbox gives nothing, a pull request answered with
 //! no entry and the entry taken in from it read to its landing, through
@@ -39,7 +43,6 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -1099,87 +1102,75 @@ fn every_branch_asked_at_once_is_read_from_one_overview_and_one_status_of_each_b
 }
 
 #[test]
-fn a_queue_nothing_drives_is_decided_by_the_settles_steps() {
+fn a_queue_the_settles_never_step_is_decided_by_sluices_host_process() {
+    // The merge-queue-profile scenarios "A queue the settles never step"
+    // and "A queue nothing drives": with no `sluice run` or `sluice
+    // daemon` live, the place's entry, its check held, is read open; once
+    // the hold goes, the profile's step, read-submission and inbox, asked
+    // as a settle asks them, find it landed by sluice's host process,
+    // which the submit started, each step answering that main's queue
+    // moves on its own, and every sluice command the profile ran after
+    // the submit a read (124, 125, C.6; sluice 135).
     let harness = Harness::new();
     let (place, head) = harness.place();
-    harness.seam.submit(&place, &from_worktree(&head));
+    let (seam, asked) = harness.counting();
+    harness.hold();
+    let Submitted::Submitted { .. } = seam.submit(&place, &from_worktree(&head)) else {
+        panic!("the submit was refused");
+    };
+    match seam.read_submission(&place.repository, &place.branch).read {
+        SubmissionRead::Found { submission } => assert!(
+            submission.state.open(),
+            "the held entry read {submission:?}"
+        ),
+        other => panic!("read-submission of the held entry gave {other:?}"),
+    }
+    harness.release();
     let deadline = Instant::now() + Duration::from_secs(90);
-    loop {
+    let decided = loop {
         assert_eq!(
-            harness.seam.step(&place.repository, "main"),
-            Stepped::Stepped,
-            "a step"
+            seam.step(&place.repository, &place.base),
+            Stepped::MovesOnItsOwn,
+            "a settle's step"
         );
-        match harness
-            .seam
-            .read_submission(&place.repository, "fix/one")
-            .read
-        {
-            SubmissionRead::Found { submission } if !submission.state.open() => {
-                assert!(
-                    matches!(submission.state, SubmissionState::Landed { .. }),
-                    "the entry came to {submission:?}"
-                );
-                return;
-            }
+        let read = seam.read_submission(&place.repository, &place.branch).read;
+        assert!(
+            matches!(seam.inbox(&place), Inbox::Outcomes { .. }),
+            "the inbox could not be read"
+        );
+        match read {
+            SubmissionRead::Found { submission } if !submission.state.open() => break submission,
             SubmissionRead::Found { .. } => {}
             other => panic!("read-submission gave {other:?}"),
         }
-        assert!(Instant::now() < deadline, "the entry was never decided");
+        assert!(
+            Instant::now() < deadline,
+            "the entry was never decided; {}",
+            harness.host_process()
+        );
         std::thread::sleep(Duration::from_millis(300));
-    }
-}
-
-#[test]
-fn a_step_beside_a_live_driver_does_nothing_and_answers() {
-    let harness = Harness::new();
-    let (place, head) = harness.place();
-    let mut run = Command::new("sluice");
-    run.arg("run").current_dir(&harness.repository.dir);
-    for (name, _) in std::env::vars() {
-        if name.starts_with("SLUICE_")
-            || name.starts_with("HERDR_")
-            || name.starts_with("REX_")
-            || name.starts_with("TMUX")
-        {
-            run.env_remove(name);
-        }
-    }
-    let mut run = run
-        .env("HOME", &harness.home)
-        .env("XDG_STATE_HOME", harness.home.join("state"))
-        .env("XDG_CONFIG_HOME", harness.home.join("config"))
-        .env(USER_SCRATCH, user_scratch(&harness.repository))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .expect("sluice run starts");
-    harness.seam.submit(&place, &from_worktree(&head));
-    let began = Instant::now();
-    let stepped = harness.seam.step(&place.repository, "main");
-    let took = began.elapsed();
-    let deadline = Instant::now() + Duration::from_secs(90);
-    let landed = loop {
-        match harness
-            .record("fix/one")
-            .and_then(|record| record["state"].as_str().map(str::to_string))
-        {
-            Some(state) if !matches!(state.as_str(), "queued" | "testing" | "landing") => {
-                break state
-            }
-            _ if Instant::now() >= deadline => break "undecided".into(),
-            _ => std::thread::sleep(Duration::from_millis(300)),
-        }
     };
-    // SAFETY: a signal to the process group of the run this test started.
-    unsafe { libc::kill(-(run.id() as libc::pid_t), libc::SIGTERM) };
-    let _ = run.kill();
-    let _ = run.wait();
-    assert_eq!(stepped, Stepped::Stepped, "the step beside the driver");
-    assert!(took < Duration::from_secs(30), "the step waited {took:?}");
-    assert_eq!(landed, "landed", "the driver's landing");
+    assert!(
+        matches!(decided.state, SubmissionState::Landed { .. }),
+        "the entry came to {decided:?}"
+    );
+    let asked = fs::read_to_string(&asked).expect("sluice was asked");
+    let mut commands = asked.lines();
+    assert!(
+        commands
+            .next()
+            .is_some_and(|line| line.starts_with("submit main ")),
+        "the submit: {asked}"
+    );
+    for line in commands {
+        assert!(
+            matches!(
+                line.split_whitespace().next(),
+                Some("inbox" | "confirm" | "overview" | "status")
+            ),
+            "a sluice command after the submit: {line}"
+        );
+    }
 }
 
 #[test]
