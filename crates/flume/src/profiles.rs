@@ -227,16 +227,17 @@ impl Resolver for BuiltIn {
     }
 
     /// Claude Code's profile for the program [`DEFAULT_PROGRAM`] names,
-    /// by that name or by a path to it, with flume's plugin; any other
-    /// program resolves to nothing, and a launch naming it is refused
-    /// (32, 105, C.4).
-    /// The plugin is written under the login environment's
-    /// `$XDG_DATA_HOME`, or its `$HOME/.local/share`, where the resolver
-    /// was given one.
+    /// by that name or by a path to it, with flume's plugin; the common
+    /// profile over its entry for every other program an entry of
+    /// [`agent::programs`] names, by its name or a path to it; and any
+    /// other program resolves to nothing, so a launch naming it is refused
+    /// (32, 105, 170, C.4; core.3; design 1). The plugin is written under
+    /// the login environment's `$XDG_DATA_HOME`, or its
+    /// `$HOME/.local/share`, where the resolver was given one.
     fn agent(&self, program: &str) -> Option<Arc<dyn Agent>> {
-        let name = Path::new(program).file_name()?.to_str()?;
-        if name != agent::claude::NAME {
-            return None;
+        let entry = agent::programs::entry(program)?;
+        if entry.name != agent::claude::NAME {
+            return Some(Arc::new(agent::common::Common::of_host(entry)));
         }
         let claude = match self.login_data() {
             None => agent::claude::Claude::of_host(),
