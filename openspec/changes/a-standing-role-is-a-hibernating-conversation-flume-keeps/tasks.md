@@ -47,7 +47,7 @@ configuration of the user's.
 ## 8. Tidying a standing role's place
 
 - [x] 8.1 In `crates/flume-core/src/tidy.rs`, tidy a standing role's place by its checkouts: each read through the place seam, one that cannot be read keeping the place `Unreadable` and one that holds anything keeping it `Holds` with its paths under the checkout's folder; otherwise `remove_checkouts`, a refusal keeping it `Teardown` with its words; and no branch removed or kept (design 11; 62, 65; core.18). Add tidying's "Finished and removed" and "A checkout holding a file" to `engine/tidying.rs`. Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
-- [ ] 8.2 In `crates/flume-core/src/settle.rs`, have `undo` of a standing role's place whose waking command is gone remove what was made by `remove_checkouts` and remove its held state (design 11; 2, 76). Add tidying's "The waking command gone" to `engine/tidying.rs`. Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
+- [x] 8.2 In `crates/flume-core/src/settle.rs`, have `undo` of a standing role's place whose waking command is gone remove what was made by `remove_checkouts` and remove its held state (design 11; 2, 76). Add tidying's "The waking command gone" to `engine/tidying.rs`. Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
 
 ## 9. Status
 

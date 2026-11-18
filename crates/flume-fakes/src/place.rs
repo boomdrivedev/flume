@@ -141,11 +141,13 @@ impl FakePlace {
         lock(&self.state).data = Some(data.into());
     }
 
-    /// The worktree at `location` removed through its teardown by another
-    /// than flume, as a merge queue that removes a landed place does.
+    /// The worktree or the checkout at `location` removed by another than
+    /// flume, as a merge queue that removes a landed place does, or as a
+    /// make that died before it made it.
     pub fn vanish(&self, location: &str) {
         let mut state = lock(&self.state);
         state.worktrees.remove(location);
+        state.checkouts.remove(location);
         state.holds.remove(location);
     }
 

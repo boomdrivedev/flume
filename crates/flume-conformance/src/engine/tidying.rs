@@ -72,6 +72,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["65", "193"],
             run: a_standing_roles_checkout_holding_a_file,
         },
+        Scenario {
+            name: "tidy: The waking command gone: the command that woke east/ops gone while its place was made, one checkout made, the next settle removes that checkout and the location, and no held state of the place stands",
+            cites: &["2", "76", "193"],
+            run: the_waking_command_gone,
+        },
     ]
 }
 
@@ -528,6 +533,31 @@ fn a_standing_roles_checkout_holding_a_file(_: &()) -> Outcome {
         world.place.log.count("remove_checkouts"),
         0,
         "the checkouts' removes"
+    );
+    Ok(())
+}
+
+fn the_waking_command_gone(_: &()) -> Outcome {
+    use super::standing_roles::{checkout_at, ops_woken};
+    let world = World::new();
+    let id = ops_woken(&world)?;
+    // The wake's command died having made the first checkout alone.
+    let (blueprints, _) = checkout_at(&world, &id, "blueprints");
+    world.place.vanish(&blueprints);
+    let mut held = world.held(&id).ok_or("no place")?;
+    let by = world.host.another_command();
+    held.phase = Phase::Making { by: by.clone() };
+    world.store.put(&id, held);
+    world.host.end_command(&by);
+    world.engine().settle(None);
+    ensure!(world.held(&id).is_none(), "the place's held state stands");
+    ensure_eq!(
+        (
+            checkout_at(&world, &id, "repository").1,
+            world.place.stands(&id.0)
+        ),
+        (None, false),
+        "the checkout made and what stands at the location"
     );
     Ok(())
 }
