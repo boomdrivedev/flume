@@ -81,6 +81,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["193", "213"],
             run: moved_at_the_next_start,
         },
+        Scenario {
+            name: "standing-roles: The kinds in the first prompt: east/ops' entry giving the kinds fix and change, its talk's first prompt gives, after the roles a stop-short may name, flume's words on launching by flume launch naming no recipient, then change and fix each with its words",
+            cites: &["28", "193"],
+            run: the_kinds_in_the_first_prompt,
+        },
+        Scenario {
+            name: "standing-roles: A kind the entry does not name: the talk's agent launching a chore from its place, naming no recipient, is taken, its recipient east/ops",
+            cites: &["7", "193"],
+            run: a_kind_the_entry_does_not_name,
+        },
     ]
 }
 
@@ -658,4 +668,83 @@ pub fn handovers_to_ops(world: &World, key: &str) -> usize {
             .filter(|handover| handover.recipient == OPS)
             .count()
     })
+}
+
+/// `east/ops`' entry naming the kinds `fix` and `change` with their
+/// words (193).
+pub fn ops_with_kinds() -> RoleRun {
+    RoleRun {
+        kinds: BTreeMap::from([
+            ("fix".to_string(), "a failing landing or check".to_string()),
+            (
+                "change".to_string(),
+                "a change a design asks for".to_string(),
+            ),
+        ]),
+        ..ops_run()
+    }
+}
+
+fn the_kinds_in_the_first_prompt(_: &()) -> Outcome {
+    let world = World::new();
+    world.blueprints();
+    declares(&world, vec![desk()], ops_with_kinds());
+    // A role a stop-short may name, which the prompt lists before the
+    // kinds (28, 41).
+    world.host.set_stream("north", Some(Stream::default()));
+    world.host.set_role(
+        "north/design",
+        Some(RoleRun {
+            answers: Some("A decision the design has not made.".into()),
+            repositories: vec![],
+            ..ops_run()
+        }),
+    );
+    an_end_for_ops(&world, "one")?;
+    let id = ops_id();
+    let prompt = world.prompt(&id, &talk_of(1)).ok_or("no prompt")?;
+    let roles = prompt
+        .find("- `north/design`: A decision the design has not made.")
+        .ok_or_else(|| format!("the roles are not listed: {prompt}"))?;
+    let words = prompt
+        .find(flume_core::KINDS_WORDS)
+        .ok_or_else(|| format!("flume's words on launching are not given: {prompt}"))?;
+    ensure!(roles < words, "the kinds before the roles: {prompt}");
+    ensure!(
+        prompt.ends_with(&format!(
+            "{}\n- `change`: a change a design asks for\n- `fix`: a failing landing or check",
+            flume_core::KINDS_WORDS
+        )),
+        "the kinds as the prompt gives them: {prompt}"
+    );
+    ensure!(
+        flume_core::KINDS_WORDS.contains("flume launch")
+            && flume_core::KINDS_WORDS.contains("naming no recipient"),
+        "flume's words: {}",
+        flume_core::KINDS_WORDS
+    );
+    Ok(())
+}
+
+fn a_kind_the_entry_does_not_name(_: &()) -> Outcome {
+    let world = World::new();
+    world.blueprints();
+    declares(&world, vec![desk()], ops_with_kinds());
+    an_end_for_ops(&world, "one")?;
+    // The talk's command, whose environment names no recipient and names
+    // the talk's place.
+    world.host.set_recipient(None);
+    let mut chore = launch("chore", "tidy", Some("tidy the notes"));
+    chore.from_place = Some(ops_id());
+    let place = launched(&world.engine.launch(&chore))?;
+    let held = world.held(&place.place).ok_or("no chore")?;
+    ensure_eq!(
+        (
+            held.place.recipients.clone(),
+            held.place.recipients_from.clone()
+        ),
+        (vec![OPS.to_string()], Some(RecipientsFrom::RoleRun)),
+        "the chore's recipients"
+    );
+    Ok(())
 }
