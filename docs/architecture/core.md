@@ -14,7 +14,7 @@ of the tree moves to an area page when that part exists.
 
 ### The core and its seams
 
-- **[core.1]** Code outside a profile names no worktree tool, change tool, agent program, terminal, window program or merge queue.
+- **[core.1]** Code outside a profile names no worktree tool, change tool, agent program, terminal, window program or merge queue, a test's code among it: a test of one program's behavior lives under `crates/flume/tests/profiles/`.
 - **[core.2]** Every seam of Part B is reached through exactly one interface, and a profile implements that interface and nothing of the core.
 - **[core.3]** A repository's profiles are read from its `[profiles]` table and from nothing else; a seam the table leaves unbound is the no-tool profile, or unbound, and never guessed from another tool's files.
 - **[core.4]** flume defines no field of the kind format: the format is weir's, and flume reads the part clause 23 names of a simple kind, and a statechart kind's statechart whole as weir's crate reads it, and ignores every section it does not know.
