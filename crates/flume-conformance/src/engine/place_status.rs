@@ -1671,6 +1671,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
                 AccountStatus {
                     name: "work-2".into(),
@@ -1683,6 +1685,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
             ],
         }],
@@ -1731,6 +1735,7 @@ fn a_pool_with_readings(_: &()) -> Outcome {
             "bound": null,
             "spent_until": null,
             "reading": reading,
+            "home": null,
         })
     };
     ensure_eq!(

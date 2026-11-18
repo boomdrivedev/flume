@@ -2914,6 +2914,8 @@ mod tests {
                         spent_unread: None,
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                     AccountStatus {
                         name: "work-2".into(),
@@ -2924,6 +2926,8 @@ mod tests {
                         spent_unread: None,
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                     AccountStatus {
                         name: "work-3".into(),
@@ -2936,6 +2940,8 @@ mod tests {
                         ),
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                 ],
             }],
@@ -3514,6 +3520,8 @@ mod tests {
             spent_unread: None,
             reading,
             past,
+            home: None,
+            home_unread: None,
         }
     }
 

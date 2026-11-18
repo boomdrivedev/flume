@@ -1171,6 +1171,8 @@ impl Engine {
                         spent_unread: room.spent_unread.clone(),
                         reading: room.reading_status(),
                         past: room.past(),
+                        home: None,
+                        home_unread: None,
                     })
                     .collect(),
             })
