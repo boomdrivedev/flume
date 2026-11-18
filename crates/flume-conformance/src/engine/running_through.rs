@@ -9,10 +9,12 @@
 //! no stage before it being able to do that work again, and waits on a
 //! retry of that stage, which counts no going-back (41, 42, 48, 49).
 
+use super::agent_modes::mode_from;
 use super::settling::{
     archive, change_at_verify, construct_begun, deliver_fix, fix_begun, write_change,
 };
 use super::world::*;
+use crate::seams::kinds::entry;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Retry, Waits};
 use flume_fakes::Plan;
@@ -34,14 +36,14 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s35_a_change_runs_through,
         },
         Scenario {
-            name: "run through: a bare change, in a repository whose lock records flume/change@3, runs change@3, its code stage one start of one agent for a change of four task groups, status and its line giving `code` with no group count, and the place submitted once verify archives the change",
+            name: "run through: a bare change in a repository whose lock records flume/change@3 runs change@3, its code stage one start of one agent for a change of four task groups, status and its line giving `code` with no group count, and the place submitted once verify archives the change",
             cites: &["22", "154", "155", "S119"],
-            run: s119_one_agent_codes_the_change,
+            run: s119_a_locked_change_3_codes_with_one_agent,
         },
         Scenario {
-            name: "run through: a bare change, in a repository that locks nothing, runs change@5, its code stage one start of one agent for a change of four task groups, status and its line giving `code` with no group count, and the place submitted once verify archives the change",
-            cites: &["22", "154"],
-            run: change_5_codes_the_change_with_one_agent,
+            name: "run through: a bare change in a repository that locks nothing runs change@5, each stage's agent in full from the kind, its code stage one start of one agent for a change of four task groups, its line `change--plan · change@5 · code · run 1 · tasks 0/7 · working`, and the place submitted once verify archives the change",
+            cites: &["22", "154", "162", "S119"],
+            run: s119_a_bare_change_runs_change_5_through,
         },
         Scenario {
             name: "run through: two fixes launched with notes as briefs each land with no further word",
@@ -192,34 +194,48 @@ fn code_as_status_gives_it(
     Ok((code.label(), code.group.clone(), code.starts))
 }
 
-fn s119_one_agent_codes_the_change(_: &()) -> Outcome {
-    let world = World::new();
-    let hash = super::kind_sources::own_hash(&world, "change", 3)?;
-    world.kinds.set_lock(
-        REPOSITORY,
-        vec![crate::seams::kinds::entry("flume", "change", 3, &hash)],
-    );
-    one_agent_codes_the_change(&world, 3)
+fn s119_a_locked_change_3_codes_with_one_agent(_: &()) -> Outcome {
+    let world = World::with_every_own_version();
+    let hash = world
+        .kinds
+        .flumes_own()
+        .into_iter()
+        .find(|own| own.identity.spelled == "flume/change@3")
+        .map(|own| own.hash)
+        .ok_or("flume holds no change@3")?;
+    world
+        .kinds
+        .set_lock(REPOSITORY, vec![entry("flume", "change", 3, &hash)]);
+    one_agent_codes_the_change(&world, 3, None)
 }
 
-fn change_5_codes_the_change_with_one_agent(_: &()) -> Outcome {
-    one_agent_codes_the_change(&World::new(), 5)
+fn s119_a_bare_change_runs_change_5_through(_: &()) -> Outcome {
+    let world = World::with_every_own_version();
+    one_agent_codes_the_change(
+        &world,
+        5,
+        Some(Given {
+            layer: Layer::Kind,
+            value: "full".into(),
+            file: None,
+        }),
+    )
 }
 
-/// A bare change launched in `world` runs flume's own change at
-/// `version`, its code stage one start of one agent for a change of four
-/// task groups, status and its line giving `code` with no group count, and
-/// the place is submitted once verify archives the change (22, 154).
-fn one_agent_codes_the_change(world: &World, version: u32) -> Outcome {
-    let identity = format!("flume/change@{version}");
-    let coding = format!("change--plan · change@{version} · code · run 1 · tasks 0/7 · working");
+/// A bare change run through in `world` as change@`version`, its code
+/// stage one start of one agent for a change of four task groups, each
+/// stage's agent given `mode` as status gives where it came from, and the
+/// place submitted once verify archives the change (22, 154, 162, S119).
+fn one_agent_codes_the_change(world: &World, version: u32, mode: Option<Given>) -> Outcome {
     let id = construct_begun(world, "plan")?;
     let status = world.status(&id)?;
+    let identity = format!("flume/change@{version}");
     ensure_eq!(
         (status.version, status.identity.as_deref()),
         (version, Some(identity.as_str())),
         "the kind a bare change runs"
     );
+    ensure_eq!(mode_from(world, &id)?, mode, "construct's mode");
     world.tick_groups("change/plan", "plan", FOUR_GROUPS, 0);
     world.settle(&id);
     ensure_eq!(
@@ -232,10 +248,12 @@ fn one_agent_codes_the_change(world: &World, version: u32) -> Outcome {
         ("code".to_string(), None, 1),
         "code as status gives it"
     );
+    ensure_eq!(mode_from(world, &id)?, mode, "code's mode");
     let line = world.status(&id)?.line;
+    let full = format!("change--plan · change@{version} · code · run 1 · tasks 0/7 · working");
     ensure_eq!(
         (line.stage.as_deref(), line.full.as_str()),
-        (Some("code"), coding.as_str()),
+        (Some("code"), full.as_str()),
         "the place's line"
     );
     world.tick_groups("change/plan", "plan", FOUR_GROUPS, 4);
@@ -263,6 +281,7 @@ fn one_agent_codes_the_change(world: &World, version: u32) -> Outcome {
         1,
         "code's starts once every task is ticked"
     );
+    ensure_eq!(mode_from(world, &id)?, mode, "verify's mode");
     archive(world, "plan");
     world.settle(&id);
     ensure_eq!(world.queue.log.count("submit"), 1, "submissions");

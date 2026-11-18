@@ -112,11 +112,11 @@ gives them, change@1's last stage naming `code` for a failed submission
 
 ### Requirement: change@3 codes its change with one agent
 
-A place of flume's own change@3 SHALL run its construct, then its code
-stage as one start of one agent for every task of the change, whatever
-its task groups, then its verify, and SHALL be submitted once verify
-delivers the change archived; status SHALL give its code stage as `code`
-with no group (22, 30, 154, S119).
+A place of flume's own change@3, or of change@4 after it, SHALL run its
+construct, then its code stage as one start of one agent for every task
+of the change, whatever its task groups, then its verify, and SHALL be
+submitted once verify delivers the change archived; status SHALL give
+its code stage as `code` with no group (22, 30, 154, S119; record 0064).
 
 #### Scenario: A bare change runs change@3 through
 

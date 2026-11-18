@@ -1635,7 +1635,6 @@ pub(crate) mod tests {
                         "team=ops,flume.stage=x".to_string(),
                     )]),
                     agents: None,
-                    usage: None,
                 }],
             }),
         );
