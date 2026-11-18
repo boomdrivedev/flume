@@ -111,6 +111,12 @@ impl Engine {
             Err(why) => return Err(format!("{address} wakes nothing: {why}")),
         };
         if let Some(held) = self.run_of(address, &run) {
+            // A run whose stage hibernates is resumed by a batch pending
+            // at its address, and nothing is launched (213, 214).
+            let held = match self.resume_by_delivery(address) {
+                Some(id) => self.store.read(&id).map_or(held, |read| read.state),
+                None => held,
+            };
             return Ok((standing(&held), held));
         }
         // A standing role's checkouts are read before anything is made,

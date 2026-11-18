@@ -5,11 +5,12 @@
 //! naming the kinds it launches its projects as, which report back to
 //! its address, whose deliveries resume it.
 
-use super::role_waking::{addresses, asks, fix_for, runs};
+use super::role_waking::{addresses, fix_for, runs};
+use super::settling::deliver_fix;
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Retry;
-use flume_fakes::FakeAgent;
+use flume_fakes::{FakeAgent, Plan};
 use flume_seams::*;
 use std::collections::BTreeMap;
 
@@ -121,11 +122,14 @@ pub fn declares(world: &World, kinds: Vec<Kind>, run: RoleRun) {
     world.host.set_role(OPS, Some(run));
 }
 
-/// An end comes for `east/ops`: a fix launched for it asks, and the
-/// settle that records its stop-short wakes the address. The fix.
+/// An end comes for `east/ops`: a fix launched for it delivers its code,
+/// its submission held by the merge queue so it waits on no caller, and
+/// the settle that records its delivery wakes the address. The fix.
 pub fn an_end_for_ops(world: &World, name: &str) -> Result<PlaceId, String> {
     let id = fix_for(world, name, &[OPS])?;
-    asks(world, &id)?;
+    deliver_fix(world, &id);
+    world.queue.plan_submits(vec![Plan::Hold]);
+    world.settle(&id);
     Ok(id)
 }
 
@@ -609,4 +613,43 @@ fn moved_at_the_next_start(_: &()) -> Outcome {
         "blueprints' revision, when it was moved and its move not made"
     );
     Ok(())
+}
+
+/// A message to `east/ops` `words`, as `flume message east/ops` sends
+/// it: its delivery's key (53, 214).
+pub fn message_ops(world: &World, words: &str) -> Result<String, String> {
+    match world
+        .engine()
+        .message_address(OPS, words, None, &flume_core::Answering::default())
+    {
+        flume_core::Answer::Messaged { key, .. } => Ok(key),
+        other => Err(format!("the message answered {other:?}")),
+    }
+}
+
+/// A message to `east/ops` `words` recorded at the address with no act's
+/// wake after it, as by an act whose wake never ran: its key (43, 214).
+pub fn recorded_for_ops(world: &World, words: &str) -> Result<String, String> {
+    let key = flume_core::message::message_key(OPS, "0a1b2c3d");
+    let at = flume_core::deliveries::time(world.host.now());
+    let message = flume_core::message::message_words(OPS, None, words);
+    flume_core::deliveries::update(&*world.store, |records| {
+        match weir_delivery::record(records, &key, &message, &[OPS], &at, 604_800) {
+            Ok(weir_delivery::Recorded::Add(added)) => added,
+            _ => vec![],
+        }
+    })?;
+    Ok(key)
+}
+
+/// The hand-overs to `east/ops` of the delivery `key` the host's
+/// deliveries hold now (43).
+pub fn handovers_to_ops(world: &World, key: &str) -> usize {
+    world.owing().deliveries.get(key).map_or(0, |delivery| {
+        delivery
+            .handovers
+            .iter()
+            .filter(|handover| handover.recipient == OPS)
+            .count()
+    })
 }

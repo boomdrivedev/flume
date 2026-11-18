@@ -572,9 +572,20 @@ impl Engine {
         // address's batch, claimed under the start's identity before the
         // start is written, and let go of where the start is not made
         // with it (214; design 9).
-        let batched = match (&read.state.role, &resume, &resolution) {
-            (Some(address), None, Ok(_)) => {
+        // A resume by a delivery claims the batch under the resume's own
+        // identity, its prompt the batch's words (213, 214; design 7).
+        let batched = match (&read.state.role, &resume, &resolution, &resumes) {
+            (Some(address), None, Ok(_), _) => {
                 self.claim_for_start(address, &self.next_identity(&read.state, index))
+            }
+            (Some(address), Some(_), Ok(_), Some(from)) if resumed_by == ResumedBy::Delivery => {
+                self.claim_for_start(
+                    address,
+                    &Identity {
+                        resume: from.identity.resume + 1,
+                        ..from.identity.clone()
+                    },
+                )
             }
             _ => None,
         };
@@ -675,11 +686,17 @@ impl Engine {
                     let resumed = then_words(StartReason::Resumed.words(), words.as_deref());
                     (way(resumed), words.clone())
                 }
-                // A resume of a hibernated start is sent the resume's words
-                // and the way to stop short, and keeps the words its start
-                // was given (28, 213).
+                // A resume of a hibernated start is sent the resume's words,
+                // a resume by a delivery its batch's, else flume's for a
+                // bare resume, and the way to stop short, and keeps the
+                // words its start was given (28, 213, 214).
                 Some(_) if hibernated => {
-                    let resumed = words.clone().unwrap_or_else(|| StartReason::Woken.words());
+                    let resumed = batched
+                        .as_ref()
+                        .filter(|batched| batched.identity == identity)
+                        .map(|batched| batched.words.clone())
+                        .or_else(|| words.clone())
+                        .unwrap_or_else(|| StartReason::Woken.words());
                     let given = resumes.as_ref().and_then(|from| from.words.clone());
                     (way(resumed), given)
                 }

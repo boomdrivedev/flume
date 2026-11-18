@@ -350,6 +350,26 @@ impl Engine {
         }
     }
 
+    /// Whether a batch is pending for `recipient`: a delivery owed to it,
+    /// but a drop's or a done's, handed to it and claimed for it by
+    /// nothing (43, 214).
+    pub(crate) fn batch_pending(&self, recipient: &str) -> bool {
+        let whole = match read_whole(&*self.store) {
+            Ok(whole) => whole,
+            Err(why) => {
+                self.host.log(&why);
+                return false;
+            }
+        };
+        !batch(
+            &owing(&whole.records, self.host.now()),
+            &whole.claims,
+            &held_back(&self.documents()),
+            recipient,
+        )
+        .is_empty()
+    }
+
     /// Hands `recipient` its batch alone, as a settle would, where its
     /// session reads waiting (43, 214).
     pub(crate) fn hand_batch_to(&self, recipient: &str) {
@@ -364,7 +384,9 @@ impl Engine {
 
     /// Hands `recipient` its batch where it has one and its session reads
     /// waiting: claimed, read again, sent, and recorded handed on the
-    /// send's answer, or let go of where the send was not made (43, 75,
+    /// send's answer, or let go of where the send was not made; and, for a
+    /// role's address whose run's stage hibernates, which has no session,
+    /// resumes that stage by its delivery in place of a send (43, 75, 213,
     /// 214; core.11).
     fn hand_batch(&self, recipient: &str, standing: &mut Option<Standing>, held_back: &HeldBack) {
         let whole = match read_whole(&*self.store) {
@@ -386,6 +408,9 @@ impl Engine {
             return;
         }
         if self.takes_itself(recipient) {
+            return;
+        }
+        if is_address(recipient) && self.resume_by_delivery(recipient).is_some() {
             return;
         }
         let standing = standing.get_or_insert_with(|| self.standing());

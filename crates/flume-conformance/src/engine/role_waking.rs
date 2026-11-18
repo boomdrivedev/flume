@@ -206,6 +206,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["130", "132", "193", "56"],
             run: the_doors_own_run,
         },
+        Scenario {
+            name: "role waking: A carrier's wake of a hibernating run: east/ops' run hibernates, a message is pending for it, and flume wake east/ops launches nothing, resumes the run's stage by delivery, and answers the run that stands",
+            cites: &["132", "213"],
+            run: a_carriers_wake_of_a_hibernating_run,
+        },
+        Scenario {
+            name: "role waking: Nothing pending: east/ops' run hibernates with nothing pending at its address, and flume wake east/ops launches and resumes nothing, answering the run that stands, hibernating",
+            cites: &["132", "213"],
+            run: nothing_pending_at_a_hibernating_run,
+        },
     ]
 }
 
@@ -2099,5 +2109,52 @@ fn the_next_run_is_handed_it(_: &()) -> Outcome {
             end.pending_for
         );
     }
+    Ok(())
+}
+
+fn a_carriers_wake_of_a_hibernating_run(_: &()) -> Outcome {
+    use super::standing_roles::{ops_hibernated, recorded_for_ops, OPS};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    world.keep_watch();
+    recorded_for_ops(&world, "The release is out.")?;
+    let opens = world.terminal.log.count("open");
+    let (woke, place) = woken(&world.engine().wake(OPS))?;
+    ensure!(woke != Woke::Launched, "the wake launched a run");
+    ensure_eq!(place.place, id.clone(), "the run the wake answered");
+    ensure_eq!(runs(&world), vec![id.clone()], "the runs on the host");
+    ensure_eq!(world.terminal.log.count("open"), opens + 1, "agents opened");
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start")?;
+    ensure_eq!(
+        start.resumes.last().map(|resume| resume.by),
+        Some(ResumedBy::Delivery),
+        "what resumed the run's talk"
+    );
+    ensure!(
+        start.prompt.text.contains("The release is out."),
+        "the resume's prompt: {}",
+        start.prompt.text
+    );
+    Ok(())
+}
+
+fn nothing_pending_at_a_hibernating_run(_: &()) -> Outcome {
+    use super::standing_roles::{ops_hibernated, OPS};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let opens = world.terminal.log.count("open");
+    let (woke, place) = woken(&world.engine().wake(OPS))?;
+    ensure_eq!(woke, Woke::Waiting, "the wake");
+    ensure_eq!(place.place, id.clone(), "the run the wake answered");
+    ensure_eq!(
+        place.stages[0].state,
+        StageState::Hibernating,
+        "the run's talk as the wake answered it"
+    );
+    ensure_eq!(runs(&world), vec![id], "the runs on the host");
+    ensure_eq!(world.terminal.log.count("open"), opens, "agents opened");
     Ok(())
 }
