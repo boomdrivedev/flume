@@ -299,6 +299,62 @@ impl Engine {
         }
     }
 
+    /// How the agent of `start` began otherwise than its start recorded,
+    /// its record read in the place's own `folder`: the profile's own
+    /// answer; else, for a profile that starts its program through flume's
+    /// launcher whose start's word names a process, that it runs in
+    /// another process where the terminal reads the program running in
+    /// another than the word names, as a person running it again by hand
+    /// in the pane starts it; none otherwise (161, S74; core.10). Every
+    /// reading of how a start began is this one, so a settle and the stop
+    /// check read it alike.
+    pub(crate) fn began_otherwise(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<Unsettled> {
+        if let Some(unsettled) = agent.started_without(folder, &start.identity) {
+            return Some(unsettled);
+        }
+        if !agent.launches() {
+            return None;
+        }
+        let launched = agent.launched(folder, &start.identity)?;
+        match self.agent_on(start).program_process() {
+            ProgramProcess::Runs { pid } if pid != launched => Some(Unsettled {
+                process: true,
+                ..Unsettled::default()
+            }),
+            _ => None,
+        }
+    }
+
+    /// How the agent of `start` began otherwise, as
+    /// [`Engine::began_otherwise`] reads it now, else as `held` recorded a
+    /// reading of its program in another process than its launcher became,
+    /// which a later reading of the terminal need not repeat: the start is
+    /// still no start of its stage's agent, and is ended once quiet (161,
+    /// S74).
+    pub(crate) fn began_otherwise_held(
+        &self,
+        held: &HeldState,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<Unsettled> {
+        self.began_otherwise(agent, folder, start).or_else(|| {
+            held.unsettled
+                .iter()
+                .find(|read| {
+                    read.stage == start.identity.stage
+                        && read.start == start.n
+                        && read.unsettled.process
+                })
+                .map(|read| read.unsettled.clone())
+        })
+    }
+
     /// The agent of a place's start, as the terminal and the agent seam
     /// read it, the agent's record read in the place's own folder (128).
     pub(crate) fn read_agent(&self, place: &PlaceId, start: &StartHeld) -> AgentReading {
