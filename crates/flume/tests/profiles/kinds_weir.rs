@@ -1622,6 +1622,64 @@ fn a_repositorys_hibernate_after_refuses_the_launch_naming_the_field() {
 }
 
 #[test]
+fn hibernate_through_weir_a_conversation_read() {
+    // 23, 212, C.2; weir 53, 58; core.4: the kinds-profile spec's "A
+    // hibernating conversation read": a declaration whose conversation
+    // stage gives `hibernate = true` is read, through weir's `Stage`, with
+    // that stage hibernating, and the stage that writes `false` and the
+    // one that leaves it out not.
+    let repository = Repository::new("declared-hibernate");
+    repository.write(
+        DECLARATION,
+        "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\nhibernate = true\n\n\
+         [[kinds.research.stages]]\nname = \"code\"\n\
+         prompt = \"prompts/code.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\nhibernate = false\n\n\
+         [[kinds.research.stages]]\nname = \"review\"\n\
+         prompt = \"prompts/review.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\n",
+    );
+    for stage in ["talk", "code", "review"] {
+        repository.write(&format!(".config/prompts/{stage}.md"), "{{brief}}");
+    }
+    let head = repository.commit("a conversation that hibernates");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &Revision::new(head))
+    else {
+        panic!("the declaration did not read");
+    };
+    let research = kinds
+        .iter()
+        .find(|kind| kind.name == "research")
+        .expect("research declared");
+    let hibernates: Vec<(&str, bool)> = research
+        .stages
+        .iter()
+        .map(|stage| (stage.name.as_str(), stage.hibernates))
+        .collect();
+    assert_eq!(
+        hibernates,
+        vec![("talk", true), ("code", false), ("review", false)],
+        "the conversation that writes hibernate hibernates, and every other stage not"
+    );
+}
+
+#[test]
+fn hibernate_through_weir_flumes_own_kinds_declare_none() {
+    // 22, 212, C.2: the kinds-profile spec's "flume's own kinds": no stage
+    // of any of flume's own kinds, at any version, hibernates.
+    for kind in own_kinds() {
+        for stage in &kind.stages {
+            assert!(
+                !stage.hibernates,
+                "{}@{}'s {} hibernates",
+                kind.name, kind.version, stage.name
+            );
+        }
+    }
+}
+
+#[test]
 fn a_packages_keep_open_refuses_the_launch_naming_the_stages_field() {
     // 4, 158, 198, C.2: the kinds-profile spec's "A kind's keep_open": a
     // package whose kind's stage gives `keep_open` in its `agents` entry

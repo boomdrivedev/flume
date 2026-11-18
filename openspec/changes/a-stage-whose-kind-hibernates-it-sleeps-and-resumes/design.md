@@ -27,8 +27,8 @@ reads it absent as never (weir 53, 58, C.4), weir's unit
 hibernate time is `hibernate_after`, the host's or the launch's alone as
 `keep_open` is (212, C.2, C.7); and a resume's agent carries its
 start's identity with the resume's number after it,
-`<stage>:<start>.<resume>` (213). The change goes on to code before
-weir's revision lands, its weir pin the one task that waits on it.
+`<stage>:<start>.<resume>` (213). weir's unit landed on weir's main
+as #33, and the change pins weir at cc9d41f, the main that holds it.
 
 This change builds 212 and 213 and their meeting with 42, 49, 51 to
 53, 109 and 198. It builds nothing of 214 and 215, a delivery to a
@@ -91,9 +91,12 @@ pins, true where the declaration writes `true` and false where it
 writes `false` or leaves it out, and never from `sections` (weir 53,
 58; core.4, core.22). Every other part of this change is built and
 proved on the fake kinds, which give the seam's `Stage` directly; the
-pin moves to the revision of weir that lands
-`a-stage-may-declare-that-it-hibernates` in this change's last kinds
-task, which waits on that revision alone.
+pin of weir-kinds, weir-delivery and weir-pack moves to cc9d41f,
+weir's main landing `a-stage-may-declare-that-it-hibernates`, in this
+change's last kinds task, and `nix/packages/git-crates.nix` moves with
+Cargo.lock in the same commit, one entry for each of weir's git
+packages Cargo.lock now holds, each at cc9d41f with fetchgit's hash of
+its tree there, as `nix:test` requires.
 
 *Path not taken:* reading `hibernate` from `sections` until weir names
 it, which core.4's details rule out for `repeat` and `standing` alike.
@@ -369,12 +372,12 @@ change. No rule is departed from.
 
 ## Risks / Trade-offs
 
-- **weir's revision.** The change cannot land whole until weir's
-  `a-stage-may-declare-that-it-hibernates` lands: its weir pin task
-  waits on that revision. → Every other task is built and proved on the
-  fakes first; where the revision has not landed when the code stage
-  reaches that task, the stage stops short naming it, as boomdrive-design
-  ruled.
+- **weir's revision.** cc9d41f is weir's main 204 commits past
+  52b9552, so the pin brings weir-kinds' statechart kinds and the
+  weir-cadence, weir-engine and weir-policy packages into Cargo.lock
+  beside the unit flume needs. → flume reads `Stage.hibernate` alone of
+  what the move adds; the kinds profile's tests build against the new
+  revision, and the verify stage's whole gate proves the rest.
 - **The statement's branch.** 212, 213, C.2, C.7 and weir's 53 and C.4
   are cited at 30dce35, on a design branch waiting on the user's push.
   → A later wording there that changes what they say is carried here

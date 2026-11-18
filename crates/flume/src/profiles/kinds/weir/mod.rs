@@ -851,7 +851,11 @@ fn map_stage(
             None => false,
             Some(weir_kinds::Repeat::PerTaskGroup) => true,
         },
-        hibernates: false,
+        // weir gives `hibernate` as written, `None` where it is left out,
+        // since the format gives no default (weir 53, 58); flume reads a
+        // stage that leaves it out as not hibernating (212), and never
+        // reads its sections for it (core.4).
+        hibernates: stage.hibernate.unwrap_or(false),
     }
 }
 
