@@ -147,8 +147,10 @@ has none. Its doc comment names the home as the one path it gives.
 - The person's form: `an_accounts_configuration_home` in
   `crates/flume/src/commands/print.rs`'s tests.
 - The built binary: `each_claude_code_accounts_home_in_status` in
-  `crates/flume/tests/commands.rs`, a host's pool of two Claude Code
-  accounts under a scratch `HOME`.
+  `crates/flume/tests/profiles/hooks_claude.rs`, a host's pool of two
+  Claude Code accounts under a scratch `HOME`, run by the built binary
+  as the hooks there are; under `profiles/` a test may name the
+  program, which `crates/flume/tests/commands.rs` may not (core.1).
 
 ### 7. The site
 

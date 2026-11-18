@@ -73,7 +73,7 @@ None.
   (`settings.rs`).
 - `crates/flume`: the person's form prints the home
   (`commands/print.rs`); a test of the built binary reads Claude Code
-  accounts' homes (`tests/commands.rs`).
+  accounts' homes (`tests/profiles/hooks_claude.rs`).
 - `crates/flume-conformance`: the engine's scenario for the homes, and
   every `AccountStatus` it builds.
 - `site/`: the state reference's `pools` row, the agent settings guide's

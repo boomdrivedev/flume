@@ -3799,48 +3799,6 @@ fn s83_the_local_layer_through_the_binary() {
 }
 
 #[test]
-fn each_claude_code_accounts_home_in_status() {
-    // 56, C.4, core.30: a host's pool of two Claude Code accounts, work-1
-    // whose variables give `CLAUDE_CONFIG_DIR` and a token and work-2
-    // whose give neither; status gives work-1's home read against the
-    // host user's `HOME`, work-2's `null`, the person's form names
-    // work-1's home under its line, and neither gives the token.
-    let host = Host::new("claude-homes");
-    let token = "a-token-of-the-claude-homes-test";
-    host.configure(&format!(
-        "[pools.work]\nstrategy = \"fill-first\"\naccounts = [\n  {{ name = \"work-1\", program = \"claude\", env = {{ CLAUDE_CONFIG_DIR = \"~/.claude-work-1\", CLAUDE_CODE_OAUTH_TOKEN = \"{token}\" }} }},\n  {{ name = \"work-2\", program = \"claude\" }},\n]\n\n[streams.work]\npool = \"work\"\n"
-    ));
-    let repository = repository("claude-homes", None);
-    let home = host.home().join(".claude-work-1");
-    let home = home.to_string_lossy();
-
-    let ran = host.flume(&repository.dir, &["status", "--json"], &[]);
-    assert_eq!(ran.code, 0, "{}", ran.text);
-    assert!(!ran.text.contains(token), "{}", ran.text);
-    let json = ran.json();
-    let accounts = &json["status"]["host"]["pools"][0]["accounts"];
-    assert_eq!(accounts[0]["name"], json!("work-1"), "{json}");
-    assert_eq!(accounts[0]["home"], json!(home), "{json}");
-    assert_eq!(accounts[1]["name"], json!("work-2"), "{json}");
-    assert_eq!(accounts[1].get("home"), Some(&Value::Null), "{json}");
-
-    let ran = host.flume(&repository.dir, &["status"], &[]);
-    assert_eq!(ran.code, 0, "{}", ran.text);
-    assert!(!ran.text.contains(token), "{}", ran.text);
-    let lines: Vec<&str> = ran.text.lines().collect();
-    let work_1 = lines
-        .iter()
-        .position(|line| line.trim_start().starts_with("work-1 (claude)"))
-        .unwrap_or_else(|| panic!("no line of work-1: {}", ran.text));
-    assert_eq!(
-        lines.get(work_1 + 1).map(|line| line.trim()),
-        Some(format!("configuration home {home}").as_str()),
-        "{}",
-        ran.text
-    );
-}
-
-#[test]
 fn flume_writes_neither_configuration_file() {
     // C.7, core.16, core.45: a launch, its settles, status and its tidy
     // leave both layers' files as they were, their content and their
