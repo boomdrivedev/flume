@@ -378,6 +378,7 @@ impl Kinds for FakeKinds {
     /// exactly one statechart kind, as the weir profile reads them;
     /// unlogged, since every settle of a statechart place reads it (176).
     fn read_statechart(&self, kind: &KindStatechart, template: &str) -> Result<Charts, String> {
+        self.log.push(format!("read_statechart {}", kind.title));
         let chart = one_statechart(&kind.text)
             .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
         let template =
