@@ -43,6 +43,7 @@ configuration of the user's.
 ## 7. The kinds in a role's prompt
 
 - [x] 7.1 In `crates/flume-core/src/prompt.rs`, add `kinds_text`, design 8's words then each kind its entry names with its words in the kinds' order, none where it names none; and in `start.rs`, give it after the roles a stop-short may name in `fill` and in a carried start's and a resume's prompt, read from the host's roles at the start as `may_name` reads them (design 8; 28, 193; core.1, core.31); with the unit test `the_kinds_a_role_launches_follow_the_roles` in `prompt.rs`. Add standing-roles' "The kinds in the first prompt" and "A kind the entry does not name". Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
+- [x] 7.2 In `crates/flume-core/src/prompt.rs`, have `the_kinds_a_role_launches_follow_the_roles` name no program, its check that design 8's words name none moved to standing-roles' "The kinds in the first prompt" in `engine/standing_roles.rs`, read against the tools' names `no_tool::hits` holds (core.1). Verify with `sluice exec bolt/flumes-roles-sleep-and-wake -- moon run conformance:test`.
 
 ## 8. Tidying a standing role's place
 

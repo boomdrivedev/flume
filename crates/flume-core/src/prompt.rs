@@ -432,7 +432,6 @@ mod tests {
             "the roles where the entry names no kind"
         );
         assert_eq!(after_roles(&[], &BTreeMap::new(), "east", &agent), None);
-        assert!(!KINDS_WORDS.contains("claude"), "a program named");
     }
 
     #[test]

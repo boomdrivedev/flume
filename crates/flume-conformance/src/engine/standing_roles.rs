@@ -733,6 +733,11 @@ fn the_kinds_in_the_first_prompt(_: &()) -> Outcome {
         "flume's words: {}",
         flume_core::KINDS_WORDS
     );
+    ensure!(
+        crate::no_tool::hits(flume_core::KINDS_WORDS).is_empty(),
+        "flume's words name a tool (core.1): {}",
+        flume_core::KINDS_WORDS
+    );
     Ok(())
 }
 
