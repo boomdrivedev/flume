@@ -1,4 +1,4 @@
-//! The merge queue seam's scenarios (B.6, 99, 101, 117, 125, 126, 133, 225),
+//! The merge queue seam's scenarios (B.6, 99, 101, 117, 125, 126, 133),
 //! where the base lives (9), and a base place's branch opened, closed
 //! and submitted by name (203, 205, 206).
 
@@ -139,7 +139,7 @@ fn decided<H: MergeQueueHarness>(harness: &H, place: &PlaceRef) -> Outcome {
 
 /// The one outcome the inbox gives, of `submission`: given again by
 /// every inbox while it is unconfirmed where it has a key, and once
-/// confirmed by it, or given with none, nothing (133, 225).
+/// confirmed by it, or given with none, nothing (133).
 fn the_one_outcome<H: MergeQueueHarness>(
     harness: &H,
     place: &PlaceRef,
@@ -219,17 +219,17 @@ pub fn scenarios<H: MergeQueueHarness>() -> Vec<Scenario<H>> {
         },
         Scenario {
             name: "merge queue: the inbox gives a landing, with the commit it landed as and the submission it decides, again until the place confirms it and never after",
-            cites: &["133", "225", "101", "113", "117"],
+            cites: &["133", "101", "113", "117"],
             run: inbox_gives_a_landing_once::<H>,
         },
         Scenario {
             name: "merge queue: a failed submission's outcome names the merge queue's words",
-            cites: &["133", "225", "117", "112"],
+            cites: &["133", "117", "112"],
             run: a_failure_names_the_words::<H>,
         },
         Scenario {
             name: "merge queue: a conflict's outcome names the files contested and the base tested against",
-            cites: &["133", "225", "112"],
+            cites: &["133", "112"],
             run: a_conflict_names_the_files::<H>,
         },
         Scenario {

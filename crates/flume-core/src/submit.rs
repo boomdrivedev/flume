@@ -24,7 +24,7 @@
 //! delivered it to the request rather than the place, acted on once
 //! whichever of the record and the inbox gives it first (124, 133, C.6).
 //! An outcome of a submission before the one flume last made decides
-//! nothing of the place, and is confirmed with no act (225).
+//! nothing of the place, and is confirmed with no act (133).
 //! A branch the merge queue could not read is passed over, named in
 //! status, and decides nothing of the place unless it is the place's
 //! base, where its submission is: the record and the inbox of every other
@@ -140,7 +140,7 @@ impl Engine {
     /// only what is new; an outcome of a submission before the one flume
     /// last made decides nothing and is confirmed with no act, and one
     /// whose act was not written is left unconfirmed for the next settle
-    /// (225). An inbox that cannot be read is named in status and acts on
+    /// (133). An inbox that cannot be read is named in status and acts on
     /// nothing, and a branch it passed over is named in status and decides
     /// nothing of the outcomes it gave (133, 68). The outcome of a
     /// request's entry, which the merge queue's record gives as well, is
@@ -327,7 +327,7 @@ impl Engine {
     /// and is no outcome of the one it makes now, so the settles that
     /// follow collect that submission's alone, and an outcome flume acted
     /// on whose confirm the merge queue could not take is confirmed here,
-    /// acted on no more (99, 101, 133, 225).
+    /// acted on no more (99, 101, 133).
     fn collect_before(&self, id: &PlaceId, retried: bool) {
         let Some(read) = self.store.read(id) else {
             return;
@@ -387,7 +387,7 @@ impl Engine {
     /// Acts on an outcome of the place's submission as [`Engine::verdict`]
     /// acts on its verdict, a conflict's at the base's revision the merge
     /// queue tested against (112); true once the place's state holds what
-    /// it decided, written now or before, so it may be confirmed (225).
+    /// it decided, written now or before, so it may be confirmed (133).
     pub(crate) fn outcome(&self, id: &PlaceId, outcome: SubmissionOutcome) -> bool {
         let onto = match &outcome {
             SubmissionOutcome::Conflict { base, .. } => Some(base.clone()),
@@ -583,7 +583,7 @@ pub(crate) fn own_read(held: &HeldState, across: ReadAcross) -> SubmissionRead {
 /// the place: the entry flume's submit last made, or, while the place's
 /// request is not yet read taken in, any entry but the one before it. An
 /// earlier submission's, acted on when it was given first, or an earlier
-/// place's of the same name, decides nothing now (99, 124, 225).
+/// place's of the same name, decides nothing now (99, 124, 133).
 fn decides(ours: &SubmissionHeld, submission: &str) -> bool {
     match &ours.id {
         Some(id) => id == submission,

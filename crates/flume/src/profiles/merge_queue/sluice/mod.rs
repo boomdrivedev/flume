@@ -10,7 +10,7 @@
 //! record, exiting as the outcome does, so the outcome is read from that
 //! answer as the inbox reads one, never as a refusal, with the key of the
 //! answer's `delivery` where it is owed, for confirm once flume has acted
-//! on it (101, 112, 133, 225; sluice 51; sluice record 0102). On such a
+//! on it (101, 112, 133; sluice 51; sluice record 0102). On such a
 //! base sluice pushes
 //! the place's branch and opens or updates its pull request, and where
 //! intake has not taken it in answers `{pull_request, branch, state}`
@@ -41,7 +41,7 @@
 //! exit 0, confirmed now or before, and exit 1, nothing owed under the
 //! key, are each confirmed, since sluice hands nothing over under it
 //! again, and any other exit sluice unread in its words, the outcome
-//! left owed for the next inbox (101, 225; sluice 51). read-submission reads
+//! left owed for the next inbox (101, 133; sluice 51). read-submission reads
 //! `sluice status <base> --all --json` for each branch `sluice overview
 //! --json` names, once for every branch of the repository asked at once,
 //! so a status of every place runs them once for each repository (58,
@@ -780,7 +780,7 @@ impl MergeQueue for Sluice {
         // sluice hands a decided answer over by the submit and keeps it
         // owed until its reader confirms it, which flume does by its key
         // once it has acted on it; until then an inbox may hand it over
-        // too (112, 133, 225; sluice 51; sluice record 0102).
+        // too (112, 133; sluice 51; sluice record 0102).
         match self.outcome(&entry, place) {
             Ok(outcome) => Submitted::Decided {
                 submission,
@@ -794,7 +794,7 @@ impl MergeQueue for Sluice {
     fn inbox(&self, place: &PlaceRef) -> Inbox {
         // Each outcome owed is handed over again until flume confirms it
         // once it has acted on it, so one a settle could not act on comes
-        // to the next (124, 133, 225; sluice 51; sluice record 0102).
+        // to the next (124, 133; sluice 51; sluice record 0102).
         let args = ["inbox", "--json"];
         let (success, stdout, stderr) = match self.run(Path::new(&place.location), &args) {
             Ok(output) => output,

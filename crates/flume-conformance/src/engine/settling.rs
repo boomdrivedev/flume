@@ -20,7 +20,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "settle: a change sent back by a failure its merge queue hands again at every inbox, its confirm not taken, has its code begun in the settle that sent it back and ended in the settle that reads it delivered and quiet, the failure acted on once",
-            cites: &["40", "46", "112", "133", "74", "225"],
+            cites: &["40", "46", "112", "133", "74"],
             run: an_outcome_handed_again_holds_no_stage,
         },
         Scenario {
@@ -281,7 +281,7 @@ fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
     // failure again, so none read the stage's prompt received or its end
     // (40, 46, 133). A merge queue that takes no confirm keeps the
     // failure owed and hands it again at every inbox, as one did before
-    // flume confirmed what it acted on (225).
+    // flume confirmed what it acted on (133).
     let world = World::new();
     world
         .queue
