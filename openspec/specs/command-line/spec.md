@@ -328,16 +328,17 @@ and the forms (7, 32, 198).
 
 ### Requirement: settle --every keeps the host's watch
 
-`flume settle --every <bound>` SHALL settle every place on the host as
-`flume settle` naming no place does, recording first the host's watch
-with its bound, a duration as `flume wait --timeout` takes it; it SHALL
+`flume settle --every <bound>` SHALL settle the places on the host
+where something is pending, recording first the host's watch with its
+bound and the command running it, and when its settle ended once it
+has, the bound a duration as `flume wait --timeout` takes it; it SHALL
 be refused, naming why, beside a place's name or with a bound that is
-not a positive duration (61, 119, 208).
+not a positive duration (61, 119, 208, 225).
 
 #### Scenario: A watch over a scratch repository
 
 - **WHEN** `flume settle --every 2m` runs on a scratch host holding one submitted place, and `flume status --json` runs after it
-- **THEN** the settle stepped the place's base once, and status gives the host's `watch` with a bound of 120 seconds and `watch_settled` when the settle began (56, 208)
+- **THEN** the settle stepped the place's base once, and status gives the host's `watch` with a bound of 120 seconds, `watch_settled` when the settle began and `watch_ended` when it ended (56, 208, 225)
 
 #### Scenario: A watch with a place named
 

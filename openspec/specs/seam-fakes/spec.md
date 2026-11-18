@@ -437,7 +437,7 @@ the submission it decides under the key `<id>:<state>` at every inbox
 until a confirm of that key, logged as `confirm <key>`; SHALL keep a
 conflict it answers at submit owed to the place under its key; SHALL
 leave an outcome of a named submission pending when told; and SHALL
-answer every confirm unread while told to refuse confirms (133, 225).
+answer every confirm unread while told to refuse confirms (133).
 
 #### Scenario: A landing given until it is confirmed
 
