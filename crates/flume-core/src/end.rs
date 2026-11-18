@@ -12,13 +12,17 @@
 //! neither taken nor lost, and is not quiet (31, 93).
 //! An agent its own record shows stopped at its account's usage limit is
 //! ended once quiet and its stage started afresh, unless it delivered
-//! (146).
+//! (146). A conversation whose kind hibernates it is read for its quiet
+//! as well, from flume's first reading of it quiet, asking nothing, with
+//! no own work and no message being handed to it, started again whenever
+//! it is read otherwise; once quiet its hibernate time, the settle
+//! hibernates it (44, 90, 91, 212).
 
 use crate::open_sessions::last_answer;
 use crate::reading::lines_from;
 use crate::reading::{repeats_on, AgentReading, Facts};
 use crate::start::Starts;
-use crate::{Engine, Step, QUIET_LIMIT};
+use crate::{Engine, Step, HIBERNATE_AFTER, QUIET_LIMIT};
 use flume_seams::*;
 
 impl Engine {
@@ -88,7 +92,7 @@ impl Engine {
             return true;
         }
         if declared.conversation {
-            return false;
+            return declared.hibernates && self.idle(id, &start, &reading);
         }
         let facts = self.facts(&held, &bound, Some(index));
         if facts.delivered && reading.quiet() {
@@ -150,6 +154,51 @@ impl Engine {
         });
         self.mark_stuck(id, &start);
         false
+    }
+
+    /// A running conversation whose kind hibernates it, read as `reading`
+    /// reads its agent: quiet, asking nothing, no own work running and no
+    /// message being handed to it, its quiet kept in its start's
+    /// `first_quiet` from flume's first reading of it so and cleared
+    /// whenever it is read otherwise; once quiet its start's
+    /// `hibernate_after`, hibernated for its idling, `0` hibernating it
+    /// never so, nor a role's run while a batch handed to nothing is
+    /// pending at its address, whose quiet starts again then. True when
+    /// it was hibernated (44, 54, 90, 91, 212, 214).
+    fn idle(&self, id: &PlaceId, start: &StartHeld, reading: &AgentReading) -> bool {
+        let now = self.host.now();
+        let handing = start.handing.is_some_and(|until| now < until);
+        // A batch waiting to be handed to a role's run is no idling: its
+        // quiet starts again once it has taken it (212, 214).
+        let quiet = reading.quiet() && !handing && !self.batch_waits_on(id);
+        let since = match (quiet, start.first_quiet) {
+            (false, None) => return false,
+            (false, Some(_)) => {
+                self.with_start(id, &start.identity, |start, _| start.first_quiet = None);
+                return false;
+            }
+            (true, None) => {
+                self.with_start(id, &start.identity, |start, _| {
+                    start.first_quiet.get_or_insert(now);
+                });
+                return false;
+            }
+            (true, Some(since)) => since,
+        };
+        let due = hibernate_after(start).is_some_and(|after| now.saturating_sub(since) >= after);
+        due && self
+            .hibernate_stage(id, HibernatedBy::Idle, false)
+            .unwrap_or(false)
+    }
+
+    /// Whether the place is a role's run whose address holds a batch
+    /// handed to it by nothing, which waits to be handed to its session
+    /// (212, 214).
+    fn batch_waits_on(&self, id: &PlaceId) -> bool {
+        self.store
+            .read(id)
+            .and_then(|read| read.state.role)
+            .is_some_and(|address| self.batch_pending(&address))
     }
 
     /// A stuck stage's end carries what was read of its agent while it
@@ -227,7 +276,9 @@ impl Engine {
                 return Step::Keep(false);
             };
             let stage = &mut held.stages[index];
-            let lost = stage.state == StageState::Lost;
+            // A lost or hibernating stage has no agent to end, and ends at
+            // its caller's finish (45, 109, 212).
+            let lost = matches!(stage.state, StageState::Lost | StageState::Hibernating);
             let Some(start) = stage.start.as_mut().filter(|start| start.live || lost) else {
                 return Step::Keep(false);
             };
@@ -282,6 +333,21 @@ impl Engine {
             Step::Write(())
         });
     }
+}
+
+/// How long the start's conversation may idle before it is hibernated:
+/// its settings' `hibernate_after` as resolved at its start, flume's own
+/// hour for a start written before it resolved one or one whose value no
+/// longer reads; none for `0`, which hibernates it never on its idling
+/// (32, 212).
+pub(crate) fn hibernate_after(start: &StartHeld) -> Option<Seconds> {
+    let after = start
+        .settings
+        .hibernate_after
+        .as_deref()
+        .and_then(|given| read_span(given).ok())
+        .unwrap_or(HIBERNATE_AFTER);
+    (after > 0).then_some(after)
 }
 
 /// How a delivered start ends its stage: a repetition with a task of the

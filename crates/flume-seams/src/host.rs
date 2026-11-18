@@ -584,7 +584,14 @@ pub struct HostSettings {
 pub struct RoleRun {
     #[serde(default)]
     pub source: String,
+    /// The repository the run is launched in; for a standing role's
+    /// entry, which gives `repositories`, the first of them (193, C.7).
     pub repository: String,
+    /// A standing role's repositories, by their locations on the host,
+    /// in the entry's order, its place holding a checkout of each; none
+    /// where the entry gives `repository` (193, C.7).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repositories: Vec<String>,
     pub kind: String,
     #[serde(default)]
     pub priority: i64,
@@ -602,6 +609,26 @@ pub struct RoleRun {
     pub answers: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub answerer: bool,
+    /// The kinds the run's session launches its projects as, each by its
+    /// name as a launch names it, with the words of when it serves, which
+    /// its prompt gives; none where the entry names none. flume checks no
+    /// kind against a source, and refuses no launch for its kind not
+    /// being named here (28, 193, C.7).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<String, String>,
+}
+
+/// The folder a standing role's checkout of the repository at `location`
+/// takes under its place's location: the location's last part, a
+/// trailing `.git` dropped, so a bare repository's `flume.git` gives
+/// `flume` (193, C.1).
+pub fn checkout_folder(location: &str) -> String {
+    let last = location
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    last.strip_suffix(".git").unwrap_or(last).to_string()
 }
 
 /// The settings a role's entry gives its run's agents under its `agents`

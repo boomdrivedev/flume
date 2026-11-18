@@ -1,5 +1,5 @@
 //! The terminal profile that prints the command (C.5; design 12): the
-//! terminal seam's scenarios against it, its refusals among them, a tell
+//! terminal seam's scenarios against it, its refusals among them, a message
 //! refused with nothing typed, its saying it hands a running agent no
 //! words (198), the command status gives, the same command printed
 //! whatever session its stream names (107), an agent read stopped once
@@ -183,6 +183,7 @@ fn relay_under_the_printed_command_is_refused_and_runs_nothing() {
         place: "fix--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let opened = Printed.open(
         &harness.place(),
@@ -492,6 +493,7 @@ fn the_printed_command_hands_a_running_agent_no_words() {
         place: "fix--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     assert!(matches!(
         Printed.open(
@@ -517,18 +519,18 @@ fn the_printed_command_hands_a_running_agent_no_words() {
 }
 
 #[test]
-fn a_tell_under_the_printed_command_is_refused_with_nothing_typed() {
-    let scratch = Scratch::new("printed-tell");
+fn a_message_under_the_printed_command_is_refused_with_nothing_typed() {
+    let scratch = Scratch::new("printed-message");
     let world = World::new();
     let id = World::id("fix", "one");
     let code = World::identity("fix", "one", "code", 1);
     world.agent.set_started(&code, Reading::Yes);
     launched(&printed(&world, &scratch).launch(&launch("fix", "one", Some("x"))))
         .expect("the launch");
-    let told = printed(&world, &scratch).tell(&id, "go on", Some(30));
+    let told = printed(&world, &scratch).message(&id, "go on", Some(30));
     assert!(
         told.refusal().is_some(),
-        "a tell under the printed command was taken: {told:?}"
+        "a message under the printed command was taken: {told:?}"
     );
     assert!(world.terminal.sent_to(&code).is_empty(), "words were typed");
 }
