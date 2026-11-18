@@ -22,16 +22,18 @@ use crate::{Engine, Step, QUIET_LIMIT};
 use flume_seams::*;
 
 impl Engine {
-    /// Reads the current begun stage; true when it ended or was lost.
-    pub(crate) fn read_end(&self, id: &PlaceId) -> bool {
+    /// Reads the begun stage at `at`, else the current one: a session of a
+    /// statechart kind's stage among them; true when it ended or was lost
+    /// (31, 175).
+    pub(crate) fn read_end(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
         let held = read.state;
-        let Some(index) = held.current else {
+        let Some(index) = at.or(held.current) else {
             return false;
         };
-        let declared = held.place.kind.stages[index].clone();
+        let declared = held.declared(index).clone();
         let Some(start) = held.stages[index].start.clone().filter(|start| start.live) else {
             return false;
         };
@@ -259,7 +261,9 @@ impl Engine {
             if matches!(state, StageState::Delivered | StageState::Finished) {
                 stage.counts = None;
             }
-            if index + 1 == held.stages.len() && held.place.kind.lands {
+            // A statechart place is submitted once its run is over, never
+            // at a session's delivery (111, 176).
+            if index + 1 == held.stages.len() && held.place.kind.lands && held.chart.is_none() {
                 held.submission.due = true;
             }
             Step::Write(true)

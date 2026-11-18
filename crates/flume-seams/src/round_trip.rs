@@ -116,6 +116,57 @@ fn kind() -> Kind {
         label: Some("operation".into()),
         fix: None,
         fix_limit: None,
+        statechart: None,
+    }
+}
+
+/// A statechart kind: its stages empty, one stage listing its entries and
+/// one naming a rule, its text as the kinds profile spelled it (175).
+fn statechart_kind() -> Kind {
+    Kind {
+        name: "persona".into(),
+        version: 1,
+        branch_prefix: "persona".into(),
+        starts_unready: false,
+        lands: true,
+        agents: KindSettings::default(),
+        stages: vec![],
+        label: None,
+        fix: None,
+        fix_limit: None,
+        statechart: Some(KindStatechart {
+            title: "Persona test".into(),
+            text: "[kinds.persona]\ntitle = \"Persona test\"\n".into(),
+            stages: BTreeMap::from([
+                (
+                    "stages.build".into(),
+                    ChartStage {
+                        agents: ChartAgents::Entries(vec![settings(), Settings::default()]),
+                        join: Join::Count(2),
+                        deliverables: vec![Deliverable::Commits],
+                        prompt: Some("Build {{brief}}".into()),
+                        on_fail: Some("build".into()),
+                        send_back_limit: Some(2),
+                    },
+                ),
+                (
+                    "stages.test".into(),
+                    ChartStage {
+                        agents: ChartAgents::Rule {
+                            rule: "every-file".into(),
+                            pattern: Some("personas/*.md".into()),
+                        },
+                        join: Join::All,
+                        deliverables: vec![Deliverable::CommittedReport {
+                            path: "results/{{file}}".into(),
+                        }],
+                        prompt: Some("Test {{file}}".into()),
+                        on_fail: None,
+                        send_back_limit: None,
+                    },
+                ),
+            ]),
+        }),
     }
 }
 
@@ -441,6 +492,7 @@ fn held() -> HeldState {
                 asking_since: None,
             }),
             since: Some(120),
+            session: None,
         }],
         current: Some(0),
         submission: SubmissionHeld {
@@ -531,6 +583,7 @@ fn held() -> HeldState {
         trace: None,
         waits: vec![],
         forecast: None,
+        chart: None,
     }
 }
 
@@ -711,6 +764,123 @@ fn a_launch() {
 }
 
 #[test]
+fn a_statechart_kind() {
+    // A statechart kind with a stage of entries and a stage of a rule reads
+    // back as written; a kind written before reads with no statechart, and
+    // writes none (21, 175, 177).
+    round_trips(statechart_kind());
+    assert!(statechart_kind().is_statechart());
+    let json = serde_json::to_value(kind()).expect("a kind as JSON");
+    assert!(json.get("statechart").is_none(), "{json}");
+    let read: Kind = serde_json::from_value(json).expect("a kind written before");
+    assert_eq!(read.statechart, None);
+    assert!(!read.is_statechart());
+    assert_eq!(Join::Any.to_string(), "any");
+    assert_eq!(Join::Count(3).to_string(), "count:3");
+}
+
+#[test]
+fn a_statechart_places_held_state() {
+    // A statechart place's held state, its engine state, an answer, a
+    // stage's entry and two sessions held as its stages, reads back as
+    // written; a held state written before reads with no chart and no
+    // session, and writes none (21, 103, 176, 177).
+    let mut chart = held();
+    chart.place.kind = statechart_kind();
+    let session = |n: u32, file: &str| {
+        let mut held_stage = held().stages[0].clone();
+        held_stage.name = format!("stages.test#1/{n}");
+        held_stage.session = Some(ChartSession {
+            stage: "stages.test".into(),
+            entry: 1,
+            n,
+            file: Some(file.into()),
+            declared: Stage {
+                deliverables: vec![Deliverable::CommittedReport {
+                    path: format!("results/{file}"),
+                }],
+                ..stage()
+            },
+        });
+        held_stage
+    };
+    chart.stages = vec![session(1, "personas/a.md"), session(2, "personas/b.md")];
+    chart.chart = Some(ChartHeld {
+        state: ObjectHeld {
+            regions: BTreeMap::from([
+                ("stages".into(), "test".into()),
+                ("stages.test.run".into(), "working".into()),
+            ]),
+            entered_at: BTreeMap::from([
+                ("stages".into(), 1_000),
+                ("stages.test.run".into(), 1_000),
+            ]),
+            counters: BTreeMap::from([("tries".into(), 1)]),
+            applied: vec!["stages#1".into()],
+            set_aside: BTreeMap::from([(
+                "stages.test#1".into(),
+                BTreeMap::from([("run".into(), "sent-back".into())]),
+            )]),
+        },
+        template: "[kinds.stage]\nversion = 1\n".into(),
+        answers: vec![AnswerGiven {
+            id: "stages#1".into(),
+            region: "stages".into(),
+            answer: "retry".into(),
+            by: "operator".into(),
+            at: 900,
+        }],
+        stages: BTreeMap::from([(
+            "stages.test".into(),
+            ChartStageHeld {
+                entry: 2,
+                send_backs: 1,
+            },
+        )]),
+        words: Some("the second persona fails".into()),
+        over: false,
+        decisions: vec![DecisionHeld {
+            region: "stages".into(),
+            state: "stopped".into(),
+            kind: "stalled".into(),
+            answers: vec!["retry".into(), "drop".into()],
+            shows: vec!["the persona that failed".into()],
+            since: Some(1_200),
+        }],
+    });
+    round_trips(chart.clone());
+    assert_eq!(
+        chart.stages[1]
+            .session
+            .as_ref()
+            .map(ChartSession::name)
+            .as_deref(),
+        Some("stages.test#1/2")
+    );
+    assert_eq!(
+        chart.declared(1).deliverables,
+        vec![Deliverable::CommittedReport {
+            path: "results/personas/b.md".into()
+        }]
+    );
+    let held_state = chart.chart.as_ref().map(|chart| chart.state.clone());
+    let state = held_state.as_ref().map(ObjectHeld::state);
+    assert_eq!(
+        state.as_ref().map(ObjectHeld::of),
+        held_state,
+        "the engine's state and back"
+    );
+    // A held state written before this change.
+    let json = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(json.get("chart").is_none(), "{json}");
+    assert!(json["stages"][0].get("session").is_none(), "{json}");
+    let read: HeldState = serde_json::from_value(json).expect("a state written before");
+    assert_eq!(read.chart, None);
+    assert_eq!(read.stages[0].session, None);
+    assert_eq!(read.declared(0), &read.place.kind.stages[0]);
+}
+
+#[test]
 fn an_intent_by_its_name_or_its_repository_and_base() {
     let named = IntentKey::Launch {
         name: "the-surfaces".into(),
@@ -753,6 +923,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Act::Priority,
         Act::Hold,
         Act::Answer,
+        Act::Decide,
     ] {
         round_trips(act);
     }
@@ -769,6 +940,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Waits::Submission,
         Waits::Delivered,
         Waits::Unsubmitted,
+        Waits::Decision,
     ] {
         round_trips(why);
     }
@@ -3875,6 +4047,19 @@ impl Kinds for BareKinds {
             binding: Binding::default(),
         }
     }
+}
+
+#[test]
+fn the_bare_kinds_reads_no_statechart() {
+    // A kinds profile that keeps the seam's default reads no statechart
+    // kind, and refuses it naming the kind (84, core.2).
+    let Some(statechart) = statechart_kind().statechart else {
+        panic!("the statechart kind has no statechart");
+    };
+    let words = BareKinds
+        .read_statechart(&statechart, "[kinds.stage]")
+        .expect_err("a bare profile read a statechart kind");
+    assert!(words.contains("Persona test"), "{words}");
 }
 
 #[test]

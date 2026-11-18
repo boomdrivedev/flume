@@ -8,7 +8,7 @@
 use crate::base::base_place;
 use crate::held::refresh_waiting;
 use crate::launch::and_list;
-use crate::open_sessions::waits_on_answer;
+use crate::open_sessions::{answer_index, waits_on_answer};
 use crate::start::{Start, Starts};
 use crate::status::waiting_on;
 use crate::{Act, Answer, Engine, Step, Tidied, POLL, RECEIVED_WITHIN, TELL_BOUND};
@@ -46,7 +46,7 @@ impl Engine {
             return Answer::refused(format!("the place {place} has no stage {stage}"));
         };
         let identity = self.next_identity(&held, index);
-        let declared = &held.place.kind.stages[index];
+        let declared = held.declared(index);
         let agent = self
             .resolve(&held.place, declared)
             .and_then(|resolved| self.agent_for(&resolved, stage))
@@ -83,10 +83,17 @@ impl Engine {
     /// still starting is reported never begun with what the terminal
     /// showed of it (31, 35, 51).
     fn end_agent(&self, id: &PlaceId, force: bool) -> Result<(), String> {
+        self.end_agent_at(id, None, force)
+    }
+
+    /// Ends the live agent of the stage at `at` of a statechart place, a
+    /// session's, as [`Engine::end_agent`] ends the place's; a simple
+    /// kind's place's agent, whatever `at` names (31, 175).
+    fn end_agent_at(&self, id: &PlaceId, at: Option<usize>, force: bool) -> Result<(), String> {
         let Some(read) = self.store.read(id) else {
             return Ok(());
         };
-        let Some((index, start)) = read.state.live_start() else {
+        let Some((index, start)) = live_at(&read.state, at) else {
             return Ok(());
         };
         let identity = start.identity.clone();
@@ -125,10 +132,11 @@ impl Engine {
     /// agent said so since among them, so ending it would end a working
     /// session. The refusal names the agent and the stop that ends it
     /// first; none where the agent is not so (31, 35, 50, 51).
-    fn working(&self, id: &PlaceId) -> Option<String> {
-        self.begun_after(id);
+    fn working(&self, id: &PlaceId, at: Option<usize>) -> Option<String> {
         let read = self.store.read(id)?;
-        let (index, start) = read.state.live_start()?;
+        self.begun_after(id, at.filter(|_| read.state.chart.is_some()));
+        let read = self.store.read(id)?;
+        let (index, start) = live_at(&read.state, at)?;
         let stage = &read.state.stages[index];
         let what = match stage.state {
             StageState::Started => "said it started",
@@ -216,6 +224,11 @@ impl Engine {
             Retry::Current => Some(held.current.unwrap_or(0)),
             Retry::Stage(name) => match held.stages.iter().position(|stage| &stage.name == name) {
                 Some(index) => Some(index),
+                // A statechart kind's stage by its path: its hold ended and
+                // each of its sessions it held started (47, 175).
+                None if crate::chart::is_chart_stage(&held, name) => {
+                    return self.retry_chart_stage(place, name);
+                }
                 None => return Answer::refused(format!("the place {place} has no stage {name}")),
             },
             Retry::Submission if !held.place.kind.lands => {
@@ -239,7 +252,7 @@ impl Engine {
         // An answer to the agent kept open for it: handed to its session,
         // which carries the stage on (42, 49, 198).
         if let (Some(index), Some(words)) = (index, words.as_deref()) {
-            if let Some(kept) = self.kept_open(&held).filter(|kept| kept.index() == index) {
+            if let Some(kept) = self.kept_open_at(&held, index) {
                 return self.answer(place, &kept, words, Act::Retry, None, answering);
             }
         }
@@ -254,7 +267,7 @@ impl Engine {
             },
             None => None,
         };
-        if let Some(reason) = self.working(place) {
+        if let Some(reason) = self.working(place, index) {
             return Answer::refused(reason);
         }
         // A conversation reported lost, or whose agent kept open for its
@@ -264,13 +277,11 @@ impl Engine {
         // process that runs its session, left as they are (30, 49, 77,
         // 198; core.10).
         let lost = index
-            .filter(|&index| {
-                held.place.kind.stages[index].conversation && carries_lost(&held.stages[index])
-            })
+            .filter(|&index| held.declared(index).conversation && carries_lost(&held.stages[index]))
             .and_then(|index| held.stages[index].start.as_ref())
             .map(|start| start.identity.clone());
         if lost.is_none() {
-            if let Err(reason) = self.end_agent(place, force) {
+            if let Err(reason) = self.end_agent_at(place, index, force) {
                 return Answer::refused(reason);
             }
         }
@@ -316,7 +327,14 @@ impl Engine {
             self.settle_place(place);
             return self.acted(Act::Retry, place);
         };
-        if index == 0 && held.readiness.failed().is_some() {
+        // A simple kind's first stage, or a statechart place's session,
+        // waiting on readiness runs it again (12, 49, 175).
+        let unready = if held.chart.is_some() {
+            held.stages[index].state == StageState::WaitingOnReadiness
+        } else {
+            index == 0
+        };
+        if unready && held.readiness.failed().is_some() {
             let Ok(bound) = self.bound(&held.place) else {
                 return Answer::refused(format!("the place {place}'s seams are not bound"));
             };
@@ -328,7 +346,7 @@ impl Engine {
             self.update(place, |held| {
                 held.readiness = readiness.clone();
                 if waits {
-                    held.stages[0].state = StageState::WaitingOnReadiness;
+                    held.stages[index].state = StageState::WaitingOnReadiness;
                 }
                 Step::Write(())
             });
@@ -368,12 +386,16 @@ impl Engine {
                     }
                 }
             }
-            for stage in held.stages.iter_mut().skip(index + 1) {
-                stage.state = StageState::NotReached;
-                stage.made_from = None;
+            // A statechart place's sessions stand side by side, and its run
+            // decides its submission (175, 176).
+            if held.chart.is_none() {
+                for stage in held.stages.iter_mut().skip(index + 1) {
+                    stage.state = StageState::NotReached;
+                    stage.made_from = None;
+                }
+                held.submission.due = false;
+                held.submission.waiting = None;
             }
-            held.submission.due = false;
-            held.submission.waiting = None;
             Step::Write(())
         });
         drop(room);
@@ -432,6 +454,9 @@ impl Engine {
                 HoldOn::Stage { stage } => {
                     match held.stages.iter().position(|held| &held.name == stage) {
                         Some(index) => Some(index),
+                        // A statechart kind's stage by its path holds each of
+                        // its sessions not yet started (47, 175).
+                        None if crate::chart::is_chart_stage(held, stage) => None,
                         None => {
                             return Step::Keep(Some(format!(
                                 "the place {place} has no stage {stage}"
@@ -459,6 +484,7 @@ impl Engine {
             }
             match index {
                 Some(index) => {
+                    let repeats = held.declared(index).repeats;
                     let stage = &mut held.stages[index];
                     let unstarted = matches!(
                         stage.state,
@@ -467,16 +493,31 @@ impl Engine {
                             | StageState::WaitingForRoom
                             | StageState::WaitingOnReadiness
                     );
-                    let repeats = held.place.kind.stages[index].repeats;
                     let next_repetition = repeats
                         && (stage.state.running() || stage.state == StageState::Repeating);
-                    if held.current == Some(index) && !unstarted && !next_repetition {
+                    let current = held.current == Some(index) || held.chart.is_some();
+                    if current && !unstarted && !next_repetition {
                         return Step::Keep(Some(format!(
                             "the stage {} of the place {place} has started; a hold is put on a stage not started, or on a repeating stage's next repetition while one runs",
                             stage.name
                         )));
                     }
                     if stage.state == StageState::WaitingForRoom {
+                        stage.state = StageState::OnHold;
+                        stage.room = None;
+                    }
+                }
+                None if matches!(on, HoldOn::Stage { .. }) => {
+                    let HoldOn::Stage { stage: path } = &on else {
+                        unreachable!("matched above");
+                    };
+                    for stage in held.stages.iter_mut().filter(|stage| {
+                        stage.state == StageState::WaitingForRoom
+                            && stage
+                                .session
+                                .as_ref()
+                                .is_some_and(|session| &session.stage == path)
+                    }) {
                         stage.state = StageState::OnHold;
                         stage.room = None;
                     }
@@ -651,8 +692,7 @@ impl Engine {
         let held = read.state;
         let current = held.current.filter(|index| {
             let state = held.stages[*index].state;
-            held.place.kind.stages[*index].conversation
-                && (state.running() || state == StageState::Lost)
+            held.declared(*index).conversation && (state.running() || state == StageState::Lost)
         });
         let Some(index) = current else {
             return Answer::refused(format!("the place {place} runs no conversation"));
@@ -683,6 +723,72 @@ impl Engine {
         self.ended(place, &start.identity, StageState::Finished, head, None);
         self.settle_place(place);
         self.acted(Act::Finish, place)
+    }
+
+    /// Answers the decision standing at `region` of a statechart place
+    /// with `answer`, given by `by`: taken by compare-and-set only while a
+    /// decision stands there and no answer given it is unapplied, recorded
+    /// as `<region>#<n>` with who gave it and when, and given to the tick
+    /// of the next settle, which applies it once (74, 130, 176; core.54).
+    /// Refused naming the region where no decision stands there, with the
+    /// regions where one does, and naming the answer taken, who gave it and
+    /// when, where one is not yet applied.
+    pub fn answer_decision(&self, place: &PlaceId, region: &str, answer: &str, by: &str) -> Answer {
+        self.settle_attended();
+        let now = self.host.now();
+        let refused = self.update(place, |held| {
+            if held.phase != Phase::Live {
+                return Step::Keep(Some(format!("the work of the place {place} is over")));
+            }
+            if held.chart.is_none() {
+                return Step::Keep(Some(format!(
+                    "the place {place}'s kind is no statechart kind, so it has no decision"
+                )));
+            }
+            if crate::chart::decision_at(held, region).is_none() {
+                let standing: Vec<String> = held
+                    .chart
+                    .iter()
+                    .flat_map(|chart| &chart.decisions)
+                    .map(|decision| decision.region.clone())
+                    .collect();
+                return Step::Keep(Some(format!(
+                    "the region {region} of the place {place} carries no decision standing; {}",
+                    if standing.is_empty() {
+                        "none stands".to_string()
+                    } else {
+                        format!("one stands at {}", and_list(standing))
+                    }
+                )));
+            }
+            let Some(chart) = held.chart.as_mut() else {
+                return Step::Keep(None);
+            };
+            if let Some(taken) = crate::chart::unapplied(chart, region) {
+                return Step::Keep(Some(format!(
+                    "the decision at {region} of the place {place} was answered {} by {} at {}, and the next settle applies it; an answer is taken once",
+                    taken.answer, taken.by, taken.at
+                )));
+            }
+            let n = 1 + chart
+                .answers
+                .iter()
+                .filter(|given| given.region == region)
+                .count();
+            chart.answers.push(AnswerGiven {
+                id: format!("{region}#{n}"),
+                region: region.to_string(),
+                answer: answer.to_string(),
+                by: by.to_string(),
+                at: now,
+            });
+            Step::Write(None)
+        });
+        match refused {
+            None => Answer::refused(format!("no place {place} stands on this host")),
+            Some(Some(reason)) => Answer::refused(reason),
+            Some(None) => self.acted(Act::Decide, place),
+        }
     }
 
     /// Hands the agent of the place's current stage `words` as a prompt
@@ -845,7 +951,7 @@ fn answered(stage: &StageHeld, words: Option<String>) -> Option<String> {
 /// (42, 43, 131).
 pub(crate) fn waited_key(held: &HeldState) -> Option<EndKey> {
     let name = waits_on_answer(held)?;
-    let start = held.stages[held.current?].start.as_ref()?;
+    let start = held.stages[answer_index(held)?].start.as_ref()?;
     Some(EndKey::Stage {
         stage: name.to_string(),
         start: start.n,
@@ -1086,4 +1192,18 @@ fn hold_waiting(
         waiting.stalled = false;
     }
     Step::Write(None)
+}
+
+/// The live start of the stage at `at` of a statechart place, a
+/// session's; else the place's live start, a simple kind's place's one
+/// (30, 175; core.10).
+fn live_at(held: &HeldState, at: Option<usize>) -> Option<(usize, &StartHeld)> {
+    match (held.chart.is_some(), at) {
+        (true, Some(at)) => held.stages[at]
+            .start
+            .as_ref()
+            .filter(|start| start.live)
+            .map(|start| (at, start)),
+        _ => held.live_start(),
+    }
 }

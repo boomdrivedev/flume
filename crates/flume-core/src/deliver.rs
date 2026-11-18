@@ -30,23 +30,25 @@ use crate::{Engine, Step, POLL, QUIET_LIMIT, RECEIVED_WITHIN};
 use flume_seams::*;
 
 impl Engine {
-    /// Moves the current start's prompt on as far as its agent allows,
-    /// reading each sending back within 60 seconds; true when the stage's
-    /// state changed.
-    pub(crate) fn deliver(&self, id: &PlaceId) -> bool {
-        self.deliver_reading(id, true)
+    /// Moves the prompt of the start of the stage at `at`, else of the
+    /// current start, on as far as its agent allows, reading each sending
+    /// back within 60 seconds: a session of a statechart kind's stage among
+    /// them; true when the stage's state changed (30, 175).
+    pub(crate) fn deliver(&self, id: &PlaceId, at: Option<usize>) -> bool {
+        self.deliver_reading(id, at, true)
     }
 
     /// Sends the current start's prompt where its agent allows it now,
     /// and leaves its receipt to the settles that follow; true when the
     /// stage's state changed (6, 38).
     pub(crate) fn send_prompt(&self, id: &PlaceId) -> bool {
-        self.deliver_reading(id, false)
+        self.deliver_reading(id, None, false)
     }
 
-    /// Moves the current start's prompt on, waiting on a sending's
-    /// receipt only where `read_back`.
-    fn deliver_reading(&self, id: &PlaceId, read_back: bool) -> bool {
+    /// Moves the prompt of the start of the stage at `at`, else of the
+    /// current start, on, waiting on a sending's receipt only where
+    /// `read_back`.
+    fn deliver_reading(&self, id: &PlaceId, at: Option<usize>, read_back: bool) -> bool {
         let mut sent = false;
         let mut read_again = false;
         loop {
@@ -54,7 +56,7 @@ impl Engine {
                 return sent;
             };
             let held = read.state;
-            let Some(index) = held.current else {
+            let Some(index) = at.or(held.current) else {
                 return sent;
             };
             let stage = &held.stages[index];
@@ -111,9 +113,7 @@ impl Engine {
                     (true, false) => start.dialog.is_some(),
                     (false, false) => self.read_dialog(id, &start),
                 };
-                let limit = held.place.kind.stages[index]
-                    .quiet_limit
-                    .unwrap_or(QUIET_LIMIT);
+                let limit = held.declared(index).quiet_limit.unwrap_or(QUIET_LIMIT);
                 let waited = self.host.now().saturating_sub(start.started_at);
                 if stopped || (!dialog && waited >= limit) {
                     // A start read begun without its settings is read so
@@ -288,12 +288,14 @@ impl Engine {
     /// on as its start's: started, its prompt sent as 37 allows, or begun;
     /// its never-begun end is read no more, and what was delivered of it
     /// stays delivered. True when the stage changed (35, 38, 43).
-    pub(crate) fn begun_after(&self, id: &PlaceId) -> bool {
+    /// It reads the stage at `at`, else the current stage: a session of a
+    /// statechart kind's stage among them (175).
+    pub(crate) fn begun_after(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
         let held = read.state;
-        let Some(index) = held.current else {
+        let Some(index) = at.or(held.current) else {
             return false;
         };
         let stage = &held.stages[index];

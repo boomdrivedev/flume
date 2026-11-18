@@ -35,6 +35,7 @@ pub mod settling;
 pub mod stage_runs;
 pub mod start_integrity;
 pub mod starts;
+pub mod statecharts;
 pub mod stream_terminals;
 pub mod streams;
 pub mod telemetry;
@@ -84,5 +85,6 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(open_sessions::scenarios());
     every.extend(relay::scenarios());
     every.extend(telemetry::scenarios());
+    every.extend(statecharts::scenarios());
     every
 }

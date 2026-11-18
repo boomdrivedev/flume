@@ -274,8 +274,8 @@ impl Engine {
 fn last_conversation(held: &HeldState) -> Option<&StartHeld> {
     held.stages
         .iter()
-        .zip(&held.place.kind.stages)
-        .filter(|(_, declared)| declared.conversation)
-        .filter_map(|(stage, _)| stage.start.as_ref())
+        .enumerate()
+        .filter(|(index, _)| held.declared(*index).conversation)
+        .filter_map(|(_, stage)| stage.start.as_ref())
         .max_by_key(|start| start.started_at)
 }

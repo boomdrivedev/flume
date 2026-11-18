@@ -94,6 +94,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["49", "200", "207"],
             run: a_talk_waiting_on_its_session,
         },
+        Scenario {
+            name: "list: persona at its test stage gives the line `persona--a · stages.test · working`, its kind persona@1, reading no worktree, branch or deliverable for it",
+            cites: &["200"],
+            run: personas_line,
+        },
     ]
 }
 
@@ -965,5 +970,54 @@ fn a_talk_waiting_on_its_session(_: &()) -> Outcome {
         asked,
         "the live readings the list asked"
     );
+    Ok(())
+}
+
+fn personas_line(_: &()) -> Outcome {
+    let world = World::new();
+    world.commit("main", &["personas/a.md", "personas/b.md"]);
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![super::statecharts::persona()]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    world.settle(&World::id("persona", "a"));
+    for log in [
+        &world.change.log,
+        &world.history.log,
+        &world.place.log,
+        &world.queue.log,
+    ] {
+        log.clear();
+    }
+    let (places, _) = list(&world)?;
+    let place = places
+        .iter()
+        .find(|place| place.name == "persona--a")
+        .ok_or("persona--a is not listed")?;
+    ensure_eq!(
+        (
+            place.kind.as_str(),
+            place.stage.as_deref(),
+            place.line.as_str()
+        ),
+        (
+            "persona@1",
+            Some("stages.test"),
+            "persona--a · stages.test · working"
+        ),
+        "persona's line"
+    );
+    for (seam, log) in [
+        ("change", &world.change.log),
+        ("history", &world.history.log),
+        ("place", &world.place.log),
+        ("merge queue", &world.queue.log),
+    ] {
+        ensure_eq!(
+            log.calls(),
+            Vec::<String>::new(),
+            format!("the {seam} seam's reads")
+        );
+    }
     Ok(())
 }

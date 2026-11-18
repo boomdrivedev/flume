@@ -6,7 +6,7 @@
 use crate::{
     is_address, Binding, Declared, Forecast, Given, Holds, Identity, Kind, KindFrom, KindIdentity,
     KindSettings, LabelHeld, PassedOver, PlaceId, PlaceRef, ProfileHeld, Prompt, Readiness,
-    RepositoryName, Revision, Seconds, Secret, SessionHeld, Settings, StopKind, StreamHeld,
+    RepositoryName, Revision, Seconds, Secret, SessionHeld, Settings, Stage, StopKind, StreamHeld,
     Unsettled, Verdict,
 };
 use serde::{Deserialize, Serialize};
@@ -107,6 +107,180 @@ pub struct HeldState {
     /// it waits on nothing, and in a document written before (217).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub waits: Vec<WaitHeld>,
+    /// For a place of a statechart kind, what the engine holds of it, the
+    /// answers given its decisions and its stages' entries; none for a
+    /// simple kind's place, and in a held state written before (74, 103,
+    /// 176).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chart: Option<ChartHeld>,
+}
+
+/// What a place of a statechart kind holds of its run: the engine's state
+/// of its statechart, the stage template's text as its launch read it,
+/// each answer given a decision, each stage's entry recorded and how many
+/// times it was sent back, the words its next stage's sessions start with,
+/// and whether its run was over at the last tick (21, 74, 103, 176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartHeld {
+    pub state: ObjectHeld,
+    /// The stage template's text, as the launch read it (21, 175).
+    pub template: String,
+    /// Each answer given, in the order given (176).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<AnswerGiven>,
+    /// Each stage entered, by its state's path (175).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stages: BTreeMap<String, ChartStageHeld>,
+    /// Found work's or the merge queue's words, given the first sessions
+    /// recorded after them (112, 131, 176).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words: Option<String>,
+    /// Whether every top region held a final state at the last tick (176).
+    #[serde(default)]
+    pub over: bool,
+    /// The decisions standing in `state`, as the engine read them at its
+    /// last write, so a wait reads them from held state alone (130, 176).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<DecisionHeld>,
+}
+
+/// A decision standing: the live region whose state carries it, that
+/// state, its kind, the answers it takes and what it shows as written, and
+/// when the region entered the state (130, 176; weir 97).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionHeld {
+    pub region: String,
+    pub state: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<String>,
+    /// What it shows a person, as written (weir C.4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shows: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<Seconds>,
+}
+
+impl DecisionHeld {
+    /// The decisions standing as the engine gives them.
+    pub fn of(standing: &[weir_engine::Standing]) -> Vec<DecisionHeld> {
+        standing
+            .iter()
+            .map(|standing| DecisionHeld {
+                region: standing.region.clone(),
+                state: standing.state.clone(),
+                kind: standing.decision.kind.clone(),
+                answers: standing.decision.answers.clone(),
+                shows: standing.decision.shows.clone(),
+                since: standing.since.map(seconds_of),
+            })
+            .collect()
+    }
+}
+
+/// The engine's state of one statechart, its times in seconds since the
+/// epoch: each region path with the state it holds and since when, the
+/// counters its transitions bumped, the responses it applied and the
+/// instances its states set aside (74, 176; weir 97).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectHeld {
+    pub regions: BTreeMap<String, String>,
+    pub entered_at: BTreeMap<String, Seconds>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub counters: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub applied: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub set_aside: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl ObjectHeld {
+    /// The engine's state held, each time at its whole second.
+    pub fn of(state: &weir_engine::ObjectState) -> ObjectHeld {
+        ObjectHeld {
+            regions: state.regions.clone(),
+            entered_at: state
+                .entered_at
+                .iter()
+                .map(|(path, at)| (path.clone(), seconds_of(*at)))
+                .collect(),
+            counters: state.counters.clone(),
+            applied: state.applied.clone(),
+            set_aside: state.set_aside.clone(),
+        }
+    }
+
+    /// The engine's state as held.
+    pub fn state(&self) -> weir_engine::ObjectState {
+        weir_engine::ObjectState {
+            regions: self.regions.clone(),
+            entered_at: self
+                .entered_at
+                .iter()
+                .map(|(path, at)| (path.clone(), time_at(*at)))
+                .collect(),
+            counters: self.counters.clone(),
+            applied: self.applied.clone(),
+            set_aside: self.set_aside.clone(),
+        }
+    }
+}
+
+/// A moment as the engine reads it, from seconds since the epoch.
+pub fn time_at(at: Seconds) -> time::OffsetDateTime {
+    i64::try_from(at)
+        .ok()
+        .and_then(|at| time::OffsetDateTime::from_unix_timestamp(at).ok())
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
+}
+
+/// A moment the engine gave, in seconds since the epoch.
+pub fn seconds_of(at: time::OffsetDateTime) -> Seconds {
+    u64::try_from(at.unix_timestamp()).unwrap_or(0)
+}
+
+/// An answer given a decision: its id, `<region>#<n>`, the region whose
+/// state carries the decision, the answer as given, who gave it and when
+/// (176; core.54).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnswerGiven {
+    pub id: String,
+    pub region: String,
+    pub answer: String,
+    pub by: String,
+    pub at: Seconds,
+}
+
+/// A stage of a statechart kind as its place holds it: the entry whose
+/// sessions it recorded, counting from 1, and how many times it was sent
+/// back (112, 175).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStageHeld {
+    pub entry: u32,
+    #[serde(default)]
+    pub send_backs: u32,
+}
+
+/// A session of a statechart kind's stage, held as a stage of its place
+/// named `<path>#<entry>/<n>`: its stage's path, its entry and number,
+/// each from 1, the file its rule gave it, and its declaration, the
+/// stage's prompt and deliverables with its parts filled and its entry's
+/// settings as its one agent (30, 33, 175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartSession {
+    pub stage: String,
+    pub entry: u32,
+    pub n: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    pub declared: Stage,
+}
+
+impl ChartSession {
+    /// Its name, `<path>#<entry>/<n>`, its stage's in its place (33).
+    pub fn name(&self) -> String {
+        format!("{}#{}/{}", self.stage, self.entry, self.n)
+    }
 }
 
 /// A place's trace: its 32 hex digits, its place's span's 16, the time
@@ -260,6 +434,19 @@ fn stall_after() -> Seconds {
 }
 
 impl HeldState {
+    /// The declaration of the stage at `index`: a session's own, else its
+    /// kind's stage at that position (21, 175).
+    pub fn declared(&self, index: usize) -> &Stage {
+        match self
+            .stages
+            .get(index)
+            .and_then(|stage| stage.session.as_ref())
+        {
+            Some(session) => &session.declared,
+            None => &self.place.kind.stages[index],
+        }
+    }
+
     /// The recipients each end stands pending for, as `owing` read the
     /// host's deliveries, in order, each named once (43; weir 105).
     pub fn pending_for(&self, owing: &Owing) -> Vec<String> {
@@ -373,6 +560,8 @@ impl WaitingOn {
         match (self.act, &self.stage) {
             (Act::Done, _) => "done".into(),
             (Act::Answer, _) => "a person's answer to its agent's dialog".into(),
+            (Act::Decide, Some(region)) => format!("an answer to the decision at {region}"),
+            (Act::Decide, None) => "an answer to a decision".into(),
             (_, Some(stage)) => format!("a retry of {stage}"),
             (_, None) => "a retry of the submission".into(),
         }
@@ -396,6 +585,9 @@ pub enum Act {
     /// program shows before it takes its prompt: what a place waits on
     /// for a dialog, never an act a caller asks of flume (34, 35).
     Answer,
+    /// A caller's answer to a decision standing in a statechart place's
+    /// region, by `flume answer` (130, 176).
+    Decide,
 }
 
 /// Why a place waits on its caller (56, 130).
@@ -430,6 +622,9 @@ pub enum Waits {
     /// A base place with no place on its branch live, whose submission
     /// its caller has not asked for (203).
     Unsubmitted,
+    /// A decision standing in a statechart place's region, with no answer
+    /// given it unapplied (130, 176).
+    Decision,
 }
 
 /// An end of a place, recorded once by its key when a settle or an act
@@ -1501,6 +1696,11 @@ pub struct StageHeld {
     /// before, so its next start begins one (25, 112, 129).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub counts: Option<Counted>,
+    /// For a session of a statechart kind's stage, its stage, entry,
+    /// number, file and declaration; none for a simple kind's stage, and
+    /// in a held state written before (175).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<ChartSession>,
 }
 
 /// The start a stage's deliverable counts from, the first of the stage's

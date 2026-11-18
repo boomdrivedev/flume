@@ -25,29 +25,33 @@ let
   moved = "1111111111111111111111111111111111111111";
   source = url: rev: "git+${url}?rev=${rev}#${rev}";
   weirAt = source "https://github.com/boomdrivedev/weir";
-  package = name: src: ''
+  package = name: version: src: ''
     [[package]]
     name = "${name}"
-    version = "0.0.0"
+    version = "${version}"
     source = "${src}"
   '';
   lockOf = packages: builtins.fromTOML (lib.concatStringsSep "\n" ([ "version = 4" ] ++ packages));
 
+  # Each of weir's crates git-crates.nix holds, `<name>-<version>`, at its
+  # revision there, or at `moved` for the one `move` names.
+  weirs =
+    move:
+    lib.mapAttrsToList (
+      key: crate:
+      let
+        parts = builtins.match "(.*)-([^-]+)" key;
+        name = builtins.elemAt parts 0;
+      in
+      package name (builtins.elemAt parts 1) (weirAt (if name == move then moved else crate.rev))
+    ) crates;
+
   # A lock that moves weir-kinds alone, and one with a git package of no
   # entry beside weir's.
-  movedLock = lockOf [
-    (package "weir-capture" (weirAt weir))
-    (package "weir-delivery" (weirAt weir))
-    (package "weir-kinds" (weirAt moved))
-    (package "weir-pack" (weirAt weir))
-  ];
-  extraLock = lockOf [
-    (package "weir-capture" (weirAt weir))
-    (package "weir-delivery" (weirAt weir))
-    (package "weir-kinds" (weirAt weir))
-    (package "weir-pack" (weirAt weir))
-    (package "another" (source "https://example.com/another" moved))
-  ];
+  movedLock = lockOf (weirs "weir-kinds");
+  extraLock = lockOf (
+    weirs null ++ [ (package "another" "0.0.0" (source "https://example.com/another" moved)) ]
+  );
   movedFound = gitCrates file movedLock crates;
   extraFound = gitCrates file extraLock crates;
 

@@ -226,9 +226,12 @@ impl Engine {
     /// gives what its tidy did.
     pub(crate) fn settle_place(&self, id: &PlaceId) -> Tidied {
         let mut tidied = Tidied::default();
+        // A statechart place's statechart ticks at most once a settle
+        // (176).
+        let mut ticked = false;
         self.deliver_ends(id);
         for _ in 0..STEPS {
-            if !self.step(id, &mut tidied) {
+            if !self.step(id, &mut tidied, &mut ticked) {
                 break;
             }
         }
@@ -318,8 +321,11 @@ impl Engine {
         }
     }
 
-    /// One step the place allows; true when it changed something.
-    fn step(&self, id: &PlaceId, tidied: &mut Tidied) -> bool {
+    /// One step the place allows; true when it changed something. A
+    /// statechart place's sessions are stepped by their indices and its
+    /// statechart ticked once, where `ticked` says it has not yet been, in
+    /// place of a current stage's step (175, 176).
+    fn step(&self, id: &PlaceId, tidied: &mut Tidied, ticked: &mut bool) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
@@ -333,17 +339,23 @@ impl Engine {
         if self.submission(&held) {
             return true;
         }
+        if held.chart.is_some() {
+            return self.chart_step(id, &held, ticked);
+        }
         let Some(index) = held.current else {
             return false;
         };
+        let current = held.current;
         match held.stages[index].state {
-            StageState::Starting | StageState::Started => self.deliver(id),
-            StageState::NeverBegun => self.begun_after(id),
-            StageState::Begun | StageState::Stuck | StageState::Lost => self.read_end(id),
+            StageState::Starting | StageState::Started => self.deliver(id, current),
+            StageState::NeverBegun => self.begun_after(id, current),
+            StageState::Begun | StageState::Stuck | StageState::Lost => self.read_end(id, current),
             StageState::Delivered | StageState::Finished | StageState::Repeating => {
                 self.run_over(id) || self.advance(id)
             }
-            StageState::EndedShort => self.found_work(id) || self.close_session(id),
+            StageState::EndedShort => {
+                self.found_work(id, current) || self.close_session(id, current)
+            }
             _ => false,
         }
     }
@@ -382,7 +394,7 @@ impl Engine {
             if next >= held.stages.len() || held.stages[next].state != StageState::NotReached {
                 return Step::Keep(None);
             }
-            let declared = &held.place.kind.stages[next];
+            let declared = held.declared(next);
             if held.hold_on(&declared.name).is_some() || declared.waits {
                 held.stages[next].state = StageState::OnHold;
                 return Step::Write(None);

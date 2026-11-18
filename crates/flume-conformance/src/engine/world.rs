@@ -315,7 +315,54 @@ pub fn kind(name: &str, lands: bool, stages: Vec<Stage>) -> Kind {
         stages,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
+}
+
+/// A statechart kind of a repository's or a launch's, at version 1, as its
+/// kinds profile gives it: `text` its table spelled alone, which the fake
+/// kinds reads back through weir's crate, landing where `text` says
+/// `lands = true`, and `stages` each stage-template state's parameters by
+/// its path (175).
+pub fn chart_kind(name: &str, text: &str, stages: Vec<(&str, ChartStage)>) -> Kind {
+    Kind {
+        name: name.into(),
+        version: 1,
+        branch_prefix: name.into(),
+        starts_unready: false,
+        lands: text.contains("lands = true"),
+        agents: KindSettings::default(),
+        label: None,
+        stages: vec![],
+        fix: None,
+        fix_limit: None,
+        statechart: Some(KindStatechart {
+            title: name.into(),
+            text: text.into(),
+            stages: stages
+                .into_iter()
+                .map(|(path, stage)| (path.to_string(), stage))
+                .collect(),
+        }),
+    }
+}
+
+/// A stage template's parameters: `agents`, joined by all, delivering
+/// `deliverable`, its sessions' prompt `prompt` (175, C.2).
+pub fn chart_stage(agents: ChartAgents, deliverable: Deliverable, prompt: &str) -> ChartStage {
+    ChartStage {
+        agents,
+        join: Join::All,
+        deliverables: vec![deliverable],
+        prompt: Some(prompt.into()),
+        on_fail: None,
+        send_back_limit: None,
+    }
+}
+
+/// `n` agents listed, each of the layers' settings alone (175).
+pub fn listed(n: usize) -> ChartAgents {
+    ChartAgents::Entries(vec![Settings::default(); n])
 }
 
 /// A launch of `kind` named `name` on `main` with `brief`.
