@@ -177,8 +177,8 @@ command after the submit is `inbox`, `confirm`, `overview` or
 
 **S109 as the statement has it.** The walk's `check.sh` gets the same
 hold, a `hold` file in the walk's scratch that `Walk::hold` writes and
-`Walk::release` and the walk's drop remove. No walk but S109's writes
-it. `s109_…_lands_by_a_watchs_settles_alone` holds the chore's
+`Walk::release` and the walk's drop remove. A walk that writes none
+runs its check at once. `s109_…_lands_by_a_watchs_settles_alone` holds the chore's
 submission, so the watch's settles read it open.
 After the watch's first settle it releases the hold. It then asserts
 that no counted command of any settle is `step`, `run`, `daemon` or
@@ -192,12 +192,16 @@ no settle ran a `step`. A run outlives the host process that started
 it (sluice 135), so the run the hold kept waiting reports to the host
 process the settle's read started.
 
-**What stays.** The walkthroughs land through the pinned sluice by its
-host process with no change of their own. Their `Walk` already gives
-sluice a state folder and a socket's room of its own, and removing the
-scratch ends its host process. The stand-in for a base that takes pull
-requests passes every command but its own to the pinned sluice, so its
-`take-in`'s submit starts the host process as any submit does.
+**The walkthroughs.** They land through the pinned sluice by its host
+process. Their `Walk` gives sluice a state folder and a socket's room
+of its own, and removing the scratch ends its host process. The
+stand-in for a base that takes pull requests passes every command but
+its own to the pinned sluice, so its `take-in`'s submit starts the host
+process as any submit does. Two read what the host process changes.
+The walkthrough of a conflict sluice answers at the submit finds
+sluice's notice in the code stage's prompt. The walkthrough of a pull
+request holds the walk's check while it reads the entry taken in open,
+waiting or under test, and releases it before the landing.
 
 ## 6. Records, rules and the site
 
