@@ -3745,3 +3745,37 @@ fn the_stage_template_names_the_atoms_flume_binds() {
     assert!(names.machines.is_empty(), "{:?}", names.machines);
     assert!(atoms::TEMPLATE_EVIDENCE.contains(&atoms::STAGE_STARTED));
 }
+
+#[test]
+fn a_held_statechart_reads_back_the_same() {
+    // The kinds-profile spec's "Read back twice": persona's held text and
+    // the stage template's read back give the same statechart each time,
+    // the one read-kinds gave at the launch, and the template `stage`; a
+    // text holding no statechart kind is refused naming why (21, 85, 176).
+    let (repository, revision) = declaring_persona("persona-back");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("persona did not read");
+    };
+    let held = kinds[1].statechart.clone().expect("persona's statechart");
+    let template = flume_core::atoms::STAGE_TEMPLATE;
+    let first = Weir.read_statechart(&held, template).expect("read back");
+    let second = Weir
+        .read_statechart(&held, template)
+        .expect("read back again");
+    assert_eq!(first, second, "the same texts give the same statechart");
+    let launched = weir_kinds::read_kinds(PERSONA).expect("persona reads");
+    assert_eq!(first.chart, launched.statecharts["persona"].statechart);
+    assert_eq!(first.templates.keys().collect::<Vec<_>>(), vec!["stage"]);
+    let words = Weir
+        .read_statechart(&held, "[kinds.bump]\nstages = []\nlands = true\n")
+        .expect_err("a template that is no statechart kind read");
+    assert!(words.contains("stage template"), "{words}");
+    let unreadable = KindStatechart {
+        text: "[kinds.persona".into(),
+        ..held
+    };
+    let words = Weir
+        .read_statechart(&unreadable, template)
+        .expect_err("an unreadable held text read");
+    assert!(words.contains("Persona test"), "{words}");
+}

@@ -84,7 +84,7 @@
 use crate::git::{tree_path, Git, REMOTE};
 use crate::own::{self, Reader};
 use flume_seams::{
-    Binding, BindingRead, ChartAgents, ChartStage, Deliverable, Join, Kind, KindIdentity,
+    Binding, BindingRead, ChartAgents, ChartStage, Charts, Deliverable, Join, Kind, KindIdentity,
     KindNamed, KindSettings, KindStatechart, Kinds, KindsRead, LockEntry, LockRead, PackageRead,
     Packaged, Revision, Settings, SourceRead, Stage,
 };
@@ -324,6 +324,20 @@ impl Kinds for Weir {
             Ok(revision) => binding_at(repository, &revision),
             Err(reason) => BindingRead::CouldNotRead { reason },
         }
+    }
+
+    /// The held text and the stage template's, each read by weir-kinds to
+    /// exactly one statechart kind, the template keyed by its name; refused
+    /// naming which could not be read and why (21, 85, 176).
+    fn read_statechart(&self, kind: &KindStatechart, template: &str) -> Result<Charts, String> {
+        let chart = one_statechart(&kind.text)
+            .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
+        let template =
+            one_statechart(template).map_err(|why| format!("the stage template {why}"))?;
+        Ok(Charts {
+            chart,
+            templates: BTreeMap::from([(template.name.clone(), template)]),
+        })
     }
 
     fn read_named(&self, text: &str) -> Result<KindNamed, String> {
@@ -954,6 +968,23 @@ fn map_statechart(
             text,
             stages,
         }),
+    }
+}
+
+/// The one statechart kind `text` declares, read by weir-kinds; or why it
+/// gives none: refused by weir, or declaring other than one statechart
+/// kind (21, 85).
+fn one_statechart(text: &str) -> Result<weir_kinds::weir_engine::Statechart, String> {
+    let declaration = weir_kinds::read_kinds(text)
+        .map_err(|refusal| format!("could not be read: {}", refused(&refusal)))?;
+    let mut statecharts = declaration.statecharts.into_values();
+    match (
+        statecharts.next(),
+        statecharts.next(),
+        declaration.kinds.is_empty(),
+    ) {
+        (Some(kind), None, true) => Ok(kind.statechart),
+        _ => Err("holds other than one statechart kind".into()),
     }
 }
 
