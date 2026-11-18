@@ -28,6 +28,7 @@ mod live;
 mod open;
 mod open_sessions;
 mod own;
+mod pending;
 mod prompt;
 mod reading;
 mod relay;
