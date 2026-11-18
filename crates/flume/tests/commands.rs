@@ -911,6 +911,98 @@ fn a_refusal() {
     assert!(person.text.starts_with("refused: "), "{}", person.text);
 }
 
+/// `flume launch --kind fix --name one` with `agents` over a scratch
+/// repository under the printed command, flume's own binary and its
+/// profiles built in, the fix landing nowhere: the host, the repository
+/// and what the launch answered.
+fn launched_with(label: &str, agents: &[&str]) -> (Host, Repository, Ran) {
+    let host = Host::new(label);
+    let repository = repository(label, None);
+    let kinds = kinds_file(&host, false);
+    let mut words = vec![
+        "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds,
+    ];
+    for agent in agents {
+        words.extend(["--agent", agent]);
+    }
+    words.push("--json");
+    let ran = host.flume(&repository.dir, &words, &[]);
+    (host, repository, ran)
+}
+
+/// Nothing made for a refused launch on `host`: no place stands, listed
+/// or on disk (4, 8; core.8).
+fn nothing_made(host: &Host, repository: &Repository) {
+    let place = host.place_of(repository, "fix--one");
+    assert!(!Path::new(&place).exists(), "{place} was made");
+    let listed = host.flume(&repository.dir, &["list", "--all", "--json"], &[]);
+    let Answer::List { places, .. } = listed.answer() else {
+        panic!("the list's answer: {}", listed.text);
+    };
+    assert!(places.is_empty(), "a place stands: {}", listed.text);
+}
+
+#[test]
+fn amp_launched_with_nothing_is_taken() {
+    // The agent-programs spec's "A program the common profile binds,
+    // given nothing" (170, S73): the launch is taken, the place stands
+    // and its stage's program is amp from the launch.
+    let (host, repository, ran) = launched_with("amp-taken", &["program=amp"]);
+    assert_eq!(ran.code, 0, "{}", ran.text);
+    let place = host.place_of(&repository, "fix--one");
+    assert!(Path::new(&place).exists(), "{place} does not stand");
+    let launched = ran.json();
+    let agent = &launched["launched"]["place"]["agent"];
+    assert_eq!(agent["program"], "amp", "{launched}");
+    assert_eq!(
+        agent["settings"]["from"]["program"],
+        json!({"layer": "launch", "value": "amp"}),
+        "{launched}"
+    );
+}
+
+#[test]
+fn amp_launched_with_a_model_is_refused() {
+    // The agent-programs spec's "The same program given a model" (4, 172,
+    // S73): refused naming amp, the stage, the launch and that its entry
+    // names no way to give a model, and nothing is made.
+    let (host, repository, ran) = launched_with("amp-model", &["program=amp", "model=opus"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in [
+        "`amp`",
+        "`code`",
+        "`launch`",
+        "`opus`",
+        "names no way to give it a model",
+    ] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
+#[test]
+fn a_program_launched_with_no_entry_is_refused() {
+    // The agent-programs spec's "A program with no entry" (4, 170): the
+    // launch is refused naming nonesuch, the stage and the launch, and
+    // nothing is made.
+    let (host, repository, ran) = launched_with("no-entry", &["program=nonesuch"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in ["nonesuch", "code", "launch"] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
 #[test]
 fn a_watch_over_a_scratch_repository() {
     // The command-line spec's "A watch over a scratch repository": a
