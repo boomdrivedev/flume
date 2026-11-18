@@ -131,3 +131,18 @@ Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clau
 - **The seams gain only defaults**: the agent seam's `launches` and `launched`, the command's `launcher` words, which a terminal takes whole, the terminal seam's `program_process`, and `Unsettled::process`. Not taken: a richer `started` answer, which every profile and fake would change; and the launcher a part a profile builds, which 174 would let a profile degrade where started is never degraded.
 - **The core reads a launched start in one place**, for a settle, a tell and the stop check alike: started only with the word, the terminal reading the program in the word's process and the agent waiting; begun otherwise where the terminal reads the program in another process, so 161's end and fresh start follow. Not taken: the agent profile asking the terminal, which crosses the seams (core.2); and a check made once at the open, which misses a program run by hand after it (S74).
 - **herdr and the printed command run the launcher; Rex runs none**, since it opens no program but `claude`. Under the printed command, which reads no process, such a start reads unknown; the prompt's argument there (C.4) is left to the change that builds it.
+
+## Amendment, 2026-11-18: how the core holds a launched start once taken
+
+Status: accepted, the direction unchanged. The choices below are the code stage's of the change `a-program-without-its-own-profile-starts-through-flumes-launcher`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's code stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 35, 161 and S74; `crates/flume-core/src/reading.rs` (`Engine::started`, `Engine::began_otherwise`, `Engine::began_otherwise_held`), `end.rs` (`read_end`), `deliver.rs`; `crates/flume/src/profiles/agent/launcher.rs` (`launch`); `crates/flume/src/profiles/terminal/herdr/mod.rs` (`program_process`).
+
+### Decision outcome
+
+- **The agent waiting is read only for a start not yet taken**, one sent no prompt and not begun; a start taken reads started while the terminal reads its program in the word's process, working or not. Not taken: the agent waiting at every reading, which would read a begun agent at work no agent of its start's and end its stage lost.
+- **A begun start is read begun otherwise too**: the reading of a begun stage's end first reads whether its program runs in another process than its launcher became, so a program run again by hand after its prompt is ended once quiet and its stage started afresh, as S74 has it, never read lost; and a reading of another process, once the place holds it, stands for that start at the settles that follow, though the terminal then reads nothing running the program. Not taken: the terminal's reading alone at each settle, which a program between its two processes would turn into a lost stage.
+- **A program the launcher cannot find runs nothing and writes no word**, the launcher saying which. Not taken: a word saying the program differed, which a program found nowhere does not show.
+- **herdr reads a pane gone at its process reading as nothing running the program**, `pane_not_found` or `server_not_running`, as its other operations read a pane gone. Not taken: herdr's words as unknown, which would keep a gone agent's start unknown until the stage's limit.
