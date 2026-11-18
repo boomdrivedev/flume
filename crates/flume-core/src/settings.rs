@@ -18,10 +18,15 @@
 //! `1h`, in the default layer (198). Its mode, where a layer gives one, is
 //! mapped by its agent profile to its program's setting, or the stage
 //! refused naming the mode, the program, the stage and the layer (162,
-//! 169); its effort, where a layer gives one, taken whole as the model
-//! is, is asked of its profile, or the stage refused naming the effort,
-//! the program, the stage and the layer, and nothing is asked where no
-//! layer gives one (197); and its own settings are taken by its profile,
+//! 169); its model, where a layer gives one, its program's own name or a
+//! table of programs taken whole, the agent's entry its program's, is
+//! asked of its profile, or the stage refused naming the model as
+//! written, the program, the stage and the layer, a table naming no entry
+//! for its program refused so, and nothing is asked where no layer gives
+//! one (172); its effort, where a layer gives one, taken whole as the
+//! model is, is asked of its profile, or the stage refused naming the
+//! effort, the program, the stage and the layer, and nothing is asked
+//! where no layer gives one (197); and its own settings are taken by its profile,
 //! or the stage refused naming each key with its layer and its file (195,
 //! 196).
 
@@ -115,15 +120,31 @@ impl Resolved {
 }
 
 /// A stage's agent at its start: its settings as written with their
-/// layers, the agent profile that runs its program, and the value that
-/// profile passes for its mode, none where no layer gives one (162, 169).
+/// layers, the agent profile that runs its program, the value that
+/// profile passes for its mode, and its entries of its model and its
+/// effort, which that profile took, each none where no layer gives one
+/// (162, 169, 172, 197).
 pub(crate) struct Resolution {
     pub resolved: Resolved,
     pub agent: Arc<dyn Agent>,
     pub mode: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 impl Resolution {
+    /// The settings the agent's command is given: those resolved, with
+    /// the model and the effort each the agent's entry, given whole, so a
+    /// profile reads one name and one word and never a table (172, 197;
+    /// design 4).
+    pub(crate) fn command_settings(&self) -> Settings {
+        Settings {
+            model: self.model.clone().map(PerProgram::One),
+            effort: self.effort.clone().map(PerProgram::One),
+            ..self.resolved.settings.clone()
+        }
+    }
+
     /// The agent's program's own settings as the layers resolved them,
     /// which its profile takes; none where they give none (195, 196).
     pub(crate) fn own_keys(&self) -> BTreeMap<String, Value> {
@@ -230,6 +251,35 @@ fn mode_for(
     agent.mode(&entry).map(Some).map_err(|words| {
         format!(
             "the stage `{name}`'s mode `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
+        )
+    })
+}
+
+/// The agent's entry of `stage`'s model as `resolved` gives it, which
+/// `agent` took, none where no layer gives one, so nothing is asked; or
+/// why the stage cannot run on it, naming the model as written, the
+/// program, the stage and the layer: a table of programs naming no entry
+/// for its program, which no later layer's model stands in for, or an
+/// entry its profile refuses, with the profile's words (4, 32, 172).
+fn model_taken(
+    resolved: &Resolved,
+    agent: &dyn Agent,
+    stage: &str,
+) -> Result<Option<String>, String> {
+    let Some(model) = &resolved.settings.model else {
+        return Ok(None);
+    };
+    let written = model.written();
+    let layer = resolved.layer_of("model");
+    let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
+    let entry = model.entry(program).ok_or_else(|| {
+        format!(
+            "the stage `{stage}`'s model `{written}`, from the layer `{layer}`, names no entry for `{program}`"
+        )
+    })?;
+    agent.model(entry).map(|()| Some(entry.to_string())).map_err(|words| {
+        format!(
+            "the stage `{stage}`'s model `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
         )
     })
 }
@@ -502,8 +552,10 @@ impl Engine {
     ) -> Result<Resolution, String> {
         let resolved = self.resolve(place, stage)?;
         let agent = self.agent_for(&resolved, &stage.name)?;
+        let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
         effort_taken(&resolved, agent.as_ref(), &stage.name)?;
+        let effort = resolved.settings.effort.as_ref().map(PerProgram::written);
         if let Some(own) = &resolved.own {
             let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
             if let Some(refused) = own_refused(agent.as_ref(), &stage.name, program, own) {
@@ -514,6 +566,8 @@ impl Engine {
             resolved,
             agent,
             mode,
+            model,
+            effort,
         })
     }
 }

@@ -818,7 +818,7 @@ impl Engine {
                 secret,
                 text,
                 place: held.place.place_ref(),
-                settings: resolution.resolved.settings.clone(),
+                settings: resolution.command_settings(),
                 env: env.clone(),
                 agent: resolution.agent.clone(),
                 session: held.role.clone(),

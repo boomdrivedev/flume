@@ -3,6 +3,7 @@
 
 pub mod account_pools;
 pub mod agent_effort;
+pub mod agent_model;
 pub mod agent_modes;
 pub mod agent_settings;
 pub mod answers;
@@ -63,6 +64,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(agent_settings::scenarios());
     every.extend(agent_modes::scenarios());
     every.extend(agent_effort::scenarios());
+    every.extend(agent_model::scenarios());
     every.extend(end_delivery::scenarios());
     every.extend(caller_waits::scenarios());
     every.extend(made_things::scenarios());
