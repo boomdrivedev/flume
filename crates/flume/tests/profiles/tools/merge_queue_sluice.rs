@@ -1268,9 +1268,10 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
 
 #[test]
 fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_gives() {
-    // While the stand-in's first submit waits on the rounds that decide
-    // it, a settle beside it steps main and collects the place's inbox,
-    // as the agent's Stop hook and a caller's settle do. The conflict
+    // While the stand-in's first submit waits on sluice's host process,
+    // which decides it, a settle beside it collects the place's inbox, as
+    // the agent's Stop hook and a caller's settle do, stepping nothing
+    // (124, 125). The conflict
     // reaches flume in the submit's answer with its own words. sluice
     // keeps it owed until the profile confirms it after the answer, so an
     // inbox in between may hand it over too, once, confirming it on
@@ -1294,10 +1295,10 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
         let submit = scope.spawn(|| seam.submit(&place, &from_worktree(&head)));
         let mut collected = vec![];
         while !submit.is_finished() {
-            seam.step(&place.repository, "main");
             if let Inbox::Outcomes { outcomes, .. } = seam.inbox(&place) {
                 collected.extend(outcomes);
             }
+            std::thread::sleep(Duration::from_millis(100));
         }
         (submit.join().expect("the submit"), collected)
     });
@@ -1318,8 +1319,8 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
     );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     assert!(
-        words.starts_with("conflict on main: work.rs"),
-        "the record's own words: {words}"
+        words.starts_with("[sluice] ") && words.contains("conflicts on main in work.rs"),
+        "the record's own words, sluice's notice: {words}"
     );
     assert_eq!(
         harness.seam.inbox(&place),
