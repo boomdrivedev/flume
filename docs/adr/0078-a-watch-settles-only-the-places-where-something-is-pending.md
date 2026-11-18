@@ -1,7 +1,7 @@
 ---
 number: 78
 title: A watch settles only the places where something is pending
-status: proposed
+status: accepted
 date: 2026-11-17
 decision-makers:
 - Chuck Swanberg
@@ -10,7 +10,7 @@ decision-makers:
 
 # A watch settles only the places where something is pending
 
-Status: proposed to the user on 2026-11-17, as `briefs.15` has it; accepted only on their yes.
+Status: accepted by the user on 2026-11-17, on their card.
 You chose on your card today that Flume should look only at places where something is pending, instead of going through every place every minute. This record writes that down, with three details I settled. Flume, not the runner, works out which places are pending, so the runner keeps the call it makes today. The "still watching" signal is that same short look, not a separate ping, because a ping from a stuck runner would claim the machine is watched while nothing moves. And on a machine where nothing keeps watch, each Flume command also looks only at pending places, so it takes seconds, not minutes. Say yes if this is what you meant.
 
 Deciders: the user, on their Pending You card `req_64be542cc8ac4aa38180` of 2026-11-17, choosing to look only where something is pending over keeping the sweep and making it safe; boomdrive-design, on what counts as pending, who reads it, what renews the watch and what an unwatched command settles.
