@@ -492,6 +492,7 @@ fn held() -> HeldState {
                 asking_since: None,
             }),
             since: Some(120),
+            session: None,
         }],
         current: Some(0),
         submission: SubmissionHeld {
@@ -582,6 +583,7 @@ fn held() -> HeldState {
         trace: None,
         waits: vec![],
         forecast: None,
+        chart: None,
     }
 }
 
@@ -775,6 +777,99 @@ fn a_statechart_kind() {
     assert!(!read.is_statechart());
     assert_eq!(Join::Any.to_string(), "any");
     assert_eq!(Join::Count(3).to_string(), "count:3");
+}
+
+#[test]
+fn a_statechart_places_held_state() {
+    // A statechart place's held state, its engine state, an answer, a
+    // stage's entry and two sessions held as its stages, reads back as
+    // written; a held state written before reads with no chart and no
+    // session, and writes none (21, 103, 176, 177).
+    let mut chart = held();
+    chart.place.kind = statechart_kind();
+    let session = |n: u32, file: &str| {
+        let mut held_stage = held().stages[0].clone();
+        held_stage.name = format!("stages.test#1/{n}");
+        held_stage.session = Some(ChartSession {
+            stage: "stages.test".into(),
+            entry: 1,
+            n,
+            file: Some(file.into()),
+            declared: Stage {
+                deliverables: vec![Deliverable::CommittedReport {
+                    path: format!("results/{file}"),
+                }],
+                ..stage()
+            },
+        });
+        held_stage
+    };
+    chart.stages = vec![session(1, "personas/a.md"), session(2, "personas/b.md")];
+    chart.chart = Some(ChartHeld {
+        state: ObjectHeld {
+            regions: BTreeMap::from([
+                ("stages".into(), "test".into()),
+                ("stages.test.run".into(), "working".into()),
+            ]),
+            entered_at: BTreeMap::from([
+                ("stages".into(), 1_000),
+                ("stages.test.run".into(), 1_000),
+            ]),
+            counters: BTreeMap::from([("tries".into(), 1)]),
+            applied: vec!["stages#1".into()],
+            set_aside: BTreeMap::from([(
+                "stages.test#1".into(),
+                BTreeMap::from([("run".into(), "sent-back".into())]),
+            )]),
+        },
+        template: "[kinds.stage]\nversion = 1\n".into(),
+        answers: vec![AnswerGiven {
+            id: "stages#1".into(),
+            region: "stages".into(),
+            answer: "retry".into(),
+            by: "operator".into(),
+            at: 900,
+        }],
+        stages: BTreeMap::from([(
+            "stages.test".into(),
+            ChartStageHeld {
+                entry: 2,
+                send_backs: 1,
+            },
+        )]),
+        words: Some("the second persona fails".into()),
+        over: false,
+    });
+    round_trips(chart.clone());
+    assert_eq!(
+        chart.stages[1]
+            .session
+            .as_ref()
+            .map(ChartSession::name)
+            .as_deref(),
+        Some("stages.test#1/2")
+    );
+    assert_eq!(
+        chart.declared(1).deliverables,
+        vec![Deliverable::CommittedReport {
+            path: "results/personas/b.md".into()
+        }]
+    );
+    let held_state = chart.chart.as_ref().map(|chart| chart.state.clone());
+    let state = held_state.as_ref().map(ObjectHeld::state);
+    assert_eq!(
+        state.as_ref().map(ObjectHeld::of),
+        held_state,
+        "the engine's state and back"
+    );
+    // A held state written before this change.
+    let json = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(json.get("chart").is_none(), "{json}");
+    assert!(json["stages"][0].get("session").is_none(), "{json}");
+    let read: HeldState = serde_json::from_value(json).expect("a state written before");
+    assert_eq!(read.chart, None);
+    assert_eq!(read.stages[0].session, None);
+    assert_eq!(read.declared(0), &read.place.kind.stages[0]);
 }
 
 #[test]

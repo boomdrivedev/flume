@@ -827,6 +827,7 @@ impl Engine {
                     room: None,
                     made_from: None,
                     counts: None,
+                    session: None,
                 })
                 .collect(),
             current: None,
@@ -851,6 +852,7 @@ impl Engine {
             forecast: None,
             trace: None,
             waits: vec![],
+            chart: None,
         };
         let programs = kind
             .stages
