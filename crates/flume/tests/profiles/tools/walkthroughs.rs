@@ -1705,11 +1705,12 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
     // fixes land. A fix then starts on the second. Its agent reports past
     // ninety percent in its 5-hour window, and the intent's next fix starts
     // on the first, the intent moving off the second for `claude` with the
-    // window and its reset. Status gives the pool's threshold, each reading
-    // with when flume took it and the agent and session that reported it,
-    // and the second past its threshold, in the JSON form and the person's,
-    // with no path of an account's document; the fix already running on
-    // the second goes on and lands under its account.
+    // window and its reset. Status gives the pool's threshold, each
+    // account's configuration home, its scratch `CLAUDE_CONFIG_DIR` (56,
+    // C.4), each reading with when flume took it and the agent and session
+    // that reported it, and the second past its threshold, in the JSON form
+    // and the person's, with no path of an account's document; the fix
+    // already running on the second goes on and lands under its account.
     let walk = Walk::new("walk-most-left");
     let first = walk.account().to_path_buf();
     let second = walk.account_folder("account-2");
@@ -1858,9 +1859,14 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         "{pool}"
     );
     let accounts = &pool["accounts"];
+    let (first_home, second_home) = (first.display().to_string(), second.display().to_string());
     assert_eq!(
-        (&accounts[0]["name"], &accounts[0]["running"]),
-        (&json!("stand-in-1"), &json!(1)),
+        (
+            &accounts[0]["name"],
+            &accounts[0]["running"],
+            &accounts[0]["home"]
+        ),
+        (&json!("stand-in-1"), &json!(1), &json!(first_home)),
         "{pool}"
     );
     assert_eq!(
@@ -1879,8 +1885,12 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
     );
     assert!(accounts[0].get("past").is_none(), "{pool}");
     assert_eq!(
-        (&accounts[1]["name"], &accounts[1]["running"]),
-        (&json!("stand-in-2"), &json!(1)),
+        (
+            &accounts[1]["name"],
+            &accounts[1]["running"],
+            &accounts[1]["home"]
+        ),
+        (&json!("stand-in-2"), &json!(1), &json!(second_home)),
         "{pool}"
     );
     let session = accounts[1]["reading"]["session"].clone();
@@ -1909,8 +1919,8 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         coding.as_str().expect("one's agent"),
     );
     for lines in [
-        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      five_hour 40% (resets {reset}) · seven_day 55% · taken at {read} from {warmed}\n"),
-        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      five_hour 93% (resets {reset}) · seven_day 30% · taken at {past} from {coding}\n      past its threshold in five_hour until {reset}\n"),
+        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      configuration home {first_home}\n      five_hour 40% (resets {reset}) · seven_day 55% · taken at {read} from {warmed}\n"),
+        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      configuration home {second_home}\n      five_hour 93% (resets {reset}) · seven_day 30% · taken at {past} from {coding}\n      past its threshold in five_hour until {reset}\n"),
         format!("stand-in-2 past its threshold in five_hour until {reset}"),
     ] {
         assert!(said.contains(&lines), "{lines} in {said}");
