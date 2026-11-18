@@ -13,7 +13,9 @@
 //! the agent seam it reads nothing of answers as the seam's default, so
 //! nothing is read from the terminal in a part's stead (93, 171, 195;
 //! core.39): started, received, asking, own work and ended unknown, last
-//! words none, send-back, on-quiet and guard not offered.
+//! words none, send-back, on-quiet and guard not offered. It builds none
+//! of the agent seam's parts, the seam's default, so status names each
+//! degraded with the agent (174).
 //!
 //! [`programs`]: super::programs
 
@@ -21,8 +23,8 @@ use super::claude::{AGENT, PLACE, SECRET, STAGE};
 use super::programs::Program;
 use crate::shell::quote;
 use flume_seams::{
-    Agent, AgentCommand, Guarded, Identity, ModeEntry, Offered, PerProgram, PlaceRef, Reading,
-    Received, Secret, Settings,
+    Agent, AgentCommand, Guarded, Identity, ModeEntry, PerProgram, PlaceRef, Reading, Received,
+    Secret, Settings,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -221,16 +223,8 @@ impl Agent for Common {
         )
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
-
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 
@@ -238,7 +232,7 @@ impl Agent for Common {
 mod tests {
     use super::super::programs::{entry, PROGRAMS};
     use super::*;
-    use flume_seams::{Carry, Live, Mode, Spent, Windows};
+    use flume_seams::{Carry, Live, Mode, Offered, Part, Spent, Windows};
 
     const BINARY: &str = "/opt/flume/bin/flume";
 
@@ -365,6 +359,7 @@ mod tests {
         assert_eq!(amp.send_back(), Offered::NotOffered);
         assert_eq!(amp.on_quiet(), Offered::NotOffered);
         assert_eq!(amp.guard(folder, &agent), Guarded::NotOffered);
+        assert_eq!(amp.parts().degraded(), Part::ALL.to_vec());
         assert_eq!(amp.reserved(), vec![]);
         assert_eq!(amp.withheld(), Vec::<String>::new());
         assert_eq!(amp.effort_variable(), None);
