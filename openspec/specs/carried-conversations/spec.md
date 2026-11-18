@@ -34,11 +34,12 @@ start, read under the room lock after the account is chosen (145, 146,
 ### Requirement: Only a start after a spent agent or a lost conversation carries one
 
 No start but the one that follows an agent stopped at its account's
-usage limit, and the one a caller's retry makes of a conversation's
-stage reported lost, SHALL carry a conversation, and each SHALL carry
-only that agent's. A retry of any other stage, a fix round, a start
-after one begun without its settings and every start of another stage
-SHALL carry none (30, 49, 146).
+usage limit, the one a caller's retry makes of a conversation's stage
+reported lost, and a resume of a hibernating stage SHALL carry a
+conversation, and each SHALL carry only that agent's. A retry of any
+other stage, a hibernating one among them, a fix round, a start after
+one begun without its settings and every start of another stage SHALL
+carry none (30, 49, 146, 212, 213).
 
 #### Scenario: A retry carries nothing
 
@@ -59,6 +60,11 @@ SHALL carry none (30, 49, 146).
 
 - **WHEN** a caller stops a talk stage, a conversation, and then retries it
 - **THEN** talk's fresh agent resumes no conversation (49, 51)
+
+#### Scenario: A resume carries its own stage's conversation
+
+- **WHEN** talk hibernated after its first start, and its caller resumes the place
+- **THEN** the resumed agent's record names the session of talk's first start, and the fake agent's log shows one `carry` of that start's identity (179, 213)
 
 ### Requirement: A carried start's prompt is flume's words and the retry's
 
@@ -255,3 +261,15 @@ again (30, 49, 70, 207).
 
 - **WHEN** a lost talk's transcript cannot be read and its session is scripted live
 - **THEN** talk's fresh start waits as the carried one would, and starts afresh once the session ends (49, 207)
+
+### Requirement: Status gives a resume's conversation
+
+Status SHALL give, with the agent of a resume, the start whose
+conversation it carries with that it hibernated, and whether the agent
+carries its conversation or, where it does not, why, never a
+configuration home's path (56, 179, 213; core.30).
+
+#### Scenario: A resumed talk
+
+- **WHEN** status is asked of a place whose talk start 1 was resumed once
+- **THEN** the agent's conversation gives start 1, hibernated, and carried, and the person's form reads that it carries the conversation of start 1, hibernated (56, 213)

@@ -145,7 +145,8 @@ on any of these accounts (44, 45, 118, 198).
 
 A conversation SHALL have no quiet limit and no stop check, SHALL never
 read stuck, and SHALL end only on its caller's finish, which ends its
-agent once quiet and counts the stage delivered (109).
+agent once quiet, or, where it hibernates, ends none, and counts the
+stage delivered (109, 212).
 
 #### Scenario: An hour beside the operator
 
@@ -298,8 +299,8 @@ has passed, it is read stopped or its session ended, or its account is
 spent, recording when and why; SHALL then end the agent once it is
 quiet, never forced, freeing its room and its account; and the stage
 SHALL keep waiting on its answer under the same move and since, a later
-answer being a retry with a fresh agent (31, 42, 70, 96, 130, 134, 146,
-198).
+answer being a retry with a fresh agent, or, for one hibernated, a
+resume of its session (31, 42, 70, 96, 130, 134, 146, 198, 212, 213).
 
 #### Scenario: The time passing
 
@@ -335,6 +336,11 @@ answer being a retry with a fresh agent (31, 42, 70, 96, 130, 134, 146,
 
 - **WHEN** two settles read an agent let go at once
 - **THEN** it is recorded let go once, and its agent is closed once (74, 75)
+
+#### Scenario: Hibernated at its time, not quiet
+
+- **WHEN** a code agent of a stage that hibernates works on once its keep-open time has passed
+- **THEN** its close reads hibernated, and it is ended, and its hibernation recorded, only once a settle reads it quiet (31, 198, 212)
 
 ### Requirement: A conversation's asking agent lost is carried at its answer
 
@@ -450,3 +456,20 @@ refused, naming the list, and the stage SHALL go on (41, 43, 56, 132).
 
 - **WHEN** an agent stops short naming none
 - **THEN** the end goes to the place's recipients, as before
+
+### Requirement: A hibernating stage is never stuck, lost or past its limit
+
+While a stage hibernates, no settle SHALL read it stuck, lost or its
+agent working past its limit, nor read any agent of it, and a
+hibernating stage SHALL hold no room and no account (44, 45, 70, 118,
+145, 212).
+
+#### Scenario: A hibernating conversation over a day
+
+- **WHEN** talk hibernates, its pane gone through the fake terminal, and settles run over a day
+- **THEN** talk reads `hibernating` at each, never lost or stuck, and the fake terminal is asked nothing of its agent (45, 212)
+
+#### Scenario: A hibernating code stage
+
+- **WHEN** a caller hibernates a place whose code stage of a kind that hibernates it runs, then settles run past code's quiet limit
+- **THEN** code reads `hibernating` at each, never stuck, and another place's stage waiting for room on a host at its bound starts (44, 70, 212)
