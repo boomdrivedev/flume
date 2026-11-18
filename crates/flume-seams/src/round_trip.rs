@@ -2119,6 +2119,26 @@ fn a_profile_that_maps_no_mode() {
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
 }
 
+/// The seam-contracts spec's scenario "A profile that keeps the seam's
+/// defaults" (170, 172).
+#[test]
+fn a_profile_that_keeps_the_seams_defaults_refuses_a_model() {
+    let words = Bare
+        .model("large")
+        .expect_err("a profile that names no way to give a model took large");
+    assert!(words.contains("`large`"), "{words}");
+    assert_eq!(words, no_model("large"));
+    assert_eq!(
+        words,
+        "its agent profile names no way to give a model, `large` among them"
+    );
+    assert_eq!(
+        Bare.kind(),
+        None,
+        "a profile that keeps the defaults names no kind"
+    );
+}
+
 #[test]
 fn a_profile_that_names_no_way_to_give_an_effort() {
     // A profile that keeps the seam's defaults refuses every effort,

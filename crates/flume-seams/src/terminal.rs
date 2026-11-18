@@ -629,6 +629,14 @@ pub trait Terminal: Send + Sync {
     fn relay(&self, _agent: &crate::Identity) -> Result<Box<dyn Relay + '_>, String> {
         Err(NO_RELAY.into())
     }
+
+    /// Whether the terminal can start a program of `kind` now, under the
+    /// login environment with `env` over it, or why not in its tool's
+    /// words; every kind by default, which `open` refuses as it does now
+    /// where it cannot (4, C.5).
+    fn starts(&self, _kind: &str, _env: &BTreeMap<String, String>) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -779,5 +787,16 @@ mod tests {
             Ok(_) => panic!("a terminal that builds no relay relayed"),
         }
         assert_eq!(NO_RELAY, "the terminal offers no relay");
+    }
+
+    /// The seam-contracts scenario "A terminal that keeps the seam's
+    /// default" (C.5).
+    #[test]
+    fn a_terminal_that_keeps_the_seams_default_starts_every_kind() {
+        let env = BTreeMap::from([("AGENT_HOME".to_string(), "/scratch/work-2".to_string())]);
+        for kind in ["agent", "amp"] {
+            assert_eq!(NoRelay.starts(kind, &BTreeMap::new()), Ok(()), "{kind}");
+            assert_eq!(NoRelay.starts(kind, &env), Ok(()), "{kind}");
+        }
     }
 }

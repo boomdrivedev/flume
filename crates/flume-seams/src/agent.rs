@@ -98,6 +98,13 @@ pub fn no_effort(word: &str) -> String {
     format!("its agent profile names no way to give an effort, `{word}` among them")
 }
 
+/// What a profile that keeps the agent seam's default says of the model
+/// `name` asked of it, which it refuses, since it names no way to give
+/// its program a model (170, 172).
+pub fn no_model(name: &str) -> String {
+    format!("its agent profile names no way to give a model, `{name}` among them")
+}
+
 /// A yes or no the agent's own record may not give (93).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -296,9 +303,13 @@ pub trait Agent: Send + Sync {
     /// `folder` is the place's own folder, under which each file the
     /// command lists lies (128, 196); `mode` is the value [`Agent::mode`]
     /// mapped, passed as its program's setting, and nothing is passed
-    /// where it is none (162, 169); `settings.effort` is a word
-    /// [`Agent::effort`] took, passed as its profile gives its program an
-    /// effort, and nothing is passed where it is none (88, 197); `own` is
+    /// where it is none (162, 169); `settings.model` is the agent's entry,
+    /// a name [`Agent::model`] took, given whole, passed as its profile
+    /// gives its program a model, and nothing is passed where it is none
+    /// (88, 172); `settings.effort` is the agent's entry, a word
+    /// [`Agent::effort`] took, given whole, passed as its profile gives its
+    /// program an effort, and nothing is passed where it is none (88,
+    /// 197); `own` is
     /// its program's own settings as the layers resolved them, its
     /// program's alone and taken by [`Agent::own`], passed its program's
     /// way, and nothing is passed where they are empty (195, 196);
@@ -434,6 +445,23 @@ pub trait Agent: Send + Sync {
         Err(format!(
             "its agent profile maps no mode, `{entry}` among them"
         ))
+    }
+
+    /// Whether the agent's program takes `name` as its model, which its
+    /// command passes as written; words naming the program where its
+    /// profile names no way to give one, and every name refused by
+    /// default, in [`no_model`]'s words, since a profile that names no way
+    /// to give a model refuses one (88, 170, 172).
+    fn model(&self, name: &str) -> Result<(), String> {
+        Err(no_model(name))
+    }
+
+    /// The terminal's kind for the agent's program, by which a terminal
+    /// that starts a known agent program names it and is asked whether it
+    /// starts it; none by default, so nothing is asked (88, 170, C.4,
+    /// C.5).
+    fn kind(&self) -> Option<&str> {
+        None
     }
 
     /// Whether the agent's program takes `word` as its effort, which its
