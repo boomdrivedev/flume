@@ -393,8 +393,8 @@ mod tests {
     }
 
     /// The agent-programs spec's scenario "Nothing read of amp" (93, 171,
-    /// 174, 195):
-    /// every reading but its start's, which the launcher's word gives.
+    /// 174, 195): every reading but its start's, which the launcher's word
+    /// gives.
     #[test]
     fn nothing_is_read_of_amp() {
         let amp = amp();

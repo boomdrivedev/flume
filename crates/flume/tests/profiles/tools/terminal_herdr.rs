@@ -17,7 +17,8 @@
 //! name taken, the last place on a base (S47), two bases, a person's pane
 //! (S48), titles that follow the stage (S49), a conversation beside a
 //! named pane, a launch from a herdr pane, herdr's readings, a prompt
-//! left typed (S43), a pane herdr could not bring back, long
+//! left typed (S43), a watched send that sees its turn begin and one that
+//! sees none, a pane herdr could not bring back, long
 //! instructions to a shell not yet at its prompt, a start the terminal
 //! cannot yet take, a shell never at its prompt, a herdr call that never
 //! answers, a quiet pane not ended,
@@ -72,7 +73,9 @@ use std::time::{Duration, Instant};
 /// The stand-in agent, run as `claude`: herdr takes it for a Claude Code
 /// agent by its kind, and it reports its state to herdr with the pane's
 /// own `HERDR_*` left out, as herdr's reading of the screen would give
-/// it, so herdr lists no agent once it exits.
+/// it, so herdr lists no agent once it exits. With `STAND_IN_WORKS` set,
+/// it tells herdr it works as soon as it reads a line, and otherwise tells
+/// herdr nothing then.
 /// Once up, it reads ctrl+c as a key, as Claude Code does, clearing what
 /// the line held before it, never as a signal the shell would take while
 /// it reads the line that follows.
@@ -171,7 +174,8 @@ while :; do
           *) break ;;
         esac
       done
-      printf '%s\n' "$line" >> "$log/got" ;;
+      printf '%s\n' "$line" >> "$log/got"
+      if [ -n "$STAND_IN_WORKS" ]; then report working; fi ;;
     1) exit 0 ;;
   esac
 done
@@ -1471,6 +1475,11 @@ fn startup_files_that_put_another_claude_first_leave_the_program_the_settings_na
 /// a stand-in at `bin/amp` that reports itself to herdr as amp, writing
 /// its process id to `log/amp.pid` each time it runs (C.4, C.5).
 fn through_a_launcher(server: &TestServer) -> AgentCommand {
+    through_a_launcher_with(server, &[])
+}
+
+/// As [`through_a_launcher`], with `env` over the stand-in's environment.
+fn through_a_launcher_with(server: &TestServer, env: &[(&str, &str)]) -> AgentCommand {
     let log = server.scratch.path("log");
     let executable = |path: PathBuf, text: &str| {
         fs::write(&path, text).expect("a script written");
@@ -1505,7 +1514,7 @@ fn through_a_launcher(server: &TestServer) -> AgentCommand {
             "launched".into(),
             "--".into(),
         ],
-        ..server.command(&[])
+        ..server.command(env)
     }
 }
 
@@ -1581,6 +1590,56 @@ fn a_program_started_through_the_launcher() {
 /// its pane.
 fn opened_through_a_launcher(server: &TestServer, profile: &Herdr, who: &Identity) -> Pane {
     opened(server, profile, who, &through_a_launcher(server))
+}
+
+/// The terminal-profiles spec's scenario "A turn seen" (89, 171, C.5): a
+/// stand-in reported to herdr as amp, opened through a scratch launcher,
+/// that tells herdr it works as soon as it reads a line.
+#[test]
+fn a_watched_send_sees_the_turn_begin() {
+    let server = TestServer::start("herdr-turn-seen");
+    let profile = server.profile();
+    let who = identity(1);
+    let command = through_a_launcher_with(&server, &[("STAND_IN_WORKS", "1")]);
+    let pane = opened(&server, &profile, &who, &command);
+    assert_eq!(
+        profile.send_watching(&who, "go", Duration::from_secs(60)),
+        SentWatching::Began,
+        "the watched send of `go`"
+    );
+    server.within("the stand-in did not read `go`", || {
+        server.kept(&pane.id, "got") == ["go"]
+    });
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "No turn seen" (38, 95, 171,
+/// C.5): a stand-in reported to herdr as amp, opened through a scratch
+/// launcher, that reads a line and tells herdr nothing.
+#[test]
+fn a_watched_send_sees_no_turn() {
+    let server = TestServer::start("herdr-turn-unseen");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    for text in ["go", "again"] {
+        match profile.send_watching(&who, text, Duration::from_secs(60)) {
+            SentWatching::NotSeen { why } => assert!(
+                why.contains("agent_prompt_stalled"),
+                "the turn not seen of `{text}` names {why}"
+            ),
+            other => panic!("the watched send of `{text}` gave {other:?}"),
+        }
+    }
+    server.within("the stand-in did not read both", || {
+        server.kept(&pane.id, "got") == ["go", "again"]
+    });
+    assert_eq!(
+        server.kept(&pane.id, "events"),
+        ["cleared", "cleared"],
+        "the held input cleared before each sending"
+    );
+    assert_eq!(profile.close(&who), Closed::Closed);
 }
 
 /// The terminal-profiles spec's scenario "The launcher's process, then
