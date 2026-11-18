@@ -311,6 +311,91 @@ fn the_agents_windows_are_scripted() {
     );
 }
 
+/// The seam-fakes spec's scenario "The fake as a new fake makes it"
+/// (174).
+#[test]
+fn a_new_fakes_parts() {
+    let host = Arc::new(FakeHost::default());
+    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    let parts = agent.parts();
+    for part in [
+        Part::SendBack,
+        Part::Guard,
+        Part::OnQuiet,
+        Part::Windows,
+        Part::Spent,
+    ] {
+        assert!(parts.builds(part), "a new fake degraded {}", part.name());
+    }
+    assert_eq!(
+        parts.degraded(),
+        [Part::Mode, Part::Carry, Part::OwnSettings]
+    );
+    assert_eq!(agent.send_back(), Offered::Offered);
+    assert_eq!(agent.on_quiet(), Offered::Offered);
+    assert_eq!(agent.reports_windows(), Offered::Offered);
+    assert_eq!(agent.mode_read_back(), Offered::NotOffered);
+}
+
+/// The fake scripted as the conformance suite's harness scripts it by
+/// default, reading its mode back, carrying a conversation and taking own
+/// settings, or left carrying none or taking none (179, 195, 169).
+fn scripted_as_a_harness(carries: bool, takes_own: bool) -> FakeAgent {
+    let host = Arc::new(FakeHost::default());
+    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    agent.read_mode_back();
+    if carries {
+        agent.carry_to(
+            FakeAgent::LOGIN,
+            Carry::Yes {
+                session: "s-1".into(),
+            },
+        );
+    }
+    if takes_own {
+        agent.take_own();
+    }
+    agent
+}
+
+/// The seam-fakes spec's scenario "The fake scripted as each harness
+/// scripts it" (174).
+#[test]
+fn each_script_degrades_its_own_part() {
+    let agent = scripted_as_a_harness(true, true);
+    assert_eq!(agent.parts().degraded(), vec![], "by default");
+    assert_eq!(agent.mode_read_back(), Offered::Offered);
+    assert_eq!(
+        scripted_as_a_harness(false, true).parts().degraded(),
+        [Part::Carry],
+        "carrying none"
+    );
+    assert_eq!(
+        scripted_as_a_harness(true, false).parts().degraded(),
+        [Part::OwnSettings],
+        "taking no own settings"
+    );
+    let agent = scripted_as_a_harness(true, true);
+    agent.reports_no_windows();
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::Windows],
+        "reporting no windows"
+    );
+    assert_eq!(agent.reports_windows(), Offered::NotOffered);
+    let agent = scripted_as_a_harness(true, true);
+    agent.no_send_back();
+    agent.no_guard();
+    agent.no_on_quiet();
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::SendBack, Part::Guard, Part::OnQuiet],
+        "offering no hooks"
+    );
+    assert_eq!(agent.send_back(), Offered::NotOffered);
+    assert_eq!(agent.on_quiet(), Offered::NotOffered);
+}
+
 #[test]
 fn the_agents_modes_are_scripted() {
     // Unscripted, the fake maps no mode and reads none back, as the

@@ -13,7 +13,7 @@ it.
 
 ## 2. The fake agent's parts
 
-- [ ] 2.1 Give `FakeAgent` in `crates/flume-fakes/src/agent.rs` a `parts()` read from its scripts: `SendBack`, `Guard` and `OnQuiet` unless `no_send_back`, `no_guard` or `no_on_quiet`; `Windows` unless `reports_no_windows`; `Spent` always; `Mode` once `read_mode_back` or `read_mode_at_prompt`; `Carry` once `carry_to`; and `OwnSettings` once `take_own`; and drop its own `send_back`, `on_quiet`, `reports_windows` and `mode_read_back`, which the seam reads from its parts (design section 5; 174). Add to `crates/flume-fakes/tests/fakes.rs` `a_new_fakes_parts` and `each_script_degrades_its_own_part`, the seam-fakes scenarios "The fake as a new fake makes it" and "The fake scripted as each harness scripts it". True when `devenv shell -- cargo test -p flume-fakes` passes.
+- [x] 2.1 Give `FakeAgent` in `crates/flume-fakes/src/agent.rs` a `parts()` read from its scripts: `SendBack`, `Guard` and `OnQuiet` unless `no_send_back`, `no_guard` or `no_on_quiet`; `Windows` unless `reports_no_windows`; `Spent` always; `Mode` once `read_mode_back` or `read_mode_at_prompt`; `Carry` once `carry_to`; and `OwnSettings` once `take_own`; and drop its own `send_back`, `on_quiet`, `reports_windows` and `mode_read_back`, which the seam reads from its parts (design section 5; 174). Add to `crates/flume-fakes/tests/fakes.rs` `a_new_fakes_parts` and `each_script_degrades_its_own_part`, the seam-fakes scenarios "The fake as a new fake makes it" and "The fake scripted as each harness scripts it". True when `devenv shell -- cargo test -p flume-fakes` passes.
 
 ## 3. The agent seam's parts scenarios and the clause list
 
