@@ -1,71 +1,53 @@
 # Verify: flume-knows-every-program-its-terminal-starts
 
 Verified on `change/flume-knows-every-program-its-terminal-starts` at
-`ec964ca`, cut from `bolt/flume-runs-every-agent-its-terminal-can-start`
-and holding that base at `a7cb4d3`.
+`dce0f54`, cut from `bolt/flume-runs-every-agent-its-terminal-can-start`
+and holding that base at `a7cb4d3`, the base's revision on the host and
+on origin.
 
-**Outcome: not archived.** The whole checks fail on one test, so the
-change goes back to its code stage. Every task, 1.1 to 8.4, is ticked.
-Every scenario of the change's specs has a test or an engine scenario.
-The failure is one older test that still says `codex` is bound to no
-profile. Task 4.3 binds it to the common profile.
+**Outcome: archived.** The whole checks pass, every task, 1.1 to 8.5, is
+ticked, and every requirement and scenario of the change's specs is met.
 
 ## The whole checks
 
 `devenv shell -- sluice exec bolt/flume-runs-every-agent-its-terminal-can-start`,
-run once. sluice ran the checks `ec964ca` affects against the base at
-`a7cb4d3`, with no conflict reported. 23 tasks ran: 22 passed and 1
-failed (`flume:test`). The command exited 1.
+run once. sluice ran the checks `dce0f54` affects against the base at
+`a7cb4d3` and recorded 22 results under their keys for `dce0f54`. The
+command exited 0. 23 tasks ran, `site:install` among them as
+`site:build`'s dependency, and every check passed:
 
-The tasks that passed include:
+- `seams`, `core`, `fakes` and `conformance`: format, lint and test.
+  `conformance:test` runs `no_tool`, so core.1 holds.
+- `conformance:coverage`: every clause of Parts A and B, I1 to I8 and
+  S1 to S131 at `48a94da` is cited by the suite's 1042 scenarios. 171,
+  173 and S71 to S74 are named under record 0026's changes still to
+  build, the common profile's readings and a pool's program.
+- `flume`: format, lint and test. The `profiles` binary passes 230
+  tests, `agent_claude::the_resolver_binds_the_program_by_name_or_path`
+  among them. The `scratch` and `telemetry` binaries pass 2 and 6.
+- `plugin-claude:test` (17 pass), `nix:typecheck` and `nix:test`.
+- `root:changes`: the one open change validates under
+  `openspec validate --strict` and archives cleanly. `root:format`
+  passes too.
+- `site:build`: 19 pages built.
 
-- `seams:test`, `core:test`, `fakes:test` and `conformance:test`.
-  `no_tool` passes, so core.1 holds.
-- `conformance:coverage`, which names 171, 173 and S71 to S74 as still
-  to build under record 0026's changes.
-- `root:changes`: the change validates and archives cleanly.
-- `site:build`, and every crate's format and lint.
-
-### `flume:test`: `agent_claude::the_resolver_binds_the_program_by_name_or_path`
-
-```
-thread 'agent_claude::the_resolver_binds_the_program_by_name_or_path' panicked at crates/flume/tests/profiles/agent_claude.rs:1484:5:
-assertion failed: resolver.agent("codex").is_none()
-test result: FAILED. 229 passed; 1 failed
-error: test failed, to rerun pass `-p flume --test profiles`
-```
-
-`crates/flume/tests/profiles/agent_claude.rs:1484` was written before
-this change (`73cbcbd8`). It asserts that the built-in resolver binds
-`codex` to no profile. Task 4.3, and the agent-programs requirement
-"The resolver binds every entry and nothing else", now bind `codex` to
-the common profile over its entry, so the assertion no longer holds.
-
-The fix is to assert a program no entry names, as `built_in.rs:157`
-does with `nonesuch`, or that `codex` gets the common profile. Task
-4.3's own check, `--test profiles built_in`, filters to `built_in` and
-so never ran this test. The earlier verify did not see it either:
-`commands.rs` failed first there, and cargo stopped before the
-`profiles` binary.
-
-cargo also stops at a failing binary. After `profiles`, flume's
-`scratch` and `telemetry` binaries and its doc-tests did not run under
-the gate. Run directly afterwards, they pass: 2, 6 and 0 tests. That
-run is not the gate's.
+moon warned that it could not archive task outputs into
+`.moon/cache/outputs/`. Those are cache archives, not checks, and no
+task failed for them.
 
 ## Tasks
 
-All 27 tasks are ticked. Each test, file or call a task names exists
+All 28 tasks are ticked. Each test, file or call a task names exists
 where the task says:
 
 - **The settings and the seams (1.1 to 1.5):** `PerProgram`;
   `Agent::model` and `Agent::kind`; `Terminal::starts`; the fakes'
   scripts; Claude Code's `model` and `kind`.
-- **The core (2.1 to 2.5):** `engine/agent_model.rs` (six scenarios)
-  and `engine/agent_programs.rs` (three), each registered in
-  `engine/mod.rs`. `agent_effort.rs` has the table's entry and the
-  missing entry. Status gives `ModelStatus` and the effort's entry, and
-  the person's form of status prints both.
+- **The core (2.1 to 2.5):** `engine/agent_model.rs` and
+  `engine/agent_programs.rs`, each registered in `engine/mod.rs`.
+  `agent_effort.rs` has the table's entry and the missing entry. Status
+  gives `ModelStatus` and the effort's entry, and the person's form of
+  status prints both.
 - **The readers (3.1 to 3.5):** `per_program.rs`, the kinds profile,
   the host's tables, a role's entry and `--agent`'s tables.
 - **Every program (4.1 to 4.4):** `programs.rs`, `common.rs`, the
@@ -78,15 +60,21 @@ where the task says:
 - **The site (7.1):** the seven pages. Among them, `commands.md` gives
   `model.<program>` and `effort.<program>`, `state.md` gives `model`
   beside `degraded`, and the guides name `herdr integration install`.
-- **The verify's findings and the base (8.1 to 8.4):**
+- **The base and the gate (8.1 to 8.5):**
   - 8.1: the base is merged at `a7cb4d3`.
   - 8.2: the common profile answers send-back and on-quiet from its
-    parts. `nothing_is_read_of_amp` reads `Part::ALL` degraded.
+    parts. `nothing_is_read_of_amp` reads every part degraded.
   - 8.3: the tests of a model's and an effort's table name `agent` and
     `other`, and `no_tool` passes.
   - 8.4: `StandInAgent::model` takes every name and passes it by
-    `--model`. `agent_settings_at_the_launch` and
-    `host_settings_and_an_account_for_a_kind` pass.
+    `--model`.
+  - 8.5: `the_resolver_binds_the_program_by_name_or_path` reads
+    `nonesuch` bound to no profile. Every entry's program, `codex`
+    among them, is bound to the common profile, as task 4.3 binds it.
+    No other test asserts an entry's program unbound.
+
+`omp_starts_once_its_integration_is_installed` is in check-tools. That
+layer runs at the bolt's merge onto main, not on this branch's gate.
 
 ## Requirements and scenarios
 
@@ -94,7 +82,7 @@ Each scenario has a test or an engine scenario that cites it:
 
 | Capability | Scenarios and where they are checked |
 |---|---|
-| agent-programs | herdr's kinds (`every_kind_herdr_starts_has_its_entry`); every entry bound (`every_entry_is_bound`); no entry, amp given nothing, amp given a model (`tests/commands.rs`); an entry of name and kind, amp's command, nothing read of amp (`common.rs`); over the fakes, a kind the terminal cannot start, a later start refused (`engine/agent_programs.rs`) |
+| agent-programs | herdr's kinds (`every_kind_herdr_starts_has_its_entry`); every entry bound (`every_entry_is_bound`); a program with no entry (`a_program_launched_with_no_entry_is_refused`, and `nonesuch` in `built_in.rs` and `agent_claude.rs`); amp given nothing, amp given a model (`tests/commands.rs`); an entry of name and kind, amp's command, nothing read of amp (`common.rs`); over the fakes, a kind the terminal cannot start, a later start refused (`engine/agent_programs.rs`) |
 | agent-model | all six (`engine/agent_model.rs`) |
 | agent-effort | a word kept, a table refused, a table's entry passed, no entry for the program (`engine/agent_effort.rs`, kinds-profile tests) |
 | agent-profile | `every_model_name_is_taken_and_the_entry_passed_by_model` |
@@ -107,10 +95,10 @@ Each scenario has a test or an engine scenario that cites it:
 | seam-fakes | `the_fake_terminal_scripts_a_kind_it_cannot_start`, and the fake's models (`engine/agent_model.rs`) |
 | clause-coverage | `the_clauses_listed`, `the_clauses_unbuilt_are_named_by_the_changes_that_build_them`; `conformance:coverage` passed in this run |
 
-The command-line scenarios name `claude` and `codex`. The unit tests
-in `commands/launch.rs` name `agent` and `other` instead, because
-core.1 binds code outside a profile. The tests of a mode's table do
-the same. Each scenario's shape is checked as written.
+The command-line scenarios name `claude` and `codex`. The unit tests in
+`commands/launch.rs` name `agent` and `other` instead, because core.1
+binds code outside a profile. The tests of a mode's table do the same.
+Each scenario's shape is checked as written.
 
-The work meets every requirement as written. It falls short only where
-the gate fails, on the one stale assertion above.
+The work meets every requirement as written, and the change is
+archived with this report.
