@@ -64,6 +64,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: no_terminal_keeps_watch,
         },
         Scenario {
+            name: "settle: a watch's settle asks the merge queue, the terminal and the agent program nothing of a fix waiting on an answer whose agent ended, a chore whose submission its launch held or a fix whose code was read lost, reads the fix whose agent runs, and leaves the status of each waiting place as it was",
+            cites: &["42", "45", "47", "225"],
+            run: places_with_nothing_pending,
+        },
+        Scenario {
+            name: "settle: with no caller keeping watch, a drop's settle asks the merge queue, the terminal and the agent program nothing of a fix waiting on an answer whose agent ended",
+            cites: &["119", "225"],
+            run: an_unwatched_drop,
+        },
+        Scenario {
             name: "settle: S109, under a caller's watch a submitted chore with no agent is settled at each of the caller's settles, each stepping its base once, and once it lands the next delivers the landing and tidies it",
             cites: &["S109", "46", "124", "125", "208", "I8"],
             run: s109_a_submitted_place_with_no_agent_moves_under_a_watch,
@@ -1378,6 +1388,160 @@ fn no_terminal_keeps_watch(_: &()) -> Outcome {
         "the stage once the drop settled the places where something is pending first"
     );
     ensure_eq!(host_watch(&world), None, "a watch held");
+    Ok(())
+}
+
+/// A fix launched as `name` whose code stage stopped short needing an
+/// answer, its agent kept open for no time and ended, so it waits only on
+/// its caller's answer (42, 198).
+fn fix_waiting_on_an_answer(world: &World, name: &str) -> Result<PlaceId, String> {
+    let id = World::id("fix", name);
+    launched(&world.engine.launch(&Launch {
+        every_stage: Settings {
+            keep_open: Some("0".into()),
+            ..Settings::default()
+        },
+        ..launch("fix", name, Some("x"))
+    }))?;
+    world.settle(&id);
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start of the fix's code")?;
+    let answer = world.engine.needs(
+        &start.identity.to_string(),
+        &start.secret.0,
+        "which way?",
+        StopKind::NeedsAnswer,
+    );
+    ensure!(answer.refusal().is_none(), "the stop-short: {answer:?}");
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::EndedShort),
+        "the fix's code"
+    );
+    ensure!(no_agent_live(world, &id), "an agent of the fix is live");
+    Ok(id)
+}
+
+/// Every call the fake merge queue, terminal and agent program logged.
+fn seams_asked(world: &World) -> Vec<String> {
+    [
+        world.queue.log.calls(),
+        world.terminal.log.calls(),
+        world.agent.log.calls(),
+    ]
+    .concat()
+}
+
+/// Clears the fake merge queue's, terminal's and agent program's logs.
+fn clear_seams(world: &World) {
+    world.queue.log.clear();
+    world.terminal.log.clear();
+    world.agent.log.clear();
+}
+
+/// The settling spec's "Places with nothing pending": a fix waiting on an
+/// answer whose agent has ended, a chore whose launch held its
+/// submission, a fix whose code stage was read lost and a fix whose code
+/// agent runs; a caller's settle with a bound asks the fake merge queue,
+/// terminal and agent program nothing of the first three, by their names,
+/// branches or identities, reads the running fix, and leaves the status
+/// of each of the first three as it was. Their caller's pane waits, so
+/// each end of theirs was handed to it by notice (42, 43, 45, 47, 225).
+fn places_with_nothing_pending(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let one = fix_waiting_on_an_answer(&world, "one")?;
+    let two = World::id("chore", "two");
+    let mut chore = launch("chore", "two", Some("bump it"));
+    chore.hold_submission = true;
+    launched(&world.engine.launch(&chore))?;
+    world.settle(&two);
+    world.commit("chore/two", &["chore.rs"]);
+    world.settle(&two);
+    ensure_eq!(
+        world.stage_state(&two, "code"),
+        Some(StageState::Delivered),
+        "the chore's code"
+    );
+    let three = fix_begun(&world, "three")?;
+    world
+        .terminal
+        .kill(&World::identity("fix", "three", "code", 1));
+    world.settle(&three);
+    ensure_eq!(
+        world.stage_state(&three, "code"),
+        Some(StageState::Lost),
+        "the third fix's code"
+    );
+    fix_begun(&world, "four")?;
+    let waiting = [&one, &two, &three];
+    let before = waiting
+        .iter()
+        .map(|id| world.status(id))
+        .collect::<Result<Vec<_>, _>>()?;
+    clear_seams(&world);
+    let settled = world.engine.settle_every(120);
+    ensure!(
+        settled.refusal().is_none(),
+        "the settle was refused: {settled:?}"
+    );
+    let asked = seams_asked(&world);
+    for word in [
+        "fix--one",
+        "fix/one",
+        "chore--two",
+        "chore/two",
+        "fix--three",
+        "fix/three",
+    ] {
+        ensure!(
+            !asked.iter().any(|call| call.contains(word)),
+            "the watch's settle asked of {word}: {asked:?}"
+        );
+    }
+    ensure!(
+        asked.iter().any(|call| call.contains("fix--four")),
+        "the watch's settle did not read the running fix: {asked:?}"
+    );
+    let after = waiting
+        .iter()
+        .map(|id| world.status(id))
+        .collect::<Result<Vec<_>, _>>()?;
+    ensure_eq!(after, before, "the status of each waiting place");
+    Ok(())
+}
+
+/// The settling spec's "An unwatched drop": no caller keeps watch, a fix
+/// waits on an answer whose agent has ended, and a caller drops another
+/// place; the drop's settle asks the fake merge queue, terminal and agent
+/// program nothing of the waiting fix (119, 225).
+fn an_unwatched_drop(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let one = fix_waiting_on_an_answer(&world, "one")?;
+    let two = fix_begun(&world, "two")?;
+    clear_seams(&world);
+    ensure!(world.engine.attended(), "a caller keeps watch");
+    let dropped = world.engine.drop_place(&two, true);
+    ensure!(
+        dropped.refusal().is_none(),
+        "the drop was refused: {dropped:?}"
+    );
+    let asked = seams_asked(&world);
+    for word in ["fix--one", "fix/one"] {
+        ensure!(
+            !asked.iter().any(|call| call.contains(word)),
+            "the drop's settle asked of {word}: {asked:?}"
+        );
+    }
+    ensure_eq!(
+        world.stage_state(&one, "code"),
+        Some(StageState::EndedShort),
+        "the waiting fix's code"
+    );
     Ok(())
 }
 
