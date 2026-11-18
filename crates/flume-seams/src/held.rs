@@ -1181,6 +1181,59 @@ pub struct PlaceRecord {
     /// one (43, C.7; weir 101).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    /// A standing role's checkouts, one for each repository its entry
+    /// names, in its order, the first the place's own repository; none
+    /// for every other place, and in a record written before (193, C.1).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkouts: Vec<CheckoutHeld>,
+}
+
+/// A checkout of a standing role's place as its wake fixed it and its
+/// starts moved it: the repository by its location on the host, its
+/// address where its clone had one, its folder under the place's
+/// location, its base, its binding as the wake read it, the revision it
+/// stands detached at, where its base was read, when it was last moved,
+/// none until a start moved it, and its last move not made, none once a
+/// later move is made (9, 21, 56, 126, 193, 213; core.55).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckoutHeld {
+    pub repository: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    pub folder: String,
+    pub base: String,
+    pub binding: Binding,
+    pub revision: Revision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_from: Option<BaseFrom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<Seconds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unmoved: Option<Unmoved>,
+}
+
+/// A checkout's move not made: when, the base's tip it was not moved
+/// to, none where the base could not be read, and why, the fetch's or
+/// the profile's words (193, 213; core.18).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unmoved {
+    pub at: Seconds,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<Revision>,
+    pub reason: String,
+}
+
+impl CheckoutHeld {
+    /// The checkout as the place seam is handed it, under the place's
+    /// `location`: its own location, on no branch (80, 193).
+    pub fn place_ref(&self, location: &str) -> PlaceRef {
+        PlaceRef {
+            repository: self.repository.clone(),
+            location: format!("{location}/{}", self.folder),
+            branch: String::new(),
+            base: self.base.clone(),
+        }
+    }
 }
 
 /// An intent's key: the name a launch gave it, else the repository and
@@ -1226,6 +1279,12 @@ impl PlaceRecord {
             branch: self.branch.clone(),
             base: self.base.clone(),
         }
+    }
+
+    /// Whether the place is a standing role's, holding a checkout of each
+    /// repository its entry names and no branch (193).
+    pub fn standing_role(&self) -> bool {
+        !self.checkouts.is_empty()
     }
 
     /// The place as its agents' identities name it, `<kind>--<name>`.
@@ -1810,14 +1869,16 @@ pub struct ResumeHeld {
     pub conversation: Conversation,
 }
 
-/// What resumed a hibernating stage: its caller's resume, a message, or the
-/// answer to the stop-short its agent waits on (213).
+/// What resumed a hibernating stage: its caller's resume, a message, the
+/// answer to the stop-short its agent waits on, or a batch pending at
+/// its role's address (213, 214).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResumedBy {
     Caller,
     Message,
     Answer,
+    Delivery,
 }
 
 impl ResumedBy {
@@ -1826,6 +1887,7 @@ impl ResumedBy {
             ResumedBy::Caller => "caller",
             ResumedBy::Message => "message",
             ResumedBy::Answer => "answer",
+            ResumedBy::Delivery => "delivery",
         }
     }
 }

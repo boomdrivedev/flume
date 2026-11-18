@@ -94,6 +94,27 @@ pub enum BranchRemoved {
     Refused { reason: String },
 }
 
+/// One checkout of a standing role's place to make: its repository by
+/// its location on the host, its folder under the place's location, and
+/// the revision it is detached at, on no branch (193, C.1).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Checkout {
+    pub repository: String,
+    pub folder: String,
+    pub revision: Revision,
+}
+
+/// A checkout's move to a revision: moved there, kept where it stood
+/// with the profile's words where the move would overwrite a change or
+/// was refused, or gone where no checkout stands (193, 213).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Moved {
+    Moved,
+    Kept { reason: String },
+    Gone,
+}
+
 /// The place seam (B.1): a worktree of one repository on a branch of its
 /// own. The guarantee: make never touches a branch or a location that
 /// already exists, and each operation is all or nothing (83).

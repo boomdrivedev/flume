@@ -804,6 +804,7 @@ impl Engine {
                 fix_of: fix_of.cloned(),
                 fixes_as,
                 token: Some(crate::deliveries::token(&self.host.secret())),
+                checkouts: Vec::new(),
             },
             phase: Phase::Making {
                 by: self.host.command(),
