@@ -10,9 +10,10 @@
 //! stand-in for sluice answers with no entry is followed until it is
 //! taken in, then to its landing, and a failure of the entry taken in
 //! from it goes back to code once and lands on the next (124, C.6); a bare
-//! `change` runs flume's newest, change@4, through construct, code started
-//! once and verify, its report committed in the archived change (S2, S35,
-//! S119); verify finding work sends the place back to code (131); a fix
+//! `change` runs flume's newest, change@5, through construct, code started
+//! once and verify, each agent started in `full` from the kind, its report
+//! committed in the archived change (S2, S35, S119, 162); verify finding
+//! work sends the place back to code (131); a fix
 //! whose code finds work waits on an answer, with one agent opened, and
 //! its caller's retry with the answer starts code once more, the findings
 //! then the answer in its prompt, and lands (41, 42, 48, 49, 131); a fix
@@ -26,7 +27,7 @@
 //! host's configuration leaves a `codex` account alone while construct
 //! works has code refused, no command printed for it, until a retry once
 //! the configuration is mended (S81; 4, 32, 145); and a change launched
-//! as `change@2`, named since a bare `change` runs change@4, has its
+//! as `change@2`, named since a bare `change` runs change@5, has its
 //! repeating code stage work a change of three task groups one fresh
 //! agent at a time, and a failed submission send it back for one
 //! repetition with no group (S50, S52; 112, 140 to 142); and a fix whose
@@ -611,23 +612,40 @@ fn a_pull_requests_failure_goes_back_to_code_once_and_its_next_request_lands() {
     assert!(!walk.has_branch("fix/six"));
 }
 
+/// Asserts the agent `status` gives runs in `full`, given by the kind, its
+/// start passing Claude Code's `bypassPermissions` (162, 169; record
+/// 0064).
+fn in_full_from_the_kind(status: &Value) {
+    let agent = &status["agent"];
+    assert_eq!(
+        agent["settings"]["from"]["mode"],
+        json!({ "layer": "kind", "value": "full" }),
+        "{status}"
+    );
+    assert_eq!(agent["mode"]["passed"], "bypassPermissions", "{status}");
+}
+
 #[test]
 fn a_change_runs_construct_code_and_verify() {
-    // S2, S35, S119: a bare `change` runs flume's newest, change@4, each
-    // stage's agent in `full` from its kind (record 0064);
-    // construct writes the change, code's one agent ticks its tasks, status
-    // showing them ticked along the way, and verify commits its report and
-    // archives the change, the code stage started once; the place lands
-    // with the report in the archive.
+    // S2, S35, S119, 162: a bare `change` runs flume's newest, change@5,
+    // each stage's agent started in `full` from the kind (records 0064,
+    // 0077); construct writes the change, code's one agent ticks its tasks,
+    // status showing them ticked along the way, and verify commits its
+    // report and archives the change, the code stage started once; the place
+    // lands with the report in the archive.
     let walk = Walk::new("walk-change");
     let place = walk.launch("change", "add-parser", &["--brief", "add a parser"]);
-    let status = walk.status(&place);
-    assert_eq!(status["identity"], "flume/change@4", "{status}");
-    assert_eq!(status["version"], 4, "{status}");
+    let status = walk.until(&place, "its construct's agent", |status| {
+        status["current"] == "construct" && !status["agent"].is_null()
+    });
+    assert_eq!(status["identity"], "flume/change@5", "{status}");
+    assert_eq!(status["version"], 5, "{status}");
+    in_full_from_the_kind(&status);
     walk.agent(&place, construct("add-parser"));
     let status = walk.until(&place, "its code stage", |status| {
         status["current"] == "code" && !status["agent"].is_null()
     });
+    in_full_from_the_kind(&status);
     assert_eq!(stage(&status, "construct")["state"], "delivered");
     assert_eq!(stage(&status, "code")["starts"], 1, "{status}");
     assert!(stage(&status, "code")["group"].is_null(), "{status}");
@@ -675,6 +693,7 @@ fn a_change_runs_construct_code_and_verify() {
     });
     assert_eq!(ticked(&status), vec![true, true], "{status}");
     assert_eq!(stage(&status, "code")["starts"], 1, "{status}");
+    in_full_from_the_kind(&status);
     walk.agent(&place, verify_holds("add-parser"));
     until_landed(&walk, &place);
 

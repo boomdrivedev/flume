@@ -1,7 +1,9 @@
 //! `flume open` through the built binary under the pinned herdr (186 to
 //! 190, S90, S91), on a walkthrough's host whose home is a short link, so
-//! the sessions' sockets beneath its configuration home fit, and whose
-//! `claude` is a stand-in that tells herdr it is ready and waits. The
+//! the sessions' sockets beneath its configuration home fit, whose
+//! `claude` is a stand-in that tells herdr it is ready and waits, and
+//! whose login shell is the walk's own, so a place's readiness and
+//! teardown run the sluice the tree pins (core.22). The
 //! window programs are stand-ins first on the binary's `PATH`: `open` and
 //! `ghostty` for the ghostty profile and `osascript` for Terminal.app's,
 //! each recording its words and environment and opening nothing. A
@@ -72,7 +74,7 @@ impl Host {
     /// A host whose sessions' sockets fit beneath its home's short link
     /// for the session `longest`, the longest name it opens.
     fn for_session(label: &str, longest: &str) -> Host {
-        let under = UnderHerdr::new(Walk::without_stand_in(label), longest);
+        let under = UnderHerdr::new(Walk::with_its_own_agent(label), longest);
         let scratch = under.walk.repository.scratch.root.clone();
         let claude = scratch.join("bin/claude");
         std::fs::write(&claude, CLAUDE).expect("the stand-in for claude");

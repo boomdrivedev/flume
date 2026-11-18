@@ -22,8 +22,8 @@
 //! to its declaration's file, read beside it: at the same revision for a
 //! repository's, on disk for a launch's, and from the binary for flume's
 //! own, whose versions are each a declaration of its own with its prompts
-//! beside it, change@1 to change@4, chore@1 and chore@2, and fix@1 and
-//! fix@2 side by side (157; record 0064).
+//! beside it, change@1 to change@5, chore@1 and chore@2, and fix@1 and
+//! fix@2 side by side (157; records 0064, 0077).
 //!
 //! flume's own kinds are packages, each read through weir-kinds' package
 //! reader at its identity, `flume/<name>@<version>`, with its content's
@@ -109,12 +109,13 @@ const KIND_TOML: &str = "kind.toml";
 
 /// flume's own kinds, one declaration per version, each in a directory of
 /// its own under `own/`, `<name>@<version>/kind.toml` with its prompts
-/// beside it under `prompts/`: change@1 to change@4 side by side, then
+/// beside it under `prompts/`: change@1 to change@5 side by side, then
 /// chore@1 and chore@2, then fix@1 and fix@2, each name's versions in
-/// ascending order so its last is its newest. change@4, chore@2 and fix@2
-/// give each stage's agent `full` and say in each prompt that stopping
-/// short is its one way to ask (22, 154, 157, 162, C.2; records 0022,
-/// 0054, 0064).
+/// ascending order so its last is its newest. change@4, change@5, chore@2
+/// and fix@2 give each stage's agent `full` and say in each prompt that
+/// stopping short is its one way to ask, and change@5 works each change
+/// through OpenSpec's own commands (22, 154, 157, 162, C.2, C.3; records
+/// 0022, 0054, 0064, 0077).
 const OWN: &[Own] = &[
     Own {
         identity: "flume/change@1",
@@ -185,6 +186,24 @@ const OWN: &[Own] = &[
             (
                 "prompts/change-verify.md",
                 include_str!("own/change@4/prompts/change-verify.md"),
+            ),
+        ],
+    },
+    Own {
+        identity: "flume/change@5",
+        declaration: include_str!("own/change@5/kind.toml"),
+        prompts: &[
+            (
+                "prompts/change-construct.md",
+                include_str!("own/change@5/prompts/change-construct.md"),
+            ),
+            (
+                "prompts/change-code.md",
+                include_str!("own/change@5/prompts/change-code.md"),
+            ),
+            (
+                "prompts/change-verify.md",
+                include_str!("own/change@5/prompts/change-verify.md"),
             ),
         ],
     },

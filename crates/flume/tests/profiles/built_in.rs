@@ -348,10 +348,11 @@ fn a_recipient_unnamed_is_the_herdr_pane_the_command_runs_in() {
 
 /// The content hash of each version of flume's own kinds as this release
 /// records it, the first five as the first release that reads locks
-/// recorded them and change@4, chore@2 and fix@2 as the release that holds
-/// them (record 0064). A version keeps its content in every later release,
-/// so a change to what one holds is a version of its own (156; design 7).
-const OWN_HASHES: [(&str, &str); 8] = [
+/// recorded them, change@4, chore@2 and fix@2 as the release that holds
+/// them (record 0064), and change@5 as the release that holds it (record
+/// 0077). A version keeps its content in every later release, so a change
+/// to what one holds is a version of its own (156; design 7).
+const OWN_HASHES: [(&str, &str); 9] = [
     (
         "flume/change@1",
         "sha256:2dbf6a11e877872619f56a51c192292b306dc7a8f1b7c2728cccdb8992e7d883",
@@ -367,6 +368,10 @@ const OWN_HASHES: [(&str, &str); 8] = [
     (
         "flume/change@4",
         "sha256:8a726543782e0fe0942128701618308aa1c53e400d27dff524f6be72b8853bc7",
+    ),
+    (
+        "flume/change@5",
+        "sha256:ec5bd96306859ccf8a7bbeeab5412978c4e9e503387ee9d291bd49e34da742bf",
     ),
     (
         "flume/chore@1",

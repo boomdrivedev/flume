@@ -109,8 +109,8 @@ that resolves to nothing refuses the launch, naming what each source
 holds, and makes nothing.
 
 flume's own kinds are `flume/fix@1`, `flume/fix@2`, `flume/chore@1`,
-`flume/chore@2` and `flume/change@1` to `flume/change@4`. A bare name
-takes the newest, `change@4`, `chore@2` or `fix@2`, unless a lock
+`flume/chore@2` and `flume/change@1` to `flume/change@5`. A bare name
+takes the newest, `change@5`, `chore@2` or `fix@2`, unless a lock
 records another. The versions of `change` share their stages and differ
 in how they code a change:
 
@@ -121,12 +121,15 @@ in how they code a change:
   check, the narrowest that shows it done, and its `verify` runs the
   repository's whole checks once.
 - `change@4` codes it as `change@3` does.
+- `change@5` codes it as `change@4` does, works the change through
+  OpenSpec's own commands, and hands its change to code only once
+  OpenSpec's strict check, `openspec validate --strict`, passes.
 
 `change@4`, `chore@2` and `fix@2` are each the version before it, but
 that they give their agents `full`
 ([flume's own kinds](/flume/guides/agent-settings/#flumes-own-kinds))
 and say in each prompt that stopping short is the agent's one way to
-ask.
+ask. `change@5` does both too.
 
 A place keeps the kind its launch read for its whole life
 ([a place keeps its kind](#a-place-keeps-its-kind)). `flume status`

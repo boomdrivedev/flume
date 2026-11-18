@@ -484,9 +484,9 @@ refused where it is read, naming it: give it under its program's name.
 
 ### flume's own kinds
 
-The newest versions of flume's own kinds, `change@4`, `chore@2` and
-`fix@2`, give each stage's agent `full` in the kind's layer, the last of
-the eight. So an agent of a bare `change`, `chore` or `fix` acts without
+The newest versions of flume's own kinds, `change@4`, `change@5`,
+`chore@2` and `fix@2`, give each stage's agent `full` in the kind's
+layer, the last of the eight. So an agent of a bare `change`, `chore` or `fix` acts without
 asking wherever no other layer gives a mode, passed to Claude Code as
 `--permission-mode bypassPermissions`. A host that wants their agents to
 reach less states the mode in its own layers, which come first:

@@ -27,7 +27,10 @@ const REPOSITORY: &str = "/repository";
 /// code prompt of its own; then change@4, chore@2 and fix@2, each the
 /// version before it at the next version with every stage's agent given
 /// `full`, appended after the five so a lookup by name alone still finds
-/// the oldest version (22, 140, 141, 157, 162, C.2; core.31; record 0064).
+/// the oldest version; then change@5, change@4's stages each with a prompt
+/// of its own working the change through its change tool's own commands,
+/// naming no tool (22, 140, 141, 157, 162, C.2; core.1, core.31; records
+/// 0064, 0077).
 pub fn flumes_own() -> Vec<Kind> {
     let stage = |name: &str, deliverable: Deliverable, prompt: &str| Stage {
         name: name.into(),
@@ -134,6 +137,16 @@ pub fn flumes_own() -> Vec<Kind> {
         })
         .collect();
     own.extend(newest);
+    let mut through_its_tool = own
+        .iter()
+        .find(|kind| kind.name == "change" && kind.version == 4)
+        .cloned()
+        .expect("the fake's own kinds hold change@4");
+    through_its_tool.version = 5;
+    through_its_tool.stages[0].prompt = "Write the change {{change}} through its change tool's own commands, committing it once its strict check passes.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
+    through_its_tool.stages[1].prompt = "Build {{change}} as its change tool's apply instructions give it, every task of it, running each task's own check and ticking it once the check passes.\n\n{{needs}}{{#words}}\n\n{{words}}{{/words}}".into();
+    through_its_tool.stages[2].prompt = "Verify {{change}} against the work, commit the report, and archive it through its change tool's own archive.\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}".into();
+    own.push(through_its_tool);
     own
 }
 

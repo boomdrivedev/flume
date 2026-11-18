@@ -121,14 +121,13 @@ a submission refused at submit likewise, status naming why (112).
 
 ### Requirement: A submission's outcome is collected at the settles that follow
 
-Every settle of a place flume submitted SHALL collect the outcomes
-pending for it through the merge queue seam's inbox and act on each
-once, and where its submission is open SHALL drive its base one round
-through step, once per repository and base in one command; a settle
-SHALL never submit the place anew for an open submission. An outcome
-handed again, one already acted on, SHALL count as no step taken, so it
-never keeps a settle from reading the place's stage (40, 46, 111, 124,
-125, 133).
+Every settle of a place whose submission is open SHALL collect the
+outcomes pending for it through the merge queue seam's inbox and act on
+each once, and SHALL drive its base one round through step, once per
+repository and base in one command; a settle SHALL never submit the
+place anew for an open submission. An outcome handed again, one already
+acted on, SHALL count as no step taken, so it never keeps a settle from
+reading the place's stage (40, 46, 111, 124, 125, 133).
 
 #### Scenario: A restart while under test
 
@@ -190,19 +189,37 @@ and no other caller (46, 120, 124, 125, 208, I8, S109).
 - **WHEN** a base place's submission to `main` and a change's submission to the base place's branch are open together, and every place is settled once
 - **THEN** the fake merge queue logs one `step main` and one `step <the base place's branch>`, each once in the command (124, 125, 202)
 
+### Requirement: No inbox for a place with no submission open
+
+A settle of a place flume has not submitted, or whose submission's
+outcome it holds, SHALL ask the merge queue seam's inbox nothing, but
+once as it submits the place anew after an outcome, taking nothing
+pending then as the new submission's outcome (99, 101, 111, 133).
+
+#### Scenario: The inbox is asked only while the submission is open
+
+- **WHEN** a fix is settled before its submission, while its submission is open, while its fix round runs after the fake merge queue failed it with an outcome left pending for the place, and as its next delivery submits it anew
+- **THEN** no inbox is asked before the submission or while the fix round runs, one is asked at each settle while it is open, the inbox is collected as it is submitted anew, the outcome left pending sends the place back no more, and the new submission lands (111, 133, 99, 101)
+
+#### Scenario: A decided submission asks no inbox
+
+- **WHEN** the fake merge queue withdraws a place's submission, or refuses it, and the place is settled again
+- **THEN** the place waits for its caller and that settle asks the inbox nothing (112, 133)
+
 ### Requirement: Each outcome is confirmed once acted on
 
 A settle SHALL confirm each outcome its inbox or a decided submit gives,
 through the merge queue seam's confirm, once the place's state holds what
-it decided, so a later settle is given only what is new; an outcome of a
-submission other than the one flume last made SHALL decide nothing and
-be confirmed with no act, and one whose act was not written SHALL be left
-unconfirmed for the next settle (111, 112, 124, 225).
+it decided; an outcome of a submission other than the one flume last made
+SHALL decide nothing and be confirmed with no act; one whose act was not
+written, or whose confirm the merge queue could not take, SHALL be left
+unconfirmed for the next inbox, acted on there no more than once (74,
+111, 112, 124, 225).
 
 #### Scenario: A second settle is given no outcome already acted on
 
 - **WHEN** a fix's submission fails, a settle sends code back, and the place is settled again
-- **THEN** the first settle confirms the failure once code's start is held, and the second reads the inbox, is given nothing, confirms nothing and sends nothing back (111, 225)
+- **THEN** the first settle confirms the failure once code's start is held, and the second asks the inbox nothing, confirms nothing and sends nothing back (111, 133, 225)
 
 #### Scenario: An earlier submission's outcome given again
 
@@ -211,5 +228,5 @@ unconfirmed for the next settle (111, 112, 124, 225).
 
 #### Scenario: An outcome not acted on, or not confirmed
 
-- **WHEN** the second submission fails while every write of the place is refused, then a settle acts on it while the merge queue refuses confirms, then a settle runs with confirms taken
-- **THEN** the first settle confirms nothing and leaves the failure pending, the second sends code back once and leaves it pending, and the third sends nothing back again and confirms it (74, 124, 225)
+- **WHEN** the second submission fails while every write of the place is refused, then a settle acts on it while the merge queue refuses confirms, then a settle runs with confirms taken, and then the fix round delivers and flume submits the place anew
+- **THEN** the first settle confirms nothing and leaves the failure pending, the second sends code back once and leaves it pending, the third asks no inbox and leaves it pending, and the fourth's inbox gives it again, which sends nothing back and is confirmed (74, 111, 124, 225)

@@ -149,7 +149,7 @@ pub fn scenarios<H: KindsHarness>() -> Vec<Scenario<H>> {
             run: what_a_stage_makes::<H>,
         },
         Scenario {
-            name: "kinds: flume's own kinds are fix@1, fix@2, chore@1, chore@2 and change@1 to change@4, each landing and sent back to code, change@2's code stage alone repeating, the newest three's agents in full",
+            name: "kinds: flume's own kinds are fix@1, fix@2, chore@1, chore@2 and change@1 to change@5, each landing and sent back to code, change@2's code stage alone repeating, the newest versions' agents in full",
             cites: &["22", "19", "S35", "140", "157", "162"],
             run: flumes_own::<H>,
         },
@@ -304,7 +304,8 @@ fn flumes_own<H: KindsHarness>(harness: &H) -> Outcome {
     ensure_eq!(
         names,
         vec![
-            "change@1", "change@2", "change@3", "change@4", "chore@1", "chore@2", "fix@1", "fix@2"
+            "change@1", "change@2", "change@3", "change@4", "change@5", "chore@1", "chore@2",
+            "fix@1", "fix@2"
         ],
         "flume's own kinds"
     );
@@ -364,12 +365,12 @@ fn flumes_own<H: KindsHarness>(harness: &H) -> Outcome {
                 kind.name, kind.version
             )
         );
-        // change@4, chore@2 and fix@2 give each stage's one agent `full`
-        // and nothing else, every earlier version's none (162; record
-        // 0064).
+        // change@4, change@5, chore@2 and fix@2 give each stage's one
+        // agent `full` and nothing else, every earlier version's none (162;
+        // records 0064, 0077).
         let newest = matches!(
             (kind.name.as_str(), kind.version),
-            ("change", 4) | ("chore", 2) | ("fix", 2)
+            ("change", 4) | ("change", 5) | ("chore", 2) | ("fix", 2)
         );
         let agent = if newest {
             Settings {

@@ -46,9 +46,10 @@ impl Default for World {
 
 impl World {
     /// A repository on `main` binding the fake place, change and merge
-    /// queue, flume's own kinds but change@4, chore@2 and fix@2, agents run
-    /// by the fake agent, and the engine's own terminal and the fake window
-    /// by the names the fake host's display gives where nothing names one.
+    /// queue, flume's own kinds but change@4, change@5, chore@2 and fix@2,
+    /// agents run by the fake agent, and the engine's own terminal and the
+    /// fake window by the names the fake host's display gives where nothing
+    /// names one.
     pub fn new() -> World {
         let git = FakeGit::new();
         git.init(REPOSITORY, "main");
@@ -56,19 +57,19 @@ impl World {
         host.set_recipient(Some(CALLER));
         let place = Arc::new(FakePlace::new(git.clone()));
         let kinds = Arc::new(FakeKinds::default());
-        // The newest three give their agents `full`, which the fake agent
-        // maps to nothing until a scenario scripts it, so with them a bare
-        // fix, chore or change would be refused for a mode the fake cannot
-        // honour (core.39). A world holds the five versions before them,
-        // and a scenario about the newest takes `with_every_own_version`
-        // (162; record 0064).
+        // The newest versions give their agents `full`, which the fake
+        // agent maps to nothing until a scenario scripts it, so with them a
+        // bare fix, chore or change would be refused for a mode the fake
+        // cannot honour (core.39). A world holds the five versions before
+        // them, and a scenario about the newest takes
+        // `with_every_own_version` (162; records 0064, 0077).
         kinds.set_own(
             flumes_own()
                 .into_iter()
                 .filter(|kind| {
                     !matches!(
                         (kind.name.as_str(), kind.version),
-                        ("change", 4) | ("chore", 2) | ("fix", 2)
+                        ("change", 4) | ("change", 5) | ("chore", 2) | ("fix", 2)
                     )
                 })
                 .collect(),
@@ -133,9 +134,9 @@ impl World {
     }
 
     /// A world as `new` makes it holding every version of flume's own
-    /// kinds, change@4, chore@2 and fix@2 among them, its fake agent
+    /// kinds, change@4, change@5, chore@2 and fix@2 among them, its fake agent
     /// mapping `full`, which those give each stage's agent, to `full`
-    /// (22, 154, 162, 169; record 0064).
+    /// (22, 154, 162, 169; records 0064, 0077).
     pub fn with_every_own_version() -> World {
         let world = World::new();
         world.kinds.set_own(flumes_own());
