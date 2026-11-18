@@ -777,7 +777,7 @@ impl Engine {
             }
             if state == AgentState::Waiting
                 && asking == Reading::No
-                && agent.started(&folder, identity) == Reading::Yes
+                && self.started(agent.as_ref(), &folder, start) == Reading::Yes
             {
                 break;
             }

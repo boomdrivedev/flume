@@ -127,6 +127,18 @@ impl AgentOn<'_> {
         self.terminal.as_ref().ok()?.screen(self.identity)
     }
 
+    /// The process the terminal reads running the agent's program, unknown
+    /// in the words naming the profile where none answers for it (35, 190,
+    /// C.5).
+    pub fn program_process(&self) -> ProgramProcess {
+        match &self.terminal {
+            Ok(terminal) => terminal.program_process(self.identity),
+            Err(reason) => ProgramProcess::Unknown {
+                why: reason.clone(),
+            },
+        }
+    }
+
     pub fn answer_trust(&self) -> bool {
         self.terminal
             .as_ref()

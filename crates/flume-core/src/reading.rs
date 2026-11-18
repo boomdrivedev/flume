@@ -265,6 +265,40 @@ impl Engine {
         }
     }
 
+    /// Whether the agent of `start` started, its record read in the
+    /// place's own `folder`: the profile's own answer where it starts its
+    /// program itself, or where that answer is not yes; for one that starts
+    /// it through flume's launcher, otherwise, yes only where the start's
+    /// terminal reads the program running in the process the launcher's
+    /// word names and, for a start not yet sent its prompt nor begun, reads
+    /// the agent waiting; no where it reads nothing running the program, it
+    /// running in another process, the word naming none, or the agent not
+    /// yet waiting; and unknown where the terminal cannot read the process,
+    /// so the start stays starting and is never read failed for it (35,
+    /// 135, 171, C.4; core.10). Every reading of a start's started is this
+    /// one, so a settle, a tell and the stop check read it alike.
+    pub(crate) fn started(&self, agent: &dyn Agent, folder: &str, start: &StartHeld) -> Reading {
+        let said = agent.started(folder, &start.identity);
+        if !agent.launches() || said != Reading::Yes {
+            return said;
+        }
+        let Some(launched) = agent.launched(folder, &start.identity) else {
+            return Reading::No;
+        };
+        match self.agent_on(start).program_process() {
+            ProgramProcess::Runs { pid } if pid == launched => {
+                let taken = !start.prompt.sendings.is_empty() || start.begun_at.is_some();
+                if taken || self.state_of(Some(agent), folder, start) == AgentState::Waiting {
+                    Reading::Yes
+                } else {
+                    Reading::No
+                }
+            }
+            ProgramProcess::Runs { .. } | ProgramProcess::Nothing => Reading::No,
+            ProgramProcess::Unknown { .. } => Reading::Unknown,
+        }
+    }
+
     /// The agent of a place's start, as the terminal and the agent seam
     /// read it, the agent's record read in the place's own folder (128).
     pub(crate) fn read_agent(&self, place: &PlaceId, start: &StartHeld) -> AgentReading {
@@ -275,7 +309,7 @@ impl Engine {
         match agent {
             Some(agent) => AgentReading {
                 state,
-                started: agent.started(&folder, &start.identity),
+                started: self.started(agent.as_ref(), &folder, start),
                 asking: agent.asking(&folder, &start.identity),
                 own_work: agent.own_work(&folder, &start.identity),
                 own_record,
