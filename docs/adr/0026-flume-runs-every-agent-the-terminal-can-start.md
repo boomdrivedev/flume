@@ -113,3 +113,36 @@ Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clau
 - **Whether send-back and on-quiet are offered, windows reported and the mode read back is read from the parts**, no profile answering them itself; the answers that read a record, `spent`, `windows`, `guard`, `carry`, `own` and `reserved`, answer the lesser way for a part not built, which the agent seam's scenarios hold every profile to. Not taken: each profile's own four answers beside its parts.
 - **Status gives the degraded parts alone**, as the agent's `degraded`, each with its part and how it is read, left out where none is (core.14). Not taken: every part, built or degraded.
 - **The clause list builds 174**; 170 to 173 and S71 to S75 stay the common profile's. The statement holds as written: C.4's Claude Code rows each answer from its record, so its table takes no parts row. Not taken: that row on a blueprints branch.
+
+## Amendment, 2026-11-18: how the launcher runs and how its start is read
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `a-program-without-its-own-profile-starts-through-flumes-launcher`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 35, 161, 171 item 1, C.4's common-profile command and started rows, C.5's herdr row and S74; `crates/flume/src/profiles/agent/claude/hook.rs` (`compare`, `began_otherwise`, `settle_detached`), `crates/flume/src/profiles/agent/common.rs`, `crates/flume/src/profiles/terminal/herdr/mod.rs` (`open`, `runs`), `crates/flume-core/src/reading.rs`, `deliver.rs` and `unsettled.rs`; the terminal-profiles spec's "Rex runs only a program that reports its state to it"; the change's design, `openspec/changes/a-program-without-its-own-profile-starts-through-flumes-launcher/design.md`.
+
+### Decision outcome
+
+- **The launcher is `flume ack launched -- <program> [<argument>…]`**, a subcommand of flume's one binary beside `ack started` and `ack received`, in `profiles/agent/launcher.rs`. Not taken: a launcher binary of its own, a second artifact to build and ship with nothing flume's binary lacks; and flume acting as the program when a link named for the kind runs it, which hides the subcommand from its help and from the pane's command line.
+- **It compares as Claude Code's started word does**, each variable's digest keyed by the secret, by one comparison both share, and the program it is to run with the record's, a name found on `PATH` past any file that is the launcher's own binary, since the kind's name in the start's folder leads to the launcher. Not taken: the launcher finding the program itself from the record, which would leave nothing to compare.
+- **Its word is written once**, by create-new, at `launched/<identity>.json` in the place's own folder, naming its process; a second launcher under the start, as a person typing the kind's name in the pane runs, runs nothing. Not taken: a word at every run, which would let a second launcher name a new process as the start's.
+- **It becomes the program by exec, in its own process.** Not taken: the program as its child, which would put it in another process than the word names.
+- **The seams gain only defaults**: the agent seam's `launches` and `launched`, the command's `launcher` words, which a terminal takes whole, the terminal seam's `program_process`, and `Unsettled::process`. Not taken: a richer `started` answer, which every profile and fake would change; and the launcher a part a profile builds, which 174 would let a profile degrade where started is never degraded.
+- **The core reads a launched start in one place**, for a settle, a tell and the stop check alike: started only with the word, the terminal reading the program in the word's process and the agent waiting; begun otherwise where the terminal reads the program in another process, so 161's end and fresh start follow. Not taken: the agent profile asking the terminal, which crosses the seams (core.2); and a check made once at the open, which misses a program run by hand after it (S74).
+- **herdr and the printed command run the launcher; Rex runs none**, since it opens no program but `claude`. Under the printed command, which reads no process, such a start reads unknown; the prompt's argument there (C.4) is left to the change that builds it.
+
+## Amendment, 2026-11-18: how the core holds a launched start once taken
+
+Status: accepted, the direction unchanged. The choices below are the code stage's of the change `a-program-without-its-own-profile-starts-through-flumes-launcher`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's code stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 35, 161 and S74; `crates/flume-core/src/reading.rs` (`Engine::started`, `Engine::began_otherwise`, `Engine::began_otherwise_held`), `end.rs` (`read_end`), `deliver.rs`; `crates/flume/src/profiles/agent/launcher.rs` (`launch`); `crates/flume/src/profiles/terminal/herdr/mod.rs` (`program_process`).
+
+### Decision outcome
+
+- **The agent waiting is read only for a start not yet taken**, one sent no prompt and not begun; a start taken reads started while the terminal reads its program in the word's process, working or not. Not taken: the agent waiting at every reading, which would read a begun agent at work no agent of its start's and end its stage lost.
+- **A begun start is read begun otherwise too**: the reading of a begun stage's end first reads whether its program runs in another process than its launcher became, so a program run again by hand after its prompt is ended once quiet and its stage started afresh, as S74 has it, never read lost; and a reading of another process, once the place holds it, stands for that start at the settles that follow, though the terminal then reads nothing running the program. Not taken: the terminal's reading alone at each settle, which a program between its two processes would turn into a lost stage.
+- **A program the launcher cannot find runs nothing and writes no word**, the launcher saying which. Not taken: a word saying the program differed, which a program found nowhere does not show.
+- **herdr reads a pane gone at its process reading as nothing running the program**, `pane_not_found` or `server_not_running`, as its other operations read a pane gone. Not taken: herdr's words as unknown, which would keep a gone agent's start unknown until the stage's limit.

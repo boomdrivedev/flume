@@ -239,7 +239,10 @@ impl Engine {
         let start = held.stages[index].start.as_ref()?;
         let agent = self.agent(&start.program)?;
         let folder = self.store.folder(&place.id);
-        if agent.started_without(&folder, &start.identity).is_some() {
+        if self
+            .began_otherwise(agent.as_ref(), &folder, start)
+            .is_some()
+        {
             return None;
         }
         if agent.own_work(&folder, &start.identity) != Reading::No

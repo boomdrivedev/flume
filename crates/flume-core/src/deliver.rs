@@ -82,14 +82,16 @@ impl Engine {
             // none again where its word came at its start's first prompt,
             // which it then did not take: it is ended once quiet and its
             // stage started afresh (161).
-            let unsettled = agent.started_without(&folder, identity);
+            let unsettled = self.began_otherwise_held(&held, agent.as_ref(), &folder, &start);
             if let Some(unsettled) = &unsettled {
                 if self.read_unsettled(id, index, &start, unsettled.clone()) {
                     return true;
                 }
             }
             if stage.state == StageState::Starting || unsettled.is_some() {
-                if unsettled.is_none() && agent.started(&folder, identity) == Reading::Yes {
+                if unsettled.is_none()
+                    && self.started(agent.as_ref(), &folder, &start) == Reading::Yes
+                {
                     self.with_start(id, identity, |start, state| {
                         start.dialog = None;
                         *state = StageState::Started;
@@ -311,7 +313,10 @@ impl Engine {
         };
         let folder = self.store.folder(id);
         let identity = &start.identity;
-        if agent.started_without(&folder, identity).is_some() {
+        if self
+            .began_otherwise_held(&held, agent.as_ref(), &folder, &start)
+            .is_some()
+        {
             return false;
         }
         let received = match agent.received(&folder, identity, &start.prompt.text) {
@@ -320,7 +325,7 @@ impl Engine {
         };
         if received.is_none()
             && !(start.prompt.sendings.is_empty()
-                && agent.started(&folder, identity) == Reading::Yes)
+                && self.started(agent.as_ref(), &folder, &start) == Reading::Yes)
         {
             return false;
         }

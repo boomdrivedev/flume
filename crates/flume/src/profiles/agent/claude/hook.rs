@@ -24,7 +24,8 @@ use super::{
     PLACE, SECRET, STAGE,
 };
 use crate::host::process::{parent_executable, program_path};
-use flume_core::{variable_digest, Answer, Engine};
+use crate::profiles::agent::start;
+use flume_core::{Answer, Engine};
 use flume_seams::{ModeBegan, Secret, StartRecord, Unsettled};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -99,7 +100,8 @@ impl Start {
 
 /// How this process began otherwise than the start's record says its
 /// agent runs: each variable the record names that `variable` finds
-/// unset, each whose digest keyed by `secret` differs, by name alone,
+/// unset, each whose digest keyed by `secret` differs, by name alone, as
+/// [`start::variables`] compares them,
 /// whether the program the record names, found on `path` as the command
 /// finds it and run in a nix wrapper's place, is another than `ran`, the
 /// program this process's parent runs, and whether `session`, the session
@@ -114,16 +116,7 @@ pub fn compare(
     path: &str,
     session: &str,
 ) -> Unsettled {
-    let mut unsettled = Unsettled::default();
-    for (name, digest) in &recorded.env {
-        match variable(name) {
-            None => unsettled.missing.push(name.clone()),
-            Some(value) if &variable_digest(secret, name, &value) != digest => {
-                unsettled.different.push(name.clone());
-            }
-            Some(_) => {}
-        }
-    }
+    let mut unsettled = start::variables(recorded, secret, variable);
     let named = program_path(&recorded.program, path)
         .map(|file| wrapper::unwrapped(&file).map_or(file, |wrapped| wrapped.program));
     let canonical = |file: &Path| file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
@@ -300,7 +293,7 @@ fn began_otherwise(
         return format!("{}: {error}", record.dir().display());
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, false);
+        start::settle_detached(binary, place, false);
     }
     format!(
         "{agent} began {}, not as its start recorded, so it is not its stage's agent",
@@ -530,25 +523,7 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path
         return json!({ "decision": "block", "reason": words }).to_string();
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, true);
+        start::settle_detached(binary, place, true);
     }
     String::new()
-}
-
-/// `flume settle <place>`, with `--on-quiet` where `on_quiet`, in a
-/// process group of its own that outlives the hook, its output nowhere.
-fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
-    use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
-    let mut args = vec!["settle", place];
-    if on_quiet {
-        args.push("--on-quiet");
-    }
-    let _ = Command::new(binary)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn();
 }

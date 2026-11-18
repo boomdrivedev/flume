@@ -76,6 +76,13 @@ pub struct AgentCommand {
     /// command needs none, and in a command written before (196).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub files: BTreeMap<String, String>,
+    /// The words that run the program through flume's launcher, its
+    /// program by its absolute path and then its arguments, after which a
+    /// terminal puts the program and its arguments; none where the profile
+    /// starts its program itself, and in a command written before (88, C.4,
+    /// C.5; core.60).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub launcher: Vec<String>,
 }
 
 /// A key of its program's settings that another of flume's settings or
@@ -197,7 +204,9 @@ pub const READS_NO_SESSION: &str = "its agent profile reads no running session";
 /// both by name alone, whether it runs another program, whether it came
 /// up in another conversation than the one its start resumes, and the
 /// mode it began in where it is not the one its start asked, none in a
-/// word written before (135, 161, 162, 179).
+/// word written before, and whether its program runs in another process
+/// than the one its start's launcher became, false in a word written
+/// before (135, 161, 162, 179, S74).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unsettled {
     #[serde(default)]
@@ -210,6 +219,8 @@ pub struct Unsettled {
     pub session: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ModeBegan>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub process: bool,
 }
 
 /// The mode a start asked, as its profile passed it, and the one the
@@ -223,8 +234,8 @@ pub struct ModeBegan {
 
 impl Unsettled {
     /// How the agent began otherwise, naming each variable and never a
-    /// value, no session, and both modes where it began in another (56,
-    /// 161, 162).
+    /// value, no session, both modes where it began in another, and no
+    /// process's id where it runs in another (56, 161, 162, S74).
     pub fn words(&self) -> String {
         let mut words = vec![];
         if !self.missing.is_empty() {
@@ -244,6 +255,9 @@ impl Unsettled {
                 Some(began) => format!("in the mode `{began}`, where its start asked `{asked}`"),
                 None => format!("in a mode its word did not name, where its start asked `{asked}`"),
             });
+        }
+        if self.process {
+            words.push("in another process than the one its start's launcher became".to_string());
         }
         if words.is_empty() {
             return "otherwise than its start recorded".to_string();
@@ -448,6 +462,23 @@ pub trait Agent: Send + Sync {
     /// start's identity, with flume's guard and stop check in force, read
     /// from its record in the place's own `folder` (135, 35, 128).
     fn started(&self, folder: &str, agent: &Identity) -> Reading;
+
+    /// Whether the profile starts its program through flume's launcher,
+    /// which checks the start, writes its word with its process once and
+    /// becomes the program, so the core takes its start only once the
+    /// terminal reads the program running in that process, waiting; not by
+    /// default (35, 171, C.4).
+    fn launches(&self) -> bool {
+        false
+    }
+
+    /// The process the launcher of the start under `agent` wrote it
+    /// became, read in the place's own `folder`: none before the
+    /// launcher's word, and none by default, for a profile that starts its
+    /// program itself (35, 128, 171, C.4).
+    fn launched(&self, _folder: &str, _agent: &Identity) -> Option<u32> {
+        None
+    }
 
     /// Whether the agent under `agent` received `text` as a prompt, read
     /// from its record in the place's own `folder` (89, 128).

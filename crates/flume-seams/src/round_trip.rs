@@ -563,6 +563,7 @@ fn unsettled() -> Unsettled {
             asked: "careful".into(),
             began: Some("ask-each".into()),
         }),
+        process: false,
     }
 }
 
@@ -1340,6 +1341,55 @@ fn a_start_begun_in_another_conversation_in_words() {
         .words(),
         "without AGENT_HOME, in another conversation than the one its start resumes"
     );
+}
+
+/// The seam-contracts spec's scenario "Begun in another process" (161,
+/// S74).
+#[test]
+fn a_start_begun_in_another_process() {
+    let other = Unsettled {
+        process: true,
+        ..Unsettled::default()
+    };
+    round_trips(other.clone());
+    assert_eq!(
+        other.words(),
+        "in another process than the one its start's launcher became"
+    );
+    assert!(
+        !other.words().chars().any(|c| c.is_ascii_digit()),
+        "the words named a process's id: {}",
+        other.words()
+    );
+    assert_eq!(
+        Unsettled {
+            missing: vec!["AGENT_HOME".into()],
+            ..other
+        }
+        .words(),
+        "without AGENT_HOME, in another process than the one its start's launcher became"
+    );
+}
+
+/// The seam-contracts spec's scenario "A word written before" (161).
+#[test]
+fn a_word_written_before_has_no_process() {
+    let before = serde_json::json!({
+        "missing": ["AGENT_HOME"],
+        "different": [],
+        "program": false
+    });
+    let read: Unsettled = serde_json::from_value(before.clone()).unwrap();
+    assert!(
+        !read.process,
+        "a word written before read in another process"
+    );
+    let written = serde_json::to_value(&read).unwrap();
+    assert!(
+        written.get("process").is_none(),
+        "a word with no process wrote one: {written}"
+    );
+    assert_eq!(written, before);
 }
 
 #[test]
@@ -2312,6 +2362,78 @@ fn a_profile_that_reads_no_running_session() {
     ] {
         round_trips(live);
     }
+}
+
+/// The seam-contracts spec's scenario "The process's answers in JSON"
+/// (C.5).
+#[test]
+fn the_processs_answers_round_trip() {
+    for process in [
+        ProgramProcess::Runs { pid: 41 },
+        ProgramProcess::Nothing,
+        ProgramProcess::Unknown {
+            why: "the terminal did not answer within 5 seconds".into(),
+        },
+    ] {
+        round_trips(process);
+    }
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Runs { pid: 41 }).unwrap(),
+        serde_json::json!({ "runs": { "pid": 41 } })
+    );
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Nothing).unwrap(),
+        serde_json::json!("nothing")
+    );
+}
+
+/// The seam-contracts spec's scenario "A profile that keeps the seam's
+/// defaults names no launcher" (35).
+#[test]
+fn a_profile_that_keeps_the_seams_defaults_names_no_launcher() {
+    assert!(
+        !Bare.launches(),
+        "a profile that keeps the defaults launches"
+    );
+    assert_eq!(Bare.launched("/folder", &identity()), None);
+}
+
+/// The seam-contracts spec's scenario "A command with the launcher's words
+/// and one without" (88, C.4).
+#[test]
+fn a_command_with_the_launchers_words_and_one_without() {
+    let without = AgentCommand {
+        program: "amp".into(),
+        kind: Some("amp".into()),
+        env: BTreeMap::from([("AMP_HOME".into(), "/scratch/work-2".into())]),
+        ..AgentCommand::default()
+    };
+    let with = AgentCommand {
+        launcher: vec![
+            "/opt/flume/bin/flume".into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+        ..without.clone()
+    };
+    round_trips(with.clone());
+    round_trips(without.clone());
+    assert_eq!(
+        serde_json::to_value(&with).unwrap()["launcher"],
+        serde_json::json!(["/opt/flume/bin/flume", "ack", "launched", "--"])
+    );
+    let json = serde_json::to_value(&without).unwrap();
+    assert!(
+        json.get("launcher").is_none(),
+        "a command with no launcher wrote one: {json}"
+    );
+    let before: AgentCommand =
+        serde_json::from_str(r#"{"program":"amp","args":[],"env":{},"prompt_args":[]}"#).unwrap();
+    assert!(
+        before.launcher.is_empty(),
+        "a command written before named a launcher"
+    );
 }
 
 #[test]
@@ -4738,6 +4860,12 @@ fn the_agent_seams_answers() {
             "/state/fix--one/agent/own.json".into(),
             r#"{"line":"a"}"#.into(),
         )]),
+        launcher: vec![
+            "/opt/flume/bin/flume".into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
     });
     let before: AgentCommand =
         serde_json::from_str(r#"{"program":"agent","args":[],"env":{},"prompt_args":[]}"#).unwrap();

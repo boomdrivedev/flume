@@ -117,6 +117,7 @@ impl Agent for StandInAgent {
             folder_trust: None,
             kind: None,
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
     fn started(&self, _folder: &str, _agent: &Identity) -> Reading {

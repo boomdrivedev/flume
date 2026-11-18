@@ -50,7 +50,11 @@ use std::sync::{Arc, Mutex};
 /// scripted to read it back, carry once a carry is scripted and own
 /// settings once scripted to take them, every other degraded, and the
 /// seam reads whether it offers send-back and on-quiet, reports windows
-/// and reads its mode back from them (174).
+/// and reads its mode back from them (174). It starts its program itself
+/// until scripted to start it through flume's launcher, its command then
+/// carrying [`FakeAgent::LAUNCHER`]'s words, and names, for each start a
+/// test scripts, the process its launcher's word names, none until
+/// scripted, each read logged `launched <identity>` (106, C.4).
 pub struct FakeAgent {
     terminal: Arc<FakeTerminal>,
     /// The other terminals its agents may open in, a stream's (190).
@@ -103,6 +107,9 @@ struct AgentModel {
     no_model: bool,
     /// The profile builds no windows, as scripted (171, 211).
     no_windows: bool,
+    /// The profile starts its program through flume's launcher, as
+    /// scripted (C.4).
+    launches: bool,
 }
 
 #[derive(Clone)]
@@ -133,6 +140,8 @@ struct Record {
     /// as scripted; else the session its word that it started names
     /// (217).
     conversation: Option<String>,
+    /// The process its launcher's word names, as scripted (C.4).
+    launched: Option<u32>,
 }
 
 impl Default for Record {
@@ -155,6 +164,7 @@ impl Default for Record {
             ends_after_stop_short: false,
             windows: None,
             conversation: None,
+            launched: None,
         }
     }
 }
@@ -168,6 +178,11 @@ impl FakeAgent {
     /// no [`FakeAgent::HOME`], the login environment's under no pool, as a
     /// program reads its own configuration home there (49, 179).
     pub const LOGIN: &'static str = "no home";
+
+    /// The words a command of a profile scripted to start its program
+    /// through flume's launcher carries, as a binary at `/fake/flume`
+    /// would build them (C.4; core.60).
+    pub const LAUNCHER: [&'static str; 4] = ["/fake/flume", "ack", "launched", "--"];
 
     pub fn new(terminal: Arc<FakeTerminal>) -> FakeAgent {
         FakeAgent {
@@ -317,6 +332,19 @@ impl FakeAgent {
                 record.windows = Some((taken_at, windows));
             }
         });
+    }
+
+    /// The profile starts its program through flume's launcher: `launches`
+    /// answers true, and its command carries [`FakeAgent::LAUNCHER`]'s
+    /// words (C.4).
+    pub fn start_through_launcher(&self) {
+        lock(&self.state).launches = true;
+    }
+
+    /// The launcher's word of `agent`'s start names the process `pid`,
+    /// which `launched` answers for that start alone (C.4).
+    pub fn set_launched(&self, agent: &Identity, pid: u32) {
+        self.with(agent, |record| record.launched = Some(pid));
     }
 
     /// The program's profile builds no windows: `reports_windows` answers
@@ -688,6 +716,11 @@ impl Agent for FakeAgent {
             }),
             kind: self.kind().map(str::to_string),
             files,
+            launcher: if lock(&self.state).launches {
+                Self::LAUNCHER.iter().map(|word| word.to_string()).collect()
+            } else {
+                vec![]
+            },
         }
     }
 
@@ -708,6 +741,23 @@ impl Agent for FakeAgent {
             } else {
                 Reading::No
             })
+    }
+
+    /// As scripted (C.4).
+    fn launches(&self) -> bool {
+        lock(&self.state).launches
+    }
+
+    /// The process scripted for the start, none until scripted or where
+    /// its record is kept in another folder, each read logged `launched
+    /// <identity>` (C.4).
+    fn launched(&self, folder: &str, agent: &Identity) -> Option<u32> {
+        self.log.push(format!("launched {agent}"));
+        let record = self.record(agent);
+        if record.folder.as_deref().is_some_and(|kept| kept != folder) {
+            return None;
+        }
+        record.launched
     }
 
     fn received(&self, folder: &str, agent: &Identity, text: &str) -> Received {

@@ -468,6 +468,7 @@ impl TestServer {
             }),
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -1464,6 +1465,179 @@ fn startup_files_that_put_another_claude_first_leave_the_program_the_settings_na
     }
 }
 
+/// A scratch launcher at `bin/launcher`, as flume's own runs in the
+/// program's place: it writes its process id to `log/launcher.pid` and its
+/// arguments to `log/launcher.argv`, then execs what follows its `--`; and
+/// a stand-in at `bin/amp` that reports itself to herdr as amp, writing
+/// its process id to `log/amp.pid` each time it runs (C.4, C.5).
+fn through_a_launcher(server: &TestServer) -> AgentCommand {
+    let log = server.scratch.path("log");
+    let executable = |path: PathBuf, text: &str| {
+        fs::write(&path, text).expect("a script written");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("the script made executable");
+    };
+    executable(
+        server.scratch.path("bin/launcher"),
+        &format!(
+            "#!/bin/sh\necho $$ > '{log}/launcher.pid'\nprintf '%s\\0' \"$@\" > '{log}/launcher.argv'\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n",
+            log = log.display()
+        ),
+    );
+    executable(
+        server.scratch.path("bin/amp"),
+        &STAND_IN
+            .replacen(
+                "#!/bin/sh\n",
+                &format!("#!/bin/sh\necho $$ > '{}/amp.pid'\n", log.display()),
+                1,
+            )
+            .replace("--agent claude", "--agent amp"),
+    );
+    AgentCommand {
+        program: server.scratch.path("bin/amp").to_string_lossy().into(),
+        args: vec!["x".into(), "y".into()],
+        kind: Some("amp".into()),
+        folder_trust: None,
+        launcher: vec![
+            server.scratch.path("bin/launcher").to_string_lossy().into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+        ..server.command(&[])
+    }
+}
+
+/// The process id the scratch `name`, the launcher or amp, last wrote.
+fn pid_of(server: &TestServer, name: &str) -> Option<u32> {
+    fs::read_to_string(server.scratch.path(&format!("log/{name}.pid")))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// The terminal-profiles spec's scenario "A program started through the
+/// launcher" (C.4, C.5).
+#[test]
+fn a_program_started_through_the_launcher() {
+    let server = TestServer::start("herdr-launcher");
+    let profile = server.profile();
+    let who = identity(1);
+    let command = through_a_launcher(&server);
+    let opened = profile.open(
+        &server.place("fix--one"),
+        &server.folder(),
+        &command,
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    assert!(
+        matches!(opened, Opened::Opened { .. }),
+        "open through the launcher gave {opened:?}"
+    );
+    let link = Path::new(&server.folder())
+        .join("herdr")
+        .join(flume::profiles::terminal::common::digest(&who.to_string()))
+        .join("bin/amp");
+    assert_eq!(
+        fs::read_link(&link).expect("the kind's link"),
+        server.scratch.path("bin/launcher"),
+        "the kind's link"
+    );
+    let argv = fs::read_to_string(server.scratch.path("log/launcher.argv"))
+        .expect("the launcher's arguments");
+    let amp = server
+        .scratch
+        .path("bin/amp")
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        argv.split('\0')
+            .filter(|arg| !arg.is_empty())
+            .collect::<Vec<_>>(),
+        vec!["ack", "launched", "--", amp.as_str(), "x", "y"],
+        "the launcher's arguments"
+    );
+    let launcher = pid_of(&server, "launcher").expect("the launcher's process");
+    server.within("amp did not run", || pid_of(&server, "amp").is_some());
+    assert_eq!(
+        pid_of(&server, "amp"),
+        Some(launcher),
+        "amp runs in another process than the launcher's"
+    );
+    let pane = profile.pane(&who).expect("the pane recorded");
+    assert_eq!(
+        server.kept(&pane.id, "argv").join(""),
+        "x\0y\0",
+        "amp's arguments"
+    );
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// An agent opened through the scratch launcher under `who`, waiting, and
+/// its pane.
+fn opened_through_a_launcher(server: &TestServer, profile: &Herdr, who: &Identity) -> Pane {
+    opened(server, profile, who, &through_a_launcher(server))
+}
+
+/// The terminal-profiles spec's scenario "The launcher's process, then
+/// one started by hand" (35, S74).
+#[test]
+fn launched_process_then_one_started_by_hand() {
+    let server = TestServer::start("herdr-process");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    let launcher = pid_of(&server, "launcher").expect("the launcher's process");
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Runs { pid: launcher },
+        "the process the launcher became"
+    );
+    // amp ends, and a person runs it again by its path in the same pane.
+    server.herdr(&["pane", "send-keys", &pane.id, "ctrl+d"]);
+    server.within("amp did not end", || {
+        profile.program_process(&who) == ProgramProcess::Nothing
+    });
+    let amp = server
+        .scratch
+        .path("bin/amp")
+        .to_string_lossy()
+        .into_owned();
+    server.herdr(&["pane", "run", &pane.id, &amp]);
+    server.within("amp was not run again by hand", || {
+        pid_of(&server, "amp").is_some_and(|pid| pid != launcher)
+    });
+    let by_hand = pid_of(&server, "amp").expect("amp's process");
+    server.within("the process run by hand was not read", || {
+        profile.program_process(&who) == ProgramProcess::Runs { pid: by_hand }
+    });
+    assert_ne!(by_hand, launcher, "amp ran again in the launcher's process");
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "A pane that is gone" (35).
+#[test]
+fn launched_process_of_a_gone_pane_reads_nothing() {
+    let server = TestServer::start("herdr-process-gone");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    assert!(
+        matches!(profile.program_process(&who), ProgramProcess::Runs { .. }),
+        "the launcher's process was not read"
+    );
+    server.herdr(&["pane", "close", &pane.id]);
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Nothing,
+        "the process of a gone pane"
+    );
+}
+
 #[test]
 fn a_program_that_runs_another_in_its_place_is_refused_naming_it() {
     let server = TestServer::start("herdr-program");
@@ -2283,6 +2457,7 @@ impl Agent for StandIn {
             folder_trust: None,
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 

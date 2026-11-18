@@ -534,6 +534,7 @@ impl Fixture {
             }),
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2334,6 +2335,7 @@ impl Agent for StandIn {
             folder_trust: None,
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
