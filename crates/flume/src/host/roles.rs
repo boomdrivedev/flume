@@ -8,11 +8,15 @@
 //!
 //! - a run's: `kind`, one of the source's own kinds by its name, its
 //!   version the locks', and `repository`, by its location on the host,
-//!   a leading `~` read as the home; and `priority`, `base`, `brief`,
-//!   `name`, `intent`, `answers` and `answerer`, each where it gives it,
-//!   and under `agents` its agents' settings as a launch's `--agent`
-//!   gives them, every stage's and each stage's under `stages`, a file a
-//!   program's own settings name read beside the roles file;
+//!   a leading `~` read as the home, or, for a standing role, in its
+//!   place `repositories`, each location read so, `repository` its first;
+//!   and `priority`, `base`, `brief`, `name`, `intent`, `answers` and
+//!   `answerer`, each where it gives it, under `agents` its agents'
+//!   settings as a launch's `--agent` gives them, every stage's and each
+//!   stage's under `stages`, a file a program's own settings name read
+//!   beside the roles file, and under `kinds` each kind its session
+//!   launches its projects as with the words of when it serves, which
+//!   flume checks against no source;
 //! - a standing agent's: `agent`, the name the host's terminal knows it
 //!   by, and `session`, `answers` and `answerer` where it gives them;
 //! - a carried address's: `carried = true`, and `answers` where it gives
@@ -27,16 +31,23 @@
 //! other keys, or mixing `carried` with a run's keys, `agent` or
 //! `answerer`, declares nothing for its address, and so does one writing
 //! its kind with a version, which is the locks', or giving `points`,
-//! which this flume takes for no place (165); an address two entries
-//! declare, and two addresses whose runs would be one place, of one
-//! repository, kind and name, are declared by neither. Each is named with
-//! why, and none fails the configuration, another source or another
-//! entry.
+//! which this flume takes for no place (165); so does a run's entry
+//! whose `repositories` is empty, names one location twice, gives two
+//! whose folders, each location's last part less a trailing `.git`, are
+//! one, or stands beside `repository` or `base`, each checkout being at
+//! its repository's default branch; one whose `kinds` gives a value that
+//! is not words; and a standing agent's or a carried address's giving
+//! `kinds`, neither having a session flume prompts (193); an address
+//! two entries declare, and two addresses whose runs would be one place,
+//! of one repository, kind and name, are declared by neither. Each is
+//! named with why, and none fails the configuration, another source or
+//! another entry.
 
 use super::config::{home, quoted};
 use flume_seams::{
-    is_address, role_of, stream_of, CarriedRole, HostRoles, HostSource, HostSourceRead, RoleAgents,
-    RoleEntry, RoleRefused, RoleRun, RolesUnread, Settings, StandingAgent, Stream,
+    checkout_folder, is_address, role_of, stream_of, CarriedRole, HostRoles, HostSource,
+    HostSourceRead, RoleAgents, RoleEntry, RoleRefused, RoleRun, RolesUnread, Settings,
+    StandingAgent, Stream,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -54,6 +65,8 @@ const RUN: &[&str] = &[
     "agents",
     "answers",
     "answerer",
+    "repositories",
+    "kinds",
 ];
 
 /// The keys of a standing agent's entry.
@@ -188,6 +201,16 @@ fn entry_of(
     };
     let keys: Vec<&String> = table.keys().filter(|key| *key != "carried").collect();
     let entry = Entry { table, at: &at };
+    if table.contains_key("kinds") && (carried || table.contains_key("agent")) {
+        let of = if carried {
+            "a carried address's"
+        } else {
+            "a standing agent's"
+        };
+        return Err(format!(
+            "[{at}] gives kinds, which is no word of {of} entry: flume prompts no session of it (193)"
+        ));
+    }
     if carried {
         if let Some(key) = keys.iter().find(|key| key.as_str() != "answers") {
             return Err(format!(
@@ -236,9 +259,14 @@ fn entry_of(
             .as_integer()
             .ok_or(format!("[{at}] priority is not a whole number"))?,
     };
+    let repositories = repositories_of(table, &at)?;
+    let repository = match repositories.first() {
+        Some(first) => first.clone(),
+        None => home(&named("repository")?),
+    };
     Ok(RoleEntry::Run(Box::new(RoleRun {
         source: source.into(),
-        repository: home(&named("repository")?),
+        repository,
         kind: own_kind(source, &named("kind")?, &at)?,
         priority,
         base: entry.text("base")?,
@@ -251,9 +279,80 @@ fn entry_of(
         },
         answers: entry.text("answers")?,
         answerer: entry.flag("answerer")?,
-        repositories: Vec::new(),
-        kinds: BTreeMap::new(),
+        repositories,
+        kinds: kinds_of(table, &at)?,
     })))
+}
+
+/// A standing role's `repositories` in the entry `table` at `at`, each
+/// location read as `repository` is, in the entry's order; none where it
+/// gives none; or why the entry declares nothing: empty, one location
+/// named twice, two whose folders are one, or beside `repository` or
+/// `base` (193, C.7).
+fn repositories_of(table: &Table, at: &str) -> Result<Vec<String>, String> {
+    let Some(given) = table.get("repositories") else {
+        return Ok(vec![]);
+    };
+    if table.contains_key("repository") {
+        return Err(format!(
+            "[{at}] gives repositories beside repository: a standing role's entry gives repositories in its place"
+        ));
+    }
+    if table.contains_key("base") {
+        return Err(format!(
+            "[{at}] gives repositories beside base: each checkout is at its repository's default branch, so a standing role's entry gives no base"
+        ));
+    }
+    let given = given
+        .as_array()
+        .ok_or(format!("[{at}] repositories is not a list of locations"))?;
+    if given.is_empty() {
+        return Err(format!("[{at}] repositories names no repository"));
+    }
+    let mut repositories: Vec<String> = vec![];
+    let mut folders: BTreeMap<String, String> = BTreeMap::new();
+    for written in given {
+        let written = written
+            .as_str()
+            .filter(|written| !written.is_empty())
+            .ok_or(format!(
+                "[{at}] repositories holds a value that is no location"
+            ))?;
+        let location = home(written);
+        if repositories.contains(&location) {
+            return Err(format!("[{at}] repositories names {written} twice"));
+        }
+        let folder = checkout_folder(&location);
+        if let Some(other) = folders.insert(folder.clone(), written.to_string()) {
+            return Err(format!(
+                "[{at}] repositories names {other} and {written}, which would both take the folder {folder} in its place"
+            ));
+        }
+        repositories.push(location);
+    }
+    Ok(repositories)
+}
+
+/// The `kinds` the entry `table` at `at` gives, each kind's words, none
+/// where it gives none; or why the entry declares nothing, a value that
+/// is not words. No kind is checked against a source (193, C.7).
+fn kinds_of(table: &Table, at: &str) -> Result<BTreeMap<String, String>, String> {
+    let Some(given) = table.get("kinds") else {
+        return Ok(BTreeMap::new());
+    };
+    let given = given.as_table().ok_or(format!(
+        "[{at}] kinds is not a table of kinds and their words"
+    ))?;
+    given
+        .iter()
+        .map(|(kind, words)| match words.as_str() {
+            Some(words) if !words.is_empty() => Ok((kind.clone(), words.to_string())),
+            Some(_) => Err(format!("[{at}.kinds] {kind} is empty")),
+            None => Err(format!(
+                "[{at}.kinds] {kind} is not a string, the words of when it serves"
+            )),
+        })
+        .collect()
 }
 
 /// One entry's table at `at`, its values read.

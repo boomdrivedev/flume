@@ -480,6 +480,19 @@ pub struct RoleRun {
     pub kinds: BTreeMap<String, String>,
 }
 
+/// The folder a standing role's checkout of the repository at `location`
+/// takes under its place's location: the location's last part, a
+/// trailing `.git` dropped, so a bare repository's `flume.git` gives
+/// `flume` (193, C.1).
+pub fn checkout_folder(location: &str) -> String {
+    let last = location
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    last.strip_suffix(".git").unwrap_or(last).to_string()
+}
+
 /// The settings a role's entry gives its run's agents under its `agents`
 /// table, as a launch's `--agent` gives them: every stage's, and each
 /// stage's by the stage's name under `stages`, which come before every

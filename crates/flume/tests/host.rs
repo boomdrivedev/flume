@@ -889,6 +889,142 @@ fn an_entry_at_fault_declares_nothing_for_its_address() {
     assert!(roles.unread.is_empty());
 }
 
+/// role-waking, "A standing role's repositories and kinds", as the host
+/// reads them: each location under the home, the first its repository,
+/// and its kinds with their words, checked against no source (193, C.7).
+#[test]
+fn a_standing_roles_entry_gives_its_repositories_and_kinds() {
+    let scratch = Scratch::new("roles-standing-role");
+    let (host, _) = roles_host(
+        &scratch,
+        &[(
+            "acme",
+            "[roles.\"east/ops\"]\nkind = \"desk\"\n\
+             repositories = [\"~/code/flume\", \"~/code/blueprints\"]\n\
+             [roles.\"east/ops\".kinds]\nfix = \"a failing landing or check\"\n\
+             change = \"a change a design asks for\"\n\
+             [roles.\"east/planner\"]\nrepository = \"/r\"\nkind = \"turn\"\n\
+             [roles.\"east/planner\".kinds]\nchore = \"a chore\"\n",
+        )],
+    );
+    let home = home();
+    assert_eq!(
+        host.role("east/ops"),
+        Some(RoleRun {
+            repository: format!("{home}/code/flume"),
+            repositories: vec![
+                format!("{home}/code/flume"),
+                format!("{home}/code/blueprints"),
+            ],
+            kinds: BTreeMap::from([
+                (
+                    "change".to_string(),
+                    "a change a design asks for".to_string()
+                ),
+                ("fix".to_string(), "a failing landing or check".to_string()),
+            ]),
+            ..bare_run("acme", "desk")
+        })
+    );
+    assert_eq!(
+        host.role("east/planner"),
+        Some(RoleRun {
+            kinds: BTreeMap::from([("chore".to_string(), "a chore".to_string())]),
+            ..bare_run("acme", "turn")
+        }),
+        "any run's entry gives its kinds"
+    );
+    assert!(host.roles().refused.is_empty(), "{:?}", host.roles());
+}
+
+/// role-waking, "Two folders of one name", "A base beside repositories"
+/// and "Kinds for a standing agent", with the other faults of a standing
+/// role's entry: each declares nothing for its address, named with why,
+/// and every other entry of the file is declared (191, 193, C.7).
+#[test]
+fn a_standing_roles_entry_at_fault_declares_nothing() {
+    let scratch = Scratch::new("roles-standing-role-faults");
+    let desk = "kind = \"desk\"\n";
+    let entries = [
+        (
+            "east/a",
+            format!("{desk}repositories = [\"~/a/flume\", \"~/b/flume.git\"]\n"),
+            "would both take the folder flume",
+        ),
+        (
+            "east/b",
+            format!("{desk}repositories = [\"/r\"]\nbase = \"next\"\n"),
+            "each checkout is at its repository's default branch, so a standing role's entry gives no base",
+        ),
+        (
+            "east/c",
+            "agent = \"east-c\"\n[roles.\"east/c\".kinds]\nfix = \"a fix\"\n".into(),
+            "kinds, which is no word of a standing agent's entry",
+        ),
+        (
+            "east/d",
+            format!("{desk}repositories = []\n"),
+            "names no repository",
+        ),
+        (
+            "east/e",
+            format!("{desk}repositories = [\"/r\", \"/r\"]\n"),
+            "names /r twice",
+        ),
+        (
+            "east/f",
+            format!("{desk}repositories = [\"/r\"]\nrepository = \"/r\"\n"),
+            "repositories beside repository",
+        ),
+        (
+            "east/g",
+            format!("{desk}repositories = [\"/g\"]\n[roles.\"east/g\".kinds]\nfix = 3\n"),
+            "fix is not a string",
+        ),
+        (
+            "east/h",
+            format!("{desk}repositories = [\"/h\"]\n[roles.\"east/h\".kinds]\nfix = \"\"\n"),
+            "fix is empty",
+        ),
+        (
+            "east/i",
+            "carried = true\n[roles.\"east/i\".kinds]\nfix = \"a fix\"\n".into(),
+            "kinds, which is no word of a carried address's entry",
+        ),
+        (
+            "east/j",
+            format!("{desk}repositories = \"/j\"\n"),
+            "repositories is not a list of locations",
+        ),
+    ];
+    let mut text = String::from(
+        "[roles.\"east/ok\"]\nkind = \"desk\"\nrepositories = [\"/r\", \"/blueprints\"]\n",
+    );
+    for (address, entry, _) in &entries {
+        text.push_str(&format!("[roles.\"{address}\"]\n{entry}"));
+    }
+    let (host, _) = roles_host(&scratch, &[("acme", &text)]);
+    let roles = host.roles();
+    assert_eq!(
+        roles.declared.keys().collect::<Vec<_>>(),
+        ["east/ok"],
+        "{roles:?}"
+    );
+    for (address, _, named) in entries {
+        let Err(why) = host.declared(address) else {
+            panic!("{address} declared");
+        };
+        assert!(why.contains(named), "{address}: {why}");
+        assert!(
+            roles
+                .refused
+                .iter()
+                .any(|refused| refused.address == address && refused.source == "acme"),
+            "{address} not named refused"
+        );
+    }
+}
+
 /// role-waking, "A roles file that is not TOML": acme's roles file
 /// declares no role and is named with why, and beta's `west/ops` is
 /// declared; a file that cannot be read, and one giving another key than
