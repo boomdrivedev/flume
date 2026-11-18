@@ -56,7 +56,7 @@ configuration of the user's.
 
 ## 10. A standing role at work
 
-- [ ] 10.1 In `engine/standing_roles.rs`, add standing-roles' "Two places launched and the role asleep", its places launched from the talk's place with `FLUME_PLACE` naming it as `role_waking.rs`'s launches from a run are, and "Finished, then woken again" (design 9; 7, 56, 109, 114, 132, 193, 213, 214). Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
+- [x] 10.1 In `engine/standing_roles.rs`, add standing-roles' "Two places launched and the role asleep", its places launched from the talk's place with `FLUME_PLACE` naming it as `role_waking.rs`'s launches from a run are, and "Finished, then woken again" (design 9; 7, 56, 109, 114, 132, 193, 213, 214). Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
 
 ## 11. MCP
 

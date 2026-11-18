@@ -91,6 +91,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["7", "193"],
             run: a_kind_the_entry_does_not_name,
         },
+        Scenario {
+            name: "standing-roles: Two places launched and the role asleep: east/ops' talk launches a fix and a chore naming no recipient and hibernates; the chore's question resumes the talk as its prompt; once the talk hibernates again, the two ends resume it as one prompt; and while they ran, status gave both under east/ops (S128)",
+            cites: &["7", "56", "132", "193", "213"],
+            run: two_places_launched_and_the_role_asleep,
+        },
+        Scenario {
+            name: "standing-roles: Finished, then woken again: a caller finishes east/ops' talk while it hibernates, the place is done and tidied, its checkouts removed, and an end later wakes desk--east-ops again, its checkouts at each base's tip then",
+            cites: &["109", "114", "132", "193"],
+            run: finished_then_woken_again,
+        },
     ]
 }
 
@@ -745,6 +755,169 @@ fn a_kind_the_entry_does_not_name(_: &()) -> Outcome {
         ),
         (vec![OPS.to_string()], Some(RecipientsFrom::RoleRun)),
         "the chore's recipients"
+    );
+    Ok(())
+}
+
+/// A place of `kind` named `name` launched from the talk's place, its
+/// command naming no recipient and naming the talk's place, and begun
+/// (7, 132).
+fn launched_from_the_talk(world: &World, kind: &str, name: &str) -> Result<PlaceId, String> {
+    world.host.set_recipient(None);
+    let mut given = launch(kind, name, Some("the work"));
+    given.from_place = Some(ops_id());
+    let place = launched(&world.engine.launch(&given))?;
+    world.settle(&place.place);
+    ensure_eq!(
+        world.stage_state(&place.place, "code"),
+        Some(StageState::Begun),
+        "{kind}--{name}'s code"
+    );
+    Ok(place.place)
+}
+
+/// The talk hibernated at its caller's word, its last resume's batch
+/// first read received (212).
+fn talk_hibernates(world: &World, id: &PlaceId) -> Outcome {
+    world.settle(id);
+    taken(&world.engine().hibernate(id, false))?;
+    ensure_eq!(
+        world.stage_state(id, "talk"),
+        Some(StageState::Hibernating),
+        "the talk once hibernated"
+    );
+    Ok(())
+}
+
+fn two_places_launched_and_the_role_asleep(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_talking(&world)?;
+    world.queue.plan_submits(vec![Plan::Hold, Plan::Hold]);
+    let fix = launched_from_the_talk(&world, "fix", "f")?;
+    let chore = launched_from_the_talk(&world, "chore", "c")?;
+    for place in [&fix, &chore] {
+        ensure_eq!(
+            world.held(place).map(|held| held.place.recipients),
+            Some(vec![OPS.to_string()]),
+            "{place}'s recipients"
+        );
+    }
+    talk_hibernates(&world, &id)?;
+    let ops = addresses(&world)?
+        .into_iter()
+        .find(|status| status.address == OPS)
+        .ok_or("status gives no east/ops")?;
+    ensure!(
+        ops.reporting.contains(&fix) && ops.reporting.contains(&chore),
+        "the places status gives under east/ops: {:?}",
+        ops.reporting
+    );
+    // The chore's question resumes the talk, its prompt (41, 213, 214).
+    let asked = "Which notes does the chore tidy?";
+    super::open_sessions::stops_short(
+        &world,
+        &chore,
+        0,
+        &World::identity("chore", "c", "code", 1),
+        asked,
+        StopKind::NeedsAnswer,
+    )?;
+    world.settle(&chore);
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start")?;
+    ensure_eq!(
+        (
+            start.identity.resume,
+            start.resumes.last().map(|resume| resume.by)
+        ),
+        (1, Some(ResumedBy::Delivery)),
+        "the talk's resume by the chore's question"
+    );
+    ensure!(
+        start.prompt.text.contains("chore--c")
+            && start.prompt.text.contains("needs an answer")
+            && start.prompt.text.matches("flume confirm").count() == 1,
+        "the resume's prompt: {}",
+        start.prompt.text
+    );
+    taken(&world.engine().message(&chore, "The release notes.", None))?;
+    talk_hibernates(&world, &id)?;
+    // The host's room is held by the chore's agent while the fix
+    // delivers, so the talk's resume waits for room until the chore
+    // delivers too, and takes both ends as one prompt (70, 214).
+    world.host.set_bound(Some(1));
+    world.commit("fix/f", &["fix.rs"]);
+    world.settle(&fix);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::WaitingForRoom),
+        "the talk once the fix delivered"
+    );
+    world.commit("chore/c", &["notes.md"]);
+    world.settle(&chore);
+    world.settle(&id);
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start")?;
+    ensure_eq!(
+        (
+            start.identity.resume,
+            start.resumes.last().map(|resume| resume.by)
+        ),
+        (2, Some(ResumedBy::Delivery)),
+        "the talk's resume by the two ends"
+    );
+    let prompt = &start.prompt.text;
+    ensure!(
+        prompt.contains("fix--f") && prompt.contains("chore--c"),
+        "the resume's prompt: {prompt}"
+    );
+    ensure_eq!(
+        prompt.matches("flume confirm").count(),
+        2,
+        "the confirms the prompt gives"
+    );
+    Ok(())
+}
+
+fn finished_then_woken_again(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    taken(&world.engine().finish(&id, false))?;
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the finished place stands");
+    ensure_eq!(
+        (
+            checkout_at(&world, &id, "repository").1,
+            checkout_at(&world, &id, "blueprints").1
+        ),
+        (None, None),
+        "the checkouts once finished"
+    );
+    world.host.advance(3600);
+    let main = world.git.commit(REPOSITORY, "main", &["ops.rs"]);
+    let blueprints = world.git.commit(BLUEPRINTS, "main", &["design.md"]);
+    an_end_for_ops(&world, "two")?;
+    ensure_eq!(runs(&world), vec![id.clone()], "the runs woken again");
+    ensure_eq!(
+        (
+            checkout_at(&world, &id, "repository").1,
+            checkout_at(&world, &id, "blueprints").1
+        ),
+        (Some(main), Some(blueprints)),
+        "the checkouts once woken again"
+    );
+    let held = world.held(&id).ok_or("no place")?;
+    ensure_eq!(
+        held.stages[0]
+            .start
+            .as_ref()
+            .map(|start| start.identity.clone()),
+        Some(talk_of(1)),
+        "the new place's talk"
     );
     Ok(())
 }
