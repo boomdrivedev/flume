@@ -86,7 +86,5 @@ None.
   `site/src/content/docs/guides/merge-queue.md`,
   `site/src/content/docs/guides/walkthrough.md`.
 - No change to the seam, the core, the fakes or the command line.
-- It is built once sluice releases one-sluice-process-runs-each-hosts-queues,
-  the bolt `sluice-runs-one-host-process`. As this is written that
-  bolt has not landed, and v0.95.1, sluice's newest release, does not
-  carry it.
+- It is built on sluice 0.97.0, the first release that carries
+  one-sluice-process-runs-each-hosts-queues, sluice's host process.

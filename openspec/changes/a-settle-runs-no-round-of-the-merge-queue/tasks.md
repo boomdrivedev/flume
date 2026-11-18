@@ -5,15 +5,15 @@ from `bolt/flume-leaves-the-merge-queue-to-sluice`, the base each
 `sluice exec` below names. The statement is read at
 boomdrivedev/blueprints main 3a5c19d: C.6's step row, 46, 124, 125, I8
 and S109. sluice's side is its record 0093 as amended on 2026-11-08 and
-2026-11-13, and sluice clause 135. The change is built once sluice
-releases one-sluice-process-runs-each-hosts-queues, the bolt
-`sluice-runs-one-host-process`. Every tools test runs sluice under a
+2026-11-13, and sluice clause 135. The change is built on sluice
+0.97.0, the first release that carries
+one-sluice-process-runs-each-hosts-queues. Every tools test runs sluice under a
 state folder and a `SLUICE_USER_SCRATCH` of its own in the test's
 scratch, as the harnesses already do (core.51).
 
 ## 1. The pinned sluice
 
-- [ ] 1.1 In `devenv.nix`, pin `sluiceVersion` and its three `sluiceHashes` to the first sluice release that carries one-sluice-process-runs-each-hosts-queues, unless the base already pins it or a later one, as design section 4 says. Check against that release every command and field C.6's table says the profile reads, and each place a test reaches into sluice's records or state, `.git/sluice` and `host/version` among them. Where one answers otherwise than C.6 says, stop short with `flume needs --found`, naming it (core.19, core.22). True when `sluice exec bolt/flume-leaves-the-merge-queue-to-sluice -- moon run root:toolchain` passes.
+- [x] 1.1 In `devenv.nix`, pin `sluiceVersion` and its three `sluiceHashes` to the first sluice release that carries one-sluice-process-runs-each-hosts-queues, unless the base already pins it or a later one, as design section 4 says. Check against that release every command and field C.6's table says the profile reads, and each place a test reaches into sluice's records or state, `.git/sluice` and `host/version` among them. Where one answers otherwise than C.6 says, stop short with `flume needs --found`, naming it (core.19, core.22). True when `sluice exec bolt/flume-leaves-the-merge-queue-to-sluice -- moon run root:toolchain` passes.
 
 ## 2. The profile's step
 

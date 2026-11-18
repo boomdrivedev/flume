@@ -90,8 +90,8 @@ the profile's answer already says.
 ## 4. The pinned sluice
 
 devenv.nix pins the first sluice release that carries
-one-sluice-process-runs-each-hosts-queues, built from the bolt
-`sluice-runs-one-host-process`, with its three hashes. Where the base
+one-sluice-process-runs-each-hosts-queues, 0.97.0, with its three
+hashes. Where the base
 pins that release or a later one by the time this is built, the pin
 stays. Every command and field C.6's table says the profile reads is
 checked against the pinned release: submit's answer, the inbox, the
@@ -102,8 +102,8 @@ into sluice's records or state, as the unreadable harness locks
 otherwise than C.6 says, the build stops short naming it, as found
 work: C.6 changes first (core.19).
 
-At the bolt, the host process keeps `version`, with its pid, under
-`$XDG_STATE_HOME/sluice/host/`. It puts its socket in the user's short
+In 0.97.0 the host process keeps `version`, a JSON document of its
+version, `pid` and start time, under `$XDG_STATE_HOME/sluice/host/`. It puts its socket in the user's short
 directory, `SLUICE_USER_SCRATCH` in tests, and ends once nothing is in
 play or its state folder is gone. The tests below lean on those
 facts, read again against the pinned release.
