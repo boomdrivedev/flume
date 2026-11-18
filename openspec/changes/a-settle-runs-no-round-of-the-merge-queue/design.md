@@ -111,9 +111,15 @@ facts, read again against the pinned release.
 ## 5. The tests against the pinned sluice
 
 **One state folder per test, and room for its socket.** Each harness
-and each walk already gives sluice its own `XDG_STATE_HOME` and
-`SLUICE_USER_SCRATCH` in the test's scratch. So each test has its own
-host process. Its socket, `host-<digest>.sock` in
+and each walk gives sluice its own `XDG_STATE_HOME` and
+`SLUICE_USER_SCRATCH` in the test's scratch, for the sluice commands
+the test and flume run and for those a place's steps run, sluice's
+equip and its release. A place's steps run under the login environment
+alone, which carries neither (11, 79). So the walk's login shell puts a
+`sluice` of the walk's first on its `PATH`, which gives both where they
+are unset and runs the `sluice` the walk's `PATH` finds, and a harness
+that runs a place's steps names both in the login it gives the place
+profile. So each test has one host process, of its own. Its socket, `host-<digest>.sock` in
 `SLUICE_USER_SCRATCH`, fits beneath the scratch the merge queue gives
 the place, but not beneath a long temporary folder, as `cargo test`'s
 by hand on macOS is. There `user_scratch` names the scratch through
