@@ -20,7 +20,11 @@
 //! types the kind's name into the pane's shell; once the pane's screen
 //! shows the shell's first output, its prompt, agent start runs it with
 //! the command's arguments whole, under the agent's herdr name, and
-//! nothing is typed (94, 107). Until the shell's line editor takes the
+//! nothing is typed (94, 107). Where the command carries the words of
+//! flume's launcher, the kind's name is linked to the launcher's program
+//! instead, and agent start runs it with the launcher's arguments, the
+//! program's absolute path and the command's arguments, so the launcher
+//! becomes the program in that process (C.4, C.5). Until the shell's line editor takes the
 //! pane's terminal, herdr refuses a line past the terminal's canonical
 //! limit, `agent_start_input_failed`: that is the shell not yet at its
 //! prompt, and agent start is asked again within the start's bound, a
@@ -390,6 +394,9 @@ struct Kept {
     /// The folder-trust question the open was given, which a settle
     /// answers where the program asks it after the open (34).
     trust: Option<FolderTrust>,
+    /// The program the open checked running in the pane, by its absolute
+    /// path; none in a record written before (35, C.5).
+    program: Option<PathBuf>,
 }
 
 /// Where a pane was found: there, gone, or not readable now.
@@ -804,6 +811,10 @@ impl Herdr {
             trust: record
                 .get("trust")
                 .and_then(|trust| serde_json::from_value(trust.clone()).ok()),
+            program: record
+                .get("program")
+                .and_then(Value::as_str)
+                .map(PathBuf::from),
         })
     }
 
@@ -816,6 +827,7 @@ impl Herdr {
                 "name": kept.name,
                 "place": kept.place,
                 "trust": kept.trust,
+                "program": kept.program,
             }),
         )
     }
@@ -1940,6 +1952,20 @@ impl Terminal for Herdr {
                 reason: format!("the program {} is on no folder of PATH", command.program),
             };
         };
+        // Where the command carries flume's launcher, the kind's name runs
+        // the launcher, given the program's absolute path, so it becomes
+        // the program in that process (C.4, C.5).
+        let (linked_to, launcher_args) = match command.launcher.split_first() {
+            None => (program.clone(), &[][..]),
+            Some((launcher, args)) => match program_path(launcher, &path) {
+                Some(launcher) => (launcher, args),
+                None => {
+                    return Opened::Refused {
+                        reason: format!("flume's launcher {launcher} is on no folder of PATH"),
+                    }
+                }
+            },
+        };
         // A folder named by the identity's digest, since an identity's
         // `:` would split `PATH`.
         let start = Path::new(folder)
@@ -1952,7 +1978,7 @@ impl Terminal for Herdr {
                 Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
                 _ => Ok(()),
             })
-            .and_then(|()| std::os::unix::fs::symlink(&program, &link));
+            .and_then(|()| std::os::unix::fs::symlink(&linked_to, &link));
         if let Err(error) = linked {
             return Opened::Refused {
                 reason: format!("{}: {error}", link.display()),
@@ -1974,6 +2000,7 @@ impl Terminal for Herdr {
                 .folder_trust
                 .clone()
                 .filter(|trust| !trust.question.is_empty()),
+            program: Some(program.clone()),
         };
         if let Err(reason) = self.keep(identity, &kept) {
             self.abandon(identity, &pane, &bin);
@@ -2011,6 +2038,7 @@ impl Terminal for Herdr {
         // yet take the line, as the shell may draw its prompt, or say
         // something as it starts, before its line editor takes the
         // terminal; nothing was typed.
+        let program_word = program.to_string_lossy().into_owned();
         let started = loop {
             let left = deadline
                 .saturating_duration_since(Instant::now())
@@ -2028,6 +2056,10 @@ impl Terminal for Herdr {
                 &timeout,
                 "--",
             ];
+            if !command.launcher.is_empty() {
+                args.extend(launcher_args.iter().map(String::as_str));
+                args.push(&program_word);
+            }
             args.extend(command.args.iter().map(String::as_str));
             match self.call(&pane.socket, &args, left + PAST_TIMEOUT) {
                 Call::Refused { code, .. }
@@ -3079,6 +3111,7 @@ mod tests {
                     name: herdr_name(&identity()),
                     place: Some(place().location),
                     trust: None,
+                    program: None,
                 },
             )
             .unwrap();
