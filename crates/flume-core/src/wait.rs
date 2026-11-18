@@ -286,10 +286,15 @@ impl Engine {
                 expired,
             });
         }
+        let messages = match place {
+            Some(_) => vec![],
+            None => self.collect_messages(recipient, by, confirms),
+        };
         Answer::Inbox {
             recipient: recipient.into(),
             ends,
             waiting,
+            messages,
         }
     }
 }
@@ -311,7 +316,7 @@ impl Engine {
 /// collected, and each place that waits on the session with the
 /// question, its key, its agent kept open and until when, and the three
 /// ways on: answer it with the key, by a retry or, while its agent is kept
-/// open, a tell; hold the move with words; or leave it to the answerer
+/// open, a message; hold the move with words; or leave it to the answerer
 /// behind its stream at its stall. None where the inbox gives nothing (43,
 /// 130, 193, 198, C.4; design 9).
 pub fn session_words(answer: &Answer) -> Option<String> {
@@ -319,11 +324,12 @@ pub fn session_words(answer: &Answer) -> Option<String> {
         recipient,
         ends,
         waiting,
+        messages,
     } = answer
     else {
         return None;
     };
-    if ends.is_empty() && waiting.is_empty() {
+    if ends.is_empty() && waiting.is_empty() && messages.is_empty() {
         return None;
     }
     let mut lines = vec![format!(
@@ -338,6 +344,17 @@ pub fn session_words(answer: &Answer) -> Option<String> {
                 "- {short} {} [{}]; read: flume status {short}",
                 end_words(&collected.end.end.of),
                 collected.end.key
+            ));
+        }
+    }
+    if !messages.is_empty() {
+        lines.push(String::new());
+        lines.push("Messages delivered to this session now:".into());
+        for message in messages {
+            let from = message.from.as_deref().unwrap_or("no one named");
+            lines.push(format!(
+                "- from {from} [{}]: {}",
+                message.key, message.words
             ));
         }
     }
@@ -426,7 +443,7 @@ fn waiting_words(place: &WaitingPlace) -> Vec<String> {
             ));
             if on.open_until.is_some() {
                 lines.push(format!(
-                    "  or, while its agent is kept open: flume tell {short} --answers {} \"<answer>\"",
+                    "  or, while its agent is kept open: flume message {short} --answers {} \"<answer>\"",
                     stop_short.key
                 ));
             }

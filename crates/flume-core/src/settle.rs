@@ -14,6 +14,7 @@
 //! word (43, 114, 132, 193; core.25, core.28).
 
 use crate::held::read_stall;
+use crate::hibernate::hibernation_claimed;
 use crate::pending::pending;
 use crate::{Answer, Engine, Step, Tidied};
 use flume_seams::*;
@@ -45,6 +46,9 @@ impl Engine {
         let mut tidy = Tidied::default();
         for id in &places {
             tidy.add(self.settle_place(id));
+        }
+        if place.is_none() {
+            self.settle_host();
         }
         Answer::Settled { places, tidy }
     }
@@ -187,10 +191,12 @@ impl Engine {
     /// where something is pending settled as [`Engine::settle_place`]
     /// settles it, reading nothing of any other, neither its merge queue,
     /// its terminal nor its agent; then the stages waiting for room the
-    /// host now has started, whether or not a place was pending, and every
-    /// done delivery whose place has no document let go of. Gives the
-    /// places it settled and what its tidies did (62, 70, 119, 208, 225;
-    /// core.62).
+    /// host now has started, whether or not a place was pending, every
+    /// done delivery whose place has no document let go of, and the host's
+    /// own steps of [`Engine::settle_host`], which read only the host's
+    /// deliveries and the recipients a delivery is pending for. Gives the
+    /// places it settled and what its tidies did (43, 62, 70, 119, 132,
+    /// 208, 214, 225; core.62).
     pub(crate) fn settle_pending(&self) -> (Vec<PlaceId>, Tidied) {
         let documents = self.store.read_every();
         let owing = self.owing();
@@ -206,7 +212,23 @@ impl Engine {
         }
         self.start_waiting();
         self.let_go_of_the_gone();
+        self.settle_host();
         (places, tidy)
+    }
+
+    /// What a settle of every place, and a settle of the places where
+    /// something is pending, does once for the host, after each place's
+    /// own steps: each message its reader confirmed let go of, its
+    /// known name kept; each role's address a message is pending for,
+    /// handed to it by nothing, woken where its source gives it a run and
+    /// none stands; and the batch of every recipient a delivery is pending
+    /// for handed at its wait, so a message to a standing agent or a
+    /// session no place's settle reaches is handed (43, 132, 214; weir
+    /// 107).
+    fn settle_host(&self) {
+        self.let_go_where(crate::message::is_message_key, "its reader confirmed it");
+        self.wake_for_messages();
+        self.hand_batches(None);
     }
 
     /// Where no caller keeps watch over the host, every command of
@@ -226,7 +248,7 @@ impl Engine {
     /// gives what its tidy did.
     pub(crate) fn settle_place(&self, id: &PlaceId) -> Tidied {
         let mut tidied = Tidied::default();
-        self.deliver_ends(id);
+        self.hand_batches(Some(id));
         for _ in 0..STEPS {
             if !self.step(id, &mut tidied) {
                 break;
@@ -234,7 +256,7 @@ impl Engine {
         }
         self.forecast_base(id);
         self.stall(id);
-        self.deliver_ends(id);
+        self.hand_batches(Some(id));
         self.wake_roles(id);
         self.show(id);
         self.start_waiting();
@@ -336,6 +358,12 @@ impl Engine {
         let Some(index) = held.current else {
             return false;
         };
+        // A hibernation claimed on the current start, its agent not yet
+        // recorded ended, is carried on before anything else reads the
+        // agent (212).
+        if hibernation_claimed(&held) {
+            return self.carry_hibernation_on(id);
+        }
         match held.stages[index].state {
             StageState::Starting | StageState::Started => self.deliver(id),
             StageState::NeverBegun => self.begun_after(id),
@@ -344,6 +372,10 @@ impl Engine {
                 self.run_over(id) || self.advance(id)
             }
             StageState::EndedShort => self.found_work(id) || self.close_session(id),
+            // A hibernating stage takes no step and no agent of it is read:
+            // it is never stuck, lost or past its limit, and waits on a
+            // resume, a message or its caller's act (44, 45, 118, 212).
+            StageState::Hibernating => false,
             _ => false,
         }
     }
@@ -434,12 +466,27 @@ impl Engine {
     /// A place whose launching command is gone while it was made: what
     /// was made is removed, so nothing of it is left; a base place's
     /// branch closed by the merge queue into its base, where its open
-    /// made it, and nothing asked of the place seam (2, 76, 206).
+    /// made it, and nothing asked of the place seam; a standing role's
+    /// checkouts made so far, and what stands at its location, removed by
+    /// the place seam with no teardown, and no branch (2, 76, 193, 206).
     fn undo(&self, held: &HeldState) -> bool {
         let place = &held.place;
         let Ok(bound) = self.bound(place) else {
             return false;
         };
+        if place.standing_role() {
+            let checkouts = crate::standing_role::checkouts(place);
+            if let Removed::Refused { step, words } =
+                bound.place.remove_checkouts(&place.location, &checkouts)
+            {
+                self.log(&format!(
+                    "the checkouts of {}, whose wake died, were kept at {step}: {words}",
+                    place.id
+                ));
+                return false;
+            }
+            return self.remove_held(&place.id);
+        }
         if crate::base::base_place(&place.kind) {
             if let Some(queue) = &bound.merge_queue {
                 if let BranchClosed::Kept { reason } =

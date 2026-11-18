@@ -22,6 +22,7 @@ fn settings() -> Settings {
         session: Some("office".into()),
         programs: BTreeMap::new(),
         keep_open: None,
+        hibernate_after: None,
     }
 }
 
@@ -101,6 +102,7 @@ fn stage() -> Stage {
         send_back_limit: Some(3),
         makes: vec!["preview".into(), "spike".into()],
         repeats: true,
+        hibernates: false,
     }
 }
 
@@ -149,6 +151,7 @@ fn identity() -> Identity {
         place: "bump--one".into(),
         stage: "code".into(),
         start: 2,
+        resume: 0,
     }
 }
 
@@ -264,6 +267,7 @@ fn held() -> HeldState {
             fix_of: None,
             fixes_as: None,
             token: None,
+            checkouts: Vec::new(),
         },
         phase: Phase::Over {
             over: Over::Landed {
@@ -312,6 +316,7 @@ fn held() -> HeldState {
                     cause: CarryCause::Spent,
                     carry: true,
                     why: None,
+                    resumed_by: None,
                 }),
             }),
             made_from: Some(1),
@@ -431,6 +436,10 @@ fn held() -> HeldState {
                     passed: Some("--own /state/places/x/agent/own.json".into()),
                 }),
                 answered: 0,
+                hibernated: None,
+                resumes: vec![],
+                handing: None,
+                messages: vec![],
                 counts: Some(Counted {
                     start: 1,
                     at: 3,
@@ -708,7 +717,15 @@ fn a_launch() {
         stall_after: Some(30 * 60),
         stream: Some("work".into()),
         intent: Some("the-surfaces".into()),
+        from_place: Some(PlaceId::new("/r/places/turn--east-ops")),
     });
+    // A role's run's launch reports to its address, written `role-run`
+    // (7, 214).
+    round_trips(RecipientsFrom::RoleRun);
+    assert_eq!(
+        serde_json::to_value(RecipientsFrom::RoleRun).unwrap(),
+        serde_json::json!({"from": "role-run"})
+    );
 }
 
 #[test]
@@ -749,7 +766,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Act::Drop,
         Act::Done,
         Act::Finish,
-        Act::Tell,
+        Act::Message,
         Act::Needs,
         Act::Priority,
         Act::Hold,
@@ -1435,6 +1452,7 @@ fn a_held_state_with_a_carried_start() {
         cause: CarryCause::Spent,
         carry: false,
         why: Some("the start that carried its conversation ended before it said it started".into()),
+        resumed_by: None,
     });
     round_trips(Conversation {
         from: 1,
@@ -1516,6 +1534,7 @@ fn talk() -> HeldState {
             cause: CarryCause::Lost,
             carry: true,
             why: None,
+            resumed_by: None,
         }),
         live: vec![LiveProcess {
             pid: 4242,
@@ -1537,6 +1556,282 @@ fn talk() -> HeldState {
         why: None,
     });
     state
+}
+
+/// A held state whose talk, a conversation its kind hibernates, ran
+/// under work-2, hibernated idle at 900, was resumed once by a message
+/// at 1000 carrying its conversation, and hibernated again at 2000 (212,
+/// 213).
+fn hibernated_talk() -> HeldState {
+    let mut state = held();
+    state.place.kind.stages[0].name = "talk".into();
+    state.place.kind.stages[0].conversation = true;
+    state.place.kind.stages[0].hibernates = true;
+    let stage = &mut state.stages[0];
+    stage.name = "talk".into();
+    stage.state = StageState::Hibernating;
+    stage.end = None;
+    stage.room = None;
+    stage.since = Some(2000);
+    let start = stage.start.as_mut().expect("a start");
+    let talk = Identity {
+        stage: "talk".into(),
+        start: 1,
+        ..identity()
+    };
+    start.n = 1;
+    start.identity = Identity {
+        resume: 1,
+        ..talk.clone()
+    };
+    start.live = false;
+    start.first_quiet = None;
+    start.account = Some(AccountHeld {
+        pool: "work".into(),
+        name: "work-2".into(),
+        from: AccountFrom::Conversation,
+    });
+    start.conversation = Some(Conversation {
+        from: 1,
+        cause: CarryCause::Hibernated,
+        carried: true,
+        why: None,
+    });
+    start.hibernated = Some(HibernationHeld {
+        since: 2000,
+        why: HibernatedBy::Idle,
+        account: Some("work-2".into()),
+    });
+    start.resumes = vec![ResumeHeld {
+        at: 1000,
+        by: ResumedBy::Message,
+        identity: start.identity.clone(),
+        words: Some("where were we?".into()),
+        conversation: Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: true,
+            why: None,
+        },
+    }];
+    state
+}
+
+/// seam-contracts' "A hibernated start round-trips" (61, 212, 213).
+#[test]
+fn a_hibernation_held_and_resumed() {
+    let state = hibernated_talk();
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    let stage = &json["stages"][0];
+    assert_eq!(stage["state"], "hibernating");
+    assert_eq!(stage["start"]["hibernated"]["why"], "idle");
+    assert_eq!(stage["start"]["hibernated"]["since"], 2000);
+    assert_eq!(stage["start"]["resumes"][0]["by"], "message");
+    assert_eq!(stage["start"]["resumes"][0]["identity"]["resume"], 1);
+    assert_eq!(
+        stage["start"]["resumes"][0]["conversation"]["cause"],
+        "hibernated"
+    );
+    assert_eq!(json["place"]["kind"]["stages"][0]["hibernates"], true);
+    assert_eq!(StageState::Hibernating.word(), "hibernating");
+    assert!(!StageState::Hibernating.ended());
+    assert!(!StageState::Hibernating.running());
+}
+
+/// seam-contracts' "Each round-trips": a conversation carried from a
+/// hibernated start, an agent kept open closed by its hibernation, the
+/// acts `hibernate` and `resume`, a start marked handing, and settings
+/// giving `hibernate_after` (54, 61, 198, 212, 213).
+#[test]
+fn a_hibernations_types_round_trip() {
+    round_trips(Conversation {
+        from: 1,
+        cause: CarryCause::Hibernated,
+        carried: false,
+        why: Some("its transcript is gone".into()),
+    });
+    assert_eq!(CarryCause::Hibernated.name(), "hibernated");
+    round_trips(CarryFrom {
+        start: identity(),
+        cause: CarryCause::Hibernated,
+        carry: true,
+        why: None,
+        resumed_by: Some(ResumedBy::Message),
+    });
+    round_trips(SessionClosed {
+        at: 3600,
+        by: ClosedBy::Hibernated,
+        ended_at: Some(3660),
+        left_in_pane: false,
+    });
+    assert_eq!(
+        serde_json::to_value(ClosedBy::Hibernated).unwrap(),
+        "hibernated"
+    );
+    for (act, word) in [(Act::Hibernate, "hibernate"), (Act::Resume, "resume")] {
+        round_trips(act);
+        assert_eq!(serde_json::to_value(act).unwrap(), word);
+    }
+    for why in [
+        HibernatedBy::Idle,
+        HibernatedBy::Caller,
+        HibernatedBy::KeptOpen,
+    ] {
+        round_trips(why);
+        assert_eq!(serde_json::to_value(why).unwrap(), why.name());
+    }
+    for by in [
+        ResumedBy::Caller,
+        ResumedBy::Message,
+        ResumedBy::Answer,
+        ResumedBy::Delivery,
+    ] {
+        round_trips(by);
+        assert_eq!(serde_json::to_value(by).unwrap(), by.name());
+    }
+    let mut handing = held();
+    handing.stages[0].start.as_mut().expect("a start").handing = Some(1600);
+    round_trips(handing.clone());
+    assert_eq!(
+        serde_json::to_value(&handing).unwrap()["stages"][0]["start"]["handing"],
+        1600
+    );
+    round_trips(Settings {
+        hibernate_after: Some("20m".into()),
+        ..Settings::default()
+    });
+}
+
+/// seam-contracts' "A held state written before": its stages hibernate
+/// none and its starts hold no hibernation, no resume and no handing
+/// mark, and none is written back (74).
+#[test]
+fn a_hibernation_absent_from_a_state_written_before() {
+    let mut before = serde_json::to_value(held()).expect("held state as JSON");
+    for stage in before["place"]["kind"]["stages"].as_array_mut().unwrap() {
+        stage.as_object_mut().unwrap().remove("hibernates");
+    }
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert!(read.place.kind.stages.iter().all(|stage| !stage.hibernates));
+    for stage in &read.stages {
+        if let Some(start) = &stage.start {
+            assert_eq!(start.hibernated, None);
+            assert!(start.resumes.is_empty());
+            assert_eq!(start.handing, None);
+            assert_eq!(start.identity.resume, 0);
+        }
+    }
+    let mut again = serde_json::to_value(&read).expect("written again");
+    for stage in again["place"]["kind"]["stages"].as_array_mut().unwrap() {
+        assert_eq!(stage["hibernates"], false);
+        stage.as_object_mut().unwrap().remove("hibernates");
+    }
+    assert_eq!(again, before, "nothing of a hibernation written");
+    let start = &again["stages"][0]["start"];
+    for field in ["hibernated", "resumes", "handing"] {
+        assert!(start.get(field).is_none(), "{field} written");
+    }
+}
+
+/// A standing role's place: its talk hibernated then resumed by a batch
+/// at its address, two checkouts, `blueprints`'s last move not made, its
+/// branch empty and its own repository its first checkout's (193, 213,
+/// 214).
+fn standing_role_talk() -> HeldState {
+    let mut state = hibernated_talk();
+    state.role = Some("east/ops".into());
+    state.place.branch = String::new();
+    state.place.checkouts = vec![
+        CheckoutHeld {
+            repository: state.place.repository.clone(),
+            address: state.place.address.clone(),
+            folder: "r".into(),
+            base: "main".into(),
+            binding: state.place.binding.clone(),
+            revision: Revision::new("c1"),
+            base_from: Some(BaseFrom::MergeQueue),
+            moved_at: Some(1000),
+            unmoved: None,
+        },
+        CheckoutHeld {
+            repository: "/blueprints".into(),
+            address: None,
+            folder: "blueprints".into(),
+            base: "main".into(),
+            binding: Binding::default(),
+            revision: Revision::new("b1"),
+            base_from: Some(BaseFrom::NoOrigin),
+            moved_at: None,
+            unmoved: Some(Unmoved {
+                at: 1000,
+                tip: Some(Revision::new("b2")),
+                reason: "your local changes would be overwritten".into(),
+            }),
+        },
+    ];
+    let start = state.stages[0].start.as_mut().expect("a start");
+    start.resumes[0].by = ResumedBy::Delivery;
+    start.resumes[0].words = None;
+    state
+}
+
+/// seam-contracts' "Round-trip": a held state with two checkouts, one
+/// with a move not made, and a start resumed by `delivery` (56, 193,
+/// 213, 214).
+#[test]
+fn checkouts_held_round_trip() {
+    let state = standing_role_talk();
+    assert!(state.place.standing_role());
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    let checkouts = &json["place"]["checkouts"];
+    assert_eq!(checkouts[0]["folder"], "r");
+    assert_eq!(checkouts[0]["base_from"], "merge-queue");
+    assert_eq!(checkouts[0]["moved_at"], 1000);
+    assert!(checkouts[0].get("unmoved").is_none());
+    assert_eq!(checkouts[1]["repository"], "/blueprints");
+    assert_eq!(checkouts[1]["unmoved"]["tip"], "b2");
+    assert!(checkouts[1].get("moved_at").is_none());
+    assert_eq!(json["place"]["branch"], "");
+    assert_eq!(json["stages"][0]["start"]["resumes"][0]["by"], "delivery");
+    assert_eq!(ResumedBy::Delivery.name(), "delivery");
+    round_trips(Checkout {
+        repository: "/blueprints".into(),
+        folder: "blueprints".into(),
+        revision: Revision::new("b1"),
+    });
+    for moved in [
+        Moved::Moved,
+        Moved::Kept {
+            reason: "would be overwritten".into(),
+        },
+        Moved::Gone,
+    ] {
+        round_trips(moved);
+    }
+    assert_eq!(
+        state.place.checkouts[1].place_ref(&state.place.location),
+        PlaceRef {
+            repository: "/blueprints".into(),
+            location: format!("{}/blueprints", state.place.location),
+            branch: String::new(),
+            base: "main".into(),
+        }
+    );
+}
+
+/// seam-contracts' "A held state written before": it reads with no
+/// checkouts, its place no standing role's, and none is written back
+/// (74).
+#[test]
+fn checkouts_held_none_in_a_state_written_before() {
+    let before = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(before["place"].get("checkouts").is_none());
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert!(read.place.checkouts.is_empty());
+    assert!(!read.place.standing_role());
+    assert_eq!(serde_json::to_value(&read).unwrap(), before);
 }
 
 /// The seam-contracts spec's scenario "A lost conversation's wait and
@@ -2257,6 +2552,58 @@ fn a_profile_that_builds_no_part() {
 }
 
 #[test]
+fn a_profile_that_names_no_deliver_offers_none() {
+    // The seam-contracts spec's "A profile that names no deliver" (171,
+    // 215): an agent profile that says nothing of it offers none.
+    assert_eq!(Bare.deliver(), Offered::NotOffered);
+}
+
+#[test]
+fn a_start_with_messages_waiting_round_trips() {
+    // The seam-contracts spec's "The fake agent's deliver" (75, 215): a
+    // start holding one message taken and one waiting reads back equal;
+    // a start written before reads with no message waiting.
+    let mut state = held();
+    let start = state.stages[0].start.as_mut().expect("the fixture's start");
+    start.messages = vec![
+        MessageHeld {
+            words: "use the second".into(),
+            at: 40,
+            by: Some("ops".into()),
+            taken_at: Some(45),
+        },
+        MessageHeld {
+            words: "and the third".into(),
+            at: 50,
+            by: None,
+            taken_at: None,
+        },
+    ];
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    assert_eq!(
+        json["stages"][0]["start"]["messages"],
+        serde_json::json!([
+            {"words": "use the second", "at": 40, "by": "ops", "taken_at": 45},
+            {"words": "and the third", "at": 50},
+        ])
+    );
+    let mut before = json.clone();
+    before["stages"][0]["start"]
+        .as_object_mut()
+        .expect("a start")
+        .remove("messages");
+    let read: HeldState = serde_json::from_value(before).expect("a start written before");
+    assert_eq!(
+        read.stages[0]
+            .start
+            .as_ref()
+            .map(|start| start.messages.len()),
+        Some(0)
+    );
+}
+
+#[test]
 fn a_profile_that_maps_no_mode() {
     // A profile that keeps the seam's defaults refuses every entry, one
     // of the four or its program's own, naming it, and reads no mode back
@@ -2652,7 +2999,7 @@ fn two_answers() -> HeldState {
             "And its text?",
             AnswerHeld {
                 words: "Hello.".into(),
-                act: Act::Tell,
+                act: Act::Message,
                 at: 400,
                 session: Some(Handed {
                     sent_at: 395,
@@ -2720,7 +3067,7 @@ fn two_answers_in_one_session() {
             "session": {"sent_at": 298, "received_at": 300},
         })
     );
-    assert_eq!(json["ends"][1]["answer"]["act"], "tell");
+    assert_eq!(json["ends"][1]["answer"]["act"], "message");
     assert!(json["ends"][0].get("claim").is_none(), "none unclaimed");
     assert_ne!(state.ends[0].of.key(), state.ends[1].of.key());
     assert!(!state.ends[0].same(&state.ends[1].of));
@@ -2733,6 +3080,27 @@ fn two_answers_in_one_session() {
         by: None,
         key: None,
     });
+}
+
+#[test]
+fn an_answer_by_tell_reads_as_a_message() {
+    // The seam-contracts spec's "An answer by tell": an end whose
+    // answer's act was written `tell`, before `message` replaced it,
+    // reads as `message` and is written back `message` (53).
+    let state = two_answers();
+    let mut json = serde_json::to_value(&state).expect("held state as JSON");
+    json["ends"][1]["answer"]["act"] = serde_json::json!("tell");
+    let read: HeldState = serde_json::from_value(json).expect("held state written before");
+    assert_eq!(
+        read.ends[1].answer.as_ref().map(|a| a.act),
+        Some(Act::Message)
+    );
+    assert_eq!(read, state);
+    let written = serde_json::to_value(&read).expect("held state as JSON");
+    assert_eq!(written["ends"][1]["answer"]["act"], "message");
+    let act: Act = serde_json::from_value(serde_json::json!("tell")).expect("an act");
+    assert_eq!(act, Act::Message);
+    assert_eq!(serde_json::to_value(act).expect("an act"), "message");
 }
 
 #[test]
@@ -3114,6 +3482,8 @@ fn a_role_run_as_its_source_declares_it() {
         },
         answers: Some("The work's scope.".into()),
         answerer: true,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     };
     round_trips(run.clone());
     let bare = RoleRun {
@@ -3137,6 +3507,46 @@ fn a_role_run_as_its_source_declares_it() {
     )
     .unwrap();
     assert_eq!(before.source, "", "a run status gave before sources");
+}
+
+#[test]
+fn a_standing_roles_entry_round_trips() {
+    // A standing role's entry gives its repositories, the first its
+    // repository, and the kinds its session launches its projects as; an
+    // entry written before reads neither (193, C.7).
+    let run = RoleRun {
+        source: "acme".into(),
+        repository: "/code/flume".into(),
+        repositories: vec!["/code/flume".into(), "/code/blueprints".into()],
+        kind: "desk".into(),
+        priority: 0,
+        base: None,
+        brief: None,
+        name: None,
+        intent: None,
+        agents: RoleAgents::default(),
+        answers: None,
+        answerer: false,
+        kinds: BTreeMap::from([
+            ("change".into(), "a change a design asks for".into()),
+            ("fix".into(), "a failing landing or check".into()),
+        ]),
+    };
+    round_trips(run.clone());
+    let json = serde_json::to_value(&run).unwrap();
+    assert_eq!(
+        json["repositories"],
+        serde_json::json!(["/code/flume", "/code/blueprints"])
+    );
+    assert_eq!(json["kinds"]["fix"], "a failing landing or check");
+    let before: RoleRun = serde_json::from_value(
+        serde_json::json!({"source": "acme", "repository": "/r", "kind": "turn", "priority": 0}),
+    )
+    .unwrap();
+    assert!(before.repositories.is_empty(), "no repositories before");
+    assert!(before.kinds.is_empty(), "no kinds before");
+    let bare = serde_json::to_value(&before).unwrap();
+    assert!(bare.get("repositories").is_none() && bare.get("kinds").is_none());
 }
 
 #[test]
@@ -3178,6 +3588,8 @@ fn what_a_source_declares_for_an_address() {
                     agents: RoleAgents::default(),
                     answers: None,
                     answerer: true,
+                    repositories: Vec::new(),
+                    kinds: BTreeMap::new(),
                 })),
             ),
         ]),
@@ -4013,6 +4425,66 @@ fn a_kind_with_its_stages() {
     assert_eq!(serde_json::to_value(Declared::Host).unwrap(), "host");
 }
 
+/// A kind whose conversation hibernates, settings giving its hibernate
+/// time `20m` taken whole as `keep_open` is, and a stage's JSON written
+/// before read as hibernating nothing (212, C.2, C.7; core.4).
+#[test]
+fn a_stage_that_hibernates_and_its_hibernate_time() {
+    let talk = Stage {
+        name: "talk".into(),
+        conversation: true,
+        deliverables: vec![],
+        waits: false,
+        quiet_limit: None,
+        send_back_to: None,
+        send_back_limit: None,
+        repeats: false,
+        hibernates: true,
+        ..stage()
+    };
+    let research = Kind {
+        name: "research".into(),
+        lands: false,
+        stages: vec![talk.clone()],
+        ..kind()
+    };
+    round_trips(research.clone());
+    assert_eq!(
+        serde_json::to_value(&talk).unwrap()["hibernates"],
+        serde_json::json!(true)
+    );
+    let twenty = Settings {
+        hibernate_after: Some("20m".into()),
+        ..settings()
+    };
+    round_trips(twenty.clone());
+    assert_eq!(
+        serde_json::to_value(&twenty).unwrap()["hibernate_after"],
+        "20m"
+    );
+    assert!(serde_json::to_value(settings())
+        .unwrap()
+        .get("hibernate_after")
+        .is_none());
+    let over = Settings {
+        hibernate_after: Some("1h".into()),
+        ..Settings::default()
+    };
+    assert_eq!(twenty.under(&over).hibernate_after.as_deref(), Some("1h"));
+    assert_eq!(
+        twenty
+            .under(&Settings::default())
+            .hibernate_after
+            .as_deref(),
+        Some("20m")
+    );
+    let mut before = serde_json::to_value(stage()).unwrap();
+    before.as_object_mut().unwrap().remove("hibernates");
+    let before: Stage = serde_json::from_value(before).unwrap();
+    assert!(!before.hibernates);
+    assert_eq!(before, stage());
+}
+
 #[test]
 fn a_held_state_with_where_its_kind_came_from() {
     // A held state whose kind came from the host's source acme, with its
@@ -4330,6 +4802,41 @@ fn an_identity_a_secret_and_a_stop_short() {
     assert_eq!(before.addressee, None);
     assert_eq!(before.commits, Vec::<Revision>::new());
     assert_eq!(before.screen, None);
+}
+
+/// seam-contracts' "A resume's identity round-trips" and "An identity
+/// written before": the second resume of talk's first start, as JSON
+/// and as flume spells it, and an identity's JSON with no resume read
+/// as a start's (33, 74, 213).
+#[test]
+fn an_identity_names_its_resume() {
+    let resumed = Identity {
+        repository: "/r".into(),
+        place: "research--one".into(),
+        stage: "talk".into(),
+        start: 1,
+        resume: 2,
+    };
+    round_trips(resumed.clone());
+    assert_eq!(resumed.to_string(), "flume:/r:research--one:talk:1.2");
+    assert!(resumed.to_string().ends_with(":talk:1.2"));
+    let json = serde_json::to_value(&resumed).unwrap();
+    assert_eq!(json["resume"], 2);
+    let start = Identity {
+        resume: 0,
+        ..resumed
+    };
+    assert!(serde_json::to_value(&start)
+        .unwrap()
+        .get("resume")
+        .is_none());
+    assert_eq!(start.to_string(), "flume:/r:research--one:talk:1");
+    let before: Identity =
+        serde_json::from_str(r#"{"repository":"/r","place":"bump--one","stage":"code","start":2}"#)
+            .unwrap();
+    assert_eq!(before, identity());
+    assert_eq!(before.resume, 0);
+    assert_eq!(before.to_string(), "flume:/r:bump--one:code:2");
 }
 
 #[test]
@@ -5465,6 +5972,7 @@ fn a_deliveries_document_round_trips() {
         version: 7,
         document: HostDocument::Deliveries(Deliveries {
             records: records.clone(),
+            claims: vec![],
         }),
     };
     round_trips(versioned.clone());
@@ -5478,6 +5986,58 @@ fn a_deliveries_document_round_trips() {
         panic!("the host's deliveries read back as another document")
     };
     assert_eq!(read.records, records, "in order, as written");
+}
+
+#[test]
+fn a_deliveries_document_with_a_claim_round_trips() {
+    // The deliveries spec's "A claim round-trips": a document holding two
+    // records and a claim still sending reads back equal, the claim
+    // spelled as no weir record; a document written before, with no
+    // claims, reads with none (75, C.7; core.4).
+    let records: Vec<DeliveryRecord> = delivery_records().into_iter().take(2).collect();
+    let claim = DeliveryClaim {
+        key: "message/east/planner/0a1b2c3d".into(),
+        recipient: "east/planner".into(),
+        at: 1_794_150_180,
+        sending: true,
+        start: None,
+    };
+    let versioned = HostVersioned {
+        version: 3,
+        document: HostDocument::Deliveries(Deliveries {
+            records: records.clone(),
+            claims: vec![claim.clone()],
+        }),
+    };
+    round_trips(versioned.clone());
+    round_trips(DeliveryClaim {
+        start: Some("acme-ops--east-ops-turn-1".into()),
+        sending: false,
+        ..claim.clone()
+    });
+    let json = serde_json::to_value(&versioned).expect("written");
+    assert_eq!(
+        json["document"]["claims"],
+        serde_json::json!([{
+            "key": "message/east/planner/0a1b2c3d",
+            "recipient": "east/planner",
+            "at": 1_794_150_180,
+            "sending": true,
+        }])
+    );
+    for claim in json["document"]["claims"].as_array().expect("claims") {
+        assert!(claim.get("format").is_none(), "a claim spelled as weir's");
+    }
+    let mut before = json.clone();
+    before["document"]
+        .as_object_mut()
+        .expect("an object")
+        .remove("claims");
+    let read: HostVersioned = serde_json::from_value(before).expect("written before");
+    let HostDocument::Deliveries(read) = read.document else {
+        panic!("the host's deliveries read back as another document")
+    };
+    assert_eq!((read.records, read.claims), (records, vec![]));
 }
 
 #[test]

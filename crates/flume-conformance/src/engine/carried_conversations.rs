@@ -18,6 +18,16 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "carried conversations: A resumed talk: status of a place whose talk start 1 was resumed once gives its agent's conversation as start 1, hibernated, carried",
+            cites: &["56", "213"],
+            run: a_resumed_talk,
+        },
+        Scenario {
+            name: "carried conversations: A resume carries its own stage's conversation: talk hibernated after its first start and resumed carries that start's session, the fake agent asked one carry of it",
+            cites: &["179", "213"],
+            run: a_resume_carries_its_own_stages_conversation,
+        },
+        Scenario {
             name: "carried conversations: once quiet, an agent stopped at work-1's usage limit is ended and its stage starts under work-2 resuming its conversation, with no caller's word and no bound of the kind's counted",
             cites: &["S78", "146", "179", "112"],
             run: s78_carried_to_the_pools_other_account,
@@ -349,6 +359,7 @@ fn a_carried_start_waits_for_a_usable_account(_: &()) -> Outcome {
             cause: CarryCause::Spent,
             carry: true,
             why: None,
+            resumed_by: None,
         }),
         "the waiting stage's carry"
     );
@@ -1704,4 +1715,58 @@ fn a_lost_talk_that_cannot_be_carried_its_session_still_live(_: &()) -> Outcome 
     let start = start_of(&world, &id, "talk")?;
     ensure_eq!(start.n, 2, "talk's fresh start once its session ended");
     afresh_after_lost(&world, &start, UNREADABLE, None)
+}
+
+fn a_resume_carries_its_own_stages_conversation(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, talk_of, talk_resumed};
+    let resumed_session = resumed;
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    if let Some(reason) = world.engine().resume(&id).refusal() {
+        return Err(format!("the resume was refused: {reason}"));
+    }
+    let resumed = talk_resumed("one", 1, 1);
+    let start = start_of(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            &start.identity,
+            start.start_record.session.as_deref(),
+            resumed_session(&world, &resumed)?
+        ),
+        (&resumed, Some("s-1"), Some("s-1".to_string())),
+        "talk's resume, the session its record names and the one its command resumes"
+    );
+    let carries = world.agent.log.of("carry");
+    let first = talk_of("one", 1);
+    ensure_eq!(
+        carries
+            .iter()
+            .filter(|line| line.starts_with(&format!("carry {first} ")))
+            .count(),
+        1,
+        format!("the carries of talk's first start asked: {carries:?}")
+    );
+    ensure_eq!(carries.len(), 1, "the carries asked");
+    Ok(())
+}
+
+fn a_resumed_talk(_: &()) -> Outcome {
+    use super::hibernation::hibernated_talk;
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    if let Some(reason) = world.engine().resume(&id).refusal() {
+        return Err(format!("the resume was refused: {reason}"));
+    }
+    let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
+    ensure_eq!(
+        agent.conversation,
+        Some(Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: true,
+            why: None,
+        }),
+        "the conversation status gives"
+    );
+    Ok(())
 }

@@ -60,8 +60,9 @@ pub(crate) enum Pending {
 
 /// Why something is pending on `held` at `now`, as `owing` reads the
 /// host's deliveries; none where it waits only on an answer, its caller's
-/// word or a drop, or on room the host's settle starts host-wide (42, 47,
-/// 49, 53, 70, 225; core.62).
+/// word or a drop, its current stage hibernating among them, or on room
+/// the host's settle starts host-wide (42, 47, 49, 53, 70, 212, 213, 225;
+/// core.62).
 pub(crate) fn pending(held: &HeldState, owing: &Owing, now: Seconds) -> Option<Pending> {
     match &held.phase {
         Phase::Making { .. } => return Some(Pending::Making),
@@ -91,6 +92,16 @@ pub(crate) fn pending(held: &HeldState, owing: &Owing, now: Seconds) -> Option<P
     }
     if time_come(held, now) {
         return Some(Pending::Time);
+    }
+    // A hibernating stage takes no step and waits on no move of its
+    // caller's: its caller's resume, a message, its answer or a delivery
+    // at its role's address wakes it, each by an act or the host's own
+    // steps, never by its place's settle (212, 213, 214).
+    if held
+        .current
+        .is_some_and(|index| held.stages[index].state == StageState::Hibernating)
+    {
+        return None;
     }
     let room = held
         .stages

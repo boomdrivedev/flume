@@ -9,13 +9,14 @@ tidy, and the commands the plugin's hooks and an agent call.
 
 ### Requirement: Every command answers from the one core
 
-The binary SHALL offer `launch`, `status`, `list`, `prompt`, `tell`,
-`stop`, `retry`, `finish`, `drop`, `done`, `tidy`, `settle`, `needs`,
-`priority` and `open`, each building the core over the host's profiles
-and answering the core's answer, printed for a person or as its JSON
-with `--json`, exiting non-zero on a refusal; no command SHALL compute a
-stage's end, a status, a submission or a tidy of its own (56 to 61,
-186, 200, section 9, core.14).
+The binary SHALL offer `launch`, `status`, `list`, `prompt`, `message`,
+`hibernate`, `resume`, `stop`, `retry`, `finish`, `drop`, `done`,
+`tidy`, `settle`, `needs`, `priority` and `open`, each building the
+core over the host's profiles and answering the core's answer, printed
+for a person or as its JSON with `--json`, exiting non-zero on a
+refusal; no command SHALL compute a stage's end, a status, a submission
+or a tidy of its own (56 to 61, 186, 200, 212, 213, section 9,
+core.14).
 
 #### Scenario: The same answer through the command line and the core
 
@@ -345,12 +346,12 @@ not a positive duration (61, 119, 208, 225).
 - **WHEN** `flume settle fix--one --every 2m` runs
 - **THEN** it is refused naming `--every` and the place, nothing is settled, and no watch is recorded (208)
 
-### Requirement: needs --to, hold --waiting, retry --answers and tell --answers
+### Requirement: needs --to, hold --waiting, retry --answers and message --answers
 
 The command line SHALL take `flume needs [--found] --to <role or
 address> "<words>"`, `flume hold <place> <words> --waiting [--for
 <time>]` with the time in the forms `--stall-after` takes, `flume retry
-<place> --answers <key>` and `flume tell <place> --answers <key>
+<place> --answers <key>` and `flume message <place> --answers <key>
 "<words>"`, each answering from the one core in the JSON form and the
 person's, and each key as the inbox and status give it (41, 42, 49, 53,
 61, 130).
@@ -378,7 +379,12 @@ person's, and each key as the inbox and status give it (41, 42, 49, 53,
 #### Scenario: A tell's key
 
 - **WHEN** `flume tell change--x --answers stage/construct/1/ended-short "yes" --json` runs against the fakes, the place's construct agent kept open for that stop-short
-- **THEN** it answers in the JSON form, the tell delivered as the answer to that stop-short
+- **THEN** it answers in the JSON form as `flume message` does, the words delivered as the answer to that stop-short
+
+#### Scenario: A message's key
+
+- **WHEN** `flume message change--x --answers stage/construct/1/ended-short "yes" --json` runs against the fakes, the place's construct agent kept open for that stop-short
+- **THEN** it answers in the JSON form, its `act` `message`, the message delivered as the answer to that stop-short
 
 #### Scenario: A key in a wrong form
 
@@ -436,6 +442,63 @@ delivers nothing until its recipient confirms it (43, 61; core.35).
 
 - **WHEN** `flume confirm --help` and `flume wait --help` run
 - **THEN** the first names the keys and `--recipient`, the second names `--confirm`, and each says a hand-over delivers nothing until its recipient confirms it
+
+### Requirement: tell is message's alias
+
+`flume tell <place> <words>`, with any flag `flume message` takes, SHALL
+run as `flume message` and answer as it does; `flume --help` SHALL list
+`message` and not `tell` (53; record 0069).
+
+#### Scenario: A caller not yet moved
+
+- **WHEN** `flume tell change--x "go on" --json` runs against the fakes, the place's agent waiting
+- **THEN** the agent receives "go on", the answer is the one `flume message change--x "go on" --json` gives, its `act` `message`, and `flume --help` names `message` alone
+
+### Requirement: message to an address answers with its key
+
+`flume message <stream>/<role> "<words>"` SHALL answer, in the JSON form
+and the person's, the delivery's key, the address and what the act
+found of the address: its run woken, live or waiting for room, its
+standing agent, carried, or its batch handed (53, 61, 214).
+
+#### Scenario: Through the binary
+
+- **WHEN** `flume message east/planner "look at the nightly job" --json` runs against the fakes, the address's run live and working
+- **THEN** the JSON gives the key `message/east/planner/<token>`, the address `east/planner` and its run live, and the exit is 0
+
+### Requirement: hibernate and resume name a place
+
+`flume hibernate <place> [--force]` SHALL ask the core to hibernate the
+place's current stage, forced only with `--force`, and `flume resume
+<place>` SHALL ask it to resume the place's hibernating stage with no
+words, each place named as every command names one (31, 47, 212, 213).
+
+#### Scenario: A hibernate refused through the command line
+
+- **WHEN** `flume hibernate <place> --json` names a fix place on a scratch host
+- **THEN** the JSON is a refusal naming the place and that its kind does not hibernate its stage, and the exit is non-zero (61, 212)
+
+#### Scenario: A resume of nothing hibernating through the command line
+
+- **WHEN** `flume resume <place> --json` names a place with no hibernating stage on a scratch host
+- **THEN** the JSON is a refusal naming the place, and the exit is non-zero (61, 213)
+
+### Requirement: launch gives hibernate_after by --agent
+
+`flume launch --agent [<stage>.]hibernate_after=<time>` SHALL give the
+setting in the forms `keep_open` takes, `<n>`, `<n>s`, `<n>m` or
+`<n>h`, and SHALL refuse a value of any other form, or one given for a
+program, naming the field and the forms (7, 32, 198, 212).
+
+#### Scenario: A stage's time
+
+- **WHEN** a caller launches with `--agent talk.hibernate_after=20m`
+- **THEN** the launch's settings give talk `hibernate_after` `20m` (7, 32)
+
+#### Scenario: A time in another form
+
+- **WHEN** a caller launches with `--agent hibernate_after=later`
+- **THEN** the launch is refused naming `hibernate_after` and the forms it takes, and nothing is made (7)
 
 ### Requirement: relay writes JSON lines
 
