@@ -3945,6 +3945,19 @@ impl Kinds for BareKinds {
 }
 
 #[test]
+fn the_bare_kinds_reads_no_statechart() {
+    // A kinds profile that keeps the seam's default reads no statechart
+    // kind, and refuses it naming the kind (84, core.2).
+    let Some(statechart) = statechart_kind().statechart else {
+        panic!("the statechart kind has no statechart");
+    };
+    let words = BareKinds
+        .read_statechart(&statechart, "[kinds.stage]")
+        .expect_err("a bare profile read a statechart kind");
+    assert!(words.contains("Persona test"), "{words}");
+}
+
+#[test]
 fn a_kinds_profile_that_reads_no_name_source_package_or_lock() {
     // A profile that keeps the seam's defaults answers that it reads none
     // of them and writes no lock, naming what it was asked where it was

@@ -103,6 +103,15 @@ pub struct ChartStage {
     pub send_back_limit: Option<u32>,
 }
 
+/// A statechart kind read back into the engine's types: its statechart,
+/// and the templates its states run by the name a state's `machine` gives
+/// them, the stage template's among them (175, 176; core.42).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Charts {
+    pub chart: weir_engine::Statechart,
+    pub templates: BTreeMap<String, weir_engine::Statechart>,
+}
+
 /// A stage's agents: entries, one session each with its settings, or a
 /// rule read against the place with its pattern (175).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -778,6 +787,17 @@ pub trait Kinds: Send + Sync {
     /// The repository's binding, read at its default branch's current
     /// revision (20, 105).
     fn read_binding(&self, repository: &str) -> BindingRead;
+
+    /// A held statechart kind's text and the stage template's text read back into the engine's statechart and templates, the same texts
+    /// always giving the same statechart; refused naming why where either
+    /// cannot be read. A profile that reads no statechart kind refuses
+    /// every one, naming it (21, 84, 85, 176; core.2).
+    fn read_statechart(&self, kind: &KindStatechart, _template: &str) -> Result<Charts, String> {
+        Err(format!(
+            "its kinds profile reads no statechart kind, \"{}\" among them",
+            kind.title
+        ))
+    }
 
     /// read-named: the parts of `text`, a kind as a launch or a role
     /// writes it, or why it names no kind (154; weir C.4).
