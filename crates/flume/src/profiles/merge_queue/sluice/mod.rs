@@ -1,5 +1,5 @@
 //! The merge-queue profile over sluice (C.6; design 13), every command
-//! and field it reads checked against the sluice the tree pins, 0.93.2.
+//! and field it reads checked against the sluice the tree pins, 0.97.0.
 //!
 //! submit is `sluice submit <base> --no-wait --json` in the place, with
 //! every multiplexer's session stripped from its environment, so sluice
@@ -44,10 +44,16 @@
 //! base revision its `tested.on` where it holds one; a branch whose
 //! status sluice refuses, as it refuses one whose policy it no longer
 //! reads, is passed over with sluice's words, and every other branch is
-//! read still (99, 101). step is
-//! `sluice step <base>`, which takes in the base's pull requests before
-//! its round, and beside a live `sluice run` finds the branch's lock held
-//! and does nothing, so no liveness is read (124, 125). The base lives at `<remote>/<base>` after one fetch where
+//! read still (99, 101). step is nothing, as C.6's step row says: it
+//! runs no sluice command and answers that the base's queue moves on its
+//! own, whichever way runs it, sluice's host process, a daemon on this
+//! host or another, or a forge's jobs, since sluice keeps one contract
+//! with flume for every way; a submit starts sluice's host process as it
+//! takes the entry in, and the settles' reads, the inbox and
+//! read-submission's overview and status, start it again where work
+//! waits and none runs, so the profile runs no `sluice step`, `run`,
+//! `daemon` or `wait` (124, 125, C.6; sluice 135; sluice record 0093 as
+//! amended). The base lives at `<remote>/<base>` after one fetch where
 //! `.config/sluice.toml` lands it on a remote, and at the local base
 //! otherwise (9, 126, C.1). A place is made ready by sluice's equipping
 //! of it, `sluice equip <base> --at <revision> --json` run in the place,
@@ -63,7 +69,7 @@
 //! the resolver to hand the place profile (core.3). A base place's
 //! branch is opened by `sluice branch create <branch> --from <base>
 //! --json` and closed by `sluice branch delete <branch> --into <base>
-//! --json`, each run in the repository as read-submission and step are:
+//! --json`, each run in the repository as read-submission is:
 //! open answers the revision sluice made the branch at, and any other
 //! exit a refusal in sluice's words; close answers removed on exit 0, gone
 //! on exit 1 naming the branch itself, and kept in sluice's words
@@ -894,11 +900,12 @@ impl MergeQueue for Sluice {
             .collect()
     }
 
-    fn step(&self, repository: &str, base: &str) -> Stepped {
-        match self.json(Git::at(repository).path(), &["step", base, "--json"]) {
-            Ok(_) => Stepped::Stepped,
-            Err(reason) => Stepped::CouldNotRead { reason },
-        }
+    /// Nothing: sluice's queue moves on its own once submitted, whichever
+    /// way runs it, and the settles' reads start sluice's host process
+    /// where work waits and none runs, so no sluice command is run (124,
+    /// 125, C.6; sluice 135).
+    fn step(&self, _repository: &str, _base: &str) -> Stepped {
+        Stepped::MovesOnItsOwn
     }
 
     /// The base on the remote its table names after one fetch, or the
@@ -996,6 +1003,37 @@ fn gone(branch: &str, stdout: &str, stderr: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_step_runs_no_sluice_and_says_the_queue_moves_on_its_own() {
+        // 125, C.6: step is nothing; a stand-in `sluice` first on the
+        // seam's PATH leaves a mark whenever it runs, and none is left.
+        let scratch = std::env::temp_dir().join(format!("fsl-step-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        let bin = scratch.join("bin");
+        std::fs::create_dir_all(&bin).expect("a scratch folder");
+        let ran = scratch.join("ran");
+        let program = bin.join("sluice");
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 1\n", ran.display()),
+        )
+        .expect("the stand-in sluice");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .expect("a PATH");
+        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
+        assert_eq!(
+            seam.step(&scratch.to_string_lossy(), "main"),
+            Stepped::MovesOnItsOwn
+        );
+        assert!(!ran.exists(), "a sluice command was run");
+        let _ = std::fs::remove_dir_all(scratch);
+    }
 
     /// The steps a reading gave, each with whether it passed.
     fn outcomes(steps: &[ReadyStep]) -> Vec<(&str, bool)> {
