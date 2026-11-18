@@ -30,14 +30,14 @@ held state written before SHALL read with none of them (56, 61, 74,
 
 #### Scenario: A hibernated start round-trips
 
-- **WHEN** a held state whose talk start hibernated idle, was resumed once by a tell and carried its conversation, is written to JSON and read back
-- **THEN** it equals the value written, and its JSON gives the stage's state `hibernating`, the hibernation's `why` `idle` and the resume's `by` `tell` (61)
+- **WHEN** a held state whose talk start hibernated idle, was resumed once by a message and carried its conversation, is written to JSON and read back
+- **THEN** it equals the value written, and its JSON gives the stage's state `hibernating`, the hibernation's `why` `idle` and the resume's `by` `message` (61)
 
 ### Requirement: The types around a hibernation
 
 The seams SHALL pass a conversation carried from a hibernated start, an
 agent kept open closed by its hibernation, the acts `hibernate` and
-`resume`, a start's mark that a tell is being handed to it, and the
+`resume`, a start's mark that a message is being handed to it, and the
 setting `hibernate_after`, each serialized to JSON and back unchanged
 (54, 56, 61, 198, 212, 213).
 

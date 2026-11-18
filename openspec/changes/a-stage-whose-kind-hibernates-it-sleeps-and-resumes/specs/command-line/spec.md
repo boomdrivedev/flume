@@ -2,7 +2,7 @@
 
 ### Requirement: Every command answers from the one core
 
-The binary SHALL offer `launch`, `status`, `list`, `prompt`, `tell`,
+The binary SHALL offer `launch`, `status`, `list`, `prompt`, `message`,
 `hibernate`, `resume`, `stop`, `retry`, `finish`, `drop`, `done`,
 `tidy`, `settle`, `needs`, `priority` and `open`, each building the
 core over the host's profiles and answering the core's answer, printed

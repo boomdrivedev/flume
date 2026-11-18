@@ -4,13 +4,11 @@
 
 The core SHALL read an agent kept open let go at a settle once its time
 has passed, it is read stopped or its session ended, or its account is
-spent, recording when and why, but where its stage hibernates and its
-time has passed first, SHALL record it hibernated instead; SHALL then
-end the agent once it is quiet, never forced, freeing its room and its
-account; and the stage SHALL keep waiting on its answer under the same
-move and since, a later answer being a retry with a fresh agent, or,
-for an agent hibernated, a resume of its session (31, 42, 70, 96, 130,
-134, 146, 198, 212, 213).
+spent, recording when and why; SHALL then end the agent once it is
+quiet, never forced, freeing its room and its account; and the stage
+SHALL keep waiting on its answer under the same move and since, a later
+answer being a retry with a fresh agent, or, for one hibernated, a
+resume of its session (31, 42, 70, 96, 130, 134, 146, 198, 212, 213).
 
 #### Scenario: The time passing
 

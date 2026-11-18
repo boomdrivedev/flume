@@ -44,15 +44,15 @@ names, and is no retry. No code holds any of it yet.
   settings and the host's agents tables alone, as `keep_open` is given;
   flume's own one hour where none does; `0` never hibernates a stage on
   its idling.
-- **A resume (213).** A caller's `flume resume`, a tell to the place,
-  and the answer to the stop-short a hibernated agent waits on, by a
-  tell or a retry with words, each resume it: one fresh agent under an
+- **A resume (213).** A caller's `flume resume`, a message to the
+  place, and the answer to the stop-short a hibernated agent waits on,
+  by a message or a retry with words, each resume it: one fresh agent under an
   identity of its own, its start's with the resume's number after it,
   `<stage>:<start>.<resume>`, the stage's start number kept, carrying the
   hibernated agent's conversation where its profile can, on the account
   that agent ran under while it is usable and otherwise on the one 145
   chooses, waiting for room and for no process running its conversation
-  as a carried start waits. Its prompt is the tell's words, or the
+  as a carried start waits. Its prompt is the message's words, or the
   question with its answer, or flume's words at a bare resume, then the
   way to stop short. Where nothing reaches its conversation, the stage
   starts afresh with that prompt behind flume's words.
@@ -74,13 +74,13 @@ names, and is no retry. No code holds any of it yet.
 
 - `hibernation`: a stage whose kind hibernates it is hibernated once
   idle past its hibernate time, at its caller's word or at the end of
-  its keep-open wait, and a caller's resume, a tell or its answer
+  its keep-open wait, and a caller's resume, a message or its answer
   resumes its own session.
 
 ### Modified Capabilities
 
-- `caller-acts`: a stop, a finish and a tell of a hibernating stage; a
-  retry of one.
+- `caller-acts`: a stop, a finish and a message of a hibernating stage;
+  a retry of one.
 - `carried-conversations`: a resume carries its stage's own
   conversation, beside a start after a spent agent and a lost
   conversation's retry.
@@ -106,7 +106,7 @@ names, and is no retry. No code holds any of it yet.
   `Act::Hibernate` and `Act::Resume`.
 - `crates/flume-core`: a new `hibernate.rs` (the settle's step and the
   caller's act), `start.rs` (a resume's claim), `acts.rs` (stop, finish,
-  tell, retry), `open_sessions.rs` (the kept-open agent's end of time),
+  message, retry), `open_sessions.rs` (the kept-open agent's end of time),
   `end.rs` (a conversation's quiet), `settings.rs`, `status.rs`,
   `line.rs`, `answer.rs`.
 - `crates/flume`: `commands/mod.rs` and `commands/launch.rs`,
@@ -120,6 +120,8 @@ names, and is no retry. No code holds any of it yet.
   tree's pin moves to the revision that lands it, the change's last
   kinds task (core.4, core.22).
 - Out of this change: a delivery to a role whose place hibernates
-  resuming it (214), the deliver part (215), `message` replacing
-  `tell` (53) and flume's MCP serving `hibernate` and `resume` (C.2),
-  which the changes that build 214 and 215 and the standing role carry.
+  resuming it (214) and flume's MCP serving `hibernate` and `resume`
+  (C.2), which the changes that build 214 and the standing role carry.
+  The message (53) and its deliver part (215) stand on the base: a
+  message to a hibernating stage resumes it, and its handing mark covers
+  a message the deliver part takes as one the terminal types.

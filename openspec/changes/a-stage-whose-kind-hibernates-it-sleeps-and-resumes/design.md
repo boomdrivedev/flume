@@ -31,11 +31,12 @@ start's identity with the resume's number after it,
 as #33, and the change pins weir at cc9d41f, the main that holds it.
 
 This change builds 212 and 213 and their meeting with 42, 49, 51 to
-53, 109 and 198. It builds nothing of 214 and 215, a delivery to a
-role's address resuming the role and the deliver part, nor `message`
-replacing `tell` (53), nor flume's MCP serving `hibernate` and
+53, 109, 198 and 215. It builds nothing of 214, a delivery to a role's
+address resuming the role, nor flume's MCP serving `hibernate` and
 `resume` (C.2): the changes that build the role's deliveries and the
-standing role carry those, and each calls this change's resume.
+standing role carry those, and each calls this change's resume. The
+message (53) and its deliver part (215) stand on the base, and a
+message to a hibernating stage resumes it (decision 7).
 
 ### What stands in the code
 
@@ -147,7 +148,7 @@ agent's identity, which core.10 forbids.
 On the hibernated start, a `HibernationHeld`: since when, why
 (`idle`, `caller`, `kept_open`), and the account it ran under. And the
 start's `resumes`, each a `ResumeHeld`: when, what started it (`caller`,
-`tell`, `answer`), the resumed agent's identity, the words it was given,
+`message`, `answer`), the resumed agent's identity, the words it was given,
 and whether it carried the conversation, as `Conversation` says it. A
 bare resume's words are flume's own and none are kept of it, so no
 fresh start after it repeats them. A resume's start takes them over
@@ -180,7 +181,7 @@ second state.
 
 A running conversation whose kind hibernates it is read at each settle:
 quiet (31), no question open (90), no own work running (91), and no
-tell being handed to it. Its quiet runs from flume's first reading of
+message being handed to it. Its quiet runs from flume's first reading of
 it quiet, as 44's does, kept in the start's `first_quiet`, and starts
 again whenever flume reads it not quiet. The settle the agent's own
 quiet starts (`flume settle <place> --on-quiet`, the Claude Code
@@ -189,9 +190,10 @@ person typing into the pane between two settles runs a turn no reading
 of the watch need see. Once quiet for its hibernate time, the settle
 hibernates it.
 
-A tell being handed marks the start, in one write before it reads the
-agent, `handing` until its bound and its two readings of receipt pass,
-and clears the mark when it ends; a settle reads a start so marked not
+A message being handed marks the start, in one write before it reads
+the agent, `handing` until its bound and its two readings of receipt
+pass, by the terminal or by the deliver part's take, and clears the
+mark when it ends; a settle reads a start so marked not
 quiet, its quiet starting again, and a caller's hibernate is refused
 unforced while it stands (54, 212).
 
@@ -222,7 +224,7 @@ For an agent kept open, `let_go_by`'s `ClosedBy::Time` reads
 `ClosedBy::Hibernated` where the stage hibernates, and `end_let_go`
 records the hibernation in the write that records the agent ended. An
 answer that comes after the time passed and before the agent is ended
-is taken as today's: refused by a tell, naming the retry, and a retry
+is taken as today's: refused by a message, naming the retry, and a retry
 with words ends the agent and starts afresh.
 
 A caller's `flume hibernate <place>` is refused, naming the place, for
@@ -273,12 +275,12 @@ The resume's prompt words are, by what resumed it (213):
 - a caller's `flume resume`: `StartReason::Woken`'s words, that the
   session resumes after it hibernated and what ran in it then has
   stopped;
-- a tell: the tell's words, taken as the resume's at once, the tell
-  answered with the place's status as a retry is, not handed within
-  the tell's bound, since a resume starts an agent and the words are
+- a message: the message's words, taken as the resume's at once, the
+  message answered with the place's status as a retry is, not handed
+  within the message's bound, since a resume starts an agent and the words are
   its prompt, received or read never begun as any prompt is (38, 53,
   54);
-- an answer, a tell or a retry with words to a stage waiting on its
+- an answer, a message or a retry with words to a stage waiting on its
   answer whose agent hibernated: the question, then the answer
   (`asked`), recorded on the stop-short it answers with who gave it,
   the key it named and when, in the write that puts the stage waiting
@@ -311,10 +313,11 @@ what it means of any stage:
   answer, starts the stage afresh, carrying nothing (49; core.32); with
   words naming a stage waiting on its answer whose agent hibernated, it
   is that answer, and resumes (decision 7).
-- **tell** to a hibernating stage resumes it (53, 55, 213).
+- **message** to a hibernating stage resumes it (53, 55, 213).
 - **resume** of a place with no hibernating stage is refused, naming
   the place; of one whose agent hibernated waiting on its answer, naming
-  the tell or the retry with words that gives the answer and resumes it.
+  the message or the retry with words that gives the answer and resumes
+  it.
 
 ### 9. The dialog Claude Code opens on resume
 

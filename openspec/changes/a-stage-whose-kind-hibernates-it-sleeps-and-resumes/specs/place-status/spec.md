@@ -6,10 +6,10 @@ Status SHALL give, of a place's current stage, whether its kind
 hibernates it; its agent's `hibernate_after`, as written, with the
 layer it came from, flume's own one hour named `default`; of one
 hibernating, since when and why, `idle`, `caller` or `kept_open`; and
-each resume of its current start, with when, what started it,
-`caller`, `tell` or `answer`, its agent's identity, and whether it
-carried its conversation or why not. The form SHALL gain these fields
-and lose none (56, 61, 212, 213).
+each resume of its current start: when, what started it, `caller`,
+`message` or `answer`, its agent's identity, and whether it carried
+its conversation or why not. The form SHALL gain these fields and lose
+none (56, 61, 212, 213).
 
 #### Scenario: A hibernating conversation
 
@@ -18,8 +18,8 @@ and lose none (56, 61, 212, 213).
 
 #### Scenario: A resumed stage
 
-- **WHEN** status is asked of a place whose talk was resumed by a tell and carried its conversation
-- **THEN** it gives talk's one resume, by `tell`, its agent's identity ending `talk:1.1`, carried (56, 213)
+- **WHEN** status is asked of a place whose talk was resumed by a message and carried its conversation
+- **THEN** it gives talk's one resume, by `message`, its agent's identity ending `talk:1.1`, carried (56, 213)
 
 #### Scenario: A resume not carried
 

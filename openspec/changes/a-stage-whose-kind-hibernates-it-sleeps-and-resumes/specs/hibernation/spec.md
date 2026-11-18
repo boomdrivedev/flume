@@ -1,20 +1,31 @@
+## Purpose
+
+A stage whose kind hibernates it sleeps once its prompt cache no longer
+pays: flume ends its agent and keeps its session, freeing the agent's
+room and its account, once a conversation has idled past its hibernate
+time, an agent kept open for an answer has outlived its time, or its
+caller asks; and the stage resumes in its own session at its caller's
+resume, a message to the place or the answer its agent waits on, one
+fresh agent carrying the hibernated agent's conversation where its
+profile can and starting afresh where it cannot (212, 213).
+
 ## ADDED Requirements
 
 ### Requirement: A conversation idle past its hibernate time is hibernated
 
 A settle SHALL hibernate the running conversation of a stage whose kind
 hibernates it once its agent has been quiet for its hibernate time with
-no question open, no own work running and no tell being handed to it
-(90, 91, 120, 212).
+no question open, no own work running and no message being handed to
+it (90, 91, 120, 212).
 
 #### Scenario: An hour after the last turn
 
 - **WHEN** a place of a kind whose talk stage is a conversation that hibernates is launched with no layer giving `hibernate_after`, its agent's turn ends, and settles read it quiet over an hour on the fake clock
 - **THEN** the settle at the hour ends the agent through the fake terminal, talk reads `hibernating` since then, why `idle`, its start not live, and the host's agents running drop by one (70, 212, S124)
 
-#### Scenario: Asking, own work, a tell
+#### Scenario: Asking, own work, a message
 
-- **WHEN** a hibernating conversation's agent is past its hibernate time and is asking a person, or its own work runs, or a tell is being handed to it
+- **WHEN** a hibernating conversation's agent is past its hibernate time and is asking a person, or its own work runs, or a message is being handed to it
 - **THEN** no settle hibernates it until none holds and it has been quiet its hibernate time again (90, 91, 212)
 
 #### Scenario: Zero never hibernates on idling
@@ -59,9 +70,10 @@ on, and SHALL count no start and no retry (31, 48, 70, 145, 212).
 ### Requirement: An agent kept open is hibernated at the end of its time
 
 Where the stage hibernates, an agent kept open for an answer whose time
-has passed SHALL be recorded hibernated in place of let go, and ended
-once quiet; the stage SHALL stay ended short, waiting on its answer
-under the same move and since (42, 130, 198, 212).
+has passed SHALL be let go hibernated, its close reading `hibernated`
+where it would read its time, and ended once quiet; the stage SHALL
+stay ended short, waiting on its answer under the same move and since
+(42, 130, 198, 212).
 
 #### Scenario: A code stage kept open its hour
 
@@ -79,8 +91,8 @@ under the same move and since (42, 130, 198, 212).
 current stage whose kind hibernates it, as a settle does, ending an
 agent that is not quiet only when forced; it SHALL be refused, naming
 the place, for a stage whose kind does not hibernate it and for a place
-with no live agent, and refused unforced while a tell is being handed
-to the agent (31, 54, 212).
+with no live agent, and refused unforced while a message is being
+handed to the agent (31, 54, 212).
 
 #### Scenario: A conversation hibernated at its caller's word
 
@@ -99,23 +111,23 @@ to the agent (31, 54, 212).
 
 ### Requirement: A resume carries the stage's own session
 
-A caller's `flume resume`, a tell to the place, and the answer to the
-stop-short a hibernated agent waits on SHALL each resume a hibernating
-stage: one fresh agent under an identity of its own, the stage's start
-number kept and its starts not counted, carrying the hibernated agent's
-conversation where its profile can (30, 42, 53, 179, 213; core.10).
-Its prompt SHALL be the tell's words, or the question with its answer,
-or flume's words at a bare resume, then the way to stop short (28,
-213).
+A caller's `flume resume`, a message to the place, and the answer to
+the stop-short a hibernated agent waits on SHALL each resume a
+hibernating stage: one fresh agent under an identity of its own, the
+stage's start number kept and its starts not counted, carrying the
+hibernated agent's conversation where its profile can. Its prompt SHALL
+be the message's words, or the question with its answer, or flume's
+words at a bare resume, then the way to stop short (28, 30, 42, 53,
+179, 213; core.10).
 
 #### Scenario: A message next morning
 
-- **WHEN** talk hibernated idle, and next morning its caller tells the place "where were we?"
-- **THEN** a fresh agent `flume:<repository>:<place>:talk:1.1` starts on the account the hibernated agent ran under, its record naming the hibernated agent's session, its prompt "where were we?" then the way to stop short, talk's starts still 1, and the tell is answered with the place's status (53, 213, S124)
+- **WHEN** talk hibernated idle, and next morning its caller messages the place "where were we?"
+- **THEN** a fresh agent `flume:<repository>:<place>:talk:1.1` starts on the account the hibernated agent ran under, its record naming the hibernated agent's session, its prompt "where were we?" then the way to stop short, talk's starts still 1, and the message is answered with the place's status (53, 213, S124)
 
 #### Scenario: The answer three hours later
 
-- **WHEN** code hibernated at the end of its keep-open time, and three hours later a tell naming its stop-short's key answers "use notes.md"
+- **WHEN** code hibernated at the end of its keep-open time, and three hours later a message naming its stop-short's key answers "use notes.md"
 - **THEN** the answer is recorded on the stop-short with who gave it, its key and when, code resumes its session with the question then the answer as its prompt, and once its agent commits and goes quiet code reads delivered (42, 198, 213, S125)
 
 #### Scenario: A bare resume
@@ -162,7 +174,7 @@ that does not begin is read (49, 146, 161, 179, 213).
 
 #### Scenario: Forty days hibernated
 
-- **WHEN** talk hibernated forty days ago, the fake agent's carry answers that its transcript is gone, and the place is told "carry on"
+- **WHEN** talk hibernated forty days ago, the fake agent's carry answers that its transcript is gone, and the place is messaged "carry on"
 - **THEN** talk's second start is a fresh agent whose prompt is talk's, with flume's words that its conversation could not be carried and what it committed is in the place, then "carry on", and status gives the resume not carried, naming why (179, 213, S127)
 
 #### Scenario: A resume never begun
@@ -189,7 +201,7 @@ each resume's words after the start's (42, 44, 110, 118, 146, 213).
 
 #### Scenario: Spent after a resume
 
-- **WHEN** a resumed code agent, resumed by a tell "use notes.md", stops at its account's usage limit, and no account of its pool reaches its conversation
+- **WHEN** a resumed code agent, resumed by a message "use notes.md", stops at its account's usage limit, and no account of its pool reaches its conversation
 - **THEN** code starts afresh, its words flume's, then the start's words, then "use notes.md" (42, 146, 213)
 
 ### Requirement: A hibernating place is dropped or done with no agent to end
