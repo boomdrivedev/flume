@@ -108,6 +108,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_failure_nothing_takes,
         },
         Scenario {
+            name: "statechart: a region at a stopped stage's decision leaves the place waiting on its caller from its standing, and the caller's answer naming the region is applied at the next settle, moving the region to the stage it names",
+            cites: &["130", "176"],
+            run: a_stopped_stages_decision_answered,
+        },
+        Scenario {
+            name: "statechart: an answer naming a region that carries no decision is refused naming it, and a second answer to a decision standing before a settle is refused naming the answer taken, who gave it and when",
+            cites: &["176", "core.54"],
+            run: an_answer_refused,
+        },
+        Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
             cites: &["4", "175"],
             run: a_template_flume_does_not_bind,
@@ -1401,5 +1411,171 @@ fn a_failure_nothing_takes(_: &()) -> Outcome {
         "the retry was refused: {answer:?}"
     );
     ensure_eq!(world.queue.log.count("submit"), 2, "submissions");
+    Ok(())
+}
+
+/// One region `main` whose stage `work`, stopped, stands at a decision
+/// answered `retry`, back to `work`, or `drop` (130, 176).
+const DECIDE: &str = r#"[kinds.decide]
+title = "A stopped stage's decision"
+
+[kinds.decide.regions.main]
+initial = "work"
+
+[kinds.decide.regions.main.states.work]
+machine = "stage"
+transitions = [
+  { when = { final = "passed" }, to = "done" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.decide.regions.main.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "work" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.decide.regions.main.states.done]
+final = true
+
+[kinds.decide.regions.main.states.dropped]
+final = true
+"#;
+
+/// `decide`, its one stage stopped by the first work it finds (175).
+pub fn decide() -> Kind {
+    let mut stage = chart_stage(listed(1), Deliverable::Commits, "Work.");
+    stage.send_back_limit = Some(0);
+    chart_kind("decide", DECIDE, vec![("main.work", stage)])
+}
+
+/// `decide`'s place `a` launched and its stage stopped, its region at the
+/// decision.
+pub fn to_decision(world: &World) -> Result<PlaceId, String> {
+    world.kinds.set_kinds(REPOSITORY, vec![decide()]);
+    let id = World::id("decide", "a");
+    if world.held(&id).is_none() {
+        launched(&world.engine.launch(&launch("decide", "a", None)))?;
+    }
+    world.settle(&id);
+    stops_short(
+        world,
+        ("decide", "a"),
+        "main.work#1/1",
+        "Stuck.",
+        StopKind::FoundWork,
+    )?;
+    settles(world, &id, 2);
+    ensure_eq!(
+        at(world, &id, "main"),
+        Some("stopped".to_string()),
+        "the region"
+    );
+    Ok(id)
+}
+
+fn a_stopped_stages_decision_answered(_: &()) -> Outcome {
+    let world = World::new();
+    let id = to_decision(&world)?;
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let standing = held
+        .chart
+        .as_ref()
+        .and_then(|chart| chart.state.entered_at.get("main").copied());
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (
+            waiting.act,
+            waiting.stage.as_deref(),
+            waiting.why,
+            waiting.since
+        ),
+        (Act::Decide, Some("main"), Waits::Decision, standing),
+        "the move the place waits on, and since when"
+    );
+    ensure!(
+        waiting
+            .words
+            .as_deref()
+            .is_some_and(|words| words.contains("stalled") && words.contains("retry")),
+        "the wait names not the decision and its answers: {:?}",
+        waiting.words
+    );
+    let answer = world.engine.answer_decision(&id, "main", "retry", "ops");
+    ensure!(
+        answer.refusal().is_none(),
+        "the answer was refused: {answer:?}"
+    );
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("work".to_string()),
+        "the region"
+    );
+    let chart = world
+        .held(&id)
+        .and_then(|held| held.chart)
+        .ok_or("the place holds no statechart")?;
+    ensure_eq!(
+        chart
+            .answers
+            .iter()
+            .map(|answer| answer.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["main#1"],
+        "the answers given"
+    );
+    ensure!(
+        chart.state.applied.contains(&"main#1".to_string()),
+        "the answer was not applied"
+    );
+    ensure!(chart.decisions.is_empty(), "a decision still stands");
+    world.settle(&id);
+    ensure!(
+        session(&world, &id, "main.work#2/1").is_some_and(|(_, live)| live),
+        "the stage the answer named did not start again"
+    );
+    Ok(())
+}
+
+fn an_answer_refused(_: &()) -> Outcome {
+    let world = World::new();
+    world.keep_watch();
+    world.kinds.set_kinds(REPOSITORY, vec![decide()]);
+    launched(&world.engine.launch(&launch("decide", "a", None)))?;
+    let id = World::id("decide", "a");
+    let reason = refused(&world.engine.answer_decision(&id, "main", "retry", "ops"))?;
+    ensure!(
+        reason.contains("main") && reason.contains("no decision"),
+        "the refusal names not the region: {reason}"
+    );
+    to_decision(&world)?;
+    let at = world.host.now();
+    let answer = world.engine.answer_decision(&id, "main", "retry", "ops");
+    ensure!(
+        answer.refusal().is_none(),
+        "the answer was refused: {answer:?}"
+    );
+    let reason = refused(
+        &world
+            .engine
+            .answer_decision(&id, "main", "drop", "east/ops"),
+    )?;
+    ensure!(
+        reason.contains("retry") && reason.contains("ops") && reason.contains(&at.to_string()),
+        "the refusal names not the answer taken, who gave it and when: {reason}"
+    );
+    ensure_eq!(
+        world
+            .held(&id)
+            .and_then(|held| held.chart)
+            .map(|chart| chart.answers.len()),
+        Some(1),
+        "the answers given"
+    );
     Ok(())
 }

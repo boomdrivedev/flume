@@ -138,6 +138,40 @@ pub struct ChartHeld {
     /// Whether every top region held a final state at the last tick (176).
     #[serde(default)]
     pub over: bool,
+    /// The decisions standing in `state`, as the engine read them at its
+    /// last write, so a wait reads them from held state alone (130, 176).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<DecisionHeld>,
+}
+
+/// A decision standing: the live region whose state carries it, that
+/// state, its kind, the answers it takes as written, and when the region
+/// entered the state (130, 176; weir 97).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionHeld {
+    pub region: String,
+    pub state: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<Seconds>,
+}
+
+impl DecisionHeld {
+    /// The decisions standing as the engine gives them.
+    pub fn of(standing: &[weir_engine::Standing]) -> Vec<DecisionHeld> {
+        standing
+            .iter()
+            .map(|standing| DecisionHeld {
+                region: standing.region.clone(),
+                state: standing.state.clone(),
+                kind: standing.decision.kind.clone(),
+                answers: standing.decision.answers.clone(),
+                since: standing.since.map(seconds_of),
+            })
+            .collect()
+    }
 }
 
 /// The engine's state of one statechart, its times in seconds since the
@@ -522,6 +556,8 @@ impl WaitingOn {
         match (self.act, &self.stage) {
             (Act::Done, _) => "done".into(),
             (Act::Answer, _) => "a person's answer to its agent's dialog".into(),
+            (Act::Decide, Some(region)) => format!("an answer to the decision at {region}"),
+            (Act::Decide, None) => "an answer to a decision".into(),
             (_, Some(stage)) => format!("a retry of {stage}"),
             (_, None) => "a retry of the submission".into(),
         }
@@ -545,6 +581,9 @@ pub enum Act {
     /// program shows before it takes its prompt: what a place waits on
     /// for a dialog, never an act a caller asks of flume (34, 35).
     Answer,
+    /// A caller's answer to a decision standing in a statechart place's
+    /// region, by `flume answer` (130, 176).
+    Decide,
 }
 
 /// Why a place waits on its caller (56, 130).
@@ -579,6 +618,9 @@ pub enum Waits {
     /// A base place with no place on its branch live, whose submission
     /// its caller has not asked for (203).
     Unsubmitted,
+    /// A decision standing in a statechart place's region, with no answer
+    /// given it unapplied (130, 176).
+    Decision,
 }
 
 /// An end of a place, recorded once by its key when a settle or an act

@@ -195,6 +195,7 @@ pub struct ChartHeld {
     pub stages: BTreeMap<String, ChartStageHeld>, // by path: recorded entry, send_backs
     pub words: Option<String>,                  // for the next stage's sessions
     pub over: bool,                             // every top region final at the last tick
+    pub decisions: Vec<DecisionHeld>,           // standing at the last write: region, state, kind, answers, since
 }
 ```
 
@@ -295,15 +296,19 @@ its caller with them, and a retry with no stage sets `due` again
 
 ### 12. Decisions and `flume answer`
 
-`weir_engine::decisions` gives the decisions standing; `waiting_on`
-gains `Waits::Decision`, its stage the region and its words the
-decision's kind and answers, so the stall and its deliveries follow as
-for any wait (130). `Engine::answer_decision(place, region, answer,
-by)` in `acts.rs` takes an answer by compare-and-set only while a decision
-stands at that region and no answer given there is unapplied, as
-`AnswerGiven { id: "<region>#<n>", .. }`, then settles the place
-(core.54). One answer a tick, the oldest, so a tick never holds two.
-`flume answer <place> <region> <answer>` calls it as its caller.
+`weir_engine::decisions` gives the decisions standing, read at the
+launch and at each tick that writes the engine's state and held as
+`ChartHeld.decisions`, since a wait reads held state alone (core.62).
+`waiting_on` gains `Waits::Decision` and `Act::Decide`, its stage the
+region and its words the decision's kind and answers, so the stall and
+its deliveries follow as for any wait (130); a decision with an answer
+given and not yet applied waits on no one. `Engine::answer_decision(place,
+region, answer, by)` in `acts.rs` takes an answer by compare-and-set only
+while a decision stands at that region and no answer given there is
+unapplied, as `AnswerGiven { id: "<region>#<n>", .. }`, and the next
+settle gives it to the tick (176; core.54). One answer a tick, the
+oldest, so a tick never holds two. `flume answer <place> <region>
+<answer>` calls it as its caller.
 
 ### 13. Status and the list
 

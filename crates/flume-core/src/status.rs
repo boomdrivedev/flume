@@ -791,6 +791,27 @@ fn chart_waiting_on(held: &HeldState) -> Option<WaitingOn> {
         return session;
     }
     let chart = held.chart.as_ref()?;
+    // A decision standing waits on its caller's answer until one is given;
+    // the next settle applies it (130, 176).
+    if let Some(decision) = chart
+        .decisions
+        .iter()
+        .find(|decision| crate::chart::unapplied(chart, &decision.region).is_none())
+    {
+        return Some(WaitingOn {
+            act: Act::Decide,
+            stage: Some(decision.region.clone()),
+            why: Waits::Decision,
+            since: decision.since,
+            words: Some(if decision.answers.is_empty() {
+                decision.kind.clone()
+            } else {
+                format!("{}: {}", decision.kind, decision.answers.join(", "))
+            }),
+            open_until: None,
+            closed: None,
+        });
+    }
     // A run over whose kind lands nothing waits on its caller's done (114,
     // 130).
     (chart.over && !held.place.kind.lands).then(|| WaitingOn {

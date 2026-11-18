@@ -217,6 +217,9 @@ impl Engine {
                 (path, words)
             })
             .collect();
+        let decisions = weir_engine::decisions(&charts.chart, &charts.templates, &tick.next)
+            .map(|standing| DecisionHeld::of(&standing))
+            .unwrap_or_default();
         let from = chart.state.clone();
         let next = ObjectHeld::of(&tick.next);
         let started = self.update(id, |held| {
@@ -232,6 +235,7 @@ impl Engine {
                 return Step::Keep(vec![]);
             }
             chart.state = next.clone();
+            chart.decisions = decisions.clone();
             let turned = over && !chart.over;
             chart.over = over;
             if turned && held.place.kind.lands {
@@ -691,11 +695,23 @@ fn snapshot_of(
             Value::String(outcome.into()),
         );
     }
+    // One answer a tick, the oldest the engine has not applied (97, 176;
+    // design 12).
+    let responses = chart
+        .answers
+        .iter()
+        .find(|answer| !state.applied.contains(&answer.id))
+        .map(|answer| weir_engine::Response {
+            id: answer.id.clone(),
+            answer: answer.answer.clone(),
+        })
+        .into_iter()
+        .collect();
     weir_engine::Snapshot {
         at: time_at(now),
         evidence,
         regions,
-        responses: vec![],
+        responses,
         owner: None,
         children: vec![],
     }
@@ -712,6 +728,25 @@ pub(crate) fn failure_words(submission: &SubmissionHeld) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// The decision standing at `region` of a statechart place, where one
+/// does (130, 176).
+pub(crate) fn decision_at<'a>(held: &'a HeldState, region: &str) -> Option<&'a DecisionHeld> {
+    held.chart
+        .as_ref()?
+        .decisions
+        .iter()
+        .find(|decision| decision.region == region)
+}
+
+/// The answer given the decision at `region` that the engine has not yet
+/// applied, where one was (176).
+pub(crate) fn unapplied<'a>(chart: &'a ChartHeld, region: &str) -> Option<&'a AnswerGiven> {
+    chart
+        .answers
+        .iter()
+        .find(|answer| answer.region == region && !chart.state.applied.contains(&answer.id))
 }
 
 /// A verdict's word, as `place.submission` reads it (133, 178).

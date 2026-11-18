@@ -718,6 +718,72 @@ impl Engine {
         self.acted(Act::Finish, place)
     }
 
+    /// Answers the decision standing at `region` of a statechart place
+    /// with `answer`, given by `by`: taken by compare-and-set only while a
+    /// decision stands there and no answer given it is unapplied, recorded
+    /// as `<region>#<n>` with who gave it and when, and given to the tick
+    /// of the next settle, which applies it once (74, 130, 176; core.54).
+    /// Refused naming the region where no decision stands there, with the
+    /// regions where one does, and naming the answer taken, who gave it and
+    /// when, where one is not yet applied.
+    pub fn answer_decision(&self, place: &PlaceId, region: &str, answer: &str, by: &str) -> Answer {
+        self.settle_attended();
+        let now = self.host.now();
+        let refused = self.update(place, |held| {
+            if held.phase != Phase::Live {
+                return Step::Keep(Some(format!("the work of the place {place} is over")));
+            }
+            if held.chart.is_none() {
+                return Step::Keep(Some(format!(
+                    "the place {place}'s kind is no statechart kind, so it has no decision"
+                )));
+            }
+            if crate::chart::decision_at(held, region).is_none() {
+                let standing: Vec<String> = held
+                    .chart
+                    .iter()
+                    .flat_map(|chart| &chart.decisions)
+                    .map(|decision| decision.region.clone())
+                    .collect();
+                return Step::Keep(Some(format!(
+                    "the region {region} of the place {place} carries no decision standing; {}",
+                    if standing.is_empty() {
+                        "none stands".to_string()
+                    } else {
+                        format!("one stands at {}", and_list(standing))
+                    }
+                )));
+            }
+            let Some(chart) = held.chart.as_mut() else {
+                return Step::Keep(None);
+            };
+            if let Some(taken) = crate::chart::unapplied(chart, region) {
+                return Step::Keep(Some(format!(
+                    "the decision at {region} of the place {place} was answered {} by {} at {}, and the next settle applies it; an answer is taken once",
+                    taken.answer, taken.by, taken.at
+                )));
+            }
+            let n = 1 + chart
+                .answers
+                .iter()
+                .filter(|given| given.region == region)
+                .count();
+            chart.answers.push(AnswerGiven {
+                id: format!("{region}#{n}"),
+                region: region.to_string(),
+                answer: answer.to_string(),
+                by: by.to_string(),
+                at: now,
+            });
+            Step::Write(None)
+        });
+        match refused {
+            None => Answer::refused(format!("no place {place} stands on this host")),
+            Some(Some(reason)) => Answer::refused(reason),
+            Some(None) => self.acted(Act::Decide, place),
+        }
+    }
+
     /// Hands the agent of the place's current stage `words` as a prompt
     /// once it said it started and waits, received or sent once more;
     /// refused with nothing typed when the place has no live agent, its

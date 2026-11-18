@@ -745,22 +745,28 @@ impl Engine {
             }
         }
         let chart = match &chart {
-            Some(charts) => Some(ChartHeld {
-                state: ObjectHeld::of(
-                    &weir_engine::start(&charts.chart, &charts.templates, time_at(self.host.now()))
-                        .map_err(|refusal| {
-                            format!(
-                                "the kind {} could not be started at {}: {} (176)",
-                                from.identity, refusal.path, refusal.reason
-                            )
-                        })?,
-                ),
-                template: atoms::STAGE_TEMPLATE.to_string(),
-                answers: vec![],
-                stages: BTreeMap::new(),
-                words: None,
-                over: false,
-            }),
+            Some(charts) => {
+                let unstarted = |refusal: weir_engine::Refusal| {
+                    format!(
+                        "the kind {} could not be started at {}: {} (176)",
+                        from.identity, refusal.path, refusal.reason
+                    )
+                };
+                let state =
+                    weir_engine::start(&charts.chart, &charts.templates, time_at(self.host.now()))
+                        .map_err(unstarted)?;
+                let decisions = weir_engine::decisions(&charts.chart, &charts.templates, &state)
+                    .map_err(unstarted)?;
+                Some(ChartHeld {
+                    state: ObjectHeld::of(&state),
+                    template: atoms::STAGE_TEMPLATE.to_string(),
+                    answers: vec![],
+                    stages: BTreeMap::new(),
+                    words: None,
+                    over: false,
+                    decisions: DecisionHeld::of(&decisions),
+                })
+            }
             None => None,
         };
         let branch = format!("{}/{}", kind.branch_prefix, launch.name);

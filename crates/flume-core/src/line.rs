@@ -253,6 +253,7 @@ pub(crate) fn state_words(
             Waits::Submission => "submission refused",
             Waits::Delivered => "waiting on done",
             Waits::Unsubmitted => "waiting on its caller",
+            Waits::Decision => "waiting on a decision",
         }
         .into();
     }

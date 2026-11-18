@@ -839,6 +839,13 @@ fn a_statechart_places_held_state() {
         )]),
         words: Some("the second persona fails".into()),
         over: false,
+        decisions: vec![DecisionHeld {
+            region: "stages".into(),
+            state: "stopped".into(),
+            kind: "stalled".into(),
+            answers: vec!["retry".into(), "drop".into()],
+            since: Some(1_200),
+        }],
     });
     round_trips(chart.clone());
     assert_eq!(
@@ -915,6 +922,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Act::Priority,
         Act::Hold,
         Act::Answer,
+        Act::Decide,
     ] {
         round_trips(act);
     }
@@ -931,6 +939,7 @@ fn holds_the_waiting_move_and_the_stall_bound() {
         Waits::Submission,
         Waits::Delivered,
         Waits::Unsubmitted,
+        Waits::Decision,
     ] {
         round_trips(why);
     }
