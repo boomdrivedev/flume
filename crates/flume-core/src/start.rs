@@ -14,6 +14,7 @@ use crate::prompt::{
     asks, group_text, may_name, notes_path, render, roles_text, way_to_stop_short,
 };
 use crate::room::Admit;
+use crate::settings::kind_started;
 use crate::start_record::start_record;
 use crate::{repository_id, Engine, Step};
 use flume_seams::*;
@@ -495,6 +496,14 @@ impl Engine {
             _ => resolution,
         };
         let env = env.unwrap_or_default();
+        // The terminal the start records asked whether it starts the
+        // agent's program's kind under the chosen account's environment,
+        // so it reads the home the agent will hold; a refusal leaves the
+        // stage refused in its words until a retry (27, 32, C.5).
+        let resolution = resolution.and_then(|(resolution, terminal, opens_in)| {
+            kind_started(terminal.0.as_ref(), &resolution, stage_name, &env)?;
+            Ok((resolution, terminal, opens_in))
+        });
         // A lost conversation's start under no pool asks the profile of
         // the login environment's, an empty one; a spent agent always ran
         // under an account (146, 179).
@@ -818,7 +827,7 @@ impl Engine {
                 secret,
                 text,
                 place: held.place.place_ref(),
-                settings: resolution.resolved.settings.clone(),
+                settings: resolution.command_settings(),
                 env: env.clone(),
                 agent: resolution.agent.clone(),
                 session: held.role.clone(),

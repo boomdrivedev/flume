@@ -84,11 +84,12 @@ fn written(kinds: &[Kind]) -> (String, Vec<(String, String)>) {
                 .iter()
                 .map(|agent| {
                     let mut fields = vec![];
+                    let model = agent.model.as_ref().and_then(|model| model.one());
                     for (name, value) in [
-                        ("program", &agent.program),
-                        ("model", &agent.model),
-                        ("instructions", &agent.instructions),
-                        ("beside", &agent.beside),
+                        ("program", agent.program.as_deref()),
+                        ("model", model),
+                        ("instructions", agent.instructions.as_deref()),
+                        ("beside", agent.beside.as_deref()),
                     ] {
                         if let Some(value) = value {
                             fields.push(format!("{name} = \"{value}\""));
@@ -460,7 +461,14 @@ agents = [{ instructions = "keep it short" }]
         "settings apart from the kinds"
     );
     let change = &settings["change"];
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -468,7 +476,11 @@ agents = [{ instructions = "keep it short" }]
     let bump = &kinds[0];
     assert_eq!(bump.agents.every_stage.program.as_deref(), Some("agent"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -511,7 +523,14 @@ fn a_kind_that_lands_with_no_stages_beside_one_that_does_not_and_settings() {
         vec!["fix"],
         "fix's table, settings for a kind declared elsewhere"
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     repository.write(
         DECLARATION,
         &format!("{declared}\n[kinds.idle]\nlands = false\nstages = []\n"),
@@ -1063,14 +1082,101 @@ agents = [{ effort = "xhigh" }]
         panic!("the declaration did not read");
     };
     let bump = &kinds[0];
-    assert_eq!(bump.agents.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(bump.stages[0].agents[0].effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        bump.agents
+            .every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        bump.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("xhigh")
+    );
+}
+
+#[test]
+fn a_model_for_every_stage_and_a_table_for_one() {
+    // The kinds-profile spec's "A model for every stage and a table for
+    // one" (23, 172, C.2): a kind's agents table gives a model for every
+    // stage, and a stage's agents a table of programs, each kept as
+    // written.
+    let repository = Repository::new("declared-model");
+    repository.write(
+        DECLARATION,
+        r#"[kinds.bump.agents]
+model = "sonnet"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ model = { claude = "opus", codex = "gpt-5.5" } }]
+"#,
+    );
+    repository.write(".config/prompts/bump-code.md", "{{brief}}");
+    repository.commit("a model for bump and a table for its code");
+    let revision = Revision::new(repository.head());
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("the declaration did not read");
+    };
+    let bump = &kinds[0];
+    assert_eq!(bump.agents.every_stage.model, Some("sonnet".into()));
+    assert_eq!(
+        bump.stages[0].agents[0].model,
+        Some(PerProgram::Programs(BTreeMap::from([
+            ("claude".to_string(), "opus".to_string()),
+            ("codex".to_string(), "gpt-5.5".to_string()),
+        ])))
+    );
+}
+
+#[test]
+fn a_model_that_is_neither_fails_the_declaration_naming_the_field() {
+    // The kinds-profile spec's "A model that is neither" (4, 172, C.2): a
+    // number, a table naming no program and a table whose entry is no
+    // string each fail the read, naming the table's `model`.
+    let repository = Repository::new("declared-bad-model");
+    repository.write(
+        DECLARATION,
+        r#"[agents]
+model = 3
+
+[kinds.change.agents]
+model = {}
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ model = { claude = 3 } }]
+"#,
+    );
+    repository.write(".config/prompts/bump-code.md", "{{brief}}");
+    repository.commit("models that are neither");
+    let reason = could_not_read(&repository);
+    for field in [
+        "agents.model:",
+        "kinds.change.agents.model",
+        "kinds.bump.stages[0].agents[0].model",
+    ] {
+        assert!(
+            reason.contains(field),
+            "the read names not {field}: {reason}"
+        );
+    }
+    launch_refused_naming(&repository, "change", &["kinds.change.agents.model"]);
 }
 
 #[test]
 fn an_effort_for_every_kind_of_a_repository() {
     // 32, 197, C.2: the repository's `[agents]` gives an effort for every
-    // kind, apart from its table for fix, which gives its own.
+    // kind, apart from its table for fix, which gives its own, a table of
+    // programs.
     let repository = Repository::new("every-kind-effort");
     repository.write(
         DECLARATION,
@@ -1078,7 +1184,7 @@ fn an_effort_for_every_kind_of_a_repository() {
 effort = "medium"
 
 [kinds.fix.agents]
-effort = "high"
+effort = { claude = "high" }
 "#,
     );
     let revision = Revision::new(repository.commit("the repository's efforts"));
@@ -1088,28 +1194,37 @@ effort = "high"
     else {
         panic!("the declaration did not read");
     };
-    assert_eq!(agents.effort.as_deref(), Some("medium"));
-    assert_eq!(settings["fix"].every_stage.effort.as_deref(), Some("high"));
+    assert_eq!(
+        agents.effort.as_ref().and_then(|effort| effort.one()),
+        Some("medium")
+    );
+    assert_eq!(
+        settings["fix"].every_stage.effort,
+        Some(PerProgram::Programs(BTreeMap::from([(
+            "claude".to_string(),
+            "high".to_string()
+        )])))
+    );
 }
 
 #[test]
 fn an_effort_that_is_no_word_refuses_the_launch_naming_the_field() {
-    // 4, 197, C.2: a number and a table of programs each fail the read,
-    // naming the table's `effort`, in a repository's table for every kind,
-    // in its table for a kind it does not declare, in a stage's of a
-    // kind's own and in its agents; the launch is refused with nothing
-    // made.
+    // 4, 197, C.2: a number, a table naming no program and a table whose
+    // entry is no string each fail the read, naming the table's `effort`,
+    // in a repository's table for every kind, in its table for a kind it
+    // does not declare, in a stage's of a kind's own and in its agents;
+    // the launch is refused with nothing made.
     let repository = Repository::new("declared-bad-effort");
     repository.write(
         DECLARATION,
         r#"[agents]
-effort = { claude = "high" }
+effort = {}
 
 [kinds.change.agents]
 effort = 3
 
 [kinds.bump.agents.stages.code]
-effort = { claude = "high" }
+effort = { claude = 3 }
 
 [[kinds.bump.stages]]
 name = "code"
@@ -1180,7 +1295,14 @@ agents = [{ session = "z", instructions = "keep it short" }]
     let change = &settings["change"];
     assert_eq!(change.every_stage.session, None, "change's every stage");
     assert_eq!(change.for_stage("verify").session, None, "change's verify");
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -1189,9 +1311,20 @@ agents = [{ session = "z", instructions = "keep it short" }]
     assert_eq!(bump.agents.every_stage.session, None, "bump's every stage");
     assert_eq!(bump.agents.for_stage("code").session, None, "bump's code");
     assert_eq!(bump.stages[0].agents[0].session, None, "code's own agent");
-    assert_eq!(bump.agents.every_stage.model.as_deref(), Some("sonnet"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
+    assert_eq!(
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -1485,14 +1618,24 @@ model = "sonnet"
         panic!("the declaration did not read");
     };
     assert!(kinds.is_empty());
-    assert_eq!(agents.model.as_deref(), Some("opus"));
+    assert_eq!(
+        agents.model.as_ref().and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(agents.mode, Some(ModeSetting::Flume(Mode::Edits)));
     assert_eq!(agents.instructions.as_deref(), Some("Mind the tagline."));
     assert_eq!(
         agents.programs["claude"].settings["attribution"],
         serde_json::json!({ "commit": "Assisted-by: Claude Code", "pr": "" })
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
     assert!(settings["fix"].every_stage.programs.is_empty(), "apart");
     let scratch = Scratch::new("launch-agents");
     let file = scratch.path("kinds.toml");
@@ -1682,7 +1825,10 @@ makes = ["preview"]
     );
     assert_eq!(kind.stages[0].agents[0].program.as_deref(), Some("agent"));
     assert_eq!(
-        kind.stages[0].agents[0].effort.as_deref(),
+        kind.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
         Some("high"),
         "the stage's effort, read as written (197)"
     );

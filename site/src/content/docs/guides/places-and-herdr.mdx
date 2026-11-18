@@ -238,6 +238,36 @@ call states none, with the calling session's `HERDR_*` variables
 stripped and the recorded server's socket passed. A call that does not
 answer in time reads as unknown, never as an answer.
 
+### Programs herdr starts
+
+flume runs every program herdr starts, each by herdr's kind for it:
+Claude Code by its own profile, and every other, such as Codex, Gemini
+CLI, OpenCode or Amp, by an entry of its name and kind
+([the program](/flume/guides/agent-settings/#the-program)). A stage of
+any of them opens its agent in its own pane as Claude Code's does.
+
+### Programs herdr reads through its integration
+
+herdr reads the state of OMP and MastraCode only through an integration
+of its own, installed under the program's home. Before a launch makes
+anything, and again at each start under the home the agent's account
+gives, flume runs `herdr integration status` within its bound and reads
+the program's line. While herdr reports it not installed, the launch is
+refused, or the stage at a later start, naming the command that
+installs it:
+
+```text
+the stage `code`'s program `omp` cannot start in its terminal: herdr reports the integration for `omp` not installed, which it reads `omp` through: run `herdr integration install omp`
+```
+
+Run that command under the account's home, as `HOME=/home/you/omp-work
+herdr integration install omp`, then launch again or retry the stage.
+herdr installs an integration only where the program's own folder
+already stands, such as `~/.omp/agent/extensions`, so run the program
+once under that home first. A status that does not answer in time, or
+names no line for the program, refuses in what herdr gave. Every other
+program starts with no call to herdr.
+
 ### An agent kept open
 
 An agent that stops short needing an answer stays in its pane, kept

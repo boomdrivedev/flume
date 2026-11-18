@@ -412,6 +412,9 @@ pub struct FakeAgentHarness {
     /// it to build none, as a profile that keeps the seam's defaults (171,
     /// 211).
     windows: bool,
+    /// Whether the harness left the fake taking every model, or scripted
+    /// it to take none, as a profile that keeps the seam's default (172).
+    models: bool,
 }
 
 impl FakeAgentHarness {
@@ -471,6 +474,7 @@ impl FakeAgentHarness {
             own: OwnWay::default(),
             efforts: fake_efforts(),
             windows: true,
+            models: true,
         }
     }
 
@@ -488,7 +492,20 @@ impl FakeAgentHarness {
             own,
             efforts: Efforts::default(),
             windows: true,
+            models: true,
         }
+    }
+
+    /// The fake scripted to take no model, refusing every name in the
+    /// seam's default words, as a profile that keeps the seam's default
+    /// (172).
+    pub fn taking_no_model() -> Self {
+        let harness = FakeAgentHarness {
+            models: false,
+            ..FakeAgentHarness::default()
+        };
+        harness.agent.take_no_model();
+        harness
     }
 }
 
@@ -579,6 +596,7 @@ impl Default for FakeAgentHarness {
             own,
             efforts: fake_efforts(),
             windows: true,
+            models: true,
         }
     }
 }
@@ -758,6 +776,10 @@ impl AgentHarness for FakeAgentHarness {
     /// and none where it names none (196).
     fn efforts(&self) -> Efforts {
         self.efforts.clone()
+    }
+
+    fn models(&self) -> bool {
+        self.models
     }
 
     fn own_passed(&self, command: &AgentCommand) -> Option<BTreeMap<String, serde_json::Value>> {

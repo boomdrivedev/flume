@@ -564,6 +564,11 @@ impl AgentHarness for Harness {
         }
     }
 
+    /// Every name, since 2.1.296's model names are open (172, C.4).
+    fn models(&self) -> bool {
+        true
+    }
+
     /// The plugin's module passes the windows in the engine's form, and
     /// `flume hook usage` keeps them on the start's record as it keeps
     /// them, taken at `taken_at` (211, C.4).
@@ -747,6 +752,55 @@ fn the_command_for_a_code_stage() {
         "x",
     );
     assert_eq!(command.program, "/opt/claude/bin/claude");
+}
+
+/// The agent-profile spec's scenario "A table's entry passed by --model"
+/// (172, C.4).
+#[test]
+fn every_model_name_is_taken_and_the_entry_passed_by_model() {
+    let harness = Harness::new();
+    for name in ["opus", "claude-opus-4-5[1m]"] {
+        assert_eq!(harness.seam.model(name), Ok(()), "{name}");
+    }
+    assert_eq!(harness.seam.kind(), Some("claude"));
+    // The core hands the profile the agent's entry of the table, `opus`
+    // of `{ claude = "opus", codex = "gpt-5.5" }`, given whole.
+    let table = PerProgram::from_programs(BTreeMap::from([
+        ("claude".to_string(), "opus".to_string()),
+        ("codex".to_string(), "gpt-5.5".to_string()),
+    ]))
+    .expect("a table naming two programs");
+    let entry = table.entry("claude").expect("claude's entry");
+    let command = harness.seam.command(
+        &harness.folder(),
+        &Settings {
+            model: Some(entry.into()),
+            ..Settings::default()
+        },
+        None,
+        &BTreeMap::new(),
+        None,
+        &BTreeMap::new(),
+        &harness.place(),
+        &identity("code"),
+        &Secret("s".into()),
+        "x",
+    );
+    assert!(command.program.ends_with("claude"), "{}", command.program);
+    assert_eq!(command.kind.as_deref(), Some("claude"));
+    let models: Vec<&String> = command
+        .args
+        .iter()
+        .zip(command.args.iter().skip(1))
+        .filter(|(flag, _)| *flag == "--model")
+        .map(|(_, name)| name)
+        .collect();
+    assert_eq!(models, ["opus"], "{:?}", command.args);
+    assert!(
+        !command.args.iter().any(|arg| arg.contains("gpt-5.5")),
+        "another program's entry passed: {:?}",
+        command.args
+    );
 }
 
 #[test]
@@ -1269,6 +1323,7 @@ fn an_effort_the_accounts_variable_outranks() {
         Some(EffortStatus {
             word: "xhigh".into(),
             layer: Layer::Host,
+            entry: None,
             passed: "xhigh".into(),
             read_back: false,
             outranked_by: Some(effort::VARIABLE.into()),
@@ -1426,7 +1481,9 @@ fn the_resolver_binds_the_program_by_name_or_path() {
     let resolver = BuiltIn::new();
     assert!(resolver.agent(DEFAULT_PROGRAM).is_some());
     assert!(resolver.agent("/opt/claude/bin/claude").is_some());
-    assert!(resolver.agent("codex").is_none());
+    // A program with no entry is bound to no profile; every entry's
+    // program is bound, `every_entry_is_bound` reads (105, 170).
+    assert!(resolver.agent("nonesuch").is_none());
 }
 
 #[test]

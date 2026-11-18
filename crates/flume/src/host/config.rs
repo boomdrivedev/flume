@@ -1564,8 +1564,10 @@ fn refuse(table: &Table, at: &str, whose: &str, names: &[&str]) -> Result<(), St
 }
 
 /// One agents table's `model`, `effort`, `instructions`, `mode`,
-/// `keep_open` and `programs`, each as written, the effort a string, its
-/// program's own word, which the agent's profile takes or refuses (197),
+/// `keep_open` and `programs`, each as written, the model and the effort
+/// each a string, its program's own name or word, or a table of programs
+/// whose entries are strings, which the agent's profile takes or refuses,
+/// read by flume's one reader of them as a declaration's are (172, 197),
 /// the mode read as a declaration's is (162, 169), `keep_open` by
 /// [`keep_open_of`] (198), and `programs` by flume's one reader of them, a
 /// file read by [`host_file`] (195); any other key, `stages` among them,
@@ -1575,6 +1577,13 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         None => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
         Some(_) => Err(format!("[{at}] {name} is not a string")),
+    };
+    let per_program = |name: &str| {
+        table
+            .get(name)
+            .map(crate::per_program::read)
+            .transpose()
+            .map_err(|reason| format!("[{at}] {name}: {reason}"))
     };
     let mode = table
         .get("mode")
@@ -1587,8 +1596,8 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         .transpose()?
         .unwrap_or_default();
     Ok(Settings {
-        model: text("model")?,
-        effort: text("effort")?,
+        model: per_program("model")?,
+        effort: per_program("effort")?,
         instructions: text("instructions")?,
         mode,
         programs,
@@ -1888,11 +1897,23 @@ mod tests {
         )
         .unwrap();
         let kind = &config.kinds["change"];
-        assert_eq!(kind.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            kind.every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(kind.every_stage.instructions.as_deref(), Some("be brief"));
         let repository = &config.repos["/r"]["change"];
         assert_eq!(repository.every_stage, Settings::default());
-        assert_eq!(repository.stages["verify"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            repository.stages["verify"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
     }
 
     #[test]
@@ -1942,42 +1963,101 @@ mod tests {
     #[test]
     fn an_effort_for_a_kind_and_one_for_a_repositorys_stage() {
         // 32, 197, C.7: an effort for a kind at the host-kind layer, and
-        // one for a repository's stage at the host-repository layer, each
-        // its program's own word kept as written.
+        // a table of programs for a repository's stage at the
+        // host-repository layer, each kept as written.
         let config = HostConfig::parse(
             "[kinds.fix.agents]\neffort = \"high\"\n\
-             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = \"xhigh\"\n",
+             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = { agent = \"xhigh\" }\n",
         )
         .unwrap();
         assert_eq!(
-            config.kinds["fix"].every_stage.effort.as_deref(),
+            config.kinds["fix"]
+                .every_stage
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("high")
         );
+        let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([(
+            "agent".to_string(),
+            "xhigh".to_string(),
+        )])));
         let repository = &config.repos["/r"]["fix"];
         assert_eq!(repository.every_stage, Settings::default());
-        assert_eq!(repository.stages["code"].effort.as_deref(), Some("xhigh"));
+        assert_eq!(repository.stages["code"].effort, table);
         let scratch = Scratch::new("effort-layers");
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let settings = flume_seams::Host::settings(&host, &folder("/r"), "fix", "default");
         assert_eq!(
-            settings.kind.every_stage.effort.as_deref(),
+            settings
+                .kind
+                .every_stage
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
             Some("high"),
             "the host-kind layer"
         );
         assert_eq!(
-            settings.repository.for_stage("code").effort.as_deref(),
-            Some("xhigh"),
+            settings.repository.for_stage("code").effort,
+            table,
             "the host-repository layer"
         );
     }
 
     #[test]
+    fn a_model_for_a_kind_and_a_table_for_a_repositorys_stage() {
+        // The store-profile spec's "A model for a kind and a table for a
+        // repository's stage" (32, 172, C.7).
+        let config = HostConfig::parse(
+            "[kinds.fix.agents]\nmodel = \"sonnet\"\n\
+             [repos.\"/r\".kinds.fix.agents.stages.code]\nmodel = { agent = \"opus\", other = \"gpt-5.5\" }\n",
+        )
+        .unwrap();
+        let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([
+            ("agent".to_string(), "opus".to_string()),
+            ("other".to_string(), "gpt-5.5".to_string()),
+        ])));
+        let scratch = Scratch::new("model-layers");
+        let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
+        let settings = flume_seams::Host::settings(&host, &folder("/r"), "fix", "default");
+        assert_eq!(
+            settings.kind.every_stage.model,
+            Some("sonnet".into()),
+            "the host-kind layer"
+        );
+        assert_eq!(
+            settings.repository.for_stage("code").model,
+            table,
+            "the host-repository layer"
+        );
+    }
+
+    #[test]
+    fn a_model_that_is_neither_is_refused_naming_the_table_and_model() {
+        // The store-profile spec's "A model that is neither" (172, C.7).
+        for text in [
+            "[kinds.fix.agents]\nmodel = 4\n",
+            "[kinds.fix.agents]\nmodel = {}\n",
+            "[kinds.fix.agents]\nmodel = { agent = 4 }\n",
+        ] {
+            let refused = HostConfig::parse(text).unwrap_err();
+            assert!(
+                refused.contains("kinds.fix.agents") && refused.contains("model"),
+                "{text}: {refused}"
+            );
+        }
+    }
+
+    #[test]
     fn an_effort_that_is_no_word_is_refused_naming_the_table_and_effort() {
-        // 197, C.7: a number, and a table of programs until the model's
-        // is built with it, in a kind's table and every other.
+        // 197, C.7: a number, a table naming no program and a table whose
+        // entry is no string, in a kind's table and every other; a table
+        // of programs whose entries are strings is taken.
         for text in [
             "[kinds.fix.agents]\neffort = 3\n",
-            "[kinds.fix.agents]\neffort = { agent = \"high\" }\n",
+            "[kinds.fix.agents]\neffort = {}\n",
+            "[kinds.fix.agents]\neffort = { agent = 3 }\n",
         ] {
             let refused = HostConfig::parse(text).unwrap_err();
             assert!(
@@ -1985,6 +2065,15 @@ mod tests {
                 "{text}: {refused}"
             );
         }
+        let taken = HostConfig::parse("[kinds.fix.agents]\neffort = { agent = \"high\" }\n")
+            .expect("a table of programs taken");
+        assert_eq!(
+            taken.kinds["fix"].every_stage.effort,
+            Some(flume_seams::PerProgram::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "high".to_string()
+            )])))
+        );
         for (text, table) in [
             ("[agents]\neffort = 3\n", "[agents]"),
             (
@@ -2706,7 +2795,10 @@ label = "inception"
         assert_eq!(config.streams["work"].session.as_deref(), Some("office"));
         let fix = &config.kinds["fix"];
         assert_eq!(fix.every_stage.session, None);
-        assert_eq!(fix.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            fix.every_stage.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(fix.stages["code"], Settings::default());
         assert_eq!(config.repos["/r"]["fix"].every_stage, Settings::default());
         let refused = HostConfig::parse("[streams.work]\nsession = 3\n").unwrap_err();
@@ -3067,7 +3159,11 @@ label = "inception"
             }
         );
         assert_eq!(
-            config.repos["/r"]["fix"].every_stage.model.as_deref(),
+            config.repos["/r"]["fix"]
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("sonnet"),
             "a kind's table holds its stream beside its agents"
         );
@@ -3340,7 +3436,10 @@ label = "inception"
         )
         .unwrap();
         let change = &config.kinds["change"].every_stage;
-        assert_eq!(change.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            change.model.as_ref().and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(change.instructions.as_deref(), Some("be brief"));
         assert_eq!(
             value_at(&config, "kinds.change.agents.model"),
@@ -3362,8 +3461,22 @@ label = "inception"
             Some("[agents]\neffort = \"high\"\n"),
         )
         .unwrap();
-        assert_eq!(config.every_agent.effort.as_deref(), Some("high"));
-        assert_eq!(config.every_agent.model.as_deref(), Some("opus"));
+        assert_eq!(
+            config
+                .every_agent
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
+            Some("high")
+        );
+        assert_eq!(
+            config
+                .every_agent
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             value_at(&config, "agents.effort"),
             Some(("\"high\"".into(), ConfigLayer::Local))
@@ -3393,7 +3506,13 @@ label = "inception"
             )]))),
             "the managed table's other program goes with it"
         );
-        assert_eq!(fix.stages["code"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            fix.stages["code"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(
             fix.stages["code"].instructions.as_deref(),
             Some("test first")
@@ -4118,7 +4237,10 @@ label = "inception"
         );
         let config = HostConfig::read(&config).unwrap();
         let every = &config.every_agent;
-        assert_eq!(every.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            every.model.as_ref().and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(every.mode, Some(ModeSetting::Flume(Mode::Edits)));
         assert_eq!(every.instructions.as_deref(), Some("Be brief."));
         let agent = &every.programs["agent"];
@@ -4131,7 +4253,10 @@ label = "inception"
         assert_eq!(file.read, home(&written), "the home read for ~/");
         assert_eq!(file.keys["tui"], serde_json::json!("fullscreen"));
         let work = &config.streams_agents["work"];
-        assert_eq!(work.model.as_deref(), Some("opus"));
+        assert_eq!(
+            work.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             work.programs["agent"].settings["tui"],
             serde_json::json!("default")
@@ -4140,7 +4265,10 @@ label = "inception"
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let in_work = flume_seams::Host::settings(&host, &folder("/r"), "fix", "work");
         assert_eq!(in_work.every_agent, every);
-        assert_eq!(in_work.stream.model.as_deref(), Some("opus"));
+        assert_eq!(
+            in_work.stream.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(
             in_work.every_kind.instructions.as_deref(),
             Some("Mind the tagline.")
@@ -4148,7 +4276,14 @@ label = "inception"
         let in_default = flume_seams::Host::settings(&host, &folder("/s"), "fix", "default");
         assert_eq!(in_default.stream, Settings::default());
         assert_eq!(in_default.every_kind, Settings::default());
-        assert_eq!(in_default.every_agent.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            in_default
+                .every_agent
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
     }
 
     #[test]
@@ -4184,7 +4319,10 @@ label = "inception"
         }
         let config = HostConfig::parse("[agents.streams.default]\nmodel = \"opus\"\n").unwrap();
         assert_eq!(
-            config.streams_agents["default"].model.as_deref(),
+            config.streams_agents["default"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("opus"),
             "default always stands"
         );
@@ -4319,7 +4457,11 @@ label = "inception"
             serde_json::json!({ "commit": "", "pr": "", "sessionUrl": false })
         );
         assert_eq!(
-            config.repos[&fork]["fix"].every_stage.model.as_deref(),
+            config.repos[&fork]["fix"]
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("opus"),
             "beside its kinds' tables"
         );
@@ -4384,11 +4526,18 @@ label = "inception"
             serde_json::json!("plain")
         );
         assert_eq!(
-            config.streams_agents["work"].model.as_deref(),
+            config.streams_agents["work"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("haiku")
         );
         let r = &config.repos_agents["/r"];
-        assert_eq!(r.model.as_deref(), Some("opus"), "the managed key kept");
+        assert_eq!(
+            r.model.as_ref().and_then(|model| model.one()),
+            Some("opus"),
+            "the managed key kept"
+        );
         assert_eq!(
             r.programs["agent"].settings["attribution"],
             serde_json::json!({ "commit": "" })
@@ -4465,7 +4614,12 @@ label = "inception"
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
         let settings = flume_seams::Host::settings(&host, &acme, "fix", "default");
         assert_eq!(
-            settings.repository.every_stage.model.as_deref(),
+            settings
+                .repository
+                .every_stage
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
             Some("haiku")
         );
         assert_eq!(settings.every_kind.keep_open.as_deref(), Some("2h"));

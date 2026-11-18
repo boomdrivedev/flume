@@ -18,18 +18,25 @@
 //! `1h`, in the default layer (198). Its mode, where a layer gives one, is
 //! mapped by its agent profile to its program's setting, or the stage
 //! refused naming the mode, the program, the stage and the layer (162,
-//! 169); its effort, where a layer gives one, taken whole as the model
-//! is, is asked of its profile, or the stage refused naming the effort,
-//! the program, the stage and the layer, and nothing is asked where no
-//! layer gives one (197); and its own settings are taken by its profile,
-//! or the stage refused naming each key with its layer and its file (195,
-//! 196).
+//! 169); its model, where a layer gives one, its program's own name or a
+//! table of programs taken whole, the agent's entry its program's, is
+//! asked of its profile, or the stage refused naming the model as
+//! written, the program, the stage and the layer, a table naming no entry
+//! for its program refused so, and nothing is asked where no layer gives
+//! one (172); its effort, where a layer gives one, its program's own word
+//! or a table of programs taken whole as the model is, the agent's entry
+//! its program's, is asked of its profile, or the stage refused naming
+//! the effort as written, the program, the stage and the layer, a table
+//! naming no entry for its program refused so, and nothing is asked
+//! where no layer gives one (197); and its own settings are taken by its
+//! profile, or the stage refused naming each key with its layer and its
+//! file (195, 196).
 
 use crate::own::{fold, Table};
 use crate::{Engine, KEEP_OPEN};
 use flume_seams::{
     Account, Agent, Deliverable, Given, Kind, KindSettings, Layer, Mode, ModeEntry, OwnFile,
-    PlaceRecord, ProgramSettings, Settings, Stage,
+    PerProgram, PlaceRecord, ProgramSettings, Settings, Stage, Terminal,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -115,15 +122,31 @@ impl Resolved {
 }
 
 /// A stage's agent at its start: its settings as written with their
-/// layers, the agent profile that runs its program, and the value that
-/// profile passes for its mode, none where no layer gives one (162, 169).
+/// layers, the agent profile that runs its program, the value that
+/// profile passes for its mode, and its entries of its model and its
+/// effort, which that profile took, each none where no layer gives one
+/// (162, 169, 172, 197).
 pub(crate) struct Resolution {
     pub resolved: Resolved,
     pub agent: Arc<dyn Agent>,
     pub mode: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 impl Resolution {
+    /// The settings the agent's command is given: those resolved, with
+    /// the model and the effort each the agent's entry, given whole, so a
+    /// profile reads one name and one word and never a table (172, 197;
+    /// design 4).
+    pub(crate) fn command_settings(&self) -> Settings {
+        Settings {
+            model: self.model.clone().map(PerProgram::One),
+            effort: self.effort.clone().map(PerProgram::One),
+            ..self.resolved.settings.clone()
+        }
+    }
+
     /// The agent's program's own settings as the layers resolved them,
     /// which its profile takes; none where they give none (195, 196).
     pub(crate) fn own_keys(&self) -> BTreeMap<String, Value> {
@@ -234,20 +257,87 @@ fn mode_for(
     })
 }
 
-/// Whether `agent` takes `stage`'s effort as `resolved` gives it, asked
-/// only where a layer gives one; or why the stage cannot run at it,
-/// naming the effort as written, the program, the stage and the layer,
-/// with the profile's words (4, 32, 197).
-fn effort_taken(resolved: &Resolved, agent: &dyn Agent, stage: &str) -> Result<(), String> {
-    let Some(effort) = &resolved.settings.effort else {
-        return Ok(());
+/// The agent's entry of `stage`'s model as `resolved` gives it, which
+/// `agent` took, none where no layer gives one, so nothing is asked; or
+/// why the stage cannot run on it, naming the model as written, the
+/// program, the stage and the layer: a table of programs naming no entry
+/// for its program, which no later layer's model stands in for, or an
+/// entry its profile refuses, with the profile's words (4, 32, 172).
+fn model_taken(
+    resolved: &Resolved,
+    agent: &dyn Agent,
+    stage: &str,
+) -> Result<Option<String>, String> {
+    let Some(model) = &resolved.settings.model else {
+        return Ok(None);
     };
+    let written = model.written();
+    let layer = resolved.layer_of("model");
+    let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
+    let entry = model.entry(program).ok_or_else(|| {
+        format!(
+            "the stage `{stage}`'s model `{written}`, from the layer `{layer}`, names no entry for `{program}`"
+        )
+    })?;
+    agent.model(entry).map(|()| Some(entry.to_string())).map_err(|words| {
+        format!(
+            "the stage `{stage}`'s model `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
+        )
+    })
+}
+
+/// The agent's entry of `stage`'s effort as `resolved` gives it, which
+/// `agent` took, asked only where a layer gives one; or why the stage
+/// cannot run at it, naming the effort as written, the program, the
+/// stage and the layer: a table of programs naming no entry for its
+/// program, which no later layer's effort stands in for, or an entry its
+/// profile refuses, with the profile's words (4, 32, 197).
+fn effort_taken(
+    resolved: &Resolved,
+    agent: &dyn Agent,
+    stage: &str,
+) -> Result<Option<String>, String> {
+    let Some(effort) = &resolved.settings.effort else {
+        return Ok(None);
+    };
+    let written = effort.written();
     let layer = resolved.layer_of("effort");
     let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
-    agent.effort(effort).map_err(|words| {
+    let entry = effort.entry(program).ok_or_else(|| {
         format!(
-            "the stage `{stage}`'s effort `{effort}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
+            "the stage `{stage}`'s effort `{written}`, from the layer `{layer}`, names no entry for `{program}`"
         )
+    })?;
+    agent.effort(entry).map(|()| Some(entry.to_string())).map_err(|words| {
+        format!(
+            "the stage `{stage}`'s effort `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
+        )
+    })
+}
+
+/// Whether `terminal` starts the kind of `resolution`'s agent's program
+/// under the login environment with `env` over it, asked only where its
+/// profile names a kind; or why not, naming the stage and the program,
+/// with the terminal's words (4, 27, 32, C.5).
+pub(crate) fn kind_started(
+    terminal: &dyn Terminal,
+    resolution: &Resolution,
+    stage: &str,
+    env: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let Some(kind) = resolution.agent.kind() else {
+        return Ok(());
+    };
+    let program = program_name(
+        resolution
+            .resolved
+            .settings
+            .program
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    terminal.starts(kind, env).map_err(|words| {
+        format!("the stage `{stage}`'s program `{program}` cannot start in its terminal: {words}")
     })
 }
 
@@ -399,11 +489,11 @@ impl Engine {
                 .rev()
                 .fold(Settings::default(), |under, table| under.under(table));
             let whole = [
-                ("program", &given.program),
-                ("model", &given.model),
-                ("effort", &given.effort),
-                ("instructions", &given.instructions),
-                ("keep_open", &given.keep_open),
+                ("program", given.program.clone()),
+                ("model", given.model.as_ref().map(PerProgram::written)),
+                ("effort", given.effort.as_ref().map(PerProgram::written)),
+                ("instructions", given.instructions.clone()),
+                ("keep_open", given.keep_open.clone()),
             ];
             for (key, value) in whole {
                 if let Some(value) = value {
@@ -411,7 +501,7 @@ impl Engine {
                         key.into(),
                         Given {
                             layer,
-                            value: value.clone(),
+                            value,
                             file: None,
                         },
                     );
@@ -501,8 +591,9 @@ impl Engine {
     ) -> Result<Resolution, String> {
         let resolved = self.resolve(place, stage)?;
         let agent = self.agent_for(&resolved, &stage.name)?;
+        let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
-        effort_taken(&resolved, agent.as_ref(), &stage.name)?;
+        let effort = effort_taken(&resolved, agent.as_ref(), &stage.name)?;
         if let Some(own) = &resolved.own {
             let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
             if let Some(refused) = own_refused(agent.as_ref(), &stage.name, program, own) {
@@ -513,6 +604,8 @@ impl Engine {
             resolved,
             agent,
             mode,
+            model,
+            effort,
         })
     }
 }

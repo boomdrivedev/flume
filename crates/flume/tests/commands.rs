@@ -72,7 +72,8 @@ const UNSTARTED: &str = "stand-in-unstarted";
 /// its session ended once the test writes the mark
 /// `stand-in/<stage>-<start>` in the place's folder. It maps each mode to
 /// its own word and reads none back, takes its program's own settings,
-/// passing them nowhere (195), and takes every effort, passing it as
+/// passing them nowhere (195), takes every model, passing it as
+/// `--model <name>` (172), and takes every effort, passing it as
 /// `--effort <word>` (197).
 struct StandInAgent {
     says_started: bool,
@@ -99,11 +100,11 @@ impl Agent for StandInAgent {
         prompt: &str,
     ) -> AgentCommand {
         let mut args = vec![];
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(|model| model.one()) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(effort) = &settings.effort {
-            args.extend(["--effort".to_string(), effort.clone()]);
+        if let Some(effort) = settings.effort.as_ref().and_then(|effort| effort.one()) {
+            args.extend(["--effort".to_string(), effort.to_string()]);
         }
         if let Some(instructions) = &settings.instructions {
             args.extend(["--instructions".to_string(), instructions.clone()]);
@@ -160,6 +161,9 @@ impl Agent for StandInAgent {
         Ok(())
     }
     /// Every word, passed as written.
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn effort(&self, _word: &str) -> Result<(), String> {
         Ok(())
     }
@@ -905,6 +909,98 @@ fn a_refusal() {
     assert!(person.text.starts_with("refused: "), "{}", person.text);
 }
 
+/// `flume launch --kind fix --name one` with `agents` over a scratch
+/// repository under the printed command, flume's own binary and its
+/// profiles built in, the fix landing nowhere: the host, the repository
+/// and what the launch answered.
+fn launched_with(label: &str, agents: &[&str]) -> (Host, Repository, Ran) {
+    let host = Host::new(label);
+    let repository = repository(label, None);
+    let kinds = kinds_file(&host, false);
+    let mut words = vec![
+        "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds,
+    ];
+    for agent in agents {
+        words.extend(["--agent", agent]);
+    }
+    words.push("--json");
+    let ran = host.flume(&repository.dir, &words, &[]);
+    (host, repository, ran)
+}
+
+/// Nothing made for a refused launch on `host`: no place stands, listed
+/// or on disk (4, 8; core.8).
+fn nothing_made(host: &Host, repository: &Repository) {
+    let place = host.place_of(repository, "fix--one");
+    assert!(!Path::new(&place).exists(), "{place} was made");
+    let listed = host.flume(&repository.dir, &["list", "--all", "--json"], &[]);
+    let Answer::List { places, .. } = listed.answer() else {
+        panic!("the list's answer: {}", listed.text);
+    };
+    assert!(places.is_empty(), "a place stands: {}", listed.text);
+}
+
+#[test]
+fn amp_launched_with_nothing_is_taken() {
+    // The agent-programs spec's "A program the common profile binds,
+    // given nothing" (170, S73): the launch is taken, the place stands
+    // and its stage's program is amp from the launch.
+    let (host, repository, ran) = launched_with("amp-taken", &["program=amp"]);
+    assert_eq!(ran.code, 0, "{}", ran.text);
+    let place = host.place_of(&repository, "fix--one");
+    assert!(Path::new(&place).exists(), "{place} does not stand");
+    let launched = ran.json();
+    let agent = &launched["launched"]["place"]["agent"];
+    assert_eq!(agent["program"], "amp", "{launched}");
+    assert_eq!(
+        agent["settings"]["from"]["program"],
+        json!({"layer": "launch", "value": "amp"}),
+        "{launched}"
+    );
+}
+
+#[test]
+fn amp_launched_with_a_model_is_refused() {
+    // The agent-programs spec's "The same program given a model" (4, 172,
+    // S73): refused naming amp, the stage, the launch and that its entry
+    // names no way to give a model, and nothing is made.
+    let (host, repository, ran) = launched_with("amp-model", &["program=amp", "model=opus"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in [
+        "`amp`",
+        "`code`",
+        "`launch`",
+        "`opus`",
+        "names no way to give it a model",
+    ] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
+#[test]
+fn a_program_launched_with_no_entry_is_refused() {
+    // The agent-programs spec's "A program with no entry" (4, 170): the
+    // launch is refused naming nonesuch, the stage and the launch, and
+    // nothing is made.
+    let (host, repository, ran) = launched_with("no-entry", &["program=nonesuch"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in ["nonesuch", "code", "launch"] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
 #[test]
 fn a_watch_over_a_scratch_repository() {
     // The command-line spec's "A watch over a scratch repository": a
@@ -1421,8 +1517,20 @@ fn an_effort_for_every_stage_and_for_one_at_the_launch() {
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "change--one");
     let held = held_of(&host, &place).state.place;
-    assert_eq!(held.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(held.settings["verify"].effort.as_deref(), Some("max"));
+    assert_eq!(
+        held.every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        held.settings["verify"]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("max")
+    );
     for (stage, effort) in [("construct", "high"), ("code", "high"), ("verify", "max")] {
         let agent = current_agent(&host, &repository.dir, &place);
         assert_eq!(agent["stage"], stage, "{agent}");

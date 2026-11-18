@@ -958,7 +958,7 @@ fn the_agents_efforts_are_scripted() {
         agent.command(
             "/state/fix--one",
             &Settings {
-                effort: effort.map(str::to_string),
+                effort: effort.map(Into::into),
                 ..Settings::default()
             },
             None,
@@ -3161,6 +3161,37 @@ fn shows_clues_in_the_log() {
     assert_eq!(
         terminal.shown(),
         vec![("/r/places/fix--one".to_string(), clues)]
+    );
+}
+
+/// The seam-fakes spec's scenario "A kind refused, then started" (C.5).
+#[test]
+fn the_fake_terminal_scripts_a_kind_it_cannot_start() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let env = BTreeMap::from([("AGENT_HOME".to_string(), "/scratch/work-2".to_string())]);
+    let words = "install the agent's integration first";
+    terminal.refuse_kind("agent", words);
+    assert_eq!(terminal.starts("agent", &env), Err(words.to_string()));
+    assert_eq!(terminal.starts("other", &BTreeMap::new()), Ok(()));
+    terminal.start_kind("agent");
+    assert_eq!(terminal.starts("agent", &env), Ok(()));
+    assert_eq!(
+        terminal.log.of("starts"),
+        vec![
+            "starts agent AGENT_HOME",
+            "starts other",
+            "starts agent AGENT_HOME"
+        ]
+    );
+    assert!(
+        terminal
+            .log
+            .calls()
+            .iter()
+            .all(|line| !line.contains("/scratch")),
+        "a value logged: {:?}",
+        terminal.log.calls()
     );
 }
 

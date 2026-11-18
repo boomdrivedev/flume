@@ -33,7 +33,7 @@ pub mod wrapper;
 
 use flume_seams::{
     Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Part, Parts,
-    PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
+    PerProgram, PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
 };
 use record::Record;
 use sha2::{Digest, Sha256};
@@ -324,11 +324,11 @@ impl Agent for Claude {
         if let Some(session) = resume {
             args.extend([carry::FLAG.to_string(), session.to_string()]);
         }
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(PerProgram::one) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(word) = &settings.effort {
-            args.extend([effort::FLAG.to_string(), word.clone()]);
+        if let Some(word) = settings.effort.as_ref().and_then(PerProgram::one) {
+            args.extend([effort::FLAG.to_string(), word.to_string()]);
         }
         if let Some(mode) = mode {
             args.extend([mode::FLAG.to_string(), mode.to_string()]);
@@ -372,7 +372,7 @@ impl Agent for Claude {
                 next: TRUST_NEXT.into(),
                 confirm: TRUST_CONFIRM.into(),
             }),
-            kind: Some(KIND.into()),
+            kind: self.kind().map(str::to_string),
             files,
         }
     }
@@ -614,6 +614,12 @@ impl Agent for Claude {
         mode::map(entry).map(str::to_string)
     }
 
+    /// Every name, since the release's model names are open, passed by
+    /// `--model` as written (172, C.4).
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Each of 2.1.296's five `--effort` words, and any other refused
     /// naming it, `claude` and the five ([`effort`]; 197, C.4).
     fn effort(&self, word: &str) -> Result<(), String> {
@@ -624,6 +630,11 @@ impl Agent for Claude {
     /// ([`effort::VARIABLE`]; 197, C.4).
     fn effort_variable(&self) -> Option<&'static str> {
         Some(effort::VARIABLE)
+    }
+
+    /// [`KIND`], herdr's kind for Claude Code (170, C.4).
+    fn kind(&self) -> Option<&str> {
+        Some(KIND)
     }
 
     /// 2.1.296's keys that another of flume's settings, the account or a

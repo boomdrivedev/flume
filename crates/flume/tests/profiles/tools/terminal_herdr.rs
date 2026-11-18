@@ -883,6 +883,54 @@ impl Harness {
     }
 }
 
+/// The terminal-profiles spec's scenario "omp's integration not
+/// installed, then installed" (4, S75): under a scratch home, given over
+/// a login environment whose home is another, the pinned herdr reports
+/// omp's integration not installed and the profile refuses omp naming the
+/// install; once `herdr integration install omp` runs there, with the
+/// home's `.omp/agent/extensions` made, it starts omp.
+#[test]
+fn omp_starts_once_its_integration_is_installed() {
+    let scratch = Scratch::new("herdr-integration");
+    let home = scratch.path("home");
+    let other = scratch.path("other");
+    for dir in [&home, &other] {
+        fs::create_dir_all(dir).expect("a scratch home");
+    }
+    let herdr = herdr_program();
+    let profile = Herdr::new(
+        Server::Socket(scratch.path("h.sock")),
+        scratch.path("records"),
+    )
+    .with_program(&herdr)
+    .with_login(&[("HOME".into(), other.display().to_string())]);
+    let env = BTreeMap::from([("HOME".to_string(), home.display().to_string())]);
+    let refused = profile
+        .starts("omp", &env)
+        .expect_err("omp started with its integration not installed");
+    assert!(
+        refused.contains("herdr integration install omp"),
+        "{refused}"
+    );
+    fs::create_dir_all(home.join(".omp/agent/extensions")).expect("omp's extensions folder");
+    let installed = Command::new(&herdr)
+        .args(["integration", "install", "omp"])
+        .env_clear()
+        .env("HOME", &home)
+        .output()
+        .expect("herdr integration install runs");
+    assert!(
+        installed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&installed.stderr)
+    );
+    assert_eq!(profile.starts("omp", &env), Ok(()));
+    assert!(
+        profile.starts("omp", &BTreeMap::new()).is_err(),
+        "the login environment's home holds no integration"
+    );
+}
+
 #[test]
 fn the_herdr_profile_passes_the_terminal_scenarios() {
     pass_all("terminal", &terminal::scenarios(), Harness::new);

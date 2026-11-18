@@ -1110,6 +1110,86 @@ fn a_held_state_with_an_effort() {
     );
 }
 
+/// The seam-contracts spec's scenarios "A held state with a model's
+/// table and an effort's" and "A table that names no program" (32, 172,
+/// 197).
+#[test]
+fn a_model_and_an_effort_for_each_program() {
+    let table = |entries: &[(&str, &str)]| {
+        PerProgram::from_programs(
+            entries
+                .iter()
+                .map(|(program, value)| (program.to_string(), value.to_string()))
+                .collect(),
+        )
+        .expect("a table naming a program")
+    };
+    let model = table(&[("agent", "large"), ("other", "small")]);
+    let mut state = held();
+    state.place.every_stage.model = Some(model.clone());
+    state.place.every_stage.effort = Some(table(&[("agent", "high")]));
+    state.place.kind.agents.every_stage.model = Some("medium".into());
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    assert_eq!(
+        json["place"]["every_stage"]["model"],
+        serde_json::json!({"agent": "large", "other": "small"})
+    );
+    assert_eq!(
+        json["place"]["every_stage"]["effort"],
+        serde_json::json!({"agent": "high"})
+    );
+    assert_eq!(
+        json["place"]["kind"]["agents"]["every_stage"]["model"],
+        "medium"
+    );
+    let read: HeldState = serde_json::from_value(json).expect("read back");
+    assert_eq!(read, state);
+    assert_eq!(model.entry("agent"), Some("large"));
+    assert_eq!(model.entry("nonesuch"), None, "no entry for the program");
+    assert_eq!(
+        model.written(),
+        r#"{ agent = "large", other = "small" }"#,
+        "each program in order"
+    );
+    assert_eq!(model.one(), None, "a table is no value given whole");
+    assert!(model.is_table());
+
+    // A state written with one model reads it as one value, every
+    // program's, and writes it back as it was.
+    let medium: PerProgram = serde_json::from_str(r#""medium""#).expect("one value");
+    assert_eq!(medium, PerProgram::One("medium".into()));
+    assert_eq!(medium.entry("agent"), Some("medium"));
+    assert_eq!(medium.entry("nonesuch"), Some("medium"));
+    assert_eq!(medium.written(), "medium");
+    assert_eq!(medium.one(), Some("medium"));
+    assert_eq!(PerProgram::from(String::from("medium")), medium);
+    assert_eq!(serde_json::to_value(&medium).unwrap(), "medium");
+    let settings: Settings = serde_json::from_str(
+        r#"{"program":null,"model":"medium","instructions":null,"beside":null}"#,
+    )
+    .expect("settings written before");
+    assert_eq!(settings.model, Some("medium".into()));
+    assert_eq!(settings.effort, None);
+
+    // A table that names no program is refused where it is read.
+    let refused = serde_json::from_str::<PerProgram>("{}").expect_err("an empty table");
+    assert!(
+        refused
+            .to_string()
+            .contains("the table of programs names no program"),
+        "{refused}"
+    );
+    assert!(
+        serde_json::from_str::<Settings>(r#"{"model":{}}"#).is_err(),
+        "settings with a model's table naming no program"
+    );
+    assert_eq!(
+        PerProgram::from_programs(BTreeMap::new()),
+        Err("the table of programs names no program".to_string())
+    );
+}
+
 #[test]
 fn a_bare_word_of_a_programs_own() {
     // A program's own value goes under its program's name, never bare,
@@ -2140,6 +2220,26 @@ fn a_profile_that_maps_no_mode() {
         .expect_err("a profile that maps no mode mapped an own value");
     assert!(words.contains("`careful`"), "{words}");
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+}
+
+/// The seam-contracts spec's scenario "A profile that keeps the seam's
+/// defaults" (170, 172).
+#[test]
+fn a_profile_that_keeps_the_seams_defaults_refuses_a_model() {
+    let words = Bare
+        .model("large")
+        .expect_err("a profile that names no way to give a model took large");
+    assert!(words.contains("`large`"), "{words}");
+    assert_eq!(words, no_model("large"));
+    assert_eq!(
+        words,
+        "its agent profile names no way to give a model, `large` among them"
+    );
+    assert_eq!(
+        Bare.kind(),
+        None,
+        "a profile that keeps the defaults names no kind"
+    );
 }
 
 #[test]

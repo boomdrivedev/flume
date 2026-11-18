@@ -154,7 +154,33 @@ fn the_resolver_names_the_profiles_built_in() {
     assert!(resolver.merge_queue("sluice").is_some());
     assert!(resolver.merge_queue("other").is_none());
     assert!(resolver.agent(DEFAULT_PROGRAM).is_some());
-    assert!(resolver.agent("other").is_none());
+    assert!(resolver.agent("nonesuch").is_none());
+}
+
+/// The agent-programs spec's scenario "Every entry bound" (105, 170).
+#[test]
+fn every_entry_is_bound() {
+    let scratch = Scratch::new("entries");
+    let resolver = built_in(&scratch);
+    for entry in flume::profiles::agent::programs::PROGRAMS {
+        let agent = resolver
+            .agent(entry.name)
+            .unwrap_or_else(|| panic!("no profile binds {}", entry.name));
+        assert_eq!(agent.kind(), Some(entry.kind), "{}", entry.name);
+        // Claude Code's own profile takes every model name; the common
+        // profile names no way to give one (170, 172).
+        assert_eq!(
+            agent.model("opus").is_ok(),
+            entry.name == DEFAULT_PROGRAM,
+            "{}",
+            entry.name
+        );
+    }
+    let amp = resolver.agent("/opt/amp/bin/amp").expect("amp by its path");
+    assert_eq!(amp.kind(), Some("amp"));
+    assert!(amp
+        .model("opus")
+        .is_err_and(|words| words.contains("`amp`")));
 }
 
 #[test]

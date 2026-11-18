@@ -266,10 +266,10 @@ and a package's SHALL not be read for the table (4, 32, C.2).
 The kinds profile SHALL read `effort` from every agents table a
 declaration holds, a kind's, a stage's, the repository's for a kind it
 does not declare and the repository's `[agents]` for every kind, from
-the table weir's crate returns as written: a
-string, kept as written; any other, a table of programs among it until
-the model's is built with it, SHALL fail the declaration naming the
-field (23, 158, 172, 197, C.2; core.4).
+the table weir's crate returns as written: a string, or a table of
+programs whose entries are strings, each kept as written; any other, a
+table that names no program among it, SHALL fail the declaration
+naming the field (23, 158, 172, 197, C.2; core.4).
 
 #### Scenario: An effort for every stage and one for a stage
 
@@ -278,12 +278,12 @@ field (23, 158, 172, 197, C.2; core.4).
 
 #### Scenario: An effort for every kind of a repository
 
-- **WHEN** a scratch repository's `.config/flume.toml` gives `[agents] effort = "medium"` beside a `[kinds.fix.agents]` table giving `effort = "high"`
-- **THEN** the kinds read give the repository's settings for every kind with `medium`, and its settings for fix with `high` (32, 197, C.2)
+- **WHEN** a scratch repository's `.config/flume.toml` gives `[agents] effort = "medium"` beside a `[kinds.fix.agents]` table giving `effort = { claude = "high" }`
+- **THEN** the kinds read give the repository's settings for every kind with `medium`, and its settings for fix with the table (32, 197, C.2)
 
 #### Scenario: An effort that is no word
 
-- **WHEN** a declaration's agents table gives `effort = 3` or `effort = { claude = "high" }`
+- **WHEN** a declaration's agents table gives `effort = 3`, `effort = {}` or `effort = { claude = 3 }`
 - **THEN** the declaration cannot be read, naming the table's `effort` (4, 197, C.2)
 
 ### Requirement: A declaration gives no keep_open
@@ -532,3 +532,23 @@ having found work (22, 131, C.2, C.3).
 
 - **WHEN** change@5's verify prompt is rendered for a place
 - **THEN** it asks that where the whole checks fail, the work falls short or the archive refuses, nothing be archived and the agent stop short having found work, naming what fails (131)
+
+### Requirement: A declaration's agents tables give a model
+
+The kinds profile SHALL read `model` from every agents table a
+declaration holds, a kind's, a stage's, the repository's for a kind it
+does not declare and the repository's `[agents]` for every kind, from
+the table weir's crate returns as written: a string, or a table of
+programs whose entries are strings, each kept as written; any other, a
+table that names no program among it, SHALL fail the declaration
+naming the field (23, 158, 172, C.2; core.4).
+
+#### Scenario: A model for every stage and a table for one
+
+- **WHEN** a scratch repository's `.config/flume.toml` gives `[kinds.bump.agents] model = "sonnet"` and a stage's `agents = [{ model = { claude = "opus", codex = "gpt-5.5" } }]`
+- **THEN** the kind's settings read `sonnet` for every stage and the table for that stage (23, 172, C.2)
+
+#### Scenario: A model that is neither
+
+- **WHEN** a declaration's agents table gives `model = 3`, `model = {}` or `model = { claude = 3 }`
+- **THEN** the declaration cannot be read, naming the table's `model` (4, 172, C.2)

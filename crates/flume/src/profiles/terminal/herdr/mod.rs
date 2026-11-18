@@ -121,6 +121,17 @@
 //! nothing in herdr, and no words of its repeat what was typed (107, 221,
 //! 222, C.5's relay row).
 //!
+//! starts starts every kind herdr 0.9.5 reads on its own with no call to
+//! herdr; for a kind of [`INTEGRATED`], whose state herdr reads only
+//! through its integration, it runs `herdr integration status` within
+//! the profile's bound under the host user's login environment with the
+//! given one over it, so herdr reads the home the pane will hold, and
+//! reads the kind's line, `<kind>: <state> (<path>)`: `not installed`
+//! refused naming `herdr integration install <kind>`, a status that does
+//! not answer within the bound or names no line for the kind refused
+//! naming what herdr gave, and any other state started (4, C.5;
+//! core.29).
+//!
 //! Every herdr call runs under a bound, ten seconds where the call states
 //! none, and one that does not answer within it is unknown or a refusal
 //! naming the bound; each runs with the caller's `HERDR_*` stripped and
@@ -241,6 +252,39 @@ pub const KINDS: [&str; 24] = [
     "maki",
     "muse",
 ];
+
+/// The kinds whose state herdr 0.9.5 reads only through its integration,
+/// which a pane of theirs needs installed under the home it runs in (C.5;
+/// core.39's details).
+pub const INTEGRATED: [&str; 2] = ["omp", "mastracode"];
+
+/// What `herdr integration status` gives a kind whose integration is not
+/// installed.
+const NOT_INSTALLED: &str = "not installed";
+
+/// Whether `herdr integration status`'s answer `status` starts `kind`:
+/// refused naming the install where its line reads `not installed`, and
+/// naming what herdr gave where it holds no line for the kind; started in
+/// any other state (C.5).
+pub fn integration_read(status: &str, kind: &str) -> Result<(), String> {
+    let prefix = format!("{kind}:");
+    let Some(line) = status
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(&prefix))
+    else {
+        return Err(format!(
+            "herdr integration status names no integration for `{kind}`: {}",
+            status.trim()
+        ));
+    };
+    if line[prefix.len()..].trim_start().starts_with(NOT_INSTALLED) {
+        return Err(format!(
+            "herdr reports the integration for `{kind}` not installed, which it reads `{kind}` through: run `herdr integration install {kind}`"
+        ));
+    }
+    Ok(())
+}
 
 /// The herdr session flume opens its places' panes in, where the settings
 /// name no pane and the core names no session of its own.
@@ -552,12 +596,29 @@ impl Herdr {
         args: &[&str],
         bound: Duration,
     ) -> Result<(bool, String, String), String> {
+        self.run_in(None, socket, args, bound)
+    }
+
+    /// As [`Herdr::run`], under exactly `env` where one is given, every
+    /// `HERDR_*` of it stripped, and otherwise under the caller's.
+    fn run_in(
+        &self,
+        env: Option<&BTreeMap<String, String>>,
+        socket: Option<&Path>,
+        args: &[&str],
+        bound: Duration,
+    ) -> Result<(bool, String, String), String> {
         let mut command = Command::new(&self.program);
         command
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(env) = env {
+            command
+                .env_clear()
+                .envs(env.iter().filter(|(name, _)| !name.starts_with("HERDR_")));
+        }
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().starts_with("HERDR_") {
                 command.env_remove(name);
@@ -2544,6 +2605,28 @@ impl Terminal for Herdr {
         }
     }
 
+    /// Every kind herdr reads on its own, with no call; a kind of
+    /// [`INTEGRATED`] only while `herdr integration status`, run within the
+    /// profile's bound under the login environment with `env` over it,
+    /// reports its integration in a state other than not installed (4,
+    /// C.5; core.29).
+    fn starts(&self, kind: &str, env: &BTreeMap<String, String>) -> Result<(), String> {
+        if !INTEGRATED.contains(&kind) {
+            return Ok(());
+        }
+        let mut under = self.login().clone();
+        under.extend(env.clone());
+        let (success, stdout, stderr) =
+            self.run_in(Some(&under), None, &["integration", "status"], self.bound)?;
+        if !success {
+            return Err(format!(
+                "herdr integration status failed: {}",
+                stderr.trim()
+            ));
+        }
+        integration_read(&stdout, kind)
+    }
+
     /// A relay of the agent's pane, found as every operation finds it,
     /// refused where herdr holds none of the agent or answers unknown, in
     /// herdr's words; its handle's calls bounded at one second (221, 222,
@@ -2625,6 +2708,46 @@ impl Herdr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The terminal-profiles spec's scenario "herdr's status lines read"
+    /// (C.5).
+    #[test]
+    fn integration_status_lines_read() {
+        let path = "/home/u/.omp/agent/extensions/herdr-omp-agent-state.ts";
+        let refused = integration_read(&format!("omp: not installed ({path})\n"), "omp")
+            .expect_err("not installed");
+        assert!(
+            refused.contains("herdr integration install omp"),
+            "{refused}"
+        );
+        for state in ["current (v10)", "outdated (v8 < v10)"] {
+            let status = format!("pi: current (v3) (/p)\nomp: {state} ({path})\n");
+            assert_eq!(integration_read(&status, "omp"), Ok(()), "{state}");
+        }
+        let only = "mastracode: not installed (/home/u/.mastracode/x.ts)\n";
+        let refused = integration_read(only, "omp").expect_err("no line for omp");
+        assert!(
+            refused.contains("`omp`") && refused.contains(only.trim()),
+            "{refused}"
+        );
+    }
+
+    /// The terminal-profiles spec's scenario "A kind herdr reads on its
+    /// own" (C.5): no herdr is asked, so none need run.
+    #[test]
+    fn integration_not_asked_of_a_kind_herdr_reads_on_its_own() {
+        let (herdr, _) = over_records("integration-own");
+        let herdr = herdr
+            .with_program("/nonexistent/no-herdr-here")
+            .with_login(&[("PATH".into(), "/nonexistent".into())]);
+        for kind in ["amp", "claude"] {
+            assert_eq!(herdr.starts(kind, &BTreeMap::new()), Ok(()), "{kind}");
+        }
+        let refused = herdr
+            .starts("omp", &BTreeMap::new())
+            .expect_err("omp asked of a herdr that cannot run");
+        assert!(refused.contains("herdr"), "{refused}");
+    }
 
     /// The profile over records in a scratch directory of its own.
     fn over_records(name: &str) -> (Herdr, PathBuf) {

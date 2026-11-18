@@ -1,20 +1,23 @@
 //! What a launch's words give the core (2 to 8, 32, 70, 107, 130, 162,
-//! 195, 197, 198; design 5a, 16a): each `--agent [<stage>.]<field>=<value>` one
-//! setting of every stage's agent or one stage's,
-//! `[<stage>.]mode.<program>=<value>` one entry of its mode's table of
-//! programs, `[<stage>.]keep_open=<time>` how long the agent is kept open
-//! for an answer, one time for every program, `[<stage>.]programs.<program>.settings.<key>=<value>` one of a
+//! 172, 195, 197, 198; design 3, 5a, 16a): each `--agent
+//! [<stage>.]<field>=<value>` one setting of every stage's agent or one
+//! stage's, `[<stage>.]mode.<program>=<value>` one entry of its mode's
+//! table of programs, `[<stage>.]model.<program>=<name>` one entry of its
+//! model's and `[<stage>.]effort.<program>=<word>` one entry of its
+//! effort's, `[<stage>.]keep_open=<time>` how long the agent is kept open
+//! for an answer, one time for every program,
+//! `[<stage>.]programs.<program>.settings.<key>=<value>` one of a
 //! program's own settings and `[<stage>.]programs.<program>.file=<path>`
 //! its settings file, read now, and each `--hold <stage>=<words>` a stage
 //! on hold with its words. Nothing is resolved or refused here but words
-//! that name no setting, a mode none of flume's four, a mode given both
-//! as a word and as a table, a `keep_open` that is no time or is given
-//! for a program, one of a program's own settings or its file given twice
-//! for one stage, and a file flume cannot read: the core
-//! refuses the rest, a value shaped as a credential among it (4, 169,
-//! 195).
+//! that name no setting, an entry that names no program, a mode none of
+//! flume's four, a mode, a model or an effort given both as one value and
+//! as a table, a `keep_open` that is no time or is given for a program,
+//! one of a program's own settings or its file given twice for one stage,
+//! and a file flume cannot read: the core refuses the rest, a value shaped
+//! as a credential among it (4, 169, 172, 195, 197).
 
-use flume_seams::{read_span, ModeSetting, Settings};
+use flume_seams::{read_span, ModeSetting, PerProgram, Settings};
 use serde_json::Value as Json;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -34,12 +37,14 @@ const FIELDS: [&str; 9] = [
 
 /// The settings `--agent` gives, as its refusals name them.
 const SETTINGS: &str =
-    "the settings are program, model, effort, instructions, beside, session and mode, or mode.<program> for one program's entry of a mode, keep_open, how long an agent is kept open for an answer as <n>, <n>s, <n>m or <n>h, and programs, programs.<program>.settings.<key> for one of a program's own settings and programs.<program>.file for its settings file";
+    "the settings are program, model, effort, instructions, beside, session and mode, or model.<program>, effort.<program> and mode.<program> for one program's entry of a model, an effort and a mode, keep_open, how long an agent is kept open for an answer as <n>, <n>s, <n>m or <n>h, and programs, programs.<program>.settings.<key> for one of a program's own settings and programs.<program>.file for its settings file";
 
 /// Sets the one setting `given` names, `[<stage>.]<field>=<value>`, in
 /// `every_stage` or in its stage's entry of `stages` (7, 32); a mode's
 /// entries for programs build one table, which a mode given as a word
-/// refuses, and the word it (169); `keep_open` is a time [`read_span`]
+/// refuses, and the word it (169); a model's and an effort's entries for
+/// programs build one table each, which one name or word for the same
+/// stage refuses, and it them (172, 197); `keep_open` is a time [`read_span`]
 /// takes, kept as written, and one time for every program, so a
 /// `keep_open.<program>` is refused (198); a program's own settings build one
 /// entry, its file read now, relative to `directory`, the command's
@@ -68,8 +73,13 @@ pub fn agent(
     let text = Some(value.to_string());
     match field {
         "program" => settings.program = text,
-        "model" => settings.model = text,
-        "effort" => settings.effort = text,
+        "model" | "effort" => {
+            let setting = per_program(settings, field);
+            if matches!(setting, Some(PerProgram::Programs(_))) {
+                return Err(both_per_program(given, &prefix, stage, field, setting));
+            }
+            *setting = Some(PerProgram::One(value.to_string()));
+        }
         "instructions" => settings.instructions = text,
         "beside" => settings.beside = text,
         "session" => settings.session = text,
@@ -103,6 +113,25 @@ pub fn agent(
                 None => "every stage".to_string(),
             };
             own(given, field, value, directory, &prefix, &whose, settings)?;
+        }
+        _ if field.starts_with("model.") || field.starts_with("effort.") => {
+            let (name, program) = field.split_once('.').unwrap_or((field, ""));
+            let value_named = if name == "model" { "name" } else { "word" };
+            if program.is_empty() {
+                return Err(format!(
+                    "--agent {given} names no program: it is [<stage>.]{name}.<program>=<{value_named}>"
+                ));
+            }
+            let setting = per_program(settings, name);
+            let mut programs = match setting {
+                None => BTreeMap::new(),
+                Some(PerProgram::Programs(programs)) => programs.clone(),
+                Some(PerProgram::One(_)) => {
+                    return Err(both_per_program(given, &prefix, stage, name, setting))
+                }
+            };
+            programs.insert(program.to_string(), value.to_string());
+            *setting = Some(PerProgram::from_programs(programs)?);
         }
         _ => match field.strip_prefix("mode.") {
             Some("") => {
@@ -216,6 +245,47 @@ fn both(given: &str, prefix: &str, stage: Option<&str>, settings: &Settings) -> 
     )
 }
 
+/// The model or the effort of `settings`, as `name` names it.
+fn per_program<'a>(settings: &'a mut Settings, name: &str) -> &'a mut Option<PerProgram> {
+    if name == "model" {
+        &mut settings.model
+    } else {
+        &mut settings.effort
+    }
+}
+
+/// Words refusing `given`, which gives `whose` `name`, a model or an
+/// effort, as one value where `setting` holds a table of programs, or an
+/// entry of a table where it holds one value, naming each `--agent` that
+/// gave it (172, 197).
+fn both_per_program(
+    given: &str,
+    prefix: &str,
+    stage: Option<&str>,
+    name: &str,
+    setting: &Option<PerProgram>,
+) -> String {
+    let mut words: Vec<String> = match setting {
+        Some(PerProgram::One(value)) => vec![format!("--agent {prefix}{name}={value}")],
+        Some(PerProgram::Programs(programs)) => programs
+            .iter()
+            .map(|(program, value)| format!("--agent {prefix}{name}.{program}={value}"))
+            .collect(),
+        None => vec![],
+    };
+    words.push(format!("--agent {given}"));
+    let last = words.pop().unwrap_or_default();
+    let whose = match stage {
+        Some(stage) => format!("the stage {stage}'s"),
+        None => "every stage's".to_string(),
+    };
+    let one = if name == "model" { "name" } else { "word" };
+    format!(
+        "{} and {last} give {whose} {name} both as one {one} and as a table of programs: a {name} is one {one} for every program or one table of programs, never both",
+        words.join(", ")
+    )
+}
+
 /// A stage on hold, `<stage>=<words>` or `<stage>` alone, with its words
 /// where it gives some (7, 130).
 pub fn hold(given: &str) -> Result<(String, Option<String>), String> {
@@ -261,9 +331,18 @@ mod tests {
             "instructions=be brief",
         ])
         .unwrap();
-        assert_eq!(every.model.as_deref(), Some("opus"));
+        assert_eq!(
+            every.model.as_ref().and_then(|model| model.one()),
+            Some("opus")
+        );
         assert_eq!(every.instructions.as_deref(), Some("be brief"));
-        assert_eq!(stages["verify"].model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            stages["verify"]
+                .model
+                .as_ref()
+                .and_then(|model| model.one()),
+            Some("sonnet")
+        );
         assert_eq!(stages["code"].instructions.as_deref(), Some("a=b"));
     }
 
@@ -272,8 +351,17 @@ mod tests {
         // 7, 32, 197: `effort=high` for every stage and `verify.effort=max`
         // for one, each its program's own word kept as written.
         let (every, stages) = given(&["effort=high", "verify.effort=max"]).unwrap();
-        assert_eq!(every.effort.as_deref(), Some("high"));
-        assert_eq!(stages["verify"].effort.as_deref(), Some("max"));
+        assert_eq!(
+            every.effort.as_ref().and_then(|effort| effort.one()),
+            Some("high")
+        );
+        assert_eq!(
+            stages["verify"]
+                .effort
+                .as_ref()
+                .and_then(|effort| effort.one()),
+            Some("max")
+        );
         assert_eq!(stages["verify"].model, None);
     }
 
@@ -405,6 +493,67 @@ mod tests {
             stages["code"].mode.as_ref().unwrap().written(),
             "{ agent = \"careful\", other = \"ask\" }"
         );
+    }
+
+    /// The command-line spec's "A model's table and an effort's at the
+    /// launch" (7, 32, 172, 197).
+    #[test]
+    fn a_model_and_an_effort_per_program() {
+        let (every, stages) = given(&[
+            "model.agent=opus",
+            "model.other=gpt-5.5",
+            "code.effort.agent=xhigh",
+        ])
+        .unwrap();
+        assert_eq!(
+            every.model,
+            Some(PerProgram::Programs(BTreeMap::from([
+                ("agent".to_string(), "opus".to_string()),
+                ("other".to_string(), "gpt-5.5".to_string()),
+            ])))
+        );
+        assert_eq!(
+            stages["code"].effort,
+            Some(PerProgram::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "xhigh".to_string()
+            )])))
+        );
+        assert_eq!(every.effort, None);
+        assert_eq!(stages["code"].model, None);
+        for words in ["model.=opus", "code.effort.=high"] {
+            let refused = given(&[words]).unwrap_err();
+            assert!(
+                refused.contains(words) && refused.contains("names no program"),
+                "{refused}"
+            );
+        }
+    }
+
+    /// The command-line spec's "A name and a table for one stage" (7,
+    /// 172, 197).
+    #[test]
+    fn a_name_and_a_table_for_one_stage_are_refused() {
+        for (words, whose) in [
+            (
+                ["code.model=opus", "code.model.agent=sonnet"],
+                "code's model",
+            ),
+            (
+                ["code.model.agent=sonnet", "code.model=opus"],
+                "code's model",
+            ),
+            (["effort=high", "effort.agent=max"], "every stage's effort"),
+            (["effort.agent=max", "effort=high"], "every stage's effort"),
+        ] {
+            let refused = given(&words).unwrap_err();
+            for word in words {
+                assert!(refused.contains(word), "{words:?}: {refused}");
+            }
+            assert!(refused.contains(whose), "{words:?}: {refused}");
+        }
+        let (every, stages) = given(&["model=opus", "code.model.agent=sonnet"]).unwrap();
+        assert!(every.model.is_some() && stages["code"].model.is_some());
     }
 
     #[test]
