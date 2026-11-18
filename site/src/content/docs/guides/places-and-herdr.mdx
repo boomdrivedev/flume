@@ -246,6 +246,21 @@ CLI, OpenCode or Amp, by an entry of its name and kind
 ([the program](/flume/guides/agent-settings/#the-program)). A stage of
 any of them opens its agent in its own pane as Claude Code's does.
 
+A program with no profile of its own, every one but Claude Code, starts
+in its pane through flume's launcher,
+[`flume ack launched`](/flume/reference/commands/#run-by-agents): herdr
+runs the launcher under the program's kind, given the program's path.
+The launcher checks the start against what flume recorded for it, the
+environment and the program, records its word with its process, and
+becomes the program in that same process. The start counts once herdr
+reads that same process running the program and the agent waiting.
+Until then it stays starting, and nothing is sent to it. A program
+started by hand in the pane, such as Amp run again after it exited,
+runs in another process, so it is not the stage's agent: flume sends it
+nothing, ends it once it is quiet and starts the stage afresh, and
+`flume status` names the start begun in another process than the one
+its launcher became.
+
 ### Programs herdr reads through its integration
 
 herdr reads the state of OMP and MastraCode only through an integration
