@@ -336,6 +336,9 @@ impl Engine {
         let Some(index) = held.current else {
             return false;
         };
+        // When this settle read the live agent waiting, for a profile that
+        // does not build own work, before its stage is read (31, 171).
+        self.read_waiting(id);
         match held.stages[index].state {
             StageState::Starting | StageState::Started => self.deliver(id),
             StageState::NeverBegun => self.begun_after(id),

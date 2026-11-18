@@ -7,8 +7,11 @@
 //! clauses of Parts A and B, the invariants and section 11's scenarios:
 //! the common profile of C.4 and herdr's watched send and states of C.5.
 
+use super::agent_launcher::{through_the_launcher, LAUNCHED};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
+use flume_core::OWN_WORK_AFTER;
+use flume_fakes::FakeAgent;
 use flume_seams::*;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
@@ -53,7 +56,52 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["53", "54", "171"],
             run: a_tell_handed_on_the_turn,
         },
+        Scenario {
+            name: "terminal readings: a begun fix's agent that reads the five from its terminal, its deliverable committed and the terminal reading it waiting, settled now and 30 seconds later reads its own work running, and is quiet and delivers at the settle 60 seconds later",
+            cites: &["31", "91", "171"],
+            run: quiet_after_a_minutes_waiting,
+        },
+        Scenario {
+            name: "terminal readings: an agent read waiting at a settle, working at one 30 seconds later, and waiting at those 60, 90 and 120 seconds later delivers at the settle 120 seconds later and at none before it",
+            cites: &["31", "171"],
+            run: a_reading_between_starts_the_minute_again,
+        },
+        Scenario {
+            name: "terminal readings: status asked 90 seconds after a settle read the agent waiting, no settle between, reads its own work running and leaves the place's held state unchanged",
+            cites: &["31", "171"],
+            run: status_counts_no_settle,
+        },
+        Scenario {
+            name: "terminal readings: a fix's agent read begun in another process than its launcher became, reading the five from its terminal, is read quiet once the terminal reads it stopped, and code is started afresh with no minute's wait",
+            cites: &["31", "161", "171"],
+            run: a_stopped_agent_runs_no_own_work,
+        },
+        Scenario {
+            name: "terminal readings: an agent that reads the five from its terminal, read waiting past the stage's limit with nothing delivered, the terminal showing `nothing to do`, is reported stuck with those last words",
+            cites: &["43", "44", "171"],
+            run: stuck_with_its_screen,
+        },
     ]
+}
+
+/// The fix `name` begun with its code agent reading the five from its
+/// terminal, and read working at a settle since, so no settle has read it
+/// waiting: its place and its code start's identity.
+fn begun_working(world: &World, name: &str) -> Result<(PlaceId, Identity), String> {
+    let (id, code) = fix_reading(world, name, &FakeAgent::FROM_TERMINAL)?;
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code"
+    );
+    world.terminal.set_state(&code, AgentState::Working);
+    world.settle(&id);
+    ensure_eq!(
+        code_start(world, &id)?.waiting,
+        None,
+        "the settles' reading of the agent waiting, while it works"
+    );
+    Ok((id, code))
 }
 
 /// The fix `name` launched with its code agent reading `parts` from its
@@ -381,6 +429,186 @@ fn a_tell_handed_on_the_turn(_: &()) -> Outcome {
         world.terminal.sent_to(&code).last().cloned(),
         Some("look again".to_string()),
         "the words typed"
+    );
+    Ok(())
+}
+
+/// The terminal-readings spec's scenario "Quiet after a minute's waiting"
+/// (31, 91, 171).
+fn quiet_after_a_minutes_waiting(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, code) = begun_working(&world, "one")?;
+    world.commit("fix/one", &["fix.rs"]);
+    world.terminal.set_state(&code, AgentState::Waiting);
+    let at = world.host.now();
+    for after in [0, 30] {
+        world.host.advance(after);
+        world.settle(&id);
+        ensure_eq!(
+            world.stage_state(&id, "code"),
+            Some(StageState::Begun),
+            "code, {after} seconds after the first settle read it waiting"
+        );
+        let agent = agent_status(&world, &id)?;
+        ensure_eq!(
+            agent.own_work,
+            Reading::Yes,
+            "its own work, {after} seconds after"
+        );
+    }
+    ensure_eq!(
+        code_start(&world, &id)?.waiting,
+        Some(WaitingRead {
+            since: at,
+            at: at + 30
+        }),
+        "the settles' readings of the agent waiting"
+    );
+    world.host.advance(OWN_WORK_AFTER - 30);
+    world.settle(&id);
+    delivered(
+        &world,
+        "code, a minute after the first settle read it waiting",
+    )?;
+    for operation in ["own_work", "ended"] {
+        ensure!(
+            reads_of(&world, operation, &code).is_empty(),
+            "the profile was asked {operation}"
+        );
+    }
+    Ok(())
+}
+
+/// The terminal-readings spec's scenario "A reading between starts the
+/// minute again" (31, 171).
+fn a_reading_between_starts_the_minute_again(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, code) = begun_working(&world, "one")?;
+    world.commit("fix/one", &["fix.rs"]);
+    for (after, state) in [
+        (0, AgentState::Waiting),
+        (30, AgentState::Working),
+        (30, AgentState::Waiting),
+        (30, AgentState::Waiting),
+    ] {
+        world.host.advance(after);
+        world.terminal.set_state(&code, state);
+        world.settle(&id);
+        ensure_eq!(
+            world.stage_state(&id, "code"),
+            Some(StageState::Begun),
+            "code, read {state:?}"
+        );
+    }
+    world.host.advance(30);
+    world.settle(&id);
+    delivered(&world, "code, at the settle 120 seconds after the first")
+}
+
+/// A fix whose code delivered: its agent ended and the place submitted,
+/// which the fake merge queue lands (31, 47).
+fn delivered(world: &World, what: &str) -> Outcome {
+    ensure_eq!(
+        world.terminal.log.count("close"),
+        1,
+        format!("{what}: agents ended")
+    );
+    ensure_eq!(
+        world.queue.log.count("submit"),
+        1,
+        format!("{what}: submissions")
+    );
+    Ok(())
+}
+
+/// The terminal-readings spec's scenario "Status counts no settle" (31,
+/// 171; core.52).
+fn status_counts_no_settle(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, code) = begun_working(&world, "one")?;
+    world.keep_watch();
+    world.commit("fix/one", &["fix.rs"]);
+    world.terminal.set_state(&code, AgentState::Waiting);
+    world.settle(&id);
+    let version = world.store.read(&id).ok_or("no place")?.version;
+    world.host.advance(90);
+    let agent = agent_status(&world, &id)?;
+    ensure_eq!(agent.own_work, Reading::Yes, "its own work, in status");
+    ensure_eq!(
+        world.store.read(&id).ok_or("no place")?.version,
+        version,
+        "the place's version after status"
+    );
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code"
+    );
+    Ok(())
+}
+
+/// The terminal-readings spec's scenario "A stopped agent runs no own
+/// work" (31, 161, 171).
+fn a_stopped_agent_runs_no_own_work(_: &()) -> Outcome {
+    let world = World::new();
+    let first = through_the_launcher(&world, "one");
+    world
+        .terminal
+        .set_process(&first, ProgramProcess::Runs { pid: LAUNCHED });
+    let (id, code) = fix_reading(&world, "one", &FakeAgent::FROM_TERMINAL)?;
+    ensure_eq!(code, first, "the code start");
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code, its prompt taken in the launcher's process"
+    );
+    world.terminal.set_state(&first, AgentState::Working);
+    world
+        .terminal
+        .set_process(&first, ProgramProcess::Runs { pid: LAUNCHED + 1 });
+    world.settle(&id);
+    ensure_eq!(
+        code_start(&world, &id)?.n,
+        1,
+        "code's start, while its agent works"
+    );
+    world.terminal.set_state(&first, AgentState::Stopped);
+    world.settle(&id);
+    ensure_eq!(
+        code_start(&world, &id)?.n,
+        2,
+        "code's start, started afresh at once"
+    );
+    Ok(())
+}
+
+/// The terminal-readings spec's scenario "Stuck with its screen" (43, 44,
+/// 171).
+fn stuck_with_its_screen(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, code) = begun_working(&world, "one")?;
+    world.terminal.set_state(&code, AgentState::Waiting);
+    world.terminal.set_screen(&code, Some("nothing to do"));
+    world.settle(&id);
+    world.host.advance(OWN_WORK_AFTER);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code, quiet a minute after the first settle read it waiting"
+    );
+    world.host.advance(flume_core::QUIET_LIMIT);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Stuck),
+        "code, quiet past its limit"
+    );
+    let end = world.status(&id)?.stages[0].end.clone().ok_or("no end")?;
+    ensure_eq!(
+        end.last_words.as_deref(),
+        Some("nothing to do"),
+        "the last words the end carries"
     );
     Ok(())
 }

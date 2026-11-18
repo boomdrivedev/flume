@@ -7,7 +7,8 @@
 //! builds is read from the profile alone, never from the terminal (93,
 //! 171; core.2, core.39).
 
-use crate::{Bound, Engine};
+use crate::start::Starts;
+use crate::{Bound, Engine, Step, OWN_WORK_AFTER};
 use flume_seams::*;
 
 /// The facts of a place read at one head.
@@ -379,7 +380,7 @@ impl Engine {
                 } else {
                     asking_of(state)
                 },
-                own_work: agent.own_work(&folder, &start.identity),
+                own_work: self.read_own_work(agent.as_ref(), &folder, start, state),
                 own_record,
             },
             None => AgentReading {
@@ -443,6 +444,82 @@ impl Engine {
             return agent.asking(folder, &start.identity);
         }
         asking_of(self.agent_on(start).state())
+    }
+
+    /// Whether own work the agent of `start` started still runs: its
+    /// profile's answer from its own record where it builds own work;
+    /// otherwise from `state`, the agent's state as the core read it, and
+    /// the settles' readings of it waiting its start holds: none where it is
+    /// read stopped, or waiting with the last settle's reading a minute or
+    /// more after the first; running where it is read working, asking, or
+    /// waiting short of that; unknown where its state is unknown, the
+    /// profile asked nothing (31, 91, 171; core.39). Every reading of an
+    /// agent's own work is this one, so a settle, status and the stop check
+    /// read it alike, and only a settle writes what it reads.
+    pub(crate) fn read_own_work(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+        state: AgentState,
+    ) -> Reading {
+        if agent.parts().builds(Part::OwnWork) {
+            return agent.own_work(folder, &start.identity);
+        }
+        match state {
+            AgentState::Stopped => Reading::No,
+            AgentState::Waiting => match start.waiting {
+                Some(WaitingRead { since, at }) if at.saturating_sub(since) >= OWN_WORK_AFTER => {
+                    Reading::No
+                }
+                _ => Reading::Yes,
+            },
+            AgentState::Working | AgentState::Asking => Reading::Yes,
+            AgentState::Unknown => Reading::Unknown,
+        }
+    }
+
+    /// A settle's reading of the place's live start whose agent's profile
+    /// does not build own work: where its agent is read waiting, when a
+    /// settle first read it so, kept, or now where none did, and now as
+    /// the last; any other reading clears it; nothing is written where
+    /// nothing changed, and a start whose profile builds own work is not
+    /// read (31, 171; core.16, core.17). Run by a settle alone, so status,
+    /// the list and a wait write nothing of it (core.52).
+    pub(crate) fn read_waiting(&self, id: &PlaceId) {
+        let Some(read) = self.store.read(id) else {
+            return;
+        };
+        let Some((_, start)) = read.state.live_start() else {
+            return;
+        };
+        let Some(agent) = self.agent(&start.program) else {
+            return;
+        };
+        if agent.parts().builds(Part::OwnWork) {
+            return;
+        }
+        let folder = self.store.folder(id);
+        let waiting = self.state_of(Some(agent.as_ref()), &folder, start) == AgentState::Waiting;
+        let now = self.host.now();
+        let identity = start.identity.clone();
+        self.update(id, |held| {
+            let Some(index) = held.index_of(&identity) else {
+                return Step::Keep(());
+            };
+            let Some(start) = held.stages[index].start.as_mut().filter(|start| start.live) else {
+                return Step::Keep(());
+            };
+            let read = waiting.then(|| WaitingRead {
+                since: start.waiting.map_or(now, |kept| kept.since),
+                at: now,
+            });
+            if read == start.waiting {
+                return Step::Keep(());
+            }
+            start.waiting = read;
+            Step::Write(())
+        });
     }
 
     /// The agent's last words: its profile's answer from its own record

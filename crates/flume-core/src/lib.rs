@@ -90,6 +90,11 @@ const _: () = assert!(
 /// received (38).
 pub const RECEIVED_WITHIN: Seconds = 60;
 
+/// How far apart two settles' readings of an agent waiting lie before its
+/// own work reads none, where its profile does not build own work (31,
+/// 171).
+pub const OWN_WORK_AFTER: Seconds = 60;
+
 /// How long a tell waits for its agent where its caller gives no bound
 /// (54).
 pub const TELL_BOUND: Seconds = 10 * 60;
