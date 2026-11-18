@@ -1029,6 +1029,11 @@ fn a_submission_from_a_rex_block_names_no_session() {
 
 #[test]
 fn a_failed_entry_is_collected_once_with_sluices_notice() {
+    // The inbox collects with no `--confirm` and then confirms what it
+    // read by one `sluice confirm` of each outcome's `delivery.key`, which
+    // the pinned sluice gives and takes: the first collect gives the
+    // failure with sluice's notice and confirms it, so the second gives
+    // nothing (101, 133, C.6; sluice 51; core.58).
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.will_fail("test x failed");
@@ -1050,7 +1055,7 @@ fn a_failed_entry_is_collected_once_with_sluices_notice() {
             outcomes: vec![],
             passed_over: vec![]
         },
-        "the second collect"
+        "the second collect, the first having confirmed the failure by its key"
     );
 }
 
@@ -1293,10 +1298,10 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
     // (124, 125). The conflict
     // reaches flume in the submit's answer with its own words. sluice
     // keeps it owed until the profile confirms it after the answer, so an
-    // inbox in between may hand it over too, once, confirming it on
-    // receipt; the core acts on it once whichever gives it first (112,
-    // 133; sluice 51; sluice record 0102). Once the answer is confirmed,
-    // the inbox gives nothing.
+    // inbox in between may hand it over too, once, then confirming by key
+    // what it read; the core acts on it once whichever gives it first
+    // (112, 133; sluice 51; sluice record 0102; core.58). Once the answer
+    // or the inbox confirmed it, the inbox gives nothing.
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.on_main("work.rs", "the base's own\n");

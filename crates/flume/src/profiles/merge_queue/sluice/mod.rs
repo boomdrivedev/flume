@@ -21,21 +21,30 @@
 //! and the branch the request was opened from as its `from.head`, and
 //! sluice delivers its outcome to the request, so read-submission reads
 //! it, and the inbox only where it is still pending for the place (133).
-//! inbox is `sluice inbox --confirm --json` in the place, which confirms
-//! each outcome on receipt, since flume keeps what it is given for its own
-//! recipients (101, 133; weir 102; sluice 51; sluice record 0102): each
-//! record landed with its commit, failed or in
+//! inbox is `sluice inbox --json` in the place, never with `--confirm`,
+//! which would confirm on receipt an outcome the profile then drops (C.6's
+//! inbox row at boomdrivedev/blueprints `8b73d11` as `fc4323b` amends it;
+//! core.58): each record landed with its commit, failed or in
 //! conflict with sluice's `notice` as its words, a conflict's files from
 //! the record's `conflict.paths` and its base revision from its
 //! `tested.on`, never parsed from the notice; a record with no notice
 //! says its state, and a conflict's files and the entries its
 //! `conflict.with` names; one found in conflict before any test names the
-//! base's current revision (112, 133). Where sluice could not read a
-//! branch's records it answers the others' outcomes with that branch in
-//! its `unread`, exiting as a failure: the inbox passes that branch over
-//! with its words, whose outcomes sluice leaves pending, and a decided
-//! record the profile cannot read is passed over the same way, by its
-//! branch, rather than dropped unsaid (133). read-submission reads
+//! base's current revision (112, 133); and a `refused` record, a landing
+//! the forge refused that sluice holds, held with its `notice` whole as
+//! its words, or what a record with none says (112, 133; sluice 152). The
+//! profile then confirms every outcome it read by one `sluice confirm
+//! <key>… --json` in the place, each record's `delivery.key` where it is
+//! owed or expired, since flume keeps what it is given for its own
+//! recipients; a confirm that fails leaves them owed, and the next inbox
+//! hands them over again (101, 133; weir 102; sluice 51; sluice record
+//! 0102). An outcome in a state the profile does not read, or whose
+//! outcome it cannot read, is left owed, unconfirmed, and passed over by
+//! its branch with words naming it, rather than dropped unsaid. Where
+//! sluice could not read a branch's records it answers the others'
+//! outcomes with that branch in its `unread`, exiting as a failure: the
+//! inbox passes that branch over with its words, whose outcomes sluice
+//! leaves pending (133). read-submission reads
 //! `sluice status <base> --all --json` for each branch `sluice overview
 //! --json` names, once for every branch of the repository asked at once,
 //! so a status of every place runs them once for each repository (58,
@@ -44,7 +53,17 @@
 //! base revision its `tested.on` where it holds one; a branch whose
 //! status sluice refuses, as it refuses one whose policy it no longer
 //! reads, is passed over with sluice's words, and every other branch is
-//! read still (99, 101). step is nothing, as C.6's step row says: it
+//! read still (99, 101). A `refused` record, a landing the forge refused
+//! that sluice holds, reads as held with the record's `refused.words`;
+//! one that carries no `refused`, as sluice `44e33d4` prints every record
+//! but a waiting submit's report, is held still, with [`HELD_UNSAID`] as
+//! its words, never read as not understood, never passed over and never
+//! read through `sluice wait` or a submit that waits (C.6's
+//! read-submission row at `8b73d11` as `04e5a1a` amends it; core.6,
+//! core.13, core.58). A submit's answer is never `refused`, its landing
+//! coming after the rounds a submit with `--no-wait` does not wait on;
+//! were one so, it is answered submitted, open and undecided. step is
+//! nothing, as C.6's step row says: it
 //! runs no sluice command and answers that the base's queue moves on its
 //! own, whichever way runs it, sluice's host process, a daemon on this
 //! host or another, or a forge's jobs, since sluice keeps one contract
@@ -101,6 +120,12 @@ pub const NAME: &str = "sluice";
 
 /// Where a repository's sluice policy lives in its tree.
 pub const POLICY: &str = ".config/sluice.toml";
+
+/// The words of a `refused` record that carries none of the forge's, as
+/// sluice `44e33d4` prints every record but a waiting submit's report
+/// (99, C.6 at `04e5a1a`; core.58).
+pub const HELD_UNSAID: &str =
+    "the forge refused its landing; sluice's record gives none of its words";
 
 /// The variables a multiplexer's session is named by: a submission made
 /// with one would be recorded as that session's and its outcome pushed
@@ -529,6 +554,13 @@ fn state(record: &Value) -> Result<SubmissionState, String> {
             words: said(record),
         },
         "withdrawn" => SubmissionState::Withdrawn,
+        // 152: held, the forge having refused its landing.
+        "refused" => SubmissionState::Held {
+            words: record
+                .get("refused")
+                .and_then(|refused| text(refused, "words"))
+                .unwrap_or_else(|| HELD_UNSAID.into()),
+        },
         other => return Err(format!("sluice gave a submission in the state {other:?}")),
     })
 }
@@ -798,11 +830,12 @@ impl MergeQueue for Sluice {
     }
 
     fn inbox(&self, place: &PlaceRef) -> Inbox {
-        // Each outcome confirmed on receipt: sluice hands one over again
-        // until its reader confirms it, and flume keeps what it is given
-        // for its own recipients (101, 133; sluice 51; sluice record 0102).
-        let args = ["inbox", "--confirm", "--json"];
-        let (success, stdout, stderr) = match self.run(Path::new(&place.location), &args) {
+        // Collected with no `--confirm`, since confirming on receipt would
+        // confirm an outcome the profile then drops; each it read is
+        // confirmed by its key below (133, C.6; sluice 51; core.58).
+        let args = ["inbox", "--json"];
+        let dir = Path::new(&place.location);
+        let (success, stdout, stderr) = match self.run(dir, &args) {
             Ok(output) => output,
             Err(reason) => return Inbox::CouldNotRead { reason },
         };
@@ -812,7 +845,7 @@ impl MergeQueue for Sluice {
             .and_then(|answer| answer.get("outcomes").and_then(Value::as_array).cloned());
         let mut passed_over = answer.as_ref().map(unread).unwrap_or_default();
         // sluice exits as a failure where it passed a branch over, having
-        // answered every other branch's outcomes and confirmed them.
+        // answered every other branch's outcomes.
         let Some(records) =
             records.filter(|records| success || !records.is_empty() || !passed_over.is_empty())
         else {
@@ -821,14 +854,28 @@ impl MergeQueue for Sluice {
             };
         };
         let mut outcomes = vec![];
-        for record in records.iter().filter(|record| {
-            matches!(
-                text(record, "state").as_deref(),
-                Some("landed" | "failed" | "conflict")
-            )
-        }) {
-            match self.outcome(record, place) {
-                Ok(outcome) => outcomes.push(outcome),
+        let mut read = vec![];
+        for record in &records {
+            let reading = match text(record, "state").as_deref() {
+                Some("landed" | "failed" | "conflict") => self.outcome(record, place),
+                // 152: a landing the forge refused, held, with the notice
+                // whole as its words (C.6's inbox row at `fc4323b`).
+                Some("refused") => Ok(SubmissionOutcome::Held {
+                    words: said(record),
+                }),
+                state => Err(format!(
+                    "sluice gave an outcome in the state {:?}",
+                    state.unwrap_or_default()
+                )),
+            };
+            match reading {
+                Ok(outcome) => {
+                    outcomes.push(outcome);
+                    read.extend(owed(record));
+                }
+                // Left owed, unconfirmed, and passed over by its branch, so
+                // status names it and a later inbox hands it over again
+                // (133; core.58).
                 Err(reason) => passed_over.push(PassedOver {
                     branch: text(record, "branch").unwrap_or_default(),
                     words: match id(record) {
@@ -837,6 +884,15 @@ impl MergeQueue for Sluice {
                     },
                 }),
             }
+        }
+        // Every outcome read confirmed at once by its key; a confirm that
+        // fails leaves them owed, and the next inbox hands them over
+        // again, which the core acts on once (101, 133; sluice 51).
+        if !read.is_empty() {
+            let mut confirm = vec!["confirm"];
+            confirm.extend(read.iter().map(String::as_str));
+            confirm.push("--json");
+            let _ = self.run(dir, &confirm);
         }
         Inbox::Outcomes {
             outcomes,

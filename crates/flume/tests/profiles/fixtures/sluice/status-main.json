@@ -1,0 +1,89 @@
+{
+  "branch": "main",
+  "at": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+  "gone": false,
+  "depth": 0,
+  "testing": null,
+  "window": 1,
+  "parallel": 2,
+  "submissions": [
+    {
+      "schema": "sluice/submission@1",
+      "id": 5,
+      "branch": "main",
+      "head": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "from": {
+        "agent": "agent-1",
+        "worktree": "fix/one",
+        "path": "/places/fix--one",
+        "host": "host-a"
+      },
+      "submitted": "2026-11-16T08:00:00Z",
+      "after": [],
+      "priority": 0,
+      "attempt": 1,
+      "state": "withdrawn",
+      "withdrawn": {
+        "by": "agent-1",
+        "at": "2026-11-16T08:30:00Z"
+      }
+    },
+    {
+      "schema": "sluice/submission@1",
+      "id": 7,
+      "branch": "main",
+      "head": "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+      "from": {
+        "agent": "agent-1",
+        "worktree": "fix/one",
+        "path": "/places/fix--one",
+        "host": "host-a"
+      },
+      "submitted": "2026-11-16T09:00:00Z",
+      "after": [],
+      "priority": 0,
+      "attempt": 1,
+      "state": "refused",
+      "tested": {
+        "combination": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12",
+        "on": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+        "submissions": [
+          7,
+          9
+        ]
+      }
+    },
+    {
+      "schema": "sluice/submission@1",
+      "id": 9,
+      "branch": "main",
+      "head": "7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d",
+      "from": {
+        "agent": "agent-1",
+        "worktree": "train/x",
+        "head": "train/x",
+        "host": "host-a"
+      },
+      "submitted": "2026-11-16T09:00:00Z",
+      "after": [],
+      "priority": 0,
+      "attempt": 1,
+      "state": "refused",
+      "tested": {
+        "combination": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12",
+        "on": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+        "submissions": [
+          7,
+          9
+        ]
+      }
+    }
+  ],
+  "warnings": [],
+  "stale": null,
+  "held": null,
+  "held_checkouts": [],
+  "copy": null,
+  "refused_writes": [],
+  "home": null
+}

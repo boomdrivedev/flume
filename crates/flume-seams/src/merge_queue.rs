@@ -53,9 +53,19 @@ pub enum SubmissionState {
         words: String,
     },
     Withdrawn,
+    /// The forge refused its landing, which the merge queue holds, with
+    /// the forge's words, or words saying the merge queue's record gives
+    /// none: it is neither decided nor one a round moves, and stays the
+    /// place's open submission until it lands, goes back to the queue,
+    /// is withdrawn or is replaced (99, 112, 124; core.58).
+    Held {
+        words: String,
+    },
 }
 
 impl SubmissionState {
+    /// Whether a round of the base's queue moves it: a held landing is
+    /// still the place's submission, but no round moves it (112, 125).
     pub fn open(&self) -> bool {
         matches!(self, SubmissionState::Waiting | SubmissionState::UnderTest)
     }
@@ -122,6 +132,13 @@ pub enum SubmissionOutcome {
     Conflict {
         files: Vec<String>,
         base: Revision,
+        words: String,
+    },
+    /// The forge refused the submission's landing, which the merge queue
+    /// holds, with the merge queue's words: no decided outcome, it
+    /// decides nothing and is never taken as a verdict (112, 133;
+    /// core.58).
+    Held {
         words: String,
     },
 }
