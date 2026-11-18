@@ -12,8 +12,12 @@
 //! pull request that waits for the walkthrough to take it in. With the
 //! stand-in, the host user's login shell is the walk's own, which gives
 //! the walk's `PATH`, so a place's steps, sluice's equip and release, run
-//! the sluice the tree pins; and every sluice keeps its scratch in the
-//! walk's home, which the gate's sandbox lets it write. Every process
+//! the sluice the tree pins, through one of the walk's that gives it the
+//! walk's state folder and user scratch, which a place's steps' login
+//! environment does not carry; and every sluice keeps its state in the
+//! walk's home and its scratch and its host process's socket in the
+//! test's scratch, which the gate's sandbox lets it write (core.51).
+//! Every process
 //! the walkthrough starts, flume, sluice, git and the stand-in, runs in the
 //! scratch home with no multiplexer's session, no flume, sluice or Claude
 //! Code session of the caller's, no credential and no forge (core.6,
@@ -228,7 +232,13 @@ impl Walk {
         .expect("a PATH")
         .to_string_lossy()
         .into_owned();
-        let shell = stand_in.then(|| login_shell(&repository.scratch.path("login"), &path));
+        let shell = stand_in.then(|| {
+            login_shell(
+                &repository.scratch.path("login"),
+                &path,
+                &user_scratch(&repository),
+            )
+        });
         let account = stand_in.then(|| repository.scratch.path("account-1"));
         if let Some(dir) = &account {
             std::fs::create_dir_all(dir).expect("the account's folder");
@@ -272,6 +282,12 @@ impl Walk {
     /// then the test's.
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    /// The `PATH` the walk's login shell gives: the folder of its
+    /// [`login_sluice`], then the walkthrough's.
+    pub fn login_path(&self) -> String {
+        login_path(&self.repository.scratch.path("login"), &self.path)
     }
 
     /// The host user's login shell, the walk's own, which gives the walk's
@@ -771,23 +787,63 @@ exec "$pinned" "$@"
 }
 
 /// The walk's login shell, written into `dir` as `shell`: run as a login
-/// shell, it runs `/bin/sh` with the rest of its words and `path` for its
-/// `PATH`, so the login environment a place's steps run in names the
-/// walk's tools, the pinned sluice among them, rather than whatever the
-/// host user's own login shell names (11, 79; core.22). Its path.
-fn login_shell(dir: &Path, path: &str) -> PathBuf {
-    std::fs::create_dir_all(dir).expect("the login shell's folder");
+/// shell, it runs `/bin/sh` with the rest of its words and, for its
+/// `PATH`, the folder of the walk's [`login_sluice`] and then `path`, so
+/// the login environment a place's steps run in names the walk's tools,
+/// the pinned sluice among them, rather than whatever the host user's own
+/// login shell names (11, 79; core.22), and every sluice a step runs
+/// reaches the walk's state folder and `user_scratch` (core.51). Its
+/// path.
+fn login_shell(dir: &Path, path: &str, user_scratch: &Path) -> PathBuf {
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).expect("the login shell's folder");
+    login_sluice(&bin, path, user_scratch);
     let shell = dir.join("shell");
     std::fs::write(
         &shell,
         format!(
-            "#!/bin/sh\nPATH='{path}'\nexport PATH\n[ \"$1\" = -l ] && shift\nexec /bin/sh \"$@\"\n"
+            "#!/bin/sh\nPATH='{}'\nexport PATH\n[ \"$1\" = -l ] && shift\nexec /bin/sh \"$@\"\n",
+            login_path(dir, path)
         ),
     )
     .expect("the login shell");
     std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755))
         .expect("the login shell made executable");
     shell
+}
+
+/// The `PATH` the walk's login shell in `dir` gives: its
+/// [`login_sluice`]'s folder, then `path`.
+fn login_path(dir: &Path, path: &str) -> String {
+    format!("{}:{path}", dir.join("bin").display())
+}
+
+/// The `sluice` first on the walk's login shell's `PATH`, written into
+/// `bin`: a place's steps, sluice's equip and its release, run under the
+/// login environment alone, which gives the walk's home and none of its
+/// `XDG_STATE_HOME` or `SLUICE_USER_SCRATCH` (11, 79), so it gives them
+/// where they are unset, the state folder the walk's home's `state` as
+/// [`Walk::command`] gives it and the user scratch `user_scratch`, and
+/// runs the `sluice` `path` finds first, a stand-in of the walk's or the
+/// pinned one. The pinned sluice reaches or starts the host process of
+/// the state folder it is given, its socket in the user scratch, so the
+/// teardown's release reaches the walk's own rather than starting one
+/// under the home's `.local/state` with its socket in the host user's
+/// `/tmp/sluice-<uid>`, which the gate's sandbox refuses (sluice 135;
+/// sluice record 0063; core.51).
+fn login_sluice(bin: &Path, path: &str, user_scratch: &Path) {
+    let program = bin.join("sluice");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\n: \"${{XDG_STATE_HOME:=$HOME/state}}\"\n: \"${{{USER_SCRATCH}:={}}}\"\n\
+             export XDG_STATE_HOME {USER_SCRATCH}\nPATH='{path}'\nexport PATH\nexec sluice \"$@\"\n",
+            user_scratch.display()
+        ),
+    )
+    .expect("the login shell's sluice");
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+        .expect("the login shell's sluice made executable");
 }
 
 /// The walk's login shell at `shell` written again to export `exports`
@@ -1424,7 +1480,7 @@ impl Walk {
                 .iter()
                 .map(|(name, value)| (*name, value.to_string())),
         );
-        login_shell_exporting(walk.login_shell(), walk.path(), &exports);
+        login_shell_exporting(walk.login_shell(), &walk.login_path(), &exports);
         let host = UnderRex { walk, link };
         host.walk
             .configure("[streams.trial]\nmultiplexer = \"rex\"\npool = \"stand-in\"\n");

@@ -488,9 +488,11 @@ impl MergeQueueHarness for Harness {
     /// `bolt/x`, its policy naming it, given a submission from `unit/x`,
     /// whose records sluice then cannot read: `branch.json` locked in a
     /// folder no process may write, so sluice's host process, which passes
-    /// the branch, cannot write it whole again. `sluice status bolt/x` and
-    /// the inbox refuse the branch from then on, as sluice refused one
-    /// whose policy it could no longer read on deneb on 2026-11-04 (133).
+    /// the branch, cannot write it whole again. The branch is given once
+    /// `sluice status bolt/x` refuses it, read until it does within 30
+    /// seconds; it and the inbox refuse the branch from then on, as sluice
+    /// refused one whose policy it could no longer read on deneb on
+    /// 2026-11-04 (133).
     fn refuse_another(&self, _place: &PlaceRef) -> String {
         let other = "bolt/x";
         let at = self.repository.dir.join("places/bolt--x");
@@ -542,12 +544,17 @@ impl MergeQueueHarness for Harness {
         fs::set_permissions(&records, fs::Permissions::from_mode(0o500))
             .expect("the records' folder locked");
         self.locked.borrow_mut().extend([file, records]);
-        assert!(
-            !self
-                .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
-                .0,
-            "sluice read {other}'s status"
-        );
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self
+            .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
+            .0
+        {
+            assert!(
+                Instant::now() < deadline,
+                "sluice read {other}'s status for 30 seconds after its records were locked"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
         other.into()
     }
 
@@ -1574,6 +1581,10 @@ fn what_the_policy_says_of_a_place() {
     );
     let data = place_data(&repository, Some("sluice"), "main", Some(&equipping))
         .expect("the place's data");
+    // The login environment gives the harness's state folder and user
+    // scratch, as a walk's login shell's sluice does, so the step's sluice
+    // reaches the harness's host process, its socket in the test's scratch
+    // (core.51).
     let path = std::env::var("PATH").unwrap_or_default();
     let profile = GitWorktree::with_login(
         data,
@@ -1581,6 +1592,14 @@ fn what_the_policy_says_of_a_place() {
             ("HOME", &harness.home.to_string_lossy()),
             ("PATH", &path),
             ("LANG", "C"),
+            (
+                "XDG_STATE_HOME",
+                &harness.home.join("state").to_string_lossy(),
+            ),
+            (
+                USER_SCRATCH,
+                &user_scratch(&harness.repository).to_string_lossy(),
+            ),
         ]),
     );
     let readiness = profile.ready(&harness.place, &equipping);
