@@ -9,7 +9,7 @@ use super::carried_conversations::{by_hand, retry_talk, talk, talking};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Answer, PlaceLine, Retry, NOT_ITS_AGENT};
-use flume_fakes::Plan;
+use flume_fakes::{FakeAgent, Plan};
 use flume_seams::*;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
@@ -43,6 +43,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "place line: a started code agent whose profile's asking mark stands is asking, and working once it is cleared",
             cites: &["90", "56"],
             run: asking_then_working,
+        },
+        Scenario {
+            name: "place line: a begun code agent that reads the five from its terminal is asking after a settle reads it asking and working after a later settle reads it working, the line asked alone calling no terminal",
+            cites: &["57", "90", "171"],
+            run: asking_as_its_terminal_reads_it,
         },
         Scenario {
             name: "place line: an agent opened that has not said it started is starting, and another place's first stage waiting for room is waiting for room",
@@ -280,6 +285,42 @@ fn asking_then_working(_: &()) -> Outcome {
         "working",
         "the state once it is cleared"
     );
+    Ok(())
+}
+
+/// The place-line spec's scenario "An agent whose terminal reads it
+/// asking" (90, 171; core.52).
+fn asking_as_its_terminal_reads_it(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .agent
+        .reads_from_its_terminal(&FakeAgent::FROM_TERMINAL);
+    let id = begun_fix(&world, "parser")?;
+    let code = World::identity("fix", "parser", "code", 1);
+    for (state, words) in [
+        (AgentState::Asking, "asking"),
+        (AgentState::Working, "working"),
+    ] {
+        world.terminal.set_state(&code, state);
+        world.settle(&id);
+        world.terminal.log.clear();
+        world.agent.log.clear();
+        ensure_eq!(
+            line(&world, &id)?.state,
+            words,
+            format!("the state once a settle read the agent {state:?}")
+        );
+        ensure_eq!(
+            world.terminal.log.calls(),
+            Vec::<String>::new(),
+            "the terminal's calls"
+        );
+        ensure_eq!(
+            world.agent.log.of("asking"),
+            Vec::<String>::new(),
+            "the profile's asking reads"
+        );
+    }
     Ok(())
 }
 
