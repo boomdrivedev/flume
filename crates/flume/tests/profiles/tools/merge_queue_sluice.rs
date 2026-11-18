@@ -323,16 +323,18 @@ impl Harness {
     }
 }
 
-/// Steps `base` through `seam` until `branch`'s newest submission is
-/// decided, and gives it as read-submission reads it.
-fn stepped_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &str) -> Submission {
+/// `branch`'s newest submission to `base`, read through `seam` by
+/// read-submission alone until sluice's host process decides it, the
+/// profile's step answering once that `base`'s queue moves on its own
+/// (124, 125, C.6; sluice 135).
+fn read_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &str) -> Submission {
+    assert_eq!(
+        seam.step(repository, base),
+        Stepped::MovesOnItsOwn,
+        "a step of {base}"
+    );
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        assert_eq!(
-            seam.step(repository, base),
-            Stepped::Stepped,
-            "a step of {base}"
-        );
         match seam.read_submission(repository, branch).read {
             SubmissionRead::Found { submission } if !submission.state.open() => return submission,
             SubmissionRead::Found { .. } => {}
@@ -589,13 +591,16 @@ fn a_base_places_branch_over_a_scratch_repository() {
     // A base place's branch through the profile alone, on a scratch
     // repository whose policy lands `train/*` and main on a stand-in
     // origin: sluice makes `train/a` there, a fix cut from it lands on it
-    // by the settles' steps, the base place's submission of `train/a` by
-    // name from the repository lands on main by them, its landing read
-    // from sluice's status with no inbox run, and its close removes it on
-    // the origin and the host. The profile runs sluice and a fetch alone,
-    // so nothing of flume's pushes or moves a branch (14, 202 to 206,
-    // S110).
+    // by sluice's host process, which its submit started, the base
+    // place's submission of `train/a` by name from the repository lands
+    // on main the same way, no settle stepping either queue, its landing
+    // read from sluice's status with no inbox run, and its close removes
+    // it on the origin and the host. The profile runs sluice and a fetch
+    // alone, so nothing of flume's pushes or moves a branch (14, 124,
+    // 125, 202 to 206, S110).
     let harness = Harness::with_policy(TRAINS_ON_ORIGIN);
+    // Nothing here is read open, so every check passes as it runs.
+    harness.release();
     let repository = harness.repository.name();
     let remote = harness.repository.bare_remote();
     harness
@@ -651,7 +656,7 @@ fn a_base_places_branch_over_a_scratch_repository() {
     let Submitted::Submitted { .. } = harness.seam.submit(&fix_place, &from_worktree(&head)) else {
         panic!("the fix's submit to train/a was refused");
     };
-    let landed = stepped_until_decided(&harness.seam, &repository, "train/a", "fix/a");
+    let landed = read_until_decided(&harness.seam, &repository, "train/a", "fix/a");
     assert!(
         matches!(landed.state, SubmissionState::Landed { .. }),
         "the fix came to {landed:?}"
@@ -698,7 +703,7 @@ fn a_base_places_branch_over_a_scratch_repository() {
         ("train/a", "main"),
         "the submission by name"
     );
-    let landed = stepped_until_decided(&seam, &repository, "main", "train/a");
+    let landed = read_until_decided(&seam, &repository, "main", "train/a");
     assert_eq!(landed.id, submission.id, "the landing read by its branch");
     assert!(
         matches!(landed.state, SubmissionState::Landed { .. }),
@@ -761,9 +766,12 @@ fn a_base_places_branch_forecast_over_a_scratch_repository() {
     // it, and the forecast of `train/a` onto main is clear at main's
     // revision; a change to README.md lands on main, and the next is in
     // conflict on README.md at main's new revision, meeting main itself.
-    // Neither leaves an entry of `train/a` in main's records (203, 210;
-    // sluice 64).
+    // Neither leaves an entry of `train/a` in main's records. Each
+    // landing is sluice's host process's, which its submit started, no
+    // settle stepping its queue (124, 125, 203, 210; sluice 64, 135).
     let harness = Harness::with_policy(TRAINS_ON_ORIGIN);
+    // Nothing here is read open, so every check passes as it runs.
+    harness.release();
     let repository = harness.repository.name();
     let remote = harness.repository.bare_remote();
     harness
@@ -813,7 +821,7 @@ fn a_base_places_branch_forecast_over_a_scratch_repository() {
         let Submitted::Submitted { .. } = harness.seam.submit(&place, &from_worktree(&head)) else {
             panic!("{name}'s submit to {from} was refused");
         };
-        let landed = stepped_until_decided(&harness.seam, &repository, from, name);
+        let landed = read_until_decided(&harness.seam, &repository, from, name);
         assert!(
             matches!(landed.state, SubmissionState::Landed { .. }),
             "{name} came to {landed:?}"
