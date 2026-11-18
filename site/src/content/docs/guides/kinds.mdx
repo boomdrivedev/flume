@@ -237,7 +237,7 @@ follows a base place from its launch to its tidy.
 | `agents` | a list of exactly one table: the stage's agent and its settings | refused by flume |
 | `makes` | names of what the stage makes besides its deliverable | none |
 | `wait` | the stage is held before it starts, until a retry names it | `false` |
-| `hibernate` | flume hibernates the stage: its agent ended and its session kept, a conversation once it idles its `hibernate_after`, any such stage's agent kept open for an answer once its time passes, and either at `flume hibernate`; a resume, a tell or its answer wakes it in its own session ([hibernating](/flume/reference/commands/#flume-hibernate-and-resume)) | `false` |
+| `hibernate` | flume hibernates the stage: its agent ended and its session kept, a conversation once it idles its `hibernate_after`, any such stage's agent kept open for an answer once its time passes, and either at `flume hibernate`; a resume, a message or its answer wakes it in its own session ([hibernating](/flume/reference/commands/#flume-hibernate-and-resume)) | `false` |
 | `quiet` | how long its agent may be quiet with nothing delivered before status says it is stuck, as `45m` | 30 minutes |
 | `on_fail` | the stage a failed submission sends the place back to, and found work from the last stage where it names a stage before the last, read from the last stage; that stage and every one after it run again. Found work from a last stage that names itself or none waits on an answer | the last stage |
 | `max_send_backs` | how many times the place may go back, read from the last stage | 3 |

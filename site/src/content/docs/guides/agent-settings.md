@@ -337,7 +337,7 @@ running agent: under herdr, and never under the printed command
 
 Where the stage's kind hibernates it, an agent kept open whose time
 passes is hibernated rather than let go: flume ends it once quiet and
-keeps its session, and its answer, by a tell or a retry with words,
+keeps its session, and its answer, by a message or a retry with words,
 resumes that session with the question and the answer
 ([`flume hibernate` and `resume`](/flume/reference/commands/#flume-hibernate-and-resume)).
 
@@ -346,11 +346,11 @@ resumes that session with the question and the answer
 `hibernate_after` is how long a conversation whose kind hibernates it
 may be quiet before flume hibernates it. Its quiet runs from flume's
 first reading of it quiet, asking no one, with no work of its own
-running and no tell being handed to it, and starts again whenever a
-reading finds otherwise, and at the settle its own quiet starts, since
+running and no message being handed to it, and starts again whenever
+a reading finds otherwise, and at the settle its own quiet starts, since
 a turn ended then. Once it has been quiet that long, a settle ends the
 agent and keeps its session, freeing the host's room and the account.
-A tell, `flume resume` or an answer resumes it in its own session,
+A message, `flume resume` or an answer resumes it in its own session,
 which carries what it had read. flume's own hour is about as long as an
 account's prompt cache lives, past which a resumed session pays the
 same as a fresh one.

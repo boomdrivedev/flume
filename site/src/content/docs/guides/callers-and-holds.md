@@ -540,14 +540,15 @@ conversation](#a-lost-conversation) does.
 Where the stage's kind hibernates it, its agent's time passing
 hibernates it rather than letting it go. flume ends the agent once it
 is quiet and keeps its session, and the place waits on its answer as
-before. The answer, by a tell or a retry with `--words`, naming its key
-or none, is recorded on the stop-short with who gave it and when, and
-resumes the agent's session: one fresh agent carries it, its prompt the
-question and the answer, and the stage carries on under its start.
+before. The answer, by a message or a retry with `--words`, naming
+its key or none, is recorded on the stop-short with who gave it and
+when, and resumes the agent's session: one fresh agent carries it, its
+prompt the question and the answer, and the stage carries on under its
+start.
 Status says so:
 
 ```text
-    its agent hibernated at 1793291441, its time passed, ended at 1793291441: its answer resumes its session, by a tell or a retry with --words
+    its agent hibernated at 1793291441, its time passed, ended at 1793291441: its answer resumes its session, by a message or a retry with --words
 ```
 
 A stop of such a place reads its close stopped, so a later answer is a

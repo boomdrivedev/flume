@@ -482,7 +482,7 @@ stage reads `hibernating`, neither ended nor moved on, its room and its
 account free, and counts no start. It is taken only for a stage whose
 kind hibernates it ([a stage's fields](/flume/guides/kinds/#a-stages-fields)),
 and refused for any other, for a place with no live agent, and, unless
-forced, while a tell is being handed to the agent. flume also
+forced, while a message is being handed to the agent. flume also
 hibernates such a stage on its own: a conversation once it idles its
 `hibernate_after` ([how long a conversation
 idles](/flume/guides/agent-settings/#how-long-a-conversation-idles)),
@@ -494,11 +494,11 @@ fresh agent, named `<stage>:<start>.<resume>`, on the account the
 hibernated agent ran under while that account is usable. It waits for
 room, and while a process runs the session, as a lost conversation's
 retry does. Its prompt is flume's words that the session resumes, then
-the way to stop short. A tell resumes it with the tell's words, and an
-answer to the stop-short its agent waits on with the question and the
-answer. Where no account reaches the conversation, or its transcript is
-gone, the stage starts afresh, saying why. A resume of a place with
-nothing hibernating is refused, naming the place.
+the way to stop short. A message resumes it with the message's words,
+and an answer to the stop-short its agent waits on with the question
+and the answer. Where no account reaches the conversation, or its
+transcript is gone, the stage starts afresh, saying why. A resume of a
+place with nothing hibernating is refused, naming the place.
 
 ## `flume priority`
 

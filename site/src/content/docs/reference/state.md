@@ -165,16 +165,16 @@ an answer passed; and `account`, the account it ran under, left out
 where it ran under none. Its stage reads `hibernating`, its `end` none,
 or, where it waits on its answer, stays `ended_short` with its end's
 `closed` `by` `hibernated`. A start's `resumes` lists each resume of
-it, in order: `at`; `by`, `caller`, `tell` or `answer`; `identity`, the
-resumed agent's, its start's number with the resume's after it;
+it, in order: `at`; `by`, `caller`, `message` or `answer`; `identity`,
+the resumed agent's, its start's number with the resume's after it;
 `words`, the words it was given, left out at a bare resume; and
 `conversation`, as a carried start's. A resume's start keeps its
 start's number, head and answers, and its `conversation` `cause` is
-`hibernated`. While a tell is being handed to its agent, a start holds
-`handing`, until when at the latest. A stage waiting to resume keeps in
-its `room` `carry` with `cause` `hibernated` and `resumed_by`. The
-start's `settings` keep `hibernate_after` as its layer wrote it. A held
-state an earlier release wrote reads with none of them.
+`hibernated`. While a message is being handed to its agent, a start
+holds `handing`, until when at the latest. A stage waiting to resume
+keeps in its `room` `carry` with `cause` `hibernated` and `resumed_by`.
+The start's `settings` keep `hibernate_after` as its layer wrote it. A
+held state an earlier release wrote reads with none of them.
 
 ### The question, the hold and the stall
 
