@@ -12,6 +12,7 @@ mod acts;
 pub mod address;
 mod agent_acts;
 mod answer;
+pub mod atoms;
 mod base;
 mod clues;
 mod deliver;

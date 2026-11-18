@@ -3702,3 +3702,46 @@ fn a_statechart_stages_prompt_the_revision_lacks_is_named() {
         other => panic!("a missing prompt read as {other:?}"),
     }
 }
+
+#[test]
+fn the_stage_template_names_the_atoms_flume_binds() {
+    // The stage template is a statechart kind in weir's format, `stage`,
+    // final at passed, sent-back and stopped, which reads and runs only
+    // the template's atoms flume binds (175, 178, C.2).
+    use flume_core::atoms;
+    let declaration =
+        weir_kinds::read_kinds(atoms::STAGE_TEMPLATE).expect("the stage template reads");
+    assert!(declaration.kinds.is_empty(), "{:?}", declaration.kinds);
+    assert_eq!(
+        declaration.statecharts.keys().collect::<Vec<_>>(),
+        vec![atoms::TEMPLATE]
+    );
+    let template = &declaration.statecharts[atoms::TEMPLATE].statechart;
+    let run = &template.regions[atoms::TEMPLATE_REGION];
+    assert_eq!(run.initial, "working");
+    let finals: Vec<&str> = run
+        .states
+        .iter()
+        .filter(|(_, state)| state.is_final)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(
+        finals,
+        vec![atoms::PASSED, atoms::SENT_BACK, atoms::STOPPED]
+    );
+    let names = weir_kinds::weir_engine::names(template);
+    assert_eq!(
+        names
+            .evidence
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec![atoms::STAGE_END]
+    );
+    assert_eq!(
+        names.effects.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec![atoms::START_SESSIONS]
+    );
+    assert!(names.machines.is_empty(), "{:?}", names.machines);
+    assert!(atoms::TEMPLATE_EVIDENCE.contains(&atoms::STAGE_STARTED));
+}
