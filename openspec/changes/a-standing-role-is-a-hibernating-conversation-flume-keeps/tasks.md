@@ -64,7 +64,7 @@ configuration of the user's.
 
 ## 12. The site
 
-- [ ] 12.1 In `site/src/content/docs/guides/roles-and-wake.md`, say what a standing role is, its place of detached checkouts moved at each start, a delivery resuming it and the places it launches reporting to it; in `reference/configuration.md`, a role's `repositories` and `kinds` and their faults; in `reference/commands.md`, `hibernate` and `resume` over MCP; and in `reference/state.md`, a place's checkouts and a resume by `delivery`; each speaking to any host's operator (design 14; core.35). Verify with `sluice exec bolt/flumes-roles-sleep-and-wake -- moon run site:prose`.
+- [x] 12.1 In `site/src/content/docs/guides/roles-and-wake.md`, say what a standing role is, its place of detached checkouts moved at each start, a delivery resuming it and the places it launches reporting to it; in `reference/configuration.md`, a role's `repositories` and `kinds` and their faults; in `reference/commands.md`, `hibernate` and `resume` over MCP; and in `reference/state.md`, a place's checkouts and a resume by `delivery`; each speaking to any host's operator (design 14; core.35). Verify with `sluice exec bolt/flumes-roles-sleep-and-wake -- moon run site:prose`.
 
 ## 13. The record
 

@@ -520,7 +520,8 @@ answers = "The work's scope, for the stream north, which runs on another host."
 | Key | Meaning | Left out |
 |---|---|---|
 | `kind` | one of the source's own kinds by its name, `operator` or `acme/operator`, its version the locks' | refused |
-| `repository` | the repository of the run's place; a leading `~` is your home | refused |
+| `repository` | the repository of the run's place; a leading `~` is your home | refused, but where `repositories` is given |
+| `repositories` | a standing role's repositories, a list of locations each read as `repository` is, the first its place's repository; given in place of `repository` and `base`, each checkout at its repository's default branch ([a standing role](/flume/guides/roles-and-wake/#a-standing-role)) | none: the run reads its `repository` |
 | `priority` | a whole number, the run's priority in the host's queue | `0` |
 | `base` | the base the run's place is cut from | the repository's default branch |
 | `brief` | the run's brief | none |
@@ -529,6 +530,7 @@ answers = "The work's scope, for the stream north, which runs on another host."
 | `agents` | the run's agents' settings, as a launch's `--agent` gives them: `program`, `model`, `effort`, `instructions`, `beside`, `session`, `mode`, `keep_open` and `programs`, and each stage's under `stages.<stage>`; a file a program's own settings name is read beside the roles file | none |
 | `answers` | what the role answers, in words a stage's agent reads to choose it; with none, no prompt lists the role | none |
 | `answerer` | `true` where the role stands behind its address's stream ([the answerer behind a stream](/flume/guides/roles-and-wake/#the-answerer-behind-a-stream)) | `false` |
+| `kinds` | a table of the kinds the run's session launches its projects as, each kind as a launch names it with the words of when it serves, which the run's prompt gives; flume checks none against a source | none |
 
 **A standing agent's entry**, an agent that already runs for the role
 and takes its ends as notices ([an address an agent already
@@ -562,6 +564,12 @@ refuses the host's configuration, another source or another entry:
   - gives `agent` beside `kind` or another of a run's keys, two agents
     of one role;
   - gives `carried` beside anything but `answers`;
+  - gives `kinds` beside `agent` or `carried`, whose session flume
+    prompts nothing;
+  - gives `repositories` empty, naming one location twice, naming two
+    whose folders, each location's last part less a trailing `.git`,
+    are one, or beside `repository` or `base`;
+  - gives in `kinds` a value that is not words, or is empty;
 - **an address two entries declare**, of one source or two, and two
   addresses whose runs would be one place, of one repository, kind and
   name, are declared by neither, each named with the other.
