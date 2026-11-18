@@ -119,7 +119,11 @@ alone, which carries neither (11, 79). So the walk's login shell puts a
 `sluice` of the walk's first on its `PATH`, which gives both where they
 are unset and runs the `sluice` the walk's `PATH` finds, and a harness
 that runs a place's steps names both in the login it gives the place
-profile. So each test has one host process, of its own. Its socket, `host-<digest>.sock` in
+profile. The place profile's login environment stays as it is:
+carrying more of the login shell's environment into a place's steps
+would change what every host's steps run with for a test's need, which
+is the construction agent's choice and the path not taken. So each test
+has one host process, of its own. Its socket, `host-<digest>.sock` in
 `SLUICE_USER_SCRATCH`, fits beneath the scratch the merge queue gives
 the place, but not beneath a long temporary folder, as `cargo test`'s
 by hand on macOS is. There `user_scratch` names the scratch through
