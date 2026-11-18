@@ -42,4 +42,4 @@ the outcome. Design sections are this change's `design.md`.
 
 ## 4. The statement's clauses
 
-- [ ] 4.1 In `crates/flume-conformance/src/clauses.rs`, keep `REVISION` at `48a94da` and take 171 and S73 out of `unbuilt`, 173, S71 and S72 left under `PROFILES`, its doc comment and words naming a pool's program alone; `the_clauses_unbuilt_are_named_by_the_changes_that_build_them` reading 171 and S73 built, its count two fewer, and the three still under `PROFILES` (106; design 8), the clause-coverage spec's "The clauses listed" and "The suite as this change leaves it". Check: `sluice exec <base> -- moon run conformance:coverage`.
+- [x] 4.1 In `crates/flume-conformance/src/clauses.rs`, keep `REVISION` at `48a94da` and take 171 and S73 out of `unbuilt`, 173, S71 and S72 left under `PROFILES`, its doc comment and words naming a pool's program alone; `the_clauses_unbuilt_are_named_by_the_changes_that_build_them` reading 171 and S73 built, its count two fewer, and the three still under `PROFILES` (106; design 8), the clause-coverage spec's "The clauses listed" and "The suite as this change leaves it". Check: `sluice exec <base> -- moon run conformance:coverage`.
