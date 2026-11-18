@@ -46,6 +46,9 @@ pub const STAGE_END: &str = "stage.end";
 /// The stage template's evidence (178).
 pub const TEMPLATE_EVIDENCE: [&str; 2] = [STAGE_STARTED, STAGE_END];
 
+/// The stage template's state while its sessions work (175).
+pub const WORKING: &str = "working";
+
 /// The ends `stage.end` reads, each a final state of the template (175).
 pub const PASSED: &str = "passed";
 /// A stage sent back (112, 175).

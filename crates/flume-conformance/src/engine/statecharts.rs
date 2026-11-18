@@ -6,6 +6,7 @@
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_seams::*;
+use std::collections::BTreeMap;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -33,6 +34,31 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "statechart: a stage entered again records its sessions afresh under entry 2, and those of entry 1 stay as they stood",
             cites: &["175", "176"],
             run: a_stage_entered_again,
+        },
+        Scenario {
+            name: "statechart: a stage's end read passed, sent back or stopped moves its template's region to that final state at that settle, and the kind's transition reading it moves at the next",
+            cites: &["175", "176"],
+            run: the_templates_ends,
+        },
+        Scenario {
+            name: "statechart: of three sessions two deliver and the third works on: under all the stage works on, under any it passed at the first delivery and under count:2 at the second, each passed stage's working session ended once quiet",
+            cites: &["31", "175"],
+            run: a_join_of_all_of_any_and_of_a_count,
+        },
+        Scenario {
+            name: "statechart: a session's found work under its stage's bound sends the stage back, and the stage the kind enters next starts its sessions with the found words, the finding session ended once quiet",
+            cites: &["112", "131", "175"],
+            run: found_work_sends_the_stage_back_with_its_words,
+        },
+        Scenario {
+            name: "statechart: a session's found work once its stage was sent back as often as its bound ends the stage stopped",
+            cites: &["112", "175"],
+            run: past_its_bound,
+        },
+        Scenario {
+            name: "statechart: a stage whose rule matches no file at the head ends stopped, and status names the rule and its pattern",
+            cites: &["175"],
+            run: a_rule_that_matches_no_file,
         },
         Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
@@ -478,92 +504,434 @@ fn one_session_per_persona(_: &()) -> Outcome {
     Ok(())
 }
 
-/// A stage `main.work` left and entered again as a sibling region `clock`
-/// ticks over: left once the clock reads `tock`, entered again once it
-/// reads `tick`.
-const AGAIN: &str = r#"[kinds.again]
-title = "Entered again"
-
-[kinds.again.regions.main]
-initial = "work"
-
-[kinds.again.regions.main.states.work]
-machine = "stage"
-transitions = [{ when = { region = { name = "clock", in = ["tock"] } }, to = "rest" }]
-
-[kinds.again.regions.main.states.rest]
-transitions = [{ when = { region = { name = "clock", in = ["tick"] } }, to = "work" }]
-
-[kinds.again.regions.clock]
-initial = "tick"
-
-[kinds.again.regions.clock.states.tick]
-transitions = [{ when = { always = true }, to = "tock" }]
-
-[kinds.again.regions.clock.states.tock]
-transitions = [{ when = { always = true }, to = "tick" }]
-"#;
-
 fn a_stage_entered_again(_: &()) -> Outcome {
     let world = World::new();
-    world.kinds.set_kinds(
-        REPOSITORY,
-        vec![chart_kind(
-            "again",
-            AGAIN,
-            vec![(
-                "main.work",
-                chart_stage(listed(1), Deliverable::Commits, "Work."),
-            )],
-        )],
-    );
-    launched(&world.engine.launch(&launch("again", "a", None)))?;
-    let id = World::id("again", "a");
-    let names = |world: &World| -> Vec<String> {
-        world
-            .held(&id)
-            .map(|held| held.stages.iter().map(|stage| stage.name.clone()).collect())
-            .unwrap_or_default()
-    };
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![build_test(BUILD_TEST, 2, false)]);
+    let id = to_test(&world, 1)?;
+    stops_short(
+        &world,
+        ("bt", "a"),
+        "main.test#1/1",
+        "Again.",
+        StopKind::FoundWork,
+    )?;
+    // Sent back, build entered again and its second entry started.
+    settles(&world, &id, 3);
+    to_test(&world, 2)?;
+    let held = world.held(&id).ok_or("the place holds no state")?;
     ensure_eq!(
-        names(&world),
-        vec!["main.work#1/1".to_string()],
-        "entry 1's sessions"
-    );
-    let first = world
-        .held(&id)
-        .and_then(|held| held.stages.first().cloned())
-        .ok_or("entry 1 recorded no session")?;
-    // Left at the first settle, entered again at the second and its
-    // sessions recorded at the third (176).
-    for _ in 0..3 {
-        world.settle(&id);
-    }
-    ensure_eq!(
-        names(&world),
-        vec!["main.work#1/1".to_string(), "main.work#2/1".to_string()],
+        held.stages
+            .iter()
+            .map(|stage| stage.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "main.build#1/1",
+            "main.test#1/1",
+            "main.build#2/1",
+            "main.test#2/1"
+        ],
         "the sessions of both entries"
     );
-    let held = world.held(&id).ok_or("the place holds no state")?;
     ensure_eq!(
         held.chart
             .as_ref()
-            .and_then(|chart| chart.stages.get("main.work"))
+            .and_then(|chart| chart.stages.get("main.test"))
             .map(|stage| stage.entry),
         Some(2),
-        "the entry recorded"
+        "the test stage's entry recorded"
     );
     ensure_eq!(
-        held.stages[0].start.as_ref().map(|start| &start.identity),
-        first.start.as_ref().map(|start| &start.identity),
-        "entry 1's session's start"
+        session(&world, &id, "main.test#1/1"),
+        Some((StageState::EndedShort, false)),
+        "entry 1's session, as it ended"
     );
+    ensure_eq!(
+        session(&world, &id, "main.build#1/1"),
+        Some((StageState::Delivered, false)),
+        "build's entry 1's session, as it ended"
+    );
+    Ok(())
+}
+
+/// The statechart's state of each region of the place, by its path.
+pub fn regions(world: &World, id: &PlaceId) -> BTreeMap<String, String> {
+    world
+        .held(id)
+        .and_then(|held| held.chart)
+        .map(|chart| chart.state.regions)
+        .unwrap_or_default()
+}
+
+/// The state the region at `path` holds, or none.
+fn at(world: &World, id: &PlaceId, path: &str) -> Option<String> {
+    regions(world, id).get(path).cloned()
+}
+
+/// Settles the place `n` times.
+pub fn settles(world: &World, id: &PlaceId, n: usize) {
+    for _ in 0..n {
+        world.settle(id);
+    }
+}
+
+/// The session `session` of the place `<kind>--<name>` stops short with
+/// `words`, as `kind` says (41, 131).
+pub fn stops_short(
+    world: &World,
+    (kind_name, name): (&str, &str),
+    session: &str,
+    words: &str,
+    kind: StopKind,
+) -> Result<(), String> {
+    let id = World::id(kind_name, name);
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let start = held
+        .stages
+        .iter()
+        .find(|stage| stage.name == session)
+        .and_then(|stage| stage.start.clone())
+        .ok_or(format!("the session {session} has no start"))?;
+    let answer = world
+        .engine
+        .needs(&start.identity.to_string(), &start.secret.0, words, kind);
+    match answer.refusal() {
+        Some(refusal) => Err(format!(
+            "the stop-short of {session} was refused: {refusal}"
+        )),
+        None => Ok(()),
+    }
+}
+
+/// The session `name`'s state and whether its start is live.
+pub fn session(world: &World, id: &PlaceId, name: &str) -> Option<(StageState, bool)> {
+    world.held(id)?.stages.into_iter().find_map(|stage| {
+        (stage.name == name).then(|| {
+            let live = stage.start.as_ref().is_some_and(|start| start.live);
+            (stage.state, live)
+        })
+    })
+}
+
+/// One region `main` whose stage `work` ends passed, sent back or stopped,
+/// each taken to a final state of its own.
+const ENDS: &str = r#"[kinds.ends]
+title = "A stage's ends"
+
+[kinds.ends.regions.main]
+initial = "work"
+
+[kinds.ends.regions.main.states.work]
+machine = "stage"
+transitions = [
+  { when = { final = "passed" }, to = "done" },
+  { when = { final = "sent-back" }, to = "back" },
+  { when = { final = "stopped" }, to = "halt" },
+]
+
+[kinds.ends.regions.main.states.done]
+final = true
+
+[kinds.ends.regions.main.states.back]
+final = true
+
+[kinds.ends.regions.main.states.halt]
+final = true
+"#;
+
+fn the_templates_ends(_: &()) -> Outcome {
+    for (name, end, after) in [
+        ("p", "passed", "done"),
+        ("s", "sent-back", "back"),
+        ("t", "stopped", "halt"),
+    ] {
+        let world = World::new();
+        let mut stage = chart_stage(listed(1), Deliverable::Commits, "Work.");
+        if end == "stopped" {
+            stage.send_back_limit = Some(0);
+        }
+        world.kinds.set_kinds(
+            REPOSITORY,
+            vec![chart_kind("ends", ENDS, vec![("main.work", stage)])],
+        );
+        launched(&world.engine.launch(&launch("ends", name, None)))?;
+        let id = World::id("ends", name);
+        world.settle(&id);
+        ensure_eq!(
+            session(&world, &id, "main.work#1/1").map(|(state, _)| state),
+            Some(StageState::Begun),
+            format!("{name}'s session")
+        );
+        if end == "passed" {
+            world.commit(&format!("ends/{name}"), &["work.rs"]);
+        } else {
+            stops_short(
+                &world,
+                ("ends", name),
+                "main.work#1/1",
+                "The parser drops a comment.",
+                StopKind::FoundWork,
+            )?;
+        }
+        world.settle(&id);
+        ensure_eq!(
+            (at(&world, &id, "main.work.run"), at(&world, &id, "main")),
+            (Some(end.to_string()), Some("work".to_string())),
+            format!("{name}'s regions at the settle its stage ended")
+        );
+        world.settle(&id);
+        ensure_eq!(
+            at(&world, &id, "main"),
+            Some(after.to_string()),
+            format!("{name}'s region at the next settle")
+        );
+    }
+    Ok(())
+}
+
+/// One region `main` whose stage `work` runs three sessions, each
+/// committing its own file, joined as `join` (175).
+fn three_sessions(join: Join) -> Kind {
+    let mut stage = chart_stage(
+        listed(3),
+        Deliverable::CommittedReport {
+            path: "out/{{session}}.md".into(),
+        },
+        "Work.",
+    );
+    stage.join = join;
+    chart_kind(
+        "one",
+        &one_stage(false, "stage", ON_PASSED),
+        vec![("main.work", stage)],
+    )
+}
+
+fn a_join_of_all_of_any_and_of_a_count(_: &()) -> Outcome {
+    for (join, passes_at) in [
+        (Join::All, None),
+        (Join::Any, Some(1)),
+        (Join::Count(2), Some(2)),
+    ] {
+        let world = World::new();
+        world
+            .kinds
+            .set_kinds(REPOSITORY, vec![three_sessions(join)]);
+        launched(&world.engine.launch(&launch("one", "a", None)))?;
+        let id = World::id("one", "a");
+        world.settle(&id);
+        for n in 1..=2 {
+            world.commit("one/a", &[&format!("out/{n}.md")]);
+            world.settle(&id);
+            let passed = passes_at.is_some_and(|at| n >= at);
+            ensure_eq!(
+                at(&world, &id, "main.work.run"),
+                Some(if passed { "passed" } else { "working" }.to_string()),
+                format!("the stage under {join} after {n} deliveries")
+            );
+            if passes_at == Some(n) {
+                ensure_eq!(
+                    session(&world, &id, "main.work#1/3"),
+                    Some((StageState::Stopped, false)),
+                    format!("the working session under {join}")
+                );
+            }
+        }
+        if passes_at.is_none() {
+            ensure_eq!(
+                session(&world, &id, "main.work#1/3"),
+                Some((StageState::Begun, true)),
+                format!("the working session under {join}")
+            );
+        }
+    }
+    Ok(())
+}
+
+/// One region `main`: `build`, then `test`, which a session's found work
+/// sends back to `build` up to its bound, stopping past it.
+const BUILD_TEST: &str = r#"[kinds.bt]
+title = "Build and test"
+
+[kinds.bt.regions.main]
+initial = "build"
+
+[kinds.bt.regions.main.states.build]
+machine = "stage"
+transitions = [{ when = { final = "passed" }, to = "test" }]
+
+[kinds.bt.regions.main.states.test]
+machine = "stage"
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "sent-back" }, to = "build" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.bt.regions.main.states.passed]
+final = true
+
+[kinds.bt.regions.main.states.stopped]
+final = true
+"#;
+
+/// `bt`, its test stage sent back up to `bound` times (112, 175).
+pub fn build_test(text: &str, bound: u32, lands: bool) -> Kind {
+    let build = chart_stage(
+        listed(1),
+        Deliverable::Commits,
+        "Build.{{#words}} {{words}}{{/words}}",
+    );
+    let mut test = chart_stage(
+        listed(1),
+        Deliverable::CommittedReport {
+            path: "report.md".into(),
+        },
+        "Test.",
+    );
+    test.on_fail = Some("build".into());
+    test.send_back_limit = Some(bound);
+    let mut kind = chart_kind("bt", text, vec![("main.build", build), ("main.test", test)]);
+    kind.lands = lands;
+    kind
+}
+
+/// `bt`'s place `a` run from its launch to its test stage's sessions
+/// started at `entry`, build delivering at each entry before it.
+pub fn to_test(world: &World, entry: u32) -> Result<PlaceId, String> {
+    let id = World::id("bt", "a");
+    if world.held(&id).is_none() {
+        launched(&world.engine.launch(&launch("bt", "a", None)))?;
+    }
+    world.settle(&id);
+    world.commit("bt/a", &[&format!("build-{entry}.rs")]);
+    // The build stage's end, the move to test, and test's sessions started
+    // and begun: a stage boundary takes three settles (176).
+    settles(world, &id, 4);
+    let test = format!("main.test#{entry}/1");
+    ensure_eq!(
+        session(world, &id, &test),
+        Some((StageState::Begun, true)),
+        format!("the session {test}")
+    );
+    Ok(id)
+}
+
+fn found_work_sends_the_stage_back_with_its_words(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![build_test(BUILD_TEST, 2, false)]);
+    let id = to_test(&world, 1)?;
+    let findings = "The parser drops a trailing comment.";
+    stops_short(
+        &world,
+        ("bt", "a"),
+        "main.test#1/1",
+        findings,
+        StopKind::FoundWork,
+    )?;
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main.test.run"),
+        Some("sent-back".to_string()),
+        "the test stage's end"
+    );
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let chart = held.chart.ok_or("the place holds no statechart")?;
+    ensure_eq!(
+        chart.stages.get("main.test").map(|stage| stage.send_backs),
+        Some(1),
+        "the test stage's send-backs"
+    );
+    ensure_eq!(
+        session(&world, &id, "main.test#1/1"),
+        Some((StageState::EndedShort, false)),
+        "the finding session"
+    );
+    settles(&world, &id, 2);
+    let identity = World::identity("bt", "a", "main.build#2/1", 1);
+    let prompt = world
+        .prompt(&id, &identity)
+        .ok_or("build's second entry was given no prompt")?;
     ensure!(
-        held.stages[1]
-            .start
-            .as_ref()
-            .is_some_and(|start| start.live),
-        "entry 2's session did not start"
+        prompt.contains(findings),
+        "build's second entry's prompt holds not the found words: {prompt}"
+    );
+    ensure_eq!(
+        world
+            .held(&id)
+            .and_then(|held| held.chart)
+            .and_then(|chart| chart.words),
+        None,
+        "the words held once given"
+    );
+    Ok(())
+}
+
+fn past_its_bound(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![build_test(BUILD_TEST, 1, false)]);
+    let id = to_test(&world, 1)?;
+    stops_short(
+        &world,
+        ("bt", "a"),
+        "main.test#1/1",
+        "Once.",
+        StopKind::FoundWork,
+    )?;
+    // Sent back, build entered again and its second entry started.
+    settles(&world, &id, 3);
+    to_test(&world, 2)?;
+    stops_short(
+        &world,
+        ("bt", "a"),
+        "main.test#2/1",
+        "Twice.",
+        StopKind::FoundWork,
+    )?;
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main.test.run"),
+        Some("stopped".to_string()),
+        "the test stage's end past its bound"
+    );
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("stopped".to_string()),
+        "the region"
+    );
+    Ok(())
+}
+
+fn a_rule_that_matches_no_file(_: &()) -> Outcome {
+    let world = World::new();
+    world.commit("main", &["notes/c.md"]);
+    world.kinds.set_kinds(REPOSITORY, vec![persona()]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    let id = World::id("persona", "a");
+    ensure!(
+        world.held(&id).is_some_and(|held| held.stages.is_empty()),
+        "a session was recorded"
+    );
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "stages.test.run"),
+        Some("stopped".to_string()),
+        "the stage's end"
+    );
+    let status = world.status(&id)?;
+    ensure!(
+        status
+            .failures
+            .iter()
+            .any(|failure| failure.contains("every-file") && failure.contains("personas/*.md")),
+        "status names not the rule and its pattern: {:?}",
+        status.failures
     );
     Ok(())
 }

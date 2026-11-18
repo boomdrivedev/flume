@@ -32,9 +32,13 @@ impl Engine {
 
     /// Steps the session at `index` as a simple kind's current stage is
     /// stepped, by its index: its prompt delivered, its beginning read, its
-    /// end read, and its stop-short's agent let go once quiet (30, 31, 175,
-    /// 198); true when it changed something.
+    /// end read, and its stop-short's agent let go once quiet; a session
+    /// of a stage that no longer works ended once quiet instead (30, 31,
+    /// 175, 198). True when it changed something.
     fn step_session(&self, id: &PlaceId, held: &HeldState, index: usize) -> bool {
+        if held.stages[index].session.is_some() && !works(held, index) {
+            return self.end_left(id, held, index);
+        }
         let at = Some(index);
         match held.stages[index].state {
             StageState::Starting | StageState::Started => self.deliver(id, at),
@@ -43,6 +47,66 @@ impl Engine {
             StageState::EndedShort => self.found_work(id, at) || self.close_session(id, at),
             _ => false,
         }
+    }
+
+    /// Ends the session at `index`, whose stage no longer works: its live
+    /// agent once quiet or stopped, and a start not yet made never made,
+    /// so nothing of it starts after its stage ended; its state reads
+    /// stopped where it had not ended, and stays as it ended otherwise
+    /// (31, 175; core.10). True when it changed something.
+    fn end_left(&self, id: &PlaceId, held: &HeldState, index: usize) -> bool {
+        let unstarted = |state: StageState| {
+            matches!(
+                state,
+                StageState::NotReached
+                    | StageState::OnHold
+                    | StageState::WaitingForRoom
+                    | StageState::WaitingOnReadiness
+            )
+        };
+        let stage = &held.stages[index];
+        let Some(start) = stage.start.clone().filter(|start| start.live) else {
+            if !unstarted(stage.state) {
+                return false;
+            }
+            let name = stage.name.clone();
+            return self
+                .update(id, |held| {
+                    let Some(stage) = held
+                        .stages
+                        .get_mut(index)
+                        .filter(|stage| stage.name == name && unstarted(stage.state))
+                    else {
+                        return Step::Keep(false);
+                    };
+                    stage.state = StageState::Stopped;
+                    stage.room = None;
+                    Step::Write(true)
+                })
+                .unwrap_or(false);
+        };
+        let reading = self.read_agent(id, &start);
+        if reading.state != AgentState::Stopped {
+            if !reading.quiet() {
+                return false;
+            }
+            if let Closed::Refused { reason } = self.agent_on(&start).close() {
+                self.failed_end(id, &start.identity, &reason);
+                return false;
+            }
+        }
+        self.end_start(
+            id,
+            &start.identity,
+            |start, state| {
+                start.live = false;
+                if *state == StageState::Starting || state.running() {
+                    *state = StageState::Stopped;
+                }
+            },
+            None,
+        );
+        true
     }
 
     /// The statechart's one tick: its held text and the stage template's
@@ -87,7 +151,8 @@ impl Engine {
             .unwrap_or_else(|| place.base_revision.clone());
         let state = chart.state.state();
         let now = self.host.now();
-        let snapshot = snapshot_of(&held, chart, &state, now);
+        let ends = stage_ends(&held, statechart, chart, &state, self.defaults.send_backs);
+        let snapshot = snapshot_of(&held, chart, &state, &ends, now);
         let proofs = BTreeMap::from([(
             atoms::START_SESSIONS.to_string(),
             atoms::STAGE_STARTED.to_string(),
@@ -125,6 +190,18 @@ impl Engine {
                 Some((path, entry, sessions))
             })
             .collect();
+        // Each stage the tick sent back, by its path, with the words of the
+        // session that found work (112, 131, 175).
+        let sent_back: Vec<(String, Option<String>)> = tick
+            .fired
+            .iter()
+            .filter(|fired| fired.to == atoms::SENT_BACK && fired.from != fired.to)
+            .filter_map(|fired| stage_of(&fired.region))
+            .map(|path| {
+                let words = ends.get(&path).and_then(|end| end.words.clone());
+                (path, words)
+            })
+            .collect();
         let from = chart.state.clone();
         let next = ObjectHeld::of(&tick.next);
         let started = self.update(id, |held| {
@@ -140,6 +217,12 @@ impl Engine {
                 return Step::Keep(vec![]);
             }
             chart.state = next.clone();
+            for (path, words) in &sent_back {
+                chart.stages.entry(path.clone()).or_default().send_backs += 1;
+                if words.is_some() {
+                    chart.words = words.clone();
+                }
+            }
             let mut started = vec![];
             for (path, entry, sessions) in &planned {
                 let recorded = chart.stages.entry(path.clone()).or_default();
@@ -147,6 +230,23 @@ impl Engine {
                     continue;
                 }
                 recorded.entry = *entry;
+                if sessions.is_empty() {
+                    // A rule that matched no file ends its stage stopped at
+                    // the next tick, and status says so (56, 175).
+                    if let Some(ChartAgents::Rule { rule, pattern }) = held
+                        .place
+                        .kind
+                        .statechart
+                        .as_ref()
+                        .and_then(|statechart| statechart.stages.get(path))
+                        .map(|stage| &stage.agents)
+                    {
+                        held.failures.push(format!(
+                            "the stage {path}'s rule {rule} matched no file of {} at {head}, so it gave no session (175)",
+                            pattern.as_deref().unwrap_or_default()
+                        ));
+                    }
+                }
                 let words = (!sessions.is_empty()).then(|| chart.words.take()).flatten();
                 for session in sessions {
                     started.push((held.stages.len(), words.clone()));
@@ -315,11 +415,108 @@ pub(crate) fn entry_of(state: &weir_engine::ObjectState, path: &str) -> u32 {
     u32::try_from(aside).unwrap_or(u32::MAX).saturating_add(1)
 }
 
+/// Whether the session at `index` belongs to a stage that works: its
+/// stage's template region live and `working`, at the entry it was
+/// recorded for (175, 176). A simple kind's stage always works.
+pub(crate) fn works(held: &HeldState, index: usize) -> bool {
+    let (Some(session), Some(chart)) = (&held.stages[index].session, &held.chart) else {
+        return true;
+    };
+    let state = chart.state.state();
+    let region = template_region(&session.stage);
+    state.is_live(&region)
+        && state.regions.get(&region).map(String::as_str) == Some(atoms::WORKING)
+        && entry_of(&state, &session.stage) == session.entry
+}
+
+/// A stage's end as `stage.end` reads it, with the words of the session
+/// that found work where one did (175, 178).
+pub(crate) struct StageEnded {
+    pub end: &'static str,
+    pub words: Option<String>,
+}
+
+/// `stage.end` of each stage whose template region is live and working at
+/// the entry its sessions were recorded for, from those sessions' held
+/// states (31, 112, 131, 175; design 10): sent back where one ended short
+/// having found work and the stage was sent back fewer times than its
+/// bound, `send_backs` flume's own where it names none; else stopped where
+/// one found work, where its rule gave no session, or where too few of its
+/// sessions are left that were not stopped for its join; else passed
+/// where its join is met by sessions delivered; else none. A session that
+/// asks, is lost, stuck or never begun keeps its stage working.
+pub(crate) fn stage_ends(
+    held: &HeldState,
+    statechart: &KindStatechart,
+    chart: &ChartHeld,
+    state: &weir_engine::ObjectState,
+    send_backs: u32,
+) -> BTreeMap<String, StageEnded> {
+    let mut ends = BTreeMap::new();
+    for (path, recorded) in &chart.stages {
+        let region = template_region(path);
+        let working = state.is_live(&region)
+            && state.regions.get(&region).map(String::as_str) == Some(atoms::WORKING);
+        if !working || recorded.entry != entry_of(state, path) {
+            continue;
+        }
+        let Some(stage) = statechart.stages.get(path) else {
+            continue;
+        };
+        let sessions: Vec<&StageHeld> = held
+            .stages
+            .iter()
+            .filter(|held| {
+                held.session.as_ref().is_some_and(|session| {
+                    session.stage == *path && session.entry == recorded.entry
+                })
+            })
+            .collect();
+        let found = sessions.iter().find(|session| {
+            session.state == StageState::EndedShort
+                && session.end.as_ref().and_then(|end| end.needs) == Some(StopKind::FoundWork)
+        });
+        let delivered = sessions
+            .iter()
+            .filter(|session| matches!(session.state, StageState::Delivered | StageState::Finished))
+            .count();
+        let left = sessions
+            .iter()
+            .filter(|session| session.state != StageState::Stopped)
+            .count();
+        let needed = match stage.join {
+            Join::All => sessions.len(),
+            Join::Any => 1,
+            Join::Count(count) => count as usize,
+        };
+        let limit = stage.send_back_limit.unwrap_or(send_backs);
+        let ended = |end: &'static str, words: Option<String>| StageEnded { end, words };
+        let end = match found {
+            Some(found) => {
+                let words = found.end.as_ref().and_then(|end| end.words.clone());
+                if recorded.send_backs < limit {
+                    Some(ended(atoms::SENT_BACK, words))
+                } else {
+                    Some(ended(atoms::STOPPED, words))
+                }
+            }
+            None if sessions.is_empty() || left < needed => Some(ended(atoms::STOPPED, None)),
+            None if delivered >= needed => Some(ended(atoms::PASSED, None)),
+            None => None,
+        };
+        if let Some(end) = end {
+            ends.insert(path.clone(), end);
+        }
+    }
+    ends
+}
+
 /// The tick's one snapshot of the place at `now` (176, 178): at each live
 /// region, `region.entered`, when it entered the state it holds; at each
 /// stage template's region, `stage.started`, whether the entry it runs is
 /// recorded, read true where the region is not live, so nothing is
-/// started for a stage its region has left; and for the object,
+/// started for a stage its region has left, and `stage.end` as
+/// [`stage_ends`] reads it; and for the object,
 /// `place.submission`, its newest submission's outcome as flume confirmed
 /// it, `open` while one is in flight and none before the first, and
 /// `place.submissions`, how many times flume submitted it.
@@ -327,6 +524,7 @@ fn snapshot_of(
     held: &HeldState,
     chart: &ChartHeld,
     state: &weir_engine::ObjectState,
+    ends: &BTreeMap<String, StageEnded>,
     now: Seconds,
 ) -> weir_engine::Snapshot {
     let mut regions: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
@@ -353,10 +551,11 @@ fn snapshot_of(
                 .stages
                 .get(&path)
                 .is_some_and(|recorded| recorded.entry == entry_of(state, &path));
-        regions
-            .entry(region.clone())
-            .or_default()
-            .insert(atoms::STAGE_STARTED.into(), Value::Boolean(started));
+        let values = regions.entry(region.clone()).or_default();
+        values.insert(atoms::STAGE_STARTED.into(), Value::Boolean(started));
+        if let Some(end) = ends.get(&path) {
+            values.insert(atoms::STAGE_END.into(), Value::String(end.end.into()));
+        }
     }
     let submission = &held.submission;
     let mut evidence = BTreeMap::from([(
