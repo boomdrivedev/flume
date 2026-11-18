@@ -1178,7 +1178,7 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
         &["submit", "main", "--no-wait", "--json"],
     );
     let bin = harness.repository.scratch.path("stand-in");
-    super::walk::stand_in_sluice(&bin);
+    super::walk::stand_in_sluice(&bin, &user_scratch(&harness.repository));
     let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -1255,7 +1255,7 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
     let (place, head) = harness.place();
     harness.on_main("work.rs", "the base's own\n");
     let bin = harness.repository.scratch.path("stand-in");
-    super::walk::stand_in_sluice(&bin);
+    super::walk::stand_in_sluice(&bin, &user_scratch(&harness.repository));
     let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -1319,7 +1319,7 @@ fn a_pull_request_with_no_entry_is_held_and_the_entry_taken_in_from_it_is_read_t
     let harness = Harness::new();
     let (place, head) = harness.place();
     let bin = harness.repository.scratch.path("stand-in");
-    super::walk::stand_in_pull_requests(&bin);
+    super::walk::stand_in_pull_requests(&bin, &user_scratch(&harness.repository));
     let path = std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -1560,24 +1560,17 @@ fn what_the_policy_says_of_a_place() {
 
 /// A `sluice` first on the walk's `PATH` that writes each command it is
 /// asked, a line each after the process that asked it, then runs the
-/// pinned sluice as the test's own `PATH` finds it.
+/// pinned sluice as the walk's own `sluice` does.
 fn counting_sluice(walk: &Walk) -> PathBuf {
-    let pinned = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        .map(|dir| dir.join("sluice"))
-        .find(|path| path.is_file())
-        .expect("the pinned sluice on PATH");
     let asked = walk.repository.scratch.path("sluice-asked");
-    let program = walk.repository.scratch.path("bin").join("sluice");
-    fs::write(
-        &program,
-        format!(
-            "#!/bin/sh\necho \"$PPID $*\" >>'{}'\nexec '{}' \"$@\"\n",
-            asked.display(),
-            pinned.display()
+    super::walk::sluice_script(
+        &walk.repository.scratch.path("bin"),
+        &user_scratch(&walk.repository),
+        &format!(
+            "echo \"$PPID $*\" >>'{}'\nexec \"$pinned\" \"$@\"\n",
+            asked.display()
         ),
-    )
-    .expect("the counting sluice");
-    fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("it runs");
+    );
     asked
 }
 

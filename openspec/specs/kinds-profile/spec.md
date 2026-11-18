@@ -420,6 +420,37 @@ core.34).
 - **WHEN** the scratch repository's `train` gives `landing_fix = "repo/mend@2"` while it declares `mend` at version 1, and `train--spring` is launched on `main`
 - **THEN** the launch is refused naming `repo/mend@2` and that the repository declares `mend` at version 1, the fake merge queue logs no open, and the store holds no document of the place (4, 154; core.8, core.34)
 
+### Requirement: A stage's hibernate read through weir's crate
+
+The kinds profile SHALL read whether a stage hibernates from
+weir-kinds' `Stage`'s `hibernate` alone, at the revision the tree pins,
+and never from its unread sections; a stage that leaves it out SHALL
+not hibernate, and flume's own kinds SHALL declare none (23, 212, C.2;
+weir 53, 58; core.4, core.22).
+
+#### Scenario: A hibernating conversation read
+
+- **WHEN** a scratch repository's declaration gives its conversation stage `hibernate = true`
+- **THEN** the kind is read with that stage hibernating and every other stage not (212)
+
+#### Scenario: flume's own kinds
+
+- **WHEN** each of flume's own kinds is read
+- **THEN** none of its stages hibernates (212)
+
+### Requirement: A declaration gives no hibernate time
+
+A declaration's agents table, a kind's, a stage's, or a repository's
+for every kind or for a kind it does not declare, that gives
+`hibernate_after` SHALL fail to read, naming the field and that the
+host or the launch gives it, so the launch is refused whole (4, 158,
+198, 212, C.2).
+
+#### Scenario: A repository's hibernate time
+
+- **WHEN** a repository's `.config/flume.toml` gives `[kinds.research.agents] hibernate_after = "2h"`
+- **THEN** a launch of research is refused naming `kinds.research.agents.hibernate_after`, and nothing is made (4, 212)
+
 ### Requirement: flume's newest own versions give full and say their one way to ask
 
 change@4, chore@2 and fix@2 SHALL each be the version before it, every

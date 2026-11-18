@@ -18,10 +18,12 @@
 //! give a kind's agents in every repository and in one their `model`,
 //! `effort`, `instructions`, `mode` and `keep_open`, each kept as
 //! written, an effort its program's own word, a mode one of flume's four
-//! or a table of programs whose entries are strings, and `keep_open`, how
-//! long an agent is kept open for an answer, one time for every program,
-//! `<n>`, `<n>s`, `<n>m` or `<n>h` (32, 162, 169, 197, 198, C.7; records
-//! 0017, 0020, 0024, 0044, 0046); a
+//! or a table of programs whose entries are strings, `keep_open`, how
+//! long an agent is kept open for an answer, and `hibernate_after`, how
+//! long a conversation whose kind hibernates it may idle before it is
+//! hibernated, each one time for every program, `<n>`, `<n>s`, `<n>m` or
+//! `<n>h` (32, 162, 169, 197, 198, 212, C.7; records 0017, 0020, 0024,
+//! 0044, 0046, 0069); a
 //! repository's key is its address, `<owner>/<name>` as its clone's
 //! `origin` gives it on its forge, read as written, or its folder, a
 //! leading `~` read as the home, as a launch names it: the address's
@@ -1564,10 +1566,11 @@ fn refuse(table: &Table, at: &str, whose: &str, names: &[&str]) -> Result<(), St
 }
 
 /// One agents table's `model`, `effort`, `instructions`, `mode`,
-/// `keep_open` and `programs`, each as written, the effort a string, its
-/// program's own word, which the agent's profile takes or refuses (197),
-/// the mode read as a declaration's is (162, 169), `keep_open` by
-/// [`keep_open_of`] (198), and `programs` by flume's one reader of them, a
+/// `keep_open`, `hibernate_after` and `programs`, each as written, the
+/// effort a string, its program's own word, which the agent's profile
+/// takes or refuses (197), the mode read as a declaration's is (162, 169),
+/// `keep_open` by [`keep_open_of`] (198), `hibernate_after` by
+/// [`hibernate_after_of`] (212), and `programs` by flume's one reader of them, a
 /// file read by [`host_file`] (195); any other key, `stages` among them,
 /// is not a setting of the host's (32, C.7; record 0020).
 fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings, String> {
@@ -1593,6 +1596,7 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
         mode,
         programs,
         keep_open: keep_open_of(table, at)?,
+        hibernate_after: hibernate_after_of(table, at)?,
         ..Settings::default()
     })
 }
@@ -1603,17 +1607,33 @@ fn agent_settings(table: &Table, at: &str, directory: &Path) -> Result<Settings,
 /// among them, refused naming the table and the key, since it is flume's
 /// one time for every program (32, 198, C.7).
 pub(super) fn keep_open_of(table: &Table, at: &str) -> Result<Option<String>, String> {
-    match table.get("keep_open") {
+    time_of(table, at, "keep_open")
+}
+
+/// An agents table's `hibernate_after` at `at`, how long a conversation
+/// whose kind hibernates it may idle before it is hibernated: read as
+/// [`keep_open_of`] reads `keep_open`, one time for every program, kept
+/// as written, none where the table gives none, and any other value
+/// refused naming the table and the key (32, 212, C.7).
+pub(super) fn hibernate_after_of(table: &Table, at: &str) -> Result<Option<String>, String> {
+    time_of(table, at, "hibernate_after")
+}
+
+/// An agents table's time `key` at `at`, flume's own and one for every
+/// program: a string [`read_span`] takes, kept as written; any other
+/// value refused naming the table and the key and the forms it takes.
+fn time_of(table: &Table, at: &str, key: &str) -> Result<Option<String>, String> {
+    match table.get(key) {
         None => Ok(None),
         Some(Value::String(written)) => read_span(written)
             .map(|_| Some(written.clone()))
-            .map_err(|reason| format!("{at}.keep_open: {reason}")),
+            .map_err(|reason| format!("{at}.{key}: {reason}")),
         Some(Value::Table(_)) => Err(format!(
-            "{at}.keep_open is one time for every program, never a table of programs: \
+            "{at}.{key} is one time for every program, never a table of programs: \
              it is <n>, <n>s, <n>m or <n>h"
         )),
         Some(_) => Err(format!(
-            "{at}.keep_open is not a string: it is <n>, <n>s, <n>m or <n>h"
+            "{at}.{key} is not a string: it is <n>, <n>s, <n>m or <n>h"
         )),
     }
 }
@@ -2296,6 +2316,116 @@ collector = \"http://localhost:4318\"
         assert_eq!(
             value_at(&config, "kinds.change.agents.stages.verify.keep_open"),
             Some(("\"90s\"".into(), ConfigLayer::Local))
+        );
+    }
+
+    #[test]
+    fn a_hosts_hibernate_after_for_a_kind_and_for_one_stage() {
+        // 32, 212, C.7: each agents table of the host's gives
+        // `hibernate_after` as it gives `keep_open`, kept as written, in
+        // the managed layer and the local one over it, beside the
+        // repository's, the stream's and every agent's.
+        let text = "[kinds.research.agents]\nhibernate_after = \"20m\"\n\
+             [kinds.research.agents.stages.talk]\nhibernate_after = \"0\"\n";
+        let config = HostConfig::parse(text).unwrap();
+        let research = &config.kinds["research"];
+        assert_eq!(research.every_stage.hibernate_after.as_deref(), Some("20m"));
+        assert_eq!(
+            research.stages["talk"].hibernate_after.as_deref(),
+            Some("0")
+        );
+        assert_eq!(research.every_stage.keep_open, None);
+        let config = HostConfig::layers(
+            text,
+            Some("[kinds.research.agents.stages.talk]\nhibernate_after = \"90s\"\n"),
+        )
+        .unwrap();
+        assert_eq!(config.configuration.local, LocalLayer::Taken);
+        let research = &config.kinds["research"];
+        assert_eq!(research.every_stage.hibernate_after.as_deref(), Some("20m"));
+        assert_eq!(
+            research.stages["talk"].hibernate_after.as_deref(),
+            Some("90s")
+        );
+        assert_eq!(
+            value_at(&config, "kinds.research.agents.stages.talk.hibernate_after"),
+            Some(("\"90s\"".into(), ConfigLayer::Local))
+        );
+        let config = HostConfig::parse(
+            "[streams.work]\n\
+             [agents.streams.work]\nhibernate_after = \"10m\"\n\
+             [agents]\nhibernate_after = \"45m\"\n\
+             [repos.\"/r\".agents]\nhibernate_after = \"2h\"\n\
+             [repos.\"/r\".kinds.research.agents.stages.talk]\nhibernate_after = \"5m\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.streams_agents["work"].hibernate_after.as_deref(),
+            Some("10m")
+        );
+        assert_eq!(config.every_agent.hibernate_after.as_deref(), Some("45m"));
+        assert_eq!(
+            config.repos_agents["/r"].hibernate_after.as_deref(),
+            Some("2h")
+        );
+        assert_eq!(
+            config.repos["/r"]["research"].stages["talk"]
+                .hibernate_after
+                .as_deref(),
+            Some("5m")
+        );
+    }
+
+    #[test]
+    fn a_hosts_hibernate_after_in_another_form_is_refused() {
+        // 212, C.7: named by its table and key with the forms it takes,
+        // never a table of programs; a local one so refused leaves the
+        // local layer untaken, naming why.
+        let forms = "<n>, <n>s, <n>m or <n>h";
+        for (text, named) in [
+            (
+                "[kinds.research.agents]\nhibernate_after = \"an hour\"\n",
+                "kinds.research.agents.hibernate_after",
+            ),
+            (
+                "[kinds.research.agents.stages.talk]\nhibernate_after = \"+5m\"\n",
+                "kinds.research.agents.stages.talk.hibernate_after",
+            ),
+            (
+                "[agents]\nhibernate_after = 3600\n",
+                "agents.hibernate_after",
+            ),
+            (
+                "[agents]\nhibernate_after = { agent = \"1h\" }\n",
+                "agents.hibernate_after",
+            ),
+        ] {
+            let refused = HostConfig::parse(text).unwrap_err();
+            assert!(
+                refused.contains(named) && refused.contains(forms),
+                "{text}: {refused}"
+            );
+        }
+        let refused =
+            HostConfig::parse("[agents]\nhibernate_after = { agent = \"1h\" }\n").unwrap_err();
+        assert!(refused.contains("never a table of programs"), "{refused}");
+        let config = HostConfig::layers(
+            "[agents]\nhibernate_after = \"1h\"\n",
+            Some("[kinds.research.agents]\nhibernate_after = \"an hour\"\n"),
+        )
+        .unwrap();
+        let LocalLayer::NotTaken { fault, .. } = &config.configuration.local else {
+            panic!("the local layer taken: {:?}", config.configuration.local);
+        };
+        let fault = fault.as_deref().unwrap_or_default();
+        assert!(
+            fault.contains("kinds.research.agents.hibernate_after"),
+            "{fault}"
+        );
+        assert_eq!(config.every_agent.hibernate_after.as_deref(), Some("1h"));
+        assert!(
+            !config.kinds.contains_key("research"),
+            "the managed layer alone"
         );
     }
 

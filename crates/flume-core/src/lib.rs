@@ -13,6 +13,7 @@ pub mod address;
 mod agent_acts;
 mod answer;
 mod base;
+mod batch;
 mod clues;
 mod deliver;
 pub mod deliveries;
@@ -20,11 +21,13 @@ mod end;
 mod ends;
 mod fixes;
 mod held;
+mod hibernate;
 mod kinds_lock;
 mod launch;
 mod line;
 mod list;
 mod live;
+pub mod message;
 mod open;
 mod open_sessions;
 mod own;
@@ -38,6 +41,7 @@ mod settings;
 mod settle;
 mod spent;
 mod standing;
+mod standing_role;
 mod start;
 mod start_record;
 mod status;
@@ -60,7 +64,7 @@ pub use held::Step;
 pub use kinds_lock::{KindsLock, LockOf};
 pub use line::NOT_ITS_AGENT;
 pub use own::shaped_as_credential;
-pub use prompt::{group_name, way_to_stop_short, ONE_WAY_TO_ASK};
+pub use prompt::{group_name, way_to_stop_short, KINDS_WORDS, ONE_WAY_TO_ASK};
 pub use relay::{RelayEnded, RelayLine, RelayLink, RelayNext};
 pub use start_record::{
     variable_digest, AGENT_VARIABLE, PLACE_VARIABLE, STAGE_VARIABLE, TERMINALS_OWN,
@@ -86,13 +90,23 @@ const _: () = assert!(
     "KEEP_OPEN is whole hours"
 );
 
+/// How long a conversation of a stage whose kind hibernates it may be
+/// quiet before a settle hibernates it, where no layer gives a
+/// `hibernate_after`: flume's own one hour, the default layer's, written
+/// in whole hours (32, 212).
+pub const HIBERNATE_AFTER: Seconds = 60 * 60;
+const _: () = assert!(
+    HIBERNATE_AFTER.is_multiple_of(60 * 60),
+    "HIBERNATE_AFTER is whole hours"
+);
+
 /// How long after each sending flume reads whether a prompt was
 /// received (38).
 pub const RECEIVED_WITHIN: Seconds = 60;
 
-/// How long a tell waits for its agent where its caller gives no bound
+/// How long a message waits for its agent where its caller gives no bound
 /// (54).
-pub const TELL_BOUND: Seconds = 10 * 60;
+pub const MESSAGE_BOUND: Seconds = 10 * 60;
 
 /// How often a command that waits on an agent reads it again.
 pub const POLL: Seconds = 5;
@@ -330,6 +344,7 @@ mod tests {
             fix_of: None,
             fixes_as: None,
             token: None,
+            checkouts: Vec::new(),
         }
     }
 

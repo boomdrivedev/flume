@@ -77,11 +77,18 @@ enum Command {
     },
     /// The exact prompt a stage would be sent at its next start (29).
     Prompt { place: String, stage: String },
-    /// Hand the place's agent words as a prompt (53 to 55).
-    Tell {
-        place: String,
+    /// Message a place's agent or a role's address: a place's agent is
+    /// handed the words as a prompt once it waits; a role's address,
+    /// `<stream>/<role>`, keeps them as a delivery its session takes at its
+    /// next wait (53 to 55, 214).
+    #[command(alias = "tell")]
+    Message {
+        /// A role's address, `<stream>/<role>`; else a place, by its
+        /// location or `<kind>--<name>` in the repository.
+        target: String,
         words: String,
-        /// How long to wait for the agent, as `<n>`, `<n>s`, `<n>m` or `<n>h`.
+        /// How long to wait for a place's agent, as `<n>`, `<n>s`, `<n>m`
+        /// or `<n>h`.
         #[arg(long)]
         within: Option<String>,
         /// The key of the stop-short the words answer, as the inbox and
@@ -100,6 +107,14 @@ enum Command {
     Drop(Forced),
     /// Declare complete the work of a place whose kind does not land (114).
     Done(Forced),
+    /// Hibernate the place's current stage, whose kind hibernates it: its
+    /// agent ended once quiet, or working with `--force`, and its session
+    /// kept, its room and its account freed (31, 212).
+    Hibernate(Forced),
+    /// Resume the place's hibernating stage in its own session, with
+    /// flume's words that it resumes; a message or its answer resumes it
+    /// with theirs (213).
+    Resume { place: String },
     /// Start a stage again, or submit the place again (49, 50).
     Retry {
         place: String,
@@ -165,7 +180,9 @@ enum Command {
     Settle {
         place: Option<String>,
         /// Read the place's agent until it is quiet, for up to 60 seconds,
-        /// first.
+        /// first, as its own quiet starts the settle: a conversation whose
+        /// kind hibernates it has its quiet started again, since a turn
+        /// ended (121, 212).
         #[arg(long)]
         on_quiet: bool,
         /// Settle the places where something is pending as a watch over
@@ -200,8 +217,9 @@ enum Command {
     /// From an agent program's hook: what the hook for `event` does with
     /// the input on standard input, in an agent flume started; nothing
     /// elsewhere. `status-line` reads no input and prints the place's
-    /// line; `usage` keeps the usage windows on its input as its
-    /// account's reading. It always exits 0 (184, 211, C.4).
+    /// line, `deliver` reads none and prints what the agent takes at its
+    /// wait, and `usage` keeps the usage windows on its input as its
+    /// account's reading. It always exits 0 (184, 211, 215, C.4).
     Hook {
         /// One of the plugin's hooks; any other does nothing.
         event: String,
@@ -249,11 +267,12 @@ enum Command {
         confirm: bool,
     },
     /// Collect every end pending for a recipient, of every place on the
-    /// host, each handed to it; an inbox naming a place collects that
-    /// place's ends alone (43, 62). A hand-over delivers nothing until its
-    /// recipient confirms it: an end the inbox gives stays pending, and is
-    /// given again by the next inbox, until `--confirm` confirms it on
-    /// receipt or `flume confirm` names its delivery's key.
+    /// host, and every message pending at it, each handed to it; an inbox
+    /// naming a place collects that place's ends alone (43, 62, 214). A
+    /// hand-over delivers nothing until its recipient confirms it: an end
+    /// the inbox gives stays pending, as a message does, and is given again
+    /// by the next inbox, until `--confirm` confirms it on receipt or `flume
+    /// confirm` names its delivery's key.
     Inbox {
         /// The place whose ends alone are collected, named as `flume
         /// status` names one: a location, or `<kind>--<name>` in the
@@ -274,13 +293,14 @@ enum Command {
         confirm: bool,
     },
     /// Confirm, as a recipient, each delivery key given: a notice, a wait,
-    /// the inbox and a session's start hand an end over, and a hand-over
-    /// delivers nothing until its recipient confirms it by its key, which
-    /// `flume inbox`, `flume wait`, `flume status` and the notice give as
-    /// the end's delivery (43). A key confirmed before says when it first
-    /// was; a key no end is under, or one whose end is another
-    /// recipient's, is refused naming it, and the keys after it are not
-    /// confirmed. Exits 1 on a refusal.
+    /// the inbox and a session's start hand an end or a message over, and
+    /// a hand-over delivers nothing until its recipient confirms it by its
+    /// key, which `flume inbox`, `flume wait`, `flume status` and the
+    /// notice give as its delivery's, a message's beginning `message/`
+    /// (43, 214). A key confirmed before says when it first was; a key no
+    /// delivery is under, or one that is another recipient's, is refused
+    /// naming it, and the keys after it are not confirmed. Exits 1 on a
+    /// refusal.
     Confirm {
         /// The delivery keys, `<kind>--<name>/<token>/<end key>`.
         #[arg(required = true, value_name = "KEY")]
@@ -465,13 +485,15 @@ struct LaunchArgs {
     stall_after: Option<String>,
     /// One setting of every stage's agent, or of one stage's (32): the
     /// field one of program, model, effort, instructions, beside, session,
-    /// mode and keep_open, `effort` its program's own word for how hard its
-    /// model works, `session` the terminal's session its agents open in,
-    /// the mode one of plan, ask, edits and full, or `mode.<program>` for
-    /// one program's entry of a mode, and `keep_open` how long the agent
-    /// is kept open for an answer once it stops short, as `<n>`, `<n>s`,
-    /// `<n>m` or `<n>h`, one time for every program, an hour where no
-    /// layer gives one (107, 162, 169, 197, 198).
+    /// mode, keep_open and hibernate_after, `effort` its program's own word
+    /// for how hard its model works, `session` the terminal's session its
+    /// agents open in, the mode one of plan, ask, edits and full, or
+    /// `mode.<program>` for one program's entry of a mode, `keep_open` how
+    /// long the agent is kept open for an answer once it stops short, and
+    /// `hibernate_after` how long a conversation whose kind hibernates it
+    /// may idle before it hibernates, each as `<n>`, `<n>s`, `<n>m` or
+    /// `<n>h`, one time for every program, an hour where no layer gives
+    /// one (107, 162, 169, 197, 198, 212).
     #[arg(long, value_name = "[STAGE.]FIELD=VALUE")]
     agent: Vec<String>,
     /// The stream the place runs in, one the host's configuration
@@ -648,23 +670,34 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             let place = named(place)?;
             build()?.prompt(&place, stage)
         }
-        Command::Tell {
-            place,
+        Command::Message {
+            target,
             words,
             within,
             answers,
         } => {
-            let place = named(place)?;
             let within = within.as_deref().map(read_span).transpose()?;
             let key = key_of(answers)?;
-            let core = build()?;
-            let answering = answering(&core, key);
-            core.tell_answering(&place, words, within, &answering)
+            if flume_core::message::names_an_address(target) {
+                let core = build()?;
+                let answering = answering(&core, key);
+                core.message_address(target, words, within, &answering)
+            } else {
+                let place = named(target)?;
+                let core = build()?;
+                let answering = answering(&core, key);
+                core.message_answering(&place, words, within, &answering)
+            }
         }
         Command::Stop(forced) => build_for(forced, &named, build, Engine::stop)?,
         Command::Finish(forced) => build_for(forced, &named, build, Engine::finish)?,
         Command::Drop(forced) => build_for(forced, &named, build, Engine::drop_place)?,
         Command::Done(forced) => build_for(forced, &named, build, Engine::done)?,
+        Command::Hibernate(forced) => build_for(forced, &named, build, Engine::hibernate)?,
+        Command::Resume { place } => {
+            let place = named(place)?;
+            build()?.resume(&place)
+        }
         Command::Retry {
             place,
             stage,
@@ -732,12 +765,13 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         } => {
             let place = maybe(place)?;
             let core = build()?;
-            if *on_quiet {
-                if let Some(place) = &place {
+            match (&place, *on_quiet) {
+                (Some(place), true) => {
                     until_quiet(&core, place, Duration::from_secs(ON_QUIET_WITHIN));
+                    core.settle_on_quiet(place)
                 }
+                _ => core.settle(place.as_ref()),
             }
-            core.settle(place.as_ref())
         }
         Command::Priority { place, priority } => {
             let place = named(place)?;
@@ -829,11 +863,11 @@ fn recipient_of(core: &Engine, named: &Option<String>) -> Result<String, String>
     })
 }
 
-/// What a retry's or a tell's answer names beside its words: the key of
+/// What a retry's or a message's answer names beside its words: the key of
 /// the stop-short it answers, where `--answers` gives one, and who gives
 /// it, the recipient the command acts as where it names none, recorded on
 /// the stop-short it answers; none where no recipient is read or the
-/// reading is refused, so a retry or a tell is never refused for its
+/// reading is refused, so a retry or a message is never refused for its
 /// giver (42, 49, 132).
 fn answering(core: &Engine, key: Option<EndKey>) -> Answering {
     Answering {
@@ -928,6 +962,10 @@ fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> 
         stall_after: args.stall_after.as_deref().map(read_span).transpose()?,
         stream: args.stream.clone(),
         intent: args.intent.clone(),
+        from_place: std::env::var(PLACE)
+            .ok()
+            .filter(|place| !place.is_empty())
+            .map(PlaceId::new),
     })
 }
 

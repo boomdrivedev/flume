@@ -624,6 +624,7 @@ fn identity(stage: &str) -> Identity {
         place: "fix--one".into(),
         stage: stage.into(),
         start: 1,
+        resume: 0,
     }
 }
 
@@ -1381,6 +1382,7 @@ fn the_words_a_fixs_code_is_told() {
         place: "change--two".into(),
         stage: "verify".into(),
         start: 7,
+        resume: 0,
     };
     let way = seam.stop_short(&code);
     assert_eq!(seam.stop_short(&verify), way, "the verify agent's words");
@@ -1479,7 +1481,7 @@ fn the_plugin_an_agent_loads() {
     );
     assert!(!hooks.contains("\"command\": \"flume\""), "{hooks}");
     // Each module runs the same binary by its path (design 4, 211).
-    for module in ["hooks/line.ts", "hooks/usage.ts"] {
+    for module in ["hooks/flume.ts", "hooks/usage.ts"] {
         let text = std::fs::read_to_string(dir.join(module)).expect(module);
         assert!(
             text.contains("const FLUME = \"/opt/flume/bin/flume\";"),

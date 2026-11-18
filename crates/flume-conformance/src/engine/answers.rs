@@ -125,6 +125,7 @@ fn settings() -> Settings {
         session: Some("review".into()),
         programs: BTreeMap::new(),
         keep_open: None,
+        hibernate_after: None,
     }
 }
 
@@ -236,7 +237,7 @@ fn place_status() -> PlaceStatus {
             answers: vec![SessionAnswer {
                 question: Some("which design?".into()),
                 answer: answered(),
-            }],
+            }], hibernates: false, hibernate_after: None, hibernated: None, resumes: vec![],
         }],
         current: Some("code".into()),
         agent: Some(AgentStatus {
@@ -667,6 +668,7 @@ fn place_status() -> PlaceStatus {
                 submission: "40".into(),
             },
         }),
+        checkouts: vec![],
     }
 }
 
@@ -838,6 +840,8 @@ fn host_status() -> HostStatus {
                     agents: RoleAgents::default(),
                     answers: None,
                     answerer: false,
+                    repositories: Vec::new(),
+                    kinds: BTreeMap::new(),
                 },
                 stream: "madswan".into(),
             }),
@@ -851,7 +855,10 @@ fn host_status() -> HostStatus {
             standing: None,
             carried: None,
             wakes_nothing: None,
+            messages: vec![],
+            reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "madswan/ops".into(),
             role: None,
@@ -865,7 +872,10 @@ fn host_status() -> HostStatus {
             standing: Some(standing_status()),
             carried: None,
             wakes_nothing: None,
+            messages: vec![],
+            reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "north/planner".into(),
             role: None,
@@ -878,7 +888,10 @@ fn host_status() -> HostStatus {
                 answers: Some("The work's scope.".into()),
             }),
             wakes_nothing: None,
+            messages: vec![],
+            reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "east/planner".into(),
             role: None,
@@ -888,7 +901,10 @@ fn host_status() -> HostStatus {
             standing: None,
             carried: None,
             wakes_nothing: Some("no source of the host declares east/planner".into()),
+            messages: vec![],
+            reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "east/operator".into(),
             role: None,
@@ -898,11 +914,14 @@ fn host_status() -> HostStatus {
             standing: None,
             carried: None,
             wakes_nothing: None,
+            messages: vec![],
+            reporting: vec![],
             stalled: Some(PendingEnd {
                 place: PlaceId::new("/r/places/turn--east-operator"),
                 key: "stall/420".parse().unwrap(),
                 what: "stalled: a retry of plan".into(),
             }),
+            standing_role: None,
         }],
         watch: Watch::Bound { seconds: 30 },
         watch_settled: Some(47_400),
@@ -1109,6 +1128,15 @@ pub fn full() -> Vec<(&'static str, Answer)> {
                         lapsed: None,
                     }),
                 }],
+                messages: vec![CollectedMessage {
+                    key: "message/east/planner/0a1b2c3d".into(),
+                    address: "east/planner".into(),
+                    from: Some("ops".into()),
+                    at: 120,
+                    words: "the nightly job failed".into(),
+                    confirmed: true,
+                    expired: false,
+                }],
             },
         ),
         (
@@ -1140,6 +1168,22 @@ pub fn full() -> Vec<(&'static str, Answer)> {
                     key: "stage/code/1/ended-short".parse().unwrap(),
                     what: "code delivered".into(),
                 }],
+            },
+        ),
+        (
+            "taken",
+            Answer::Taken {
+                words: Some("ops messages east/planner:\nthe nightly job failed".into()),
+            },
+        ),
+        (
+            "messaged",
+            Answer::Messaged {
+                key: "message/east/planner/0a1b2c3d".into(),
+                address: "east/planner".into(),
+                found: Found::Unwoken,
+                run: Some(PlaceId::new("/r/places/turn--east-planner")),
+                why: Some("the run of east/planner was not launched".into()),
             },
         ),
         (
@@ -1427,6 +1471,8 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.addresses[].standing.session.name",
             "status.host.addresses[].standing.stream",
             "status.host.addresses[].stalled",
+            "status.host.addresses[].messages",
+            "status.host.addresses[].reporting",
             "status.host.addresses[].stalled.key",
             "status.host.addresses[].stalled.place",
             "status.host.addresses[].stalled.what",
@@ -2689,6 +2735,14 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "inbox.ends[].name",
             "inbox.ends[].place",
             "inbox.recipient",
+            "inbox.messages",
+            "inbox.messages[].address",
+            "inbox.messages[].at",
+            "inbox.messages[].confirmed",
+            "inbox.messages[].expired",
+            "inbox.messages[].from",
+            "inbox.messages[].key",
+            "inbox.messages[].words",
         ],
     ),
     (
@@ -3016,6 +3070,18 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "held.standing.session.name",
             "held.standing.stream",
             "held.standing.terminal",
+        ],
+    ),
+    ("taken", &["taken", "taken.words"]),
+    (
+        "messaged",
+        &[
+            "messaged",
+            "messaged.address",
+            "messaged.found",
+            "messaged.key",
+            "messaged.run",
+            "messaged.why",
         ],
     ),
     (
