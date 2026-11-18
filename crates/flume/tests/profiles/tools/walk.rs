@@ -44,9 +44,20 @@ use std::time::{Duration, Instant};
 /// account's, only a word for the stand-in to keep from its hooks.
 pub const STAND_IN_TOKEN: &str = "stand-in-token";
 
-/// The gate: the check fails, with its words, while the tree holds
+/// The gate: the check waits while the walk holds it, `hold` standing
+/// in the walk's scratch, looking every 100 milliseconds for at most 120
+/// seconds, and then fails, with its words, while the tree holds
 /// `broken`.
-const CHECK: &str = "if [ -e broken ]; then\n  echo 'the parser test failed: broken is in the tree' >&2\n  exit 1\nfi\n";
+fn check(hold: &Path) -> String {
+    format!(
+        "i=0\nwhile [ -e '{}' ] && [ \"$i\" -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done\n\
+         if [ -e broken ]; then\n  echo 'the parser test failed: broken is in the tree' >&2\n  exit 1\nfi\n",
+        hold.display()
+    )
+}
+
+/// The file in a walk's scratch that holds its check while it stands.
+const HOLD: &str = "hold";
 
 /// sluice's policy: main gated by the check and landed on `origin`.
 const POLICY: &str =
@@ -152,11 +163,24 @@ pub struct Walk {
 
 impl Drop for Walk {
     fn drop(&mut self) {
+        // Released first, so every run ends and the host process of the
+        // walk's state folder ends with nothing in play.
+        self.release();
         unlink_user_scratch(&self.repository);
     }
 }
 
 impl Walk {
+    /// The check held: each run of it waits until [`Walk::release`].
+    pub fn hold(&self) {
+        std::fs::write(self.repository.scratch.path(HOLD), "").expect("the hold");
+    }
+
+    /// The check released, so a run of it waiting ends.
+    pub fn release(&self) {
+        let _ = std::fs::remove_file(self.repository.scratch.path(HOLD));
+    }
+
     /// A repository on `main` holding the binding, the gate and
     /// OpenSpec's root, pushed to its bare remote, which it tracks, and
     /// the stand-in first on `PATH` as `claude`.
@@ -176,7 +200,7 @@ impl Walk {
         let repository = Repository::new(label);
         repository.write(".config/sluice.toml", POLICY);
         repository.write(".config/flume.toml", BINDING);
-        repository.write("check.sh", CHECK);
+        repository.write("check.sh", &check(&repository.scratch.path(HOLD)));
         repository.write("openspec/config.yaml", "schema: spec-driven\n");
         repository.write("work.rs", "one\n");
         repository.commit("the binding, the gate and the specs' root");

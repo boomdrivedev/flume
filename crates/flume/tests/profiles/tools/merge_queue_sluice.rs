@@ -27,9 +27,12 @@
 //! place's branch is made there, a fix lands on it, it lands on main by
 //! name, its landing read from sluice's status with no inbox run, and it
 //! is closed on the origin and the host (203, S110). A chore submitted
-//! with no agent in it lands by the settles of a caller keeping watch
-//! alone, `flume settle --every 1m`, each stepping main once, with no
-//! `sluice run` live (124, 125, 208, S109).
+//! with no agent in it lands by sluice's host process and is read and
+//! tidied by the settles of a caller keeping watch alone, `flume settle
+//! --every 1m`, none of which runs a round of the queue, with no `sluice
+//! run` live; and where that host process ended with the chore's check
+//! waiting, a settle's read starts another, which lands it (124, 125,
+//! 208, S109; sluice 135).
 
 use super::walk::{stage, unlink_user_scratch, user_scratch, Walk, USER_SCRATCH};
 use crate::common::*;
@@ -1652,12 +1655,16 @@ fn until_the_quiet_settle_ends(log: &Path) {
 fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     // S109: a chore's agent commits and ends, and the settle its quiet
     // starts submits it; from then on the test runs nothing but a
-    // caller's watch, `flume settle --every 1m`, and no `sluice run` is
-    // live. Each settle while the submission is open steps main once, it
-    // lands with no agent started after its code stage, and the settle
-    // that reads the landing tidies it (121, 124, 125, 208).
+    // caller's watch, `flume settle --every 1m`, and no `sluice run` or
+    // `sluice daemon` is live. The chore's check is held until the
+    // watch's first settle has read its submission open; sluice's host
+    // process, which the submit started, then lands it, no settle running
+    // a round of the queue, with no agent started after its code stage,
+    // and the settle that reads the landing tidies it (46, 121, 124, 125,
+    // 208, C.6; sluice 135).
     let walk = Walk::new("watch-chore");
     let log = counting_sluice(&walk);
+    walk.hold();
     let place = walk.launch("chore", "one", &["--brief", "tidy the parser"]);
     walk.agent(
         &place,
@@ -1669,29 +1676,30 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     until_the_quiet_settle_ends(&log);
     let submitted = walk.status(&place);
     assert_eq!(submitted["submission"]["submits"], 1, "{submitted}");
-    let entry = walk.submissions();
-    assert_eq!(entry.len(), 1, "{entry:?}");
-    assert!(
-        matches!(
-            entry[0]["state"].as_str(),
-            Some("queued" | "testing" | "landing")
-        ),
-        "the chore was decided before the watch: {entry:?}"
-    );
-    let watched = asked(&log).len();
-    let steps = |from: usize| {
-        asked(&log)[from..]
-            .iter()
-            .filter(|(_, command)| command.starts_with("step main"))
-            .count()
+    let open = |when: &str| {
+        let entry = walk.submissions();
+        assert_eq!(entry.len(), 1, "{entry:?}");
+        assert!(
+            matches!(
+                entry[0]["state"].as_str(),
+                Some("queued" | "testing" | "landing")
+            ),
+            "the chore was decided {when}: {entry:?}"
+        );
     };
+    open("before the watch");
+    let watched = asked(&log).len();
     let began = Instant::now();
-    let mut settles: Vec<usize> = vec![];
+    let mut settles = 0;
     loop {
-        let from = asked(&log).len();
         walk.flume(&["settle", "--every", "1m"]);
-        settles.push(steps(from));
+        settles += 1;
         let status = walk.status(&place);
+        if settles == 1 {
+            assert!(!status.is_null(), "the chore was tidied while held");
+            open("at the watch's first settle");
+            walk.release();
+        }
         if status.is_null() {
             break;
         }
@@ -1704,26 +1712,26 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
         );
         assert!(
             began.elapsed() < Duration::from_secs(120),
-            "the chore never landed: {settles:?} {status}"
+            "the chore never landed after {settles} settles: {status}"
         );
         std::thread::sleep(Duration::from_millis(300));
     }
 
-    // Each settle before the one that read the landing stepped main once,
-    // and that one at most once, the round it read having landed at its
-    // own step or at the step before it.
-    let last = settles.len() - 1;
-    assert!(
-        settles[..last].iter().all(|steps| *steps == 1) && settles[last] <= 1,
-        "the steps of each settle: {settles:?}"
-    );
-    assert!(settles.contains(&1), "no settle stepped main: {settles:?}");
+    // No settle, the quiet one or the watch's, ran a round of sluice's
+    // queue or waited on it, and the watch submitted nothing.
     let asked = asked(&log);
+    let moving: Vec<&(i32, String)> = asked
+        .iter()
+        .filter(|(_, command)| {
+            matches!(
+                command.split_whitespace().next(),
+                Some("step" | "run" | "daemon" | "wait")
+            )
+        })
+        .collect();
     assert!(
-        !asked
-            .iter()
-            .any(|(_, command)| command.starts_with("run") || command.starts_with("wait")),
-        "a sluice run or wait: {asked:?}"
+        moving.is_empty(),
+        "a sluice command that moves a queue: {moving:?}"
     );
     assert!(
         !asked[watched..]
