@@ -493,6 +493,46 @@ file its rule gave it. Write `committed:results/{{file}}` so each
 session delivers its own file: a deliverable naming neither part is
 the same file for every session.
 
+### How a statechart kind runs
+
+flume runs a statechart kind on the family's engine and decides no
+move of its own. Each settle of the place steps its sessions as it
+steps a simple kind's stage, then reads the place's branch's head once
+and ticks the statechart once over what it read there. In each region,
+the first transition out of its state whose guard holds fires, and a
+region reading another's state sees a move made at that tick only at
+the next. A stage's sessions start at the tick after it is entered, so
+going from one stage to the next takes three settles. An agent going
+quiet and the host's watch settle a place, so the watch's bound sets
+the pace.
+
+A stage ends when its sessions say so:
+
+- **passed** once its join is met by sessions that delivered;
+- **sent back** once a session stops short with `flume needs --found`,
+  while the stage has been sent back fewer times than its
+  `max_send_backs`;
+- **stopped** once a session finds work past that bound, its rule
+  matched no file, or too few of its sessions are left for its join.
+
+A session that asks, is lost or stuck, or never begins keeps its stage
+working while the place waits on you, as a simple kind's stage does. The
+kind's own transitions take each end, `{ final = "passed" }` and the
+like, and a session still live once its stage ended is ended once quiet.
+The finding's words go to the sessions of the stage the kind enters
+next, in `{{words}}`.
+
+The run is over once every top region holds a final state. A kind that
+lands is then submitted through the merge queue, once none of its
+sessions is live; one that does not land waits on you, and `flume done`
+ends it. The submission's outcome is evidence the statechart reads:
+`place.submission` reads `open` while it is in flight, then `landed`,
+`failed`, `conflict`, `withdrawn` or `refused`. A transition out of a
+final state that reads `failed` can take the run back to a stage, whose
+sessions start with the merge queue's words. A failure no transition
+takes leaves the place waiting on you, and `flume retry <place>
+--submission` submits it again.
+
 ### What a statechart kind may name
 
 flume binds one template, `stage`, one rule, `every-file`, and three
