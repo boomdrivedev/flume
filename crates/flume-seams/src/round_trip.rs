@@ -315,6 +315,12 @@ fn held() -> HeldState {
                 }),
             }),
             made_from: Some(1),
+            counts: Some(Counted {
+                start: 1,
+                at: 3,
+                head: Revision::new("c1"),
+                made_from: 1,
+            }),
             start: Some(StartHeld {
                 n: 2,
                 started_at: 5,
@@ -425,6 +431,12 @@ fn held() -> HeldState {
                     passed: Some("--own /state/places/x/agent/own.json".into()),
                 }),
                 answered: 0,
+                counts: Some(Counted {
+                    start: 1,
+                    at: 3,
+                    head: Revision::new("c1"),
+                    made_from: 1,
+                }),
                 span: None,
                 asking_since: None,
             }),
@@ -920,14 +932,19 @@ fn a_held_state_with_a_stream_an_account_and_a_record() {
 
 #[test]
 fn a_held_state_with_where_its_recipients_came_from() {
-    // Each of the four a launch takes its recipients from reads back
-    // unchanged, the answerer with its source; a state written before
-    // reads with none, and writes none (7, 193).
+    // Each of the five a launch takes its recipients from reads back
+    // unchanged, the answerer with its source and the standing agent
+    // with its name and source; a state written before reads with none,
+    // and writes none (7, 132, 193).
     for from in [
         RecipientsFrom::Launch,
         RecipientsFrom::Environment,
         RecipientsFrom::Session,
         RecipientsFrom::Answerer {
+            source: "acme".into(),
+        },
+        RecipientsFrom::Standing {
+            agent: "east-planner".into(),
             source: "acme".into(),
         },
     ] {
@@ -943,6 +960,18 @@ fn a_held_state_with_where_its_recipients_came_from() {
     let json = serde_json::to_value(&state).expect("held state as JSON");
     assert_eq!(json["place"]["recipients_from"]["from"], "answerer");
     assert_eq!(json["place"]["recipients_from"]["source"], "acme");
+    let mut standing = held();
+    standing.place.recipients_from = Some(RecipientsFrom::Standing {
+        agent: "east-planner".into(),
+        source: "acme".into(),
+    });
+    let standing = serde_json::to_value(&standing).expect("held state as JSON");
+    assert_eq!(standing["place"]["recipients_from"]["from"], "standing");
+    assert_eq!(
+        standing["place"]["recipients_from"]["agent"],
+        "east-planner"
+    );
+    assert_eq!(standing["place"]["recipients_from"]["source"], "acme");
     let mut before = json;
     before["place"]
         .as_object_mut()
@@ -1859,15 +1888,15 @@ fn a_label_and_its_share() {
         assert_eq!(serde_json::to_value(from).unwrap(), spelled);
     }
     round_trips(Share::default());
-    let read: Share = serde_json::from_str(r#"{"reserve":2}"#).unwrap();
+    let read: Share = serde_json::from_str(r#"{"owed":2}"#).unwrap();
     assert_eq!(
         read,
         Share {
-            reserve: 2,
-            keep_free: 0,
+            owed: 2,
+            reserved: 0,
             unknown: vec![],
         },
-        "zero kept free and nothing unknown where its table gives none"
+        "zero reserved and nothing unknown where its table gives none"
     );
     let before: Stream = serde_json::from_str(r#"{"agents":5,"priority":10}"#).unwrap();
     assert_eq!((before.session, before.labels.len()), (None, 0));
@@ -2985,16 +3014,16 @@ fn streams_and_pools_as_the_configuration_names_them() {
             (
                 "operation".into(),
                 Share {
-                    reserve: 2,
-                    keep_free: 1,
+                    owed: 2,
+                    reserved: 1,
                     unknown: vec![],
                 },
             ),
             (
                 "construction".into(),
                 Share {
-                    reserve: 0,
-                    keep_free: 0,
+                    owed: 0,
+                    reserved: 0,
                     unknown: vec!["pool".into()],
                 },
             ),
@@ -3011,14 +3040,12 @@ fn streams_and_pools_as_the_configuration_names_them() {
                 program: "agent".into(),
                 env: BTreeMap::from([("AGENT_HOME".into(), "~/.agent-work-1".into())]),
                 agents: Some(4),
-                usage: None,
             },
             Account {
                 name: "work-2".into(),
                 program: "agent".into(),
                 env: BTreeMap::new(),
                 agents: None,
-                usage: None,
             },
         ],
     };
@@ -3073,47 +3100,63 @@ fn a_pool_and_a_reading() {
             program: "agent".into(),
             env: BTreeMap::new(),
             agents: None,
-            usage: Some("~/.local/state/usage/work-1.json".into()),
         }],
     };
     round_trips(pool.clone());
     let json = serde_json::to_value(&pool).unwrap();
     assert_eq!(json["strategy"], serde_json::json!("most-left"));
     assert_eq!(json["threshold"], serde_json::json!(85));
-    assert_eq!(
-        json["accounts"][0]["usage"],
-        serde_json::json!("~/.local/state/usage/work-1.json")
-    );
+    assert!(json["accounts"][0].get("usage").is_none());
     assert_eq!(Strategy::MostLeft.name(), "most-left");
-    let usage = Usage {
-        read_at: 1_000,
+    // 2026-11-05T14:02:00Z, and its 5-hour window's reset at 17:00.
+    let reading = AccountReading {
+        taken_at: 1_793_887_320,
+        agent: "flume:6c61b9842ad5:fix--a-fix:code:1".into(),
+        session: Some("4e3c05c8-51c4-4449-8577-4f7038e394bf".into()),
         windows: vec![
             UsageWindow {
-                name: "5-hour".into(),
+                name: "five_hour".into(),
                 used: 4_200,
-                resets_at: Some(12_000),
+                resets_at: Some(1_793_898_000),
             },
             UsageWindow {
-                name: "7-day".into(),
-                used: 7_150,
+                name: "seven_day".into(),
+                used: 2_350,
                 resets_at: None,
             },
         ],
     };
-    round_trips(usage.clone());
-    let json = serde_json::to_value(&usage).unwrap();
+    round_trips(reading.clone());
+    let json = serde_json::to_value(&reading).unwrap();
+    assert_eq!(json["taken_at"], serde_json::json!("2026-11-05T14:02:00Z"));
+    assert_eq!(json["windows"][0]["used"], serde_json::json!(42));
+    assert_eq!(
+        json["windows"][0]["resets_at"],
+        serde_json::json!("2026-11-05T17:00:00Z")
+    );
+    assert_eq!(json["windows"][1]["used"], serde_json::json!(23.5));
     assert!(json["windows"][1].get("resets_at").is_none());
+    let offset: AccountReading = serde_json::from_value(serde_json::json!({
+        "taken_at": "2026-11-05T09:02:00-05:00",
+        "agent": "flume:6c61b9842ad5:fix--a-fix:code:1",
+        "windows": [{"name": "five_hour", "used": 42, "resets_at": "2026-11-05T17:00:00.000Z"}],
+    }))
+    .unwrap();
+    assert_eq!(offset.taken_at, reading.taken_at);
+    assert_eq!(offset.session, None);
+    assert_eq!(offset.windows[0], reading.windows[0]);
+    let unnamed = serde_json::to_value(AccountReading {
+        session: None,
+        ..reading
+    })
+    .unwrap();
+    assert!(unnamed.get("session").is_none());
     let unstated = serde_json::to_value(Pool {
         threshold: None,
-        accounts: vec![Account {
-            usage: None,
-            ..pool.accounts[0].clone()
-        }],
         ..pool
     })
     .unwrap();
     assert!(unstated.get("threshold").is_none());
-    assert!(unstated["accounts"][0].get("usage").is_none());
 }
 
 /// The seam-contracts spec's scenario "A move past a threshold" (147,
@@ -3365,11 +3408,14 @@ fn the_hosts_own_documents_and_their_keys() {
     }
     round_trips(HostVersioned {
         version: 3,
-        document: HostDocument::Account(AccountSpent {
-            until: 54_000,
-            words: Some("You've hit your session limit".into()),
-            recorded_at: 47_400,
-            unread: false,
+        document: HostDocument::Account(AccountDocument {
+            spent: Some(AccountSpent {
+                until: 54_000,
+                words: Some("You've hit your session limit".into()),
+                recorded_at: 47_400,
+                unread: false,
+            }),
+            reading: None,
         }),
     });
     let unread = AccountSpent {
@@ -3493,25 +3539,69 @@ fn an_affinity_written_before() {
 #[test]
 fn the_hosts_watch() {
     // The seam-contracts spec's round trips: the host's watch, its key
-    // and its document read back as written, and a host's state written
-    // before, which holds no watch, reading unchanged (73, 153, 208).
+    // and its document read back as written, the command running its
+    // settle and when that settle ended among it, and a host's state
+    // written before, which holds no watch, reading unchanged (73, 153,
+    // 208).
     round_trips(HostKey::Watch);
     assert_eq!(
         serde_json::to_value(HostKey::Watch).unwrap(),
         serde_json::json!({"of": "watch"})
     );
-    let watched = Watched {
+    let running = Watched {
         began: 47_400,
         bound: 120,
+        by: Some("command-1".into()),
+        ended: None,
     };
-    round_trips(watched);
-    round_trips(HostVersioned {
-        version: 2,
-        document: HostDocument::Watch(watched),
-    });
-    assert!(watched.kept(47_400 + 239));
-    assert!(!watched.kept(47_400 + 240));
-    assert_eq!(watched.lapses(), 47_640);
+    let ended = Watched {
+        ended: Some(47_460),
+        ..running.clone()
+    };
+    for watched in [&running, &ended] {
+        round_trips(watched.clone());
+        round_trips(HostVersioned {
+            version: 2,
+            document: HostDocument::Watch(watched.clone()),
+        });
+    }
+    let lives = |by: &str| by == "command-1";
+    let died = |_: &str| false;
+    // A watch whose settle runs, its command living, is kept at any time
+    // after it began, and lapses at no time; once that command dies with
+    // no end, it lapses twice its bound after it began (208).
+    assert!(running.kept(47_400 + 240, lives));
+    assert!(running.kept(47_400 + 86_400, lives));
+    assert_eq!(running.lapses(lives), None);
+    assert!(running.kept(47_400 + 239, died));
+    assert!(!running.kept(47_400 + 240, died));
+    assert_eq!(running.lapses(died), Some(47_640));
+    // A watch whose settle ended is kept until twice its bound after the
+    // end, whether or not its command lives (208).
+    for alive in [lives, died] {
+        assert!(ended.kept(47_460 + 239, alive));
+        assert!(!ended.kept(47_460 + 240, alive));
+        assert_eq!(ended.lapses(alive), Some(47_700));
+    }
+    let written = serde_json::to_value(&ended).unwrap();
+    assert_eq!(written["by"], "command-1");
+    assert_eq!(written["ended"], 47_460);
+    // A watch written before names no command and no end: it reads as it
+    // did, kept until twice its bound after it began, and is written back
+    // with neither (208).
+    let before: Watched = serde_json::from_value(serde_json::json!({
+        "began": 47_400,
+        "bound": 120,
+    }))
+    .expect("a watch written before");
+    assert_eq!((before.by.as_deref(), before.ended), (None, None));
+    assert!(before.kept(47_400 + 239, lives));
+    assert!(!before.kept(47_400 + 240, lives));
+    assert_eq!(before.lapses(lives), Some(47_640));
+    assert_eq!(
+        serde_json::to_value(&before).unwrap(),
+        serde_json::json!({"began": 47_400, "bound": 120})
+    );
     // A host's state written before holds an account's and an intent's
     // documents alone, each reading as it did.
     let before: HostVersioned = serde_json::from_value(serde_json::json!({
@@ -4118,8 +4208,12 @@ fn a_held_submission_and_its_outcome() {
         words: "#7 on main: the forge refused its landing".into(),
     });
     round_trips(Inbox::Outcomes {
-        outcomes: vec![SubmissionOutcome::Held {
-            words: "#7 on main: the forge refused its landing".into(),
+        outcomes: vec![Owed {
+            submission: "7".into(),
+            outcome: SubmissionOutcome::Held {
+                words: "#7 on main: the forge refused its landing".into(),
+            },
+            key: Some("7:refused".into()),
         }],
         passed_over: vec![],
     });
@@ -4192,6 +4286,14 @@ fn submit_holds_no_wait() {
             base: Revision::new("c8"),
             words: "conflict on main: src/lib.rs with #6".into(),
         },
+        key: Some("7:conflict".into()),
+    });
+    round_trips(Submitted::Decided {
+        submission: a_submission(),
+        outcome: SubmissionOutcome::Failed {
+            words: "check test-x failed".into(),
+        },
+        key: None,
     });
     round_trips(Submitted::Refused {
         reason: "no such base".into(),
@@ -4242,6 +4344,15 @@ fn the_inbox_and_its_outcomes() {
     for outcome in &outcomes {
         round_trips(outcome.clone());
     }
+    let outcomes: Vec<Owed> = outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(at, outcome)| Owed {
+            submission: (at + 1).to_string(),
+            key: (at > 0).then(|| format!("{}:failed", at + 1)),
+            outcome,
+        })
+        .collect();
     round_trips(Inbox::Outcomes {
         outcomes: outcomes.clone(),
         passed_over: vec![],
@@ -4258,6 +4369,14 @@ fn the_inbox_and_its_outcomes() {
         passed_over: vec![],
     });
     round_trips(Inbox::CouldNotRead {
+        reason: "down".into(),
+    });
+}
+
+#[test]
+fn a_confirm() {
+    round_trips(Confirmed::Confirmed);
+    round_trips(Confirmed::CouldNotRead {
         reason: "down".into(),
     });
 }
@@ -5205,6 +5324,113 @@ fn held_state_written_before_reads_its_old_deliveries() {
         before,
         "its old deliveries written back as they were"
     );
+}
+
+/// The agent seam's windows, each variant written and read back
+/// unchanged, a report with no session leaving `session` out (211).
+#[test]
+fn the_windows_an_agent_reported() {
+    let reported = Windows::Reported {
+        taken_at: 1_800_000_000,
+        windows: vec![
+            UsageWindow {
+                name: "five_hour".into(),
+                used: 4_200,
+                resets_at: Some(1_800_010_800),
+            },
+            UsageWindow {
+                name: "seven_day".into(),
+                used: 1_850,
+                resets_at: None,
+            },
+        ],
+        session: Some("4e3c05c8-51c4-4449-8577-4f7038e394bf".into()),
+    };
+    round_trips(reported.clone());
+    let unnamed = Windows::Reported {
+        taken_at: 1_800_000_000,
+        windows: vec![],
+        session: None,
+    };
+    round_trips(unnamed.clone());
+    let json = serde_json::to_value(&unnamed).unwrap();
+    assert!(json["reported"].get("session").is_none(), "{json}");
+    round_trips(Windows::NoneYet);
+    round_trips(Windows::Unknown);
+}
+
+/// The seam-contracts spec's scenario "An account's document" (153,
+/// C.7): one holding a spent time and a reading reads back unchanged, the
+/// spent keys at its top and the reading under `reading`; one an earlier
+/// release wrote reads spent with no reading; and one holding a reading
+/// alone reads with no spent time.
+#[test]
+fn an_accounts_document() {
+    let reading = AccountReading {
+        taken_at: 1_793_887_320,
+        agent: "flume:6c61b9842ad5:fix--a-fix:code:1".into(),
+        session: Some("s-1".into()),
+        windows: vec![
+            UsageWindow {
+                name: "five_hour".into(),
+                used: 4_200,
+                resets_at: Some(1_793_898_000),
+            },
+            UsageWindow {
+                name: "seven_day".into(),
+                used: 1_800,
+                resets_at: None,
+            },
+        ],
+    };
+    let both = HostVersioned {
+        version: 5,
+        document: HostDocument::Account(AccountDocument {
+            spent: Some(AccountSpent {
+                until: 1_793_890_800,
+                words: Some("You've hit your session limit".into()),
+                recorded_at: 1_793_887_000,
+                unread: false,
+            }),
+            reading: Some(reading.clone()),
+        }),
+    };
+    round_trips(both.clone());
+    let json = serde_json::to_value(&both).unwrap();
+    assert_eq!(json["document"]["of"], serde_json::json!("account"));
+    assert_eq!(json["document"]["until"], serde_json::json!(1_793_890_800));
+    assert_eq!(
+        json["document"]["reading"]["taken_at"],
+        serde_json::json!("2026-11-05T14:02:00Z")
+    );
+    let before: HostDocument = serde_json::from_value(serde_json::json!({
+        "of": "account",
+        "until": 54_000,
+        "words": "You've hit your session limit",
+        "recorded_at": 47_400,
+    }))
+    .expect("an account's document an earlier release wrote");
+    assert_eq!(
+        before,
+        HostDocument::Account(AccountDocument {
+            spent: Some(AccountSpent {
+                until: 54_000,
+                words: Some("You've hit your session limit".into()),
+                recorded_at: 47_400,
+                unread: false,
+            }),
+            reading: None,
+        })
+    );
+    let alone = HostDocument::Account(AccountDocument {
+        spent: None,
+        reading: Some(reading),
+    });
+    round_trips(alone.clone());
+    let json = serde_json::to_value(&alone).unwrap();
+    assert!(json.get("until").is_none(), "{json}");
+    let empty = HostDocument::Account(AccountDocument::default());
+    round_trips(empty);
 }
 
 /// The seam-contracts scenario "Input read and written back": a person's

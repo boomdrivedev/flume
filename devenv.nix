@@ -161,7 +161,8 @@ let
     '') hookTypes}
   '';
 
-  # Vale checks the site's prose (.vale.ini, styles/Flume). From its own
+  # Vale, for the pages' writers to run on their prose (.vale.ini,
+  # styles/Flume); no check runs it (core.21; record 0074). From its own
   # release: nixpkgs trails it. Bump the version and the four hashes from
   # the release's checksums file.
   valeVersion = "3.24.0";
@@ -344,13 +345,19 @@ let
   # (core.22, core.51).
   rex = inputs.rex.packages.${pkgs.stdenv.hostPlatform.system}.rex or null;
 
-  # sluice, which the merge-queue profile drives: the release the hosts run,
-  # so the tree's sluice reads the host's configuration as theirs writes it;
-  # an older release refuses a key it does not know, and no place's checks
-  # run. sluice publishes no x86_64-darwin build. Its builds are Nix's: on
+  # sluice, which the merge-queue profile drives: a release that reads the
+  # host's configuration as the hosts' own sluice writes it; an older
+  # release refuses a key it does not know, and no place's checks run.
+  # sluice publishes no x86_64-darwin build. Its builds are Nix's: on
   # Linux the loader and libgcc_s, on macOS libiconv, are store paths of the
   # machine that built them, set here to this tree's. Bump the version and
-  # the three checksums from the release's assets.
+  # the three checksums from the release's assets. A walkthrough's place
+  # runs its equip and release in the login environment alone (29), with
+  # no SLUICE_USER_SCRATCH, and a release since 0.95.1 makes
+  # /tmp/sluice-<uid>/<key> even with nothing to free, which the gate's
+  # sandbox refuses: the walk's login shell puts first a sluice of its own
+  # that gives those steps the walk's state folder and the test's scratch
+  # (core.51).
   sluiceVersion = "0.97.0";
   sluiceHashes = {
     aarch64-darwin = "8f70e1b6d6eb546a1a92285f7d5203043d9d8943389d4133213b8b6e42b69bb9";
@@ -556,7 +563,7 @@ in
   };
 
   scripts.prose = {
-    description = "The site's prose, checked by Vale (.vale.ini)";
+    description = "Vale over the site's pages and the README, for their writers (.vale.ini)";
     exec = ''
       set -euo pipefail
       cd "$(git rev-parse --show-toplevel)"

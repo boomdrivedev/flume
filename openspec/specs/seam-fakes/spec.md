@@ -131,17 +131,6 @@ none SHALL read a configuration file of the host's (106).
 - **WHEN** a test scripts the fake kinds' `deploy` with the label `operation`
 - **THEN** a deploy place's label is `operation` from `kind` where the fake host gives none (180)
 
-### Requirement: The fake host scripts each account's reading
-
-The fake host SHALL hold a reading or a refusal for each path a test
-sets, answer that the file is missing for any other, and pass the
-host's reading scenario; no fake SHALL read a real file (106, 184).
-
-#### Scenario: A scripted reading
-
-- **WHEN** a test sets the fake host's reading for `work-1`, then sets it again with a later `read_at`
-- **THEN** the core reads the later reading at the next choice, and the fake's log shows each reading asked (184)
-
 ### Requirement: The fake terminal scripts attach by view
 
 The fake terminal SHALL answer attach with a command of its own for the
@@ -388,6 +377,25 @@ moved, writing nothing (75, 102, 103).
 - **WHEN** the next write of a place's kept document is refused and a tidy writes it
 - **THEN** the write is refused as moved, nothing is written, and the next write of it lands
 
+### Requirement: The fake agent scripts the windows its program reports
+
+The fake agent SHALL keep, for a start a test names, the windows its
+program reports with when they were taken, read by `windows` in the
+folder the start recorded with the session the test gave the start, the
+later of two reports standing, log each `windows` read, and report no
+windows where the test says its profile builds none; it SHALL pass the
+agent seam's windows scenarios both ways (106, 211).
+
+#### Scenario: A scripted report
+
+- **WHEN** a test scripts a start's program to report `five_hour` 42% used taken at 14:02, then 50% used taken at 14:05
+- **THEN** `windows` reads the 14:05 report with the start's session, and the fake's log shows each `windows` read (211)
+
+#### Scenario: A profile scripted to report none
+
+- **WHEN** a test scripts the fake agent's profile to build no windows
+- **THEN** `reports_windows` answers not offered, and `windows` reads unknown for every start (171, 174)
+
 ### Requirement: The fake terminal relays an open agent
 
 The fake terminal SHALL relay an open agent every 250 milliseconds: its
@@ -441,4 +449,28 @@ one whose branch is submitted again (106, 112, 124; sluice 67, 152).
 #### Scenario: Held, pushed again, dropped and replaced
 
 - **WHEN** a test plans a held landing for a submission of `fix/x` and runs a round, collects the inbox, runs another round, pushes it again; then holds a second submission, drops its landing, holds a third, and submits `fix/x` again
-- **THEN** the first reads held with the words and the inbox gives it held once, the second round leaves it held, and the push lands it; the second reads waiting once dropped; the third reads withdrawn once the branch is submitted again (112, 124)
+- **THEN** the first reads held with the words and the inbox gives it held under `<id>:held` until it is confirmed, the second round leaves it held, and the push lands it; the second reads waiting once dropped; the third reads withdrawn once the branch is submitted again (112, 124)
+
+### Requirement: The fake merge queue keeps an outcome until it is confirmed
+
+The fake merge queue SHALL give each outcome it holds for a place with
+the submission it decides under the key `<id>:<state>` at every inbox
+until a confirm of that key, logged as `confirm <key>`; SHALL keep a
+conflict it answers at submit owed to the place under its key; SHALL
+leave an outcome of a named submission pending when told; and SHALL
+answer every confirm unread while told to refuse confirms (133).
+
+#### Scenario: A landing given until it is confirmed
+
+- **WHEN** a submission lands and the inbox is read twice, the landing confirmed by its key, and the inbox read again
+- **THEN** both reads give the landing under `<id>:landed`, the confirm answers confirmed, and the last read gives nothing
+
+### Requirement: The fake store refuses every write of a place while told
+
+The fake store SHALL refuse every write of a place it is told to, as
+moved, writing nothing, until it is told to take them again (75, 102).
+
+#### Scenario: A place's writes refused
+
+- **WHEN** every write of a place is refused and a settle acts on a failed submission
+- **THEN** nothing of the place is written, and once its writes are taken again the next settle acts on it

@@ -258,6 +258,59 @@ fn the_agents_record_is_read_in_its_folder_alone() {
     );
 }
 
+/// The seam-fakes spec's scenarios "A scripted report" and "A profile
+/// scripted to report none" (171, 174, 211).
+#[test]
+fn the_agents_windows_are_scripted() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let agent = FakeAgent::new(terminal.clone());
+    let who = identity("code", 1);
+    terminal.open(
+        &place_ref(),
+        "/state/fix--one",
+        &AgentCommand::default(),
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    agent.keep_record_in(&who, "/state/fix--one");
+    agent.set_session(&who, "s-1");
+    assert_eq!(agent.reports_windows(), Offered::Offered);
+    assert_eq!(agent.windows("/state/fix--one", &who), Windows::NoneYet);
+    let window = |used| UsageWindow {
+        name: "five_hour".into(),
+        used,
+        resets_at: None,
+    };
+    agent.report_windows(&who, 14 * 3600 + 2 * 60, &[window(4_200)]);
+    agent.report_windows(&who, 14 * 3600 + 5 * 60, &[window(5_000)]);
+    agent.report_windows(&who, 14 * 3600 + 3 * 60, &[window(4_600)]);
+    let latest = Windows::Reported {
+        taken_at: 14 * 3600 + 5 * 60,
+        windows: vec![window(5_000)],
+        session: Some("s-1".into()),
+    };
+    assert_eq!(agent.windows("/state/fix--one", &who), latest);
+    assert_eq!(agent.windows("/state/fix--two", &who), Windows::Unknown);
+    assert_eq!(
+        agent.log.of("windows"),
+        vec![
+            format!("windows {who} in /state/fix--one"),
+            format!("windows {who} in /state/fix--one"),
+            format!("windows {who} in /state/fix--two"),
+        ],
+        "each read logged, and no report"
+    );
+    agent.reports_no_windows();
+    assert_eq!(agent.reports_windows(), Offered::NotOffered);
+    assert_eq!(agent.windows("/state/fix--one", &who), Windows::Unknown);
+    assert_eq!(
+        agent.windows("/state/fix--one", &identity("code", 2)),
+        Windows::Unknown
+    );
+}
+
 #[test]
 fn the_agents_modes_are_scripted() {
     // Unscripted, the fake maps no mode and reads none back, as the
@@ -986,6 +1039,13 @@ fn submitted(answer: Submitted) -> Submission {
 }
 
 fn outcomes(answer: Inbox) -> Vec<SubmissionOutcome> {
+    handed(answer)
+        .into_iter()
+        .map(|handed| handed.outcome)
+        .collect()
+}
+
+fn handed(answer: Inbox) -> Vec<Owed> {
     match answer {
         Inbox::Outcomes { outcomes, .. } => outcomes,
         other => panic!("the inbox answered {other:?}"),
@@ -1004,12 +1064,21 @@ fn submit_holds_no_wait_and_a_step_decides() {
     assert!(submission.state.open());
     assert_eq!(outcomes(queue.inbox(&at)), vec![]);
     assert_eq!(queue.step("/r", "main"), Stepped::Stepped);
-    let landed = outcomes(queue.inbox(&at));
+    let landed = handed(queue.inbox(&at));
     assert!(
-        matches!(landed.as_slice(), [SubmissionOutcome::Landed { .. }]),
+        matches!(
+            landed.as_slice(),
+            [Owed { outcome: SubmissionOutcome::Landed { .. }, submission, .. }]
+                if *submission == landed_id(&queue)
+        ),
         "{landed:?}"
     );
-    assert_eq!(outcomes(queue.inbox(&at)), vec![], "delivered twice");
+    assert_eq!(handed(queue.inbox(&at)), landed, "given again unconfirmed");
+    let key = landed[0].key.clone().expect("a key to confirm it by");
+    assert_eq!(key, format!("{}:landed", landed[0].submission));
+    assert_eq!(queue.confirm(&at, &key), Confirmed::Confirmed);
+    assert_eq!(outcomes(queue.inbox(&at)), vec![], "given once confirmed");
+    assert_eq!(queue.confirm(&at, &key), Confirmed::Confirmed, "again");
     assert_eq!(
         queue
             .log
@@ -1017,8 +1086,13 @@ fn submit_holds_no_wait_and_a_step_decides() {
             .iter()
             .map(|line| line.split(' ').next().unwrap())
             .collect::<Vec<_>>(),
-        vec!["submit", "inbox", "step", "inbox", "inbox"]
+        vec!["submit", "inbox", "step", "inbox", "inbox", "confirm", "inbox", "confirm"]
     );
+}
+
+/// The id of the one submission of `fix/one` the queue holds.
+fn landed_id(queue: &FakeMergeQueue) -> String {
+    queue.submissions("/r", "fix/one")[0].id.clone()
 }
 
 #[test]
@@ -1069,6 +1143,9 @@ fn the_merge_queues_outcomes_are_planned() {
             reason: "no such base".into()
         }
     );
+    for given in handed(queue.inbox(&at)) {
+        queue.confirm(&at, &given.key.expect("a key"));
+    }
     submitted(queue.submit(&at, &head));
     queue.step("/r", "main");
     assert_eq!(outcomes(queue.inbox(&at)), vec![], "a held submission");
@@ -1103,7 +1180,7 @@ fn the_merge_queues_outcomes_are_planned() {
 }
 
 #[test]
-fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
+fn a_conflict_at_submit_is_answered_and_owed_until_confirmed() {
     let git = FakeGit::new();
     let base = git.init("/r", "main");
     let queue = FakeMergeQueue::new(git.clone());
@@ -1117,6 +1194,7 @@ fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
     let Submitted::Decided {
         submission,
         outcome,
+        key,
     } = queue.submit(&at, &head)
     else {
         panic!("a conflict at submit was not answered decided");
@@ -1134,7 +1212,14 @@ fn a_conflict_at_submit_is_answered_and_never_in_the_inbox() {
         SubmissionRead::Found { submission: found } if found == submission
     ));
     queue.step("/r", "main");
-    assert_eq!(outcomes(queue.inbox(&at)), vec![], "an outcome delivered");
+    assert_eq!(
+        outcomes(queue.inbox(&at)),
+        vec![outcome],
+        "an outcome unconfirmed"
+    );
+    assert_eq!(key, Some(format!("{}:conflict", submission.id)));
+    queue.confirm(&at, &key.expect("a key"));
+    assert_eq!(outcomes(queue.inbox(&at)), vec![], "an outcome confirmed");
 }
 
 #[test]
@@ -1304,13 +1389,20 @@ fn a_request_is_an_entry_only_once_taken_in_and_its_outcome_goes_to_the_request(
     assert_eq!(entry.request.as_deref(), Some("1"));
     assert_eq!(queue.take_in("/r", "fix/one"), None, "taken in once");
     queue.step("/r", "main");
+    let left = handed(queue.inbox(&at));
     assert_eq!(
-        outcomes(queue.inbox(&at)),
-        vec![SubmissionOutcome::Failed {
-            words: "check x failed".into()
-        }],
+        left.iter()
+            .map(|owed| (owed.submission.clone(), owed.outcome.clone()))
+            .collect::<Vec<_>>(),
+        vec![(
+            entry.id.clone(),
+            SubmissionOutcome::Failed {
+                words: "check x failed".into()
+            }
+        )],
         "an outcome left for the place as well"
     );
+    queue.confirm(&at, left[0].key.as_deref().expect("a key"));
     assert_eq!(
         queue.submit(&at, &head),
         Submitted::Requested {
@@ -1416,25 +1508,60 @@ fn the_kinds_and_change_are_set() {
 fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     // The seam-fakes spec's "A watch the clock lets lapse": the fake
     // store holds the host's watch as any host document, by
-    // compare-and-set, so a watch written at the fake clock's time lapses
-    // once the clock passes twice its bound and is kept again by the next
-    // one written; the fake terminal answers nothing of a watch (106,
-    // 119, 122, 208).
+    // compare-and-set, the command running its settle and when that
+    // settle ended among it, so a watch written at the fake clock's time
+    // is kept while its settle runs, lapses once the clock passes twice
+    // its bound after it ended, and is kept again by the next one
+    // written; the fake terminal answers nothing of a watch (106, 119,
+    // 122, 208).
     let host = Arc::new(FakeHost::default());
     let store = FakeStore::default();
     assert!(store.read_host(&HostKey::Watch).is_none());
+    let alive = |by: &str| host.alive(by);
     let first = Watched {
         began: host.now(),
         bound: 30,
+        by: Some(host.command()),
+        ended: None,
     };
-    let Written::Written { version } =
-        store.write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(first)))
-    else {
+    let Written::Written { version } = store.write_host(
+        &HostKey::Watch,
+        None,
+        Some(&HostDocument::Watch(first.clone())),
+    ) else {
         panic!("the first watch was not written");
     };
-    assert!(first.kept(host.now()));
-    host.advance(61);
-    assert!(!first.kept(host.now()), "a watch kept past twice its bound");
+    host.advance(90);
+    assert!(
+        first.kept(host.now(), alive),
+        "a watch whose settle runs, lapsed"
+    );
+    let ended = Watched {
+        ended: Some(host.now()),
+        ..first.clone()
+    };
+    let Written::Written { version } = store.write_host(
+        &HostKey::Watch,
+        Some(version),
+        Some(&HostDocument::Watch(ended.clone())),
+    ) else {
+        panic!("the watch's end was not written");
+    };
+    assert_eq!(
+        store.host_document(&HostKey::Watch),
+        Some(HostDocument::Watch(ended.clone()))
+    );
+    host.advance(59);
+    assert!(
+        ended.kept(host.now(), alive),
+        "a watch lapsed before twice its bound after its settle ended"
+    );
+    host.advance(1);
+    assert!(
+        !ended.kept(host.now(), alive),
+        "a watch kept twice its bound after its settle ended"
+    );
+    assert_eq!(ended.lapses(alive), Some(host.now()));
     assert_eq!(
         store.write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(first))),
         Written::Moved,
@@ -1443,20 +1570,22 @@ fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     let next = Watched {
         began: host.now(),
         bound: 30,
+        by: Some(host.command()),
+        ended: Some(host.now()),
     };
     assert!(matches!(
         store.write_host(
             &HostKey::Watch,
             Some(version),
-            Some(&HostDocument::Watch(next))
+            Some(&HostDocument::Watch(next.clone()))
         ),
         Written::Written { .. }
     ));
+    assert!(next.kept(host.now(), alive));
     assert_eq!(
         store.host_document(&HostKey::Watch),
         Some(HostDocument::Watch(next))
     );
-    assert!(next.kept(host.now()));
 }
 
 #[test]
@@ -2166,7 +2295,6 @@ fn a_streams_pool_and_the_hosts() {
             program: "agent".into(),
             env: BTreeMap::from([("AGENT_HOME".into(), "/scratch/work-1".into())]),
             agents: Some(4),
-            usage: None,
         }],
     };
     host.set_pool("work", Some(pool.clone()));
@@ -2877,8 +3005,8 @@ fn the_hosts_labels_shares_and_layers_are_scripted() {
     );
 
     let share = Share {
-        reserve: 2,
-        keep_free: 1,
+        owed: 2,
+        reserved: 1,
         unknown: vec![],
     };
     host.set_share("work", "operation", Some(share.clone()));

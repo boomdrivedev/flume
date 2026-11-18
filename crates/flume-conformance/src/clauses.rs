@@ -4,7 +4,7 @@
 
 /// The revision of `design/flume/requirements.md` in boomdrivedev/blueprints
 /// the list was read at.
-pub const REVISION: &str = "81288ba";
+pub const REVISION: &str = "48a94da";
 
 /// Part A: what flume decides.
 pub fn part_a() -> Vec<u32> {
@@ -25,7 +25,7 @@ pub fn part_a() -> Vec<u32> {
         .chain([208])
         .chain(212..=214)
         .chain(216..=221)
-        .chain([223, 224])
+        .chain([223, 224, 225])
         .collect()
 }
 
@@ -104,11 +104,6 @@ pub const MCP_SERVERS: &str =
 pub const ORIGIN: &str =
     "a-place-is-cut-from-origins-copy-of-its-base, record 0041, landed before the list held S92";
 
-/// The change that builds record 0062: each account's usage read from the
-/// windows its agent program reports, and the agent seam's windows.
-pub const WINDOWS: &str =
-    "record 0062's change, each account's usage read from the windows its agent program reports";
-
 /// The change that builds record 0069: a stage that hibernates and
 /// resumes its own session, a role's deliveries taken as one prompt, and
 /// the agent seam's deliver.
@@ -165,7 +160,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .map(|clause| (clause, STATECHART));
     let mcp_servers = std::iter::once(("183".to_string(), MCP_SERVERS));
     let origin = std::iter::once(("S92".to_string(), ORIGIN));
-    let windows = std::iter::once(("211".to_string(), WINDOWS));
     let hibernate = (212..=215)
         .map(|clause| clause.to_string())
         .chain((124..=128).map(|scenario| format!("S{scenario}")))
@@ -185,7 +179,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .chain(statechart)
         .chain(mcp_servers)
         .chain(origin)
-        .chain(windows)
         .chain(hibernate)
         .chain(relay)
         .chain(command_stages)
@@ -204,7 +197,7 @@ mod tests {
         let b = part_b();
         assert_eq!(
             a.len(),
-            77 + 8 + 3 + 2 + 4 + 1 + 10 + 6 + 3 + 9 + 3 + 7 + 8 + 3 + 1 + 3 + 6 + 2
+            77 + 8 + 3 + 2 + 4 + 1 + 10 + 6 + 3 + 9 + 3 + 7 + 8 + 3 + 1 + 3 + 6 + 3
         );
         assert_eq!(b.len(), 22 + 6 + 3 + 2 + 4 + 4 + 2 + 3 + 5 + 3 + 3 + 3 + 4);
         let gaps = [100, 150, 194, 209];
@@ -216,11 +209,11 @@ mod tests {
         every.sort();
         assert_eq!(
             every,
-            (1..=224)
+            (1..=225)
                 .filter(|clause| !gaps.contains(clause))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(all().len(), 220 + 8 + 131);
+        assert_eq!(all().len(), 221 + 8 + 131);
         assert!(all().contains(&"S64".to_string()), "S64 is not listed");
         assert!(SKIPPED.is_empty(), "{SKIPPED:?} are skipped");
         for scenario in [
@@ -233,12 +226,12 @@ mod tests {
                 "{scenario} is not listed"
             );
         }
-        assert_eq!(REVISION, "81288ba");
+        assert_eq!(REVISION, "48a94da");
         for clause in [
             129, 130, 131, 132, 137, 140, 141, 142, 148, 154, 155, 156, 157, 158, 159, 161, 162,
             163, 165, 168, 169, 173, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186, 190, 191,
             193, 195, 197, 198, 199, 200, 202, 203, 204, 208, 212, 213, 214, 216, 217, 218, 219,
-            220, 221, 223, 224,
+            220, 221, 223, 224, 225,
         ] {
             assert!(part_a().contains(&clause), "{clause} is not in Part A");
         }
@@ -248,6 +241,7 @@ mod tests {
         ] {
             assert!(part_b().contains(&clause), "{clause} is not in Part B");
         }
+        assert!(!part_b().contains(&225), "225 is in Part B");
     }
 
     #[test]
@@ -255,7 +249,7 @@ mod tests {
         let unbuilt = unbuilt();
         assert_eq!(
             unbuilt.len(),
-            3 + 2 + 3 + 6 + 10 + 6 + 1 + 1 + 1 + 9 + 2 + 3 + 1 + 3
+            3 + 2 + 3 + 6 + 10 + 6 + 1 + 1 + 9 + 2 + 3 + 1 + 3
         );
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
@@ -268,7 +262,7 @@ mod tests {
             "207", "S113", "S114", "S115", "S116", "S117", "195", "196", "S100", "S101", "S102",
             "197", "S103", "198", "S104", "S105", "202", "203", "204", "205", "206", "208", "S109",
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
-            "S119", "216", "217", "218", "219", "220", "S129",
+            "S119", "211", "216", "217", "218", "219", "220", "S129",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),

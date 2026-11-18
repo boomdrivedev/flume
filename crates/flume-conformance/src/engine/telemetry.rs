@@ -105,8 +105,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_command_nests_under_its_start,
         },
         Scenario {
-            name: "telemetry: a settle of every place hands on the host's places by kind, state and whom they wait on and each stream's agents and room, naming no place; a settle of one place none",
-            cites: &["220", "121", "208"],
+            name: "telemetry: a watch's settle over two places waiting on their caller and one running hands on the host's places by kind, state and whom they wait on, the two waiting among them, and each stream's agents and room, naming no place; a settle of one place and a settle of every place a caller asks with no bound none",
+            cites: &["220", "121", "208", "225"],
             run: the_hosts_places,
         },
         Scenario {
@@ -794,7 +794,6 @@ fn the_agents_variables(_: &()) -> Outcome {
                 )]
                 .into(),
                 agents: None,
-                usage: None,
             }],
         }),
     );
@@ -878,11 +877,19 @@ fn a_command_nests_under_its_start(_: &()) -> Outcome {
     Ok(())
 }
 
+/// The telemetry spec's "The host's places at a settle of every place" as
+/// modified: a watch's settle over two places waiting on their caller and
+/// one running sends the places standing, the two waiting among them, and
+/// each stream's agents running and room; a settle of one place and a
+/// settle naming no place and stating no bound send neither (220, 121,
+/// 208, 225).
 fn the_hosts_places(_: &()) -> Outcome {
     let world = World::new();
     let one = fix_begun(&world, "one")?;
-    let two = fix_begun(&world, "two")?;
-    stops_short(&world, &two, 1)?;
+    for name in ["two", "three"] {
+        let waits = fix_begun(&world, name)?;
+        stops_short(&world, &waits, 1)?;
+    }
     world.telemetry.clear();
     world.settle(&one);
     let readings = |world: &World| -> Vec<HostReading> {
@@ -901,8 +908,13 @@ fn the_hosts_places(_: &()) -> Outcome {
         "a settle of one place read the host"
     );
     world.engine().settle(None);
+    ensure!(
+        readings(&world).is_empty(),
+        "a settle naming no place and stating no bound read the host"
+    );
+    world.engine().settle_every(120);
     let read = readings(&world);
-    ensure_eq!(read.len(), 1, "the host's readings");
+    ensure_eq!(read.len(), 1, "the host's readings at the watch's settle");
     ensure_eq!(
         read[0].places,
         vec![
@@ -910,7 +922,7 @@ fn the_hosts_places(_: &()) -> Outcome {
                 kind: "fix".into(),
                 state: "waiting on an answer".into(),
                 on: Some("caller".into()),
-                count: 1,
+                count: 2,
             },
             PlacesStanding {
                 kind: "fix".into(),
@@ -925,7 +937,7 @@ fn the_hosts_places(_: &()) -> Outcome {
         read[0].streams,
         vec![StreamAgents {
             stream: DEFAULT_STREAM.into(),
-            running: 2,
+            running: 3,
             room: None,
         }],
         "each stream's agents"

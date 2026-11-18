@@ -44,14 +44,18 @@ Never edit a spec file directly.
 
 The rules are in `docs/architecture/`: `core.md` binds wherever a change
 is made, and an area page, when one exists, binds the paths its
-frontmatter names. The decisions behind them are `docs/adr/`, one MADR
-record each, proposed until the operator's yes. A design or a commit
-that relies on a rule cites its id; one that departs from a rule says
-which and why. Where `docs/architecture/` and the narrative docs
+frontmatter names. Each rule of `core.md` is one sentence; its details,
+what it rules out, what it leaves open and its sources, are on
+`core-details.md`, which `.claude/rules/` loads once a file under
+`docs/architecture/` is read, so a session's rules stay under 100,000
+characters (core.61). The decisions behind them are `docs/adr/`, one
+MADR record each, proposed until the operator's yes. A design or a
+commit that relies on a rule cites its id; one that departs from a rule
+says which and why. Where `docs/architecture/` and the narrative docs
 disagree, `docs/architecture/` wins. A rule is sent to `core.md` or its
-area page with an id, the next free number in its area, amended in the
-same commit as the decision that changes it. The kit standard binds
-beside them as its `code` profile says (`.config/kit.toml`).
+area page with an id, the next free number in its area, and its details
+to `core-details.md`, both amended in the same commit as the decision
+that changes it.
 
 ## Checks
 
@@ -62,7 +66,7 @@ branch requires:
 
 | layer | what | who requires it |
 |---|---|---|
-| `check-fast` | the site's prose (Vale) and its build; each crate's format (rustfmt), lint (clippy) and tests over the fakes, and every profile over real git and files on scratch repositories; the Claude Code plugin's hooks against the built binary; the herdr plugin's manifest, its lint (shellcheck) and its scripts against stand-in herdr and flume under sh and dash; the conformance suite's clause coverage; the flake's format (nixfmt), lint (statix, deadnix), evaluation and tests against no store; the root's format (treefmt), toolchain, records, specs, open changes, commit hooks, layers and versions, every file that carries flume's version giving the workspace's | every branch, and CI on Linux and macOS |
+| `check-fast` | the site's build; each crate's format (rustfmt), lint (clippy) and tests over the fakes, and every profile over real git and files on scratch repositories; the Claude Code plugin's hooks against the built binary; the herdr plugin's manifest, its lint (shellcheck) and its scripts against stand-in herdr and flume under sh and dash; the conformance suite's clause coverage; the flake's format (nixfmt), lint (statix, deadnix), evaluation and tests against no store; the root's format (treefmt), toolchain, specs, open changes and their check's cases, commit hooks, layers and versions, every file that carries flume's version giving the workspace's | every branch, and CI on Linux and macOS |
 | `check-tools` | the sluice and herdr profiles against the pinned tools, the herdr plugin linked into the pinned herdr, and the walkthroughs with the stand-in for Claude Code (`crates/flume/tests/profiles/stand-in/`) | main |
 | `check-live` | the walkthroughs with the pinned Claude Code under herdr (`crates/flume/tests/profiles/live/`) | no branch: run by hand in the devenv shell, `FLUME_LIVE_CLAUDE_CODE_OAUTH_TOKEN=<token> devenv shell -- moon run flume:live`, the token a test account's from `claude setup-token` |
 
@@ -81,8 +85,9 @@ runs both. A task line names the base the same way, `sluice exec <base>
 `crates/`), `plugin-claude` (`plugins/claude`), `plugin-herdr` (`plugins/herdr`), `nix` (the flake, `nix/`), `site` and `root`. A task's own check runs as the task
 names it, and beside it a quick, narrow call, `cargo check` or one unit
 test, is fine to run directly. `devenv shell -- moon run :#check-fast` runs
-the fast layer, `:#check-tools` the tools layer; `site-build` and
-`prose` run one each, `lint` the workspace's clippy, `disk` what `target/` has grown to, and `moon run
+the fast layer, `:#check-tools` the tools layer; `site-build` runs the
+site's build, `prose` Vale over the pages and the README for their
+writers, which no check runs (core.21; record 0074), `lint` the workspace's clippy, `disk` what `target/` has grown to, and `moon run
 <crate>:test` one crate's tests (`seams`, `core`, `fakes`,
 `conformance`, `flume`). The site's own notes are `site/README.md`.
 

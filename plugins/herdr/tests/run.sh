@@ -126,7 +126,7 @@ pass
 # The plugin copied to $t/p, its manifest edited by the sed program $1.
 copied() {
   mkdir -p "$t/p"
-  cp -R "$plugin/bin" "$plugin/lib" "$plugin/README.md" "$t/p/"
+  cp -R "$plugin/bin" "$plugin/lib" "$t/p/"
   sed "$1" "$plugin/herdr-plugin.toml" >"$t/p/herdr-plugin.toml"
 }
 
@@ -152,15 +152,6 @@ if sh "$here/manifest.sh" "$t/p/herdr-plugin.toml" "$plugin/../../Cargo.toml" >"
   fail "a places action with no entry described passed"
 fi
 grep -q "the places action's description names no plugin_action entry" "$t/out" || fail "the description not named: $(cat "$t/out")"
-pass
-
-fresh 'manifest: a README whose entry is not the plugin'"'"'s fails it (122)'
-copied ''
-sed 's/^key = "prefix+f"$/key = "prefix+g"/' "$plugin/README.md" >"$t/p/README.md"
-if sh "$here/manifest.sh" "$t/p/herdr-plugin.toml" "$plugin/../../Cargo.toml" >"$t/out" 2>&1; then
-  fail "a README with another entry passed"
-fi
-grep -q "no TOML block of its own is the popup's entry lib/common.sh gives" "$t/out" || fail "the README not named: $(cat "$t/out")"
 pass
 
 ## the startup
@@ -244,11 +235,6 @@ pass
 
 ## what herdr's configuration lacks
 
-# The TOML the README gives, the popup's entry and the sidebar's rows.
-readme_toml() {
-  awk '/^```$/ { inside = 0 } inside { print } /^```toml$/ { inside = 1 }' "$plugin/README.md"
-}
-
 no_notification() {
   if grep -i 'notif' "$FAKE/herdr-calls"; then
     fail "the stand-in herdr was asked to notify: $(grep -i 'notif' "$FAKE/herdr-calls" | head -1)"
@@ -280,8 +266,8 @@ no_notification
 no_send
 pass
 
-fresh 'setup: a configuration with the README'"'"'s entry and rows lacks nothing (122)'
-readme_toml >"$HERDR_CONFIG_PATH"
+fresh 'setup: a configuration with the popup'"'"'s entry and the sidebar'"'"'s rows lacks nothing (122)'
+sh "$here/config.sh" "$plugin" >"$HERDR_CONFIG_PATH" || fail "config.sh exited $?"
 startup
 jq -e --arg sock "$SOCK" '.socket == $sock and .lacking == []' "$S/setup.json" >/dev/null ||
   fail "setup.json holds: $(cat "$S/setup.json" 2>&1)"

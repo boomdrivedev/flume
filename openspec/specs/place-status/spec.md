@@ -72,12 +72,20 @@ is ended (56, 112, 130, 198).
 Status SHALL read every fact of a deliverable, a change or a submission
 from its seam when asked, at one head per place, SHALL keep none of
 them between asks, and SHALL start no agent, send nothing and write
-nothing (57, 58).
+nothing (57, 58). It SHALL read its places side by side, ask each
+repository's merge queue once for all the places of that repository it
+gives, and read each live agent once, for its place and its base's
+count (58, 99, 139, C.6).
 
 #### Scenario: A change ticked between two asks
 
 - **WHEN** status is asked, the fake change then ticks a task at a new head, and status is asked again
 - **THEN** the second answer gives the new count, and neither ask wrote to the fake store or called the fake terminal's open or send
+
+#### Scenario: Three places of one repository
+
+- **WHEN** status is asked of every place while three fixes of one repository each run a live agent, and a hand has submitted the second's branch
+- **THEN** the fake merge queue is read once, naming the three branches, the second place gives the hand's submission and the others none, and the fake terminal reads each agent's state once (58, 99, 139)
 
 ### Requirement: One answer from one core
 
@@ -175,10 +183,10 @@ variables alone (56, 143, 145 to 147, 161).
 Status SHALL give, for the host, each pool with its strategy and its
 threshold, and each account with its agents running, its bound, the
 time it stops being spent, the words in which no reset was read while
-it is spent for the hour 146 gives, its reading, and, while it is past
-its threshold, the window that holds it and until when; and never an
-account's environment's value or a reading's path (56, 144 to 146,
-185).
+it is spent for the hour 146 gives, its reading and whether it is
+fresh, or why it has none, and, while it is past its threshold, the
+window that holds it and until when; and never an account's
+environment's value or a path (56, 144 to 146, 184, 185; core.14).
 
 #### Scenario: A pool with a spent account
 
@@ -192,13 +200,13 @@ account's environment's value or a reading's path (56, 144 to 146,
 
 #### Scenario: A pool with readings
 
-- **WHEN** status is asked of a most-left pool stating no threshold, whose work-1 reads `5-hour` 42% used resetting at 17:00, read two minutes ago, whose work-2's reading is twenty minutes old, and whose work-3's file is missing
-- **THEN** the pool gives most-left and a threshold of 90, work-1 its window with 42, 17:00 and fresh, work-2 its reading stale, and work-3 no reading with why, in the JSON form and the person's, and neither gives a path (56, 184, 185)
+- **WHEN** status is asked of a most-left pool stating no threshold, whose work-1 reads `five_hour` 42% used resetting at 17:00, taken two minutes ago from a fix's code agent in the session `s-1`, whose work-2's reading is twenty minutes old, and for whose work-3 no session has reported
+- **THEN** the pool gives most-left and a threshold of 90, work-1 its window with 42, 17:00 and fresh, `read_at` when flume took it, the code agent's identity as `agent` and `s-1` as `session`, the JSON form keeping every field it gave before, work-2 its reading stale, and work-3 no reading with `no session flume started has reported its windows`, in the JSON form and the person's, and neither gives a path (56, 184, 185)
 
 #### Scenario: An account past its threshold
 
-- **WHEN** status is asked while work-1's reading gives `7-day` 95% used, resetting Monday at 08:00
-- **THEN** work-1 gives `past` with `7-day` and Monday at 08:00, and its window `past` (56, 185)
+- **WHEN** status is asked while work-1's reading gives `seven_day` 95% used, resetting Monday at 08:00
+- **THEN** work-1 gives `past` with `seven_day` and Monday at 08:00, and its window `past` (56, 185)
 
 ### Requirement: Status gives an agent's mode
 
@@ -501,15 +509,16 @@ with the layer it came from, flume's own one hour named `default`
 
 Status SHALL give, for the host, the watch a caller keeps: its bound in
 the host's `watch`, a bound or none, when its newest settle began as
-`watch_settled`, and, while flume runs attended after a watch lapsed,
-when it lapsed as `watch_lapsed`. The person's form SHALL say whether a
-caller keeps watch, with its bound and when it last settled, or since
-when none has (56, 61, 119, 208; core.14).
+`watch_settled`, when that settle ended as `watch_ended`, none while it
+runs, and, while flume runs attended after a watch lapsed, when it
+lapsed as `watch_lapsed`. The person's form SHALL say whether a caller
+keeps watch, with its bound and when it last settled, or since when
+none has (56, 61, 119, 208, 225; core.14).
 
 #### Scenario: A watched host and an unwatched one
 
-- **WHEN** a caller settled every place with a bound of two minutes one minute ago, and status is asked; then five minutes pass with no such settle, and status is asked again
-- **THEN** the first gives `watch` with 120 seconds and `watch_settled`, and the person's form prints `a caller keeps watch: every place settles every 2m, last at <time>`; the second gives `watch_lapsed` four minutes after that settle began, and prints `no caller keeps watch since <time>: every place settles at each command of flume's that acts` (119, 208, S118)
+- **WHEN** a caller settled with a bound of two minutes one minute ago, and status is asked; then five minutes pass with no such settle, and status is asked again
+- **THEN** the first gives `watch` with 120 seconds, `watch_settled` and `watch_ended`, and the person's form prints `a caller keeps watch: the places where something is pending settle every 2m, last at <time>`; the second gives `watch_lapsed` four minutes after that settle ended, and prints `no caller keeps watch since <time>: the places where something is pending settle at each command of flume's that acts` (119, 208, 225, S118)
 
 ### Requirement: Status gives no terminal a watch
 
@@ -525,14 +534,21 @@ host's `watch` (61, 122, 208; core.14).
 ### Requirement: Status gives who answers a place
 
 Status SHALL give each place's recipients, each with where it came
-from; the role a stop-short named; each end's key, and a stop-short's
-answer with who gave it and when; and a hold on the waiting move with
-its words, since when, its bound or that it lapsed (56, 130, 193).
+from, a recipient a standing agent's launch gave with that agent and
+the source that declares it; the role a stop-short named; each end's
+key, and a stop-short's answer with who gave it and when; and a hold on
+the waiting move with its words, since when, its bound or that it
+lapsed (56, 130, 132, 193).
 
 #### Scenario: Recipients and their sources
 
 - **WHEN** one place names `ops` at its launch and another took its stream's answerer `east/operator`
 - **THEN** status gives the first `ops` from the launch and the second `east/operator` from the stream's answerer, declared by the source `acme`, in the JSON form and the person's
+
+#### Scenario: A recipient from a standing agent's launch
+
+- **WHEN** a place was launched naming no recipient from the pane of `east-planner`, which `acme` gives `east/planner`
+- **THEN** status gives `east/planner` from the standing agent `east-planner`, declared by `acme`: in the JSON form `recipients_from` with `from` `standing`, `agent` and `source`, and in the person's as `east/planner, from the standing agent east-planner that launched it, declared by acme` (56, 132)
 
 #### Scenario: An answered question
 

@@ -1101,9 +1101,11 @@ impl DeliveredBy {
 
 /// Where a launch took a place's recipients from, the first of these
 /// that gave any: the recipients the launch named, `FLUME_RECIPIENT` in
-/// the launching command's environment, the session the launching
-/// command ran in as the terminal names it, or the answerer behind the
-/// place's stream, with the source that declares it (7, 190, 193).
+/// the launching command's environment, the address the standing agent
+/// the launching command ran in holds, with that agent and the source
+/// that declares it, the session the launching command ran in as the
+/// terminal names it, or the answerer behind the place's stream, with
+/// the source that declares it (7, 132, 190, 193).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "from", rename_all = "kebab-case")]
 pub enum RecipientsFrom {
@@ -1111,6 +1113,13 @@ pub enum RecipientsFrom {
     Environment,
     Session,
     Answerer {
+        source: String,
+    },
+    /// The address a source gives the standing agent the launch ran in:
+    /// `agent` the agent's name in its session, `source` the source that
+    /// declares it standing for the address (7, 132; core.28).
+    Standing {
+        agent: String,
         source: String,
     },
     /// A base place's fix takes its base place's recipients, who asked for
@@ -1484,12 +1493,39 @@ pub struct StageHeld {
     /// host's queue (70).
     #[serde(default)]
     pub room: Option<RoomWait>,
-    /// For a repeating stage between its repetitions, how many lines
+    /// In a document written before stages kept their count, for a
+    /// repeating stage between its repetitions, how many lines
     /// `made.jsonl` held when the first repetition whose lines no end yet
-    /// carries started: the stage's end carries every line from there, so
-    /// what an earlier repetition made is not lost (129, 140).
+    /// carries started: the stage's end carries every line from there and
+    /// lets it go, and no start writes it now (129, 140).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub made_from: Option<usize>,
+    /// The start the stage's deliverable counts from, the first of its
+    /// starts since it last delivered; none once it delivers or a fix
+    /// round sends the place back to it, and in a document written
+    /// before, so its next start begins one (25, 112, 129).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<Counted>,
+}
+
+/// The start a stage's deliverable counts from, the first of the stage's
+/// starts since it last delivered, or for a repetition the first start
+/// given its group: its number, when it began, the branch's head it began
+/// at and how many lines `made.jsonl` held then (25, 129, 140).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Counted {
+    /// The number of the start that began the count.
+    pub start: u32,
+    /// When that start began, which a report's write time is read
+    /// against (25).
+    pub at: Seconds,
+    /// The branch's head that start began at, which a commit since, the
+    /// newest commit touching the change and a committed report are read
+    /// against (24, 25).
+    pub head: Revision,
+    /// How many lines `made.jsonl` held when that start began: the lines
+    /// after them count (129).
+    pub made_from: usize,
 }
 
 /// A stage waiting for room on the host (70).
@@ -1766,6 +1802,11 @@ pub struct StartHeld {
     /// written before (42, 198).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub answered: u32,
+    /// The earlier start of its stage its deliverable counts from, where
+    /// it began at one: none where it counts from itself, and in a start
+    /// written before (25, 129, 140).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<Counted>,
     /// Its span in its place's trace, 16 hex digits, named as the write
     /// that claims it is made, before its agent's command is built; none
     /// in a start written before, until its next write (217, 219).
@@ -1775,6 +1816,24 @@ pub struct StartHeld {
     /// is not (90, 217).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asking_since: Option<Seconds>,
+}
+
+impl StartHeld {
+    /// The start its deliverable counts from: its `counts`, or else its
+    /// own number, time, head and lines of `made.jsonl` (25, 129).
+    pub fn counted(&self) -> Counted {
+        self.counts.clone().unwrap_or_else(|| self.own_count())
+    }
+
+    /// This start's own point, which a count it begins holds (25, 129).
+    pub fn own_count(&self) -> Counted {
+        Counted {
+            start: self.n,
+            at: self.started_at,
+            head: self.start_head.clone(),
+            made_from: self.made_from,
+        }
+    }
 }
 
 /// A start's own settings beyond its keys: each file a layer named for
@@ -1969,13 +2028,13 @@ pub struct SubmissionHeld {
     /// Since when it has waited so (56, 130).
     #[serde(default)]
     pub waiting_since: Option<Seconds>,
-    /// Why the place's inbox could not be read at the last settle, which
-    /// acted on nothing (133, 68).
+    /// Why the place's inbox could not be read at the last settle that
+    /// read it, which acted on nothing (133, 68).
     #[serde(default)]
     pub unread: Option<String>,
-    /// Each branch the place's inbox passed over at the last settle, with
-    /// its words, its outcomes left pending for a later one; the
-    /// outcomes of every other branch were acted on (133).
+    /// Each branch the place's inbox passed over at the last settle that
+    /// read it, with its words, its outcomes left pending for a later
+    /// one; the outcomes of every other branch were acted on (133).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub passed_over: Vec<PassedOver>,
     /// The place's wait in `waiting` is a held landing's: the forge
