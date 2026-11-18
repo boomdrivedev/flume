@@ -37,6 +37,7 @@ pub mod change {
 pub mod agent {
     pub mod claude;
     pub mod common;
+    pub mod launcher;
     pub mod programs;
     pub mod start;
 }

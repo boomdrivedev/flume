@@ -4,10 +4,12 @@
 //! whose digest keyed by the start's secret differs from the record's, by
 //! name alone, never a value. Claude Code's started word and flume's
 //! launcher each compare through it, and each compares its program, and
-//! Claude Code's its session, beside it.
+//! Claude Code's its session, beside it; and each, finding its start began
+//! otherwise, starts a settle of the place detached through it.
 
 use flume_core::variable_digest;
 use flume_seams::{Secret, StartRecord, Unsettled};
+use std::path::Path;
 
 /// How the environment `variable` reads began otherwise than `recorded`
 /// names it under `secret`: each variable it finds unset, each whose
@@ -29,4 +31,24 @@ pub fn variables(
         }
     }
     unsettled
+}
+
+/// `flume settle <place>` run by `binary`, with `--on-quiet` where
+/// `on_quiet`, in a process group of its own that outlives the hook or the
+/// launcher that starts it, its output nowhere, as a start found begun
+/// otherwise starts one (161).
+pub fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let mut args = vec!["settle", place];
+    if on_quiet {
+        args.push("--on-quiet");
+    }
+    let _ = Command::new(binary)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn();
 }

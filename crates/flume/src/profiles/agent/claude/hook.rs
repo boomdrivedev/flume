@@ -293,7 +293,7 @@ fn began_otherwise(
         return format!("{}: {error}", record.dir().display());
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, false);
+        start::settle_detached(binary, place, false);
     }
     format!(
         "{agent} began {}, not as its start recorded, so it is not its stage's agent",
@@ -523,25 +523,7 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path
         return json!({ "decision": "block", "reason": words }).to_string();
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, true);
+        start::settle_detached(binary, place, true);
     }
     String::new()
-}
-
-/// `flume settle <place>`, with `--on-quiet` where `on_quiet`, in a
-/// process group of its own that outlives the hook, its output nowhere.
-fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
-    use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
-    let mut args = vec!["settle", place];
-    if on_quiet {
-        args.push("--on-quiet");
-    }
-    let _ = Command::new(binary)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn();
 }
