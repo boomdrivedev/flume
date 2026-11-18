@@ -1,7 +1,7 @@
 use crate::{lock, FakeGit, Log};
 use flume_seams::{
-    BranchRemoved, Holds, MakeOutcome, Place, PlaceRead, PlaceRef, Readiness, ReadyStep, Removed,
-    Revision,
+    BranchRemoved, Checkout, Holds, MakeOutcome, Moved, Place, PlaceRead, PlaceRef, Readiness,
+    ReadyStep, Removed, Revision,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,7 +31,9 @@ fn under(data: &str, repository: &str, place: &str) -> String {
 
 /// The place seam over the fake git: worktrees by location, each
 /// repository's readiness, what each place holds and how its teardown
-/// goes.
+/// goes; and a standing role's checkouts by location, each detached at a
+/// revision, what each holds that a move would overwrite, and the
+/// repositories whose checkout is refused (193).
 pub struct FakePlace {
     git: Arc<FakeGit>,
     state: Mutex<PlaceState>,
@@ -50,7 +52,18 @@ struct PlaceState {
     unlocated: Option<String>,
     inside: bool,
     data: Option<String>,
+    /// Each checkout by its location: its repository and the revision it
+    /// stands detached at.
+    checkouts: BTreeMap<String, (String, Revision)>,
+    /// Each checkout holding a change a move would overwrite, with the
+    /// words its move is kept with.
+    in_the_way: BTreeMap<String, String>,
+    /// Each repository whose checkout is refused, with why.
+    refused_checkouts: BTreeMap<String, String>,
 }
+
+/// The fake's word for a checkout's branch, which is none: git's own.
+const DETACHED: &str = "(detached)";
 
 impl FakePlace {
     pub fn new(git: Arc<FakeGit>) -> FakePlace {
@@ -137,7 +150,56 @@ impl FakePlace {
     }
 
     pub fn exists(&self, location: &str) -> bool {
-        lock(&self.state).worktrees.contains_key(location)
+        let state = lock(&self.state);
+        state.worktrees.contains_key(location) || state.checkouts.contains_key(location)
+    }
+
+    /// Whether anything stands at `location` or under it: a place, a
+    /// checkout or what no make put there.
+    pub fn stands(&self, location: &str) -> bool {
+        let state = lock(&self.state);
+        let under = format!("{location}/");
+        let at = |held: &str| held == location || held.starts_with(&under);
+        state.worktrees.keys().any(|held| at(held))
+            || state.checkouts.keys().any(|held| at(held))
+            || state.occupied.iter().any(|held| at(held))
+    }
+
+    /// The revision the checkout at `location` stands at, none where no
+    /// checkout stands there.
+    pub fn checkout(&self, location: &str) -> Option<Revision> {
+        lock(&self.state)
+            .checkouts
+            .get(location)
+            .map(|(_, revision)| revision.clone())
+    }
+
+    /// The checkout at `location` holds a change a move would overwrite,
+    /// its move kept with `words`, until [`FakePlace::out_of_the_way`].
+    pub fn in_the_way(&self, location: &str, words: &str) {
+        let mut state = lock(&self.state);
+        state.in_the_way.insert(location.into(), words.into());
+        state.holds.insert(
+            location.into(),
+            Holds {
+                uncommitted: vec!["in-the-way.md".into()],
+                ..Holds::default()
+            },
+        );
+    }
+
+    /// The change in the checkout at `location` is gone.
+    pub fn out_of_the_way(&self, location: &str) {
+        let mut state = lock(&self.state);
+        state.in_the_way.remove(location);
+        state.holds.remove(location);
+    }
+
+    /// Every checkout of `repository` refused with `reason`.
+    pub fn refuse_checkouts(&self, repository: &str, reason: &str) {
+        lock(&self.state)
+            .refused_checkouts
+            .insert(repository.into(), reason.into());
     }
 }
 
@@ -211,6 +273,17 @@ impl Place for FakePlace {
                 reason: reason.clone(),
             };
         }
+        if let Some((_, revision)) = state.checkouts.get(&place.location) {
+            return PlaceRead::Live {
+                branch: DETACHED.into(),
+                head: revision.clone(),
+                holds: state
+                    .holds
+                    .get(&place.location)
+                    .cloned()
+                    .unwrap_or_default(),
+            };
+        }
         let Some((repository, branch)) = state.worktrees.get(&place.location) else {
             return PlaceRead::Gone;
         };
@@ -254,5 +327,87 @@ impl Place for FakePlace {
         }
         self.git.delete_branch(repository, branch);
         BranchRemoved::Removed
+    }
+
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        let each: Vec<String> = checkouts
+            .iter()
+            .map(|checkout| format!("{}@{}", checkout.folder, checkout.revision))
+            .collect();
+        self.log
+            .push(format!("make_checkouts {location} {}", each.join(" ")));
+        if let Some(reason) = &lock(&self.state).refusal {
+            return MakeOutcome::Refused {
+                reason: reason.clone(),
+            };
+        }
+        if self.stands(location) {
+            return MakeOutcome::LocationExists;
+        }
+        let mut state = lock(&self.state);
+        if let Some((checkout, reason)) = checkouts.iter().find_map(|checkout| {
+            state
+                .refused_checkouts
+                .get(&checkout.repository)
+                .map(|reason| (checkout, reason))
+        }) {
+            // All or nothing (83): no checkout is made.
+            return MakeOutcome::Refused {
+                reason: format!(
+                    "the checkout of {} could not be made: {reason}",
+                    checkout.repository
+                ),
+            };
+        }
+        for checkout in checkouts {
+            state.checkouts.insert(
+                format!("{location}/{}", checkout.folder),
+                (checkout.repository.clone(), checkout.revision.clone()),
+            );
+        }
+        MakeOutcome::Made
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.log
+            .push(format!("move_checkout {} {revision}", checkout.location));
+        let mut state = lock(&self.state);
+        if let Some(words) = state.in_the_way.get(&checkout.location) {
+            return Moved::Kept {
+                reason: words.clone(),
+            };
+        }
+        match state.checkouts.get_mut(&checkout.location) {
+            Some((_, at)) => {
+                *at = revision.clone();
+                Moved::Moved
+            }
+            None => Moved::Gone,
+        }
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.log.push(format!("remove_checkouts {location}"));
+        let mut state = lock(&self.state);
+        for checkout in checkouts {
+            let at = format!("{location}/{}", checkout.folder);
+            if let Some(reason) = state.unreadable.get(&at) {
+                return Removed::Refused {
+                    step: "remove".into(),
+                    words: reason.clone(),
+                };
+            }
+            if state.holds.get(&at).is_some_and(Holds::any) {
+                return Removed::Refused {
+                    step: "remove".into(),
+                    words: format!("{at} holds work"),
+                };
+            }
+        }
+        let under = format!("{location}/");
+        state.checkouts.retain(|held, _| !held.starts_with(&under));
+        state.holds.retain(|held, _| !held.starts_with(&under));
+        state.occupied.remove(location);
+        Removed::Removed
     }
 }

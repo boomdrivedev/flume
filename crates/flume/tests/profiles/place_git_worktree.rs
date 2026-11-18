@@ -152,18 +152,37 @@ impl Place for Bound {
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved {
         self.profile().remove_branch(repository, branch, base)
     }
+
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.profile().make_checkouts(location, checkouts)
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.profile().move_checkout(checkout, revision)
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.profile().remove_checkouts(location, checkouts)
+    }
 }
 
 struct Harness {
     repository: Repository,
+    /// A second repository, for a standing role's checkouts (193).
+    second: Repository,
     seam: Bound,
 }
 
 impl Harness {
     fn new() -> Harness {
         let repository = Repository::new("place");
+        let second = Repository::new("place-second");
         let seam = Bound::new(&repository.scratch);
-        Harness { repository, seam }
+        Harness {
+            repository,
+            second,
+            seam,
+        }
     }
 
     /// Where a teardown step's failure for a place is marked.
@@ -282,6 +301,32 @@ impl PlaceHarness for Harness {
             ],
         );
         git(dir, &["cherry-pick", &commit.0]);
+    }
+
+    fn second_repository(&self) -> (String, String, Revision) {
+        (
+            self.second.name(),
+            "main".into(),
+            Revision::new(self.second.head()),
+        )
+    }
+
+    /// The checkout's README changed, uncommitted, and its repository's
+    /// `main` changing README by a commit of its own.
+    fn in_the_way(&self, checkout: &PlaceRef) -> Revision {
+        std::fs::write(Path::new(&checkout.location).join("README"), "mine\n")
+            .expect("the change in the checkout");
+        let dir = Path::new(&checkout.repository);
+        std::fs::write(dir.join("README"), "the base's\n").expect("the base's change");
+        git(
+            dir,
+            &["commit", "--quiet", "-am", "the base changes README"],
+        );
+        Revision::new(git(dir, &["rev-parse", "HEAD"]))
+    }
+
+    fn stands(&self, location: &str) -> bool {
+        Path::new(location).symlink_metadata().is_ok()
     }
 }
 
@@ -1087,6 +1132,20 @@ impl Place for Asked {
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved {
         self.ask("remove_branch")
             .remove_branch(repository, branch, base)
+    }
+
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.ask("make_checkouts")
+            .make_checkouts(location, checkouts)
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.ask("move_checkout").move_checkout(checkout, revision)
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.ask("remove_checkouts")
+            .remove_checkouts(location, checkouts)
     }
 }
 

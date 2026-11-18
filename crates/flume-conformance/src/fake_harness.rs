@@ -205,7 +205,32 @@ impl PlaceHarness for FakePlaceHarness {
     fn apply_to_base(&self, _repository: &str, _base: &str, commit: &Revision) {
         self.git.apply(commit);
     }
+
+    fn second_repository(&self) -> (String, String, Revision) {
+        let head = self
+            .git
+            .branch_head(SECOND, "main")
+            .unwrap_or_else(|| self.git.init(SECOND, "main"));
+        (SECOND.into(), "main".into(), head)
+    }
+
+    fn in_the_way(&self, checkout: &PlaceRef) -> Revision {
+        self.place.in_the_way(
+            &checkout.location,
+            "your local changes to in-the-way.md would be overwritten by checkout",
+        );
+        self.git
+            .commit(&checkout.repository, "main", &["in-the-way.md"])
+    }
+
+    fn stands(&self, location: &str) -> bool {
+        self.place.stands(location)
+    }
 }
+
+/// The fake place harness's second repository, for a standing role's
+/// checkouts.
+const SECOND: &str = "/blueprints";
 
 #[derive(Default)]
 pub struct FakeKindsHarness {

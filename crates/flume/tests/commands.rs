@@ -340,6 +340,15 @@ impl Place for Inside {
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved {
         self.0.remove_branch(repository, branch, base)
     }
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.0.make_checkouts(location, checkouts)
+    }
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.0.move_checkout(checkout, revision)
+    }
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.0.remove_checkouts(location, checkouts)
+    }
 }
 
 /// The profiles built in, with the stand-ins beside them.

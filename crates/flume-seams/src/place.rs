@@ -116,8 +116,11 @@ pub enum Moved {
 }
 
 /// The place seam (B.1): a worktree of one repository on a branch of its
-/// own. The guarantee: make never touches a branch or a location that
-/// already exists, and each operation is all or nothing (83).
+/// own, or a standing role's folder of checkouts of its repositories,
+/// each detached on no branch (193). The guarantee: make never touches a
+/// branch or a location that already exists, no operation on a
+/// standing role's checkouts makes, moves or removes a branch or runs a
+/// readiness or a teardown, and each operation is all or nothing (83).
 pub trait Place: Send + Sync {
     /// Where the place `place`, `<kind>--<name>`, of `repository` is
     /// made: inside no working tree or directory of the repository, as
@@ -147,4 +150,26 @@ pub trait Place: Send + Sync {
     /// The branch removed when it holds no commit whose change its base
     /// lacks, judged by change and never by ancestry alone (82, 67).
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved;
+
+    /// A standing role's checkouts made under `location`, each at
+    /// `<location>/<folder>` detached at its revision on no branch, with
+    /// no hook and no readiness run; refused as an existing location
+    /// where anything stands there, and, where one cannot be made, every
+    /// one made undone with what stands at the location, so the place is
+    /// made whole or not at all (78, 83, 193, C.1).
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome;
+
+    /// The checkout `checkout`, read as a place on no branch, moved to
+    /// `revision`, detached: kept where it stands with the profile's words
+    /// where the move would overwrite a change in it, or was refused, and
+    /// gone where no checkout stands there. No change is discarded and no
+    /// branch moved (80, 193, 213).
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved;
+
+    /// A standing role's checkouts under `location` removed with no
+    /// teardown, then what stands at the location; or, with nothing
+    /// removed, the checkout that cannot be read or holds work, or that
+    /// the profile refused, with its words. No branch is removed (65, 81,
+    /// 83, 193, C.1).
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed;
 }

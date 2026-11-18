@@ -794,4 +794,16 @@ impl Place for GitWorktree {
             Err(_) => BranchRemoved::Kept { commits: vec![] },
         }
     }
+
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        GitWorktree::make_checkouts(self, location, checkouts)
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        GitWorktree::move_checkout(self, checkout, revision)
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        GitWorktree::remove_checkouts(self, location, checkouts)
+    }
 }
