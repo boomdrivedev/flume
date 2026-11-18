@@ -1,70 +1,56 @@
 # Verify: flume-runs-statechart-kinds
 
-Checked on `change/flume-runs-statechart-kinds` at c793357, cut from
+Checked on `change/flume-runs-statechart-kinds` at 1bbadc0, cut from
 `bolt/flume-runs-kinds-on-weirs-engine` (e9b23ef), on 2026-11-18.
 
 ## Verdict
 
-**Not archived.** The work meets every requirement and scenario of
-the change's specs, and every task is ticked. The whole checks fail on
-one task, `nix:test`, so the change goes back to its code stage.
+**Archived.** The whole checks pass, every requirement and scenario of
+the change's specs is met, and every task is ticked.
 
 ## The whole checks
 
 `devenv shell -- sluice exec bolt/flume-runs-kinds-on-weirs-engine` ran
-once, on c793357 as it stood: 25 tasks completed and 1 failed, and sluice
-exited 1. A place on a bolt runs its bolt's `check-fast`; `check-tools`
-waits for the bolt's merge onto main.
+once, on 1bbadc0 as it stood: every task passed, sluice recorded 27
+results under their keys for 1bbadc0, and it exited 0. A place on a bolt
+runs its bolt's `check-fast`; `check-tools` waits for the bolt's merge
+onto main.
 
 | task | outcome |
 |---|---|
-| `nix:test` | **failed** |
 | `seams:format`, `seams:lint`, `seams:test` (123 passed) | passed |
 | `core:format`, `core:lint`, `core:test` | passed |
 | `fakes:format`, `fakes:lint`, `fakes:test` (68 passed) | passed |
 | `conformance:format`, `conformance:lint`, `conformance:test`, `conformance:coverage` | passed |
 | `flume:format`, `flume:lint`, `flume:test` | passed |
 | `plugin-claude:test`, `plugin-herdr:manifest`, `plugin-herdr:test` | passed |
-| `nix:typecheck` | passed |
+| `nix:format`, `nix:lint`, `nix:typecheck`, `nix:test` | passed |
 | `site:install`, `site:build` | passed |
 | `root:format`, `root:changes`, `root:versions` | passed |
+
+`nix:test`: every case holds. `nix/packages/git-crates.nix` holds each of
+weir's seven crates at cc9d41f, the revision `Cargo.lock` names (task
+1.2; core.22).
 
 `conformance:coverage`: every clause of Parts A and B, I1 to I8 and S1
 to S131 at 3a3b287 is cited by the suite's 1059 scenarios. The list of
 unbuilt clauses no longer holds 175 to 178, S76 or S77.
 
-### What fails
-
-`nix:test`'s check "Every git crate is fetched by a hash taken at
-Cargo.lock's revision" fails:
-
-```
-weir-cadence-0.0.0: Cargo.lock names it at cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix holds no hash for it
-weir-capture-0.0.0: Cargo.lock names cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix's hash is of 52b95528a495100e34fca39109d563d8bf75673a: the hash moves with the revision, in one commit
-weir-delivery-0.0.0: Cargo.lock names cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix's hash is of 52b95528a495100e34fca39109d563d8bf75673a: the hash moves with the revision, in one commit
-weir-engine-0.0.0: Cargo.lock names it at cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix holds no hash for it
-weir-kinds-0.0.0: Cargo.lock names cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix's hash is of 52b95528a495100e34fca39109d563d8bf75673a: the hash moves with the revision, in one commit
-weir-pack-0.0.0: Cargo.lock names cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix's hash is of 52b95528a495100e34fca39109d563d8bf75673a: the hash moves with the revision, in one commit
-weir-policy-0.0.0: Cargo.lock names it at cc9d41fba5e47b25ed1dde90c380d3c9f56a1785, and nix/packages/git-crates.nix holds no hash for it
-```
-
-Task 1.1 moved weir's crates to cc9d41f in `Cargo.toml` and
-`Cargo.lock`. It left `nix/packages/git-crates.nix` at 52b9552, the
-revision the bolt's commit 9e9e250a hashed. Fixing it means moving the
-hashes of `weir-capture`, `weir-delivery`, `weir-kinds` and `weir-pack`
-to cc9d41f, and adding hashes for `weir-cadence`, `weir-engine` and
-`weir-policy` at that revision (core.22). The task's own check, a cargo
-test, could not have caught this.
+`root:changes`: the one open change is valid under
+`openspec validate --strict`, and archiving it writes specs that pass
+it (core.59).
 
 ## Tasks
 
-All 33 tasks of `tasks.md` are ticked `[x]`, and none is open.
+All 34 tasks of `tasks.md` are ticked `[x]`, and none is open.
 
 ## Requirements and scenarios
 
-Each scenario of the change's nine delta specs is checked against the
-test that builds it. Each test's assertions were read against the
-scenario's THEN. All 44 scenarios are met.
+Each scenario of the change's nine delta specs has a test, registered
+in the suite, that passed in the whole checks above. Each test's
+assertions were read against its scenario's THEN at c793357; since then
+only `nix/` and this change's `tasks.md` changed. All 44 scenarios are
+met.
 
 ### statechart-kinds (28 scenarios)
 
@@ -184,11 +170,3 @@ kind may name. `reference/configuration.md` gains "A statechart kind",
 `reference/state.md` "A statechart place", and
 `reference/commands.md` `flume answer`, with a hold and a retry naming
 a statechart stage. `roadmap.md` is updated too. `site:build` passes.
-
-## Back to the code stage
-
-To fix: `nix/packages/git-crates.nix` must hold each weir crate's hash
-at cc9d41f, as `Cargo.lock` names it: `weir-cadence`, `weir-capture`,
-`weir-delivery`, `weir-engine`, `weir-kinds`, `weir-pack` and
-`weir-policy`. Then `sluice exec <base> -- moon run nix:test` must
-pass.
