@@ -319,6 +319,11 @@ fn a_new_fakes_parts() {
     let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
     let parts = agent.parts();
     for part in [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
         Part::SendBack,
         Part::Guard,
         Part::OnQuiet,
@@ -342,7 +347,12 @@ fn a_new_fakes_parts() {
 /// settings, or left carrying none or taking none (179, 195, 169).
 fn scripted_as_a_harness(carries: bool, takes_own: bool) -> FakeAgent {
     let host = Arc::new(FakeHost::default());
-    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    scripted_over(Arc::new(FakeTerminal::new(host)), carries, takes_own)
+}
+
+/// The fake over `terminal`, scripted as [`scripted_as_a_harness`] says.
+fn scripted_over(terminal: Arc<FakeTerminal>, carries: bool, takes_own: bool) -> FakeAgent {
+    let agent = FakeAgent::new(terminal);
     agent.read_mode_back();
     if carries {
         agent.carry_to(
@@ -394,6 +404,74 @@ fn each_script_degrades_its_own_part() {
     );
     assert_eq!(agent.send_back(), Offered::NotOffered);
     assert_eq!(agent.on_quiet(), Offered::NotOffered);
+
+    // Asking alone read from its terminal, then the five, each it is
+    // scripted for answering the lesser way while the record says
+    // otherwise, every read logged (171, 174).
+    let (agent, _terminal, who, folder) = an_agent_that_has_said_everything();
+    agent.reads_from_its_terminal(&[Part::Asking]);
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::Asking],
+        "reading asking from its terminal"
+    );
+    assert_eq!(agent.asking(folder, &who), Reading::Unknown);
+    assert_eq!(agent.own_work(folder, &who), Reading::Yes);
+    agent.reads_from_its_terminal(&FakeAgent::FROM_TERMINAL);
+    assert_eq!(
+        agent.parts().degraded(),
+        [
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords
+        ],
+        "reading the five from its terminal"
+    );
+    assert_eq!(agent.received(folder, &who, "go"), Received::Unknown);
+    assert_eq!(agent.asking(folder, &who), Reading::Unknown);
+    assert_eq!(agent.own_work(folder, &who), Reading::Unknown);
+    assert_eq!(agent.ended(folder, &who), Reading::Unknown);
+    assert_eq!(agent.last_words(folder, &who), None);
+    for operation in ["received", "asking", "own_work", "ended", "last_words"] {
+        assert!(
+            !agent.log.of(operation).is_empty(),
+            "{operation} read and not logged"
+        );
+    }
+}
+
+/// An agent opened in its terminal that received `go`, asks, runs own
+/// work, ended and said `I could not sign in`, as its record says.
+fn an_agent_that_has_said_everything() -> (FakeAgent, Arc<FakeTerminal>, Identity, &'static str) {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let agent = scripted_over(terminal.clone(), true, true);
+    let who = identity("code", 1);
+    let folder = "/state/fix--one";
+    terminal.open(
+        &place_ref(),
+        folder,
+        &AgentCommand::default(),
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    terminal.send(&who, "go");
+    agent.set_asking(&who, Reading::Yes);
+    agent.set_own_work(&who, Reading::Yes);
+    agent.set_ended(&who, Reading::Yes);
+    agent.set_last_words(&who, "I could not sign in");
+    assert!(matches!(
+        agent.received(folder, &who, "go"),
+        Received::Received { .. }
+    ));
+    assert_eq!(
+        agent.last_words(folder, &who),
+        Some("I could not sign in".into())
+    );
+    (agent, terminal, who, folder)
 }
 
 #[test]
@@ -1079,6 +1157,64 @@ fn the_agent_gives_both_stop_shorts() {
     let way = agent.stop_short(&identity("code", 1));
     assert!(way.contains("flume needs \""), "{way}");
     assert!(way.contains("flume needs --found"), "{way}");
+}
+
+/// The seam-fakes spec's scenario "A turn seen, then not" (171, C.5).
+#[test]
+fn a_watched_sends_turn_seen_then_not() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let who = identity("code", 1);
+    terminal.open(
+        &place_ref(),
+        "/state/fix--one",
+        &AgentCommand::default(),
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    let within = std::time::Duration::from_secs(60);
+    assert_eq!(
+        terminal.send_watching(&who, "go", within),
+        SentWatching::Began
+    );
+    terminal.watch_as(
+        &who,
+        SentWatching::NotSeen {
+            why: "no turn began".into(),
+        },
+    );
+    assert_eq!(
+        terminal.send_watching(&who, "again", within),
+        SentWatching::NotSeen {
+            why: "no turn began".into()
+        }
+    );
+    assert_eq!(terminal.sent_to(&who), vec!["go", "again"]);
+    let stopped = identity("code", 2);
+    terminal.open(
+        &place_ref(),
+        "/state/fix--one",
+        &AgentCommand::default(),
+        &stopped,
+        &OpenIn::Own,
+        None,
+    );
+    terminal.kill(&stopped);
+    assert!(matches!(
+        terminal.send_watching(&stopped, "anyone", within),
+        SentWatching::Refused { .. }
+    ));
+    assert!(terminal.sent_to(&stopped).is_empty(), "nothing delivered");
+    assert_eq!(
+        terminal.log.of("send-watching"),
+        vec![
+            format!("send-watching {who}"),
+            format!("send-watching {who}"),
+            format!("send-watching {stopped}"),
+        ]
+    );
+    assert!(terminal.log.of("send").is_empty(), "no plain send logged");
 }
 
 #[test]

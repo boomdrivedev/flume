@@ -2,8 +2,8 @@ use crate::{lock, FakeHost, Log};
 use flume_seams::{
     AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, Host, Identity, KeyName,
     NamedAgent, OpenIn, Opened, PlaceRef, ProgramProcess, Relay, RelayScreen, Seconds, Sent,
-    SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
-    NO_PROCESS,
+    SentWatching, SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View,
+    ViewCommand, NO_PROCESS,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -52,7 +52,11 @@ use std::time::Duration;
 /// a value (C.5). It reads, for each agent a test scripts, the process
 /// its program runs in, that nothing runs it or unknown with words, and
 /// unknown with [`NO_PROCESS`] for every other, logging each asking as
-/// `process <identity>` (C.5).
+/// `process <identity>` (C.5). Its watched send delivers as its send
+/// does and refuses where its send refuses, logging each asking as
+/// `send-watching <identity>` and no `send`, and answers that it saw the
+/// turn begin unless a test scripted another answer for that agent (106,
+/// 171, C.5).
 pub struct FakeTerminal {
     host: Arc<FakeHost>,
     state: Mutex<TerminalState>,
@@ -122,6 +126,9 @@ struct TerminalState {
     /// The process each agent's program runs in, by its identity, as
     /// scripted (C.5).
     processes: BTreeMap<String, ProgramProcess>,
+    /// What a watched send to each agent answers once it delivered, by
+    /// its identity, as scripted; the turn seen where none is (171, C.5).
+    watched: BTreeMap<String, SentWatching>,
 }
 
 /// A named agent in a part, its own named `own`, by its name and the
@@ -278,6 +285,7 @@ impl FakeTerminal {
                 typed_refused: None,
                 kinds_refused: BTreeMap::new(),
                 processes: BTreeMap::new(),
+                watched: BTreeMap::new(),
             }),
             before_open: Mutex::default(),
             log: Log::default(),
@@ -640,6 +648,42 @@ impl FakeTerminal {
             .insert(agent.to_string(), process);
     }
 
+    /// Each watched send to `agent` that delivers answers `watched` from
+    /// now on, a turn not seen with words or a refusal among them, where
+    /// it answered that it saw the turn begin (171, C.5).
+    pub fn watch_as(&self, agent: &Identity, watched: SentWatching) {
+        lock(&self.state).watched.insert(agent.to_string(), watched);
+    }
+
+    /// `text` delivered to `agent` as a send delivers it, any text it holds
+    /// typed cleared first, or refused with nothing typed (95).
+    fn deliver(&self, agent: &Identity, text: &str) -> Sent {
+        let key = agent.to_string();
+        let live = self.read(&key) != AgentState::Stopped;
+        let mut state = lock(&self.state);
+        if !state.sends {
+            return Sent::Refused {
+                reason: "this terminal cannot send to a running agent".into(),
+            };
+        }
+        if !live {
+            return Sent::Refused {
+                reason: format!("no agent runs under {key}"),
+            };
+        }
+        if let Some(running) = state.agents.get_mut(&key) {
+            if !running.typed.is_empty() {
+                running.typed.clear();
+                running.cleared += 1;
+            }
+            if std::mem::take(&mut running.leaves_typed) {
+                running.typed.push_str(text);
+            }
+        }
+        state.sent.push((key, text.into()));
+        Sent::Sent
+    }
+
     /// The next input a relay is given is refused with `reason`, nothing
     /// typed (222).
     pub fn refuse_next_typed(&self, reason: &str) {
@@ -815,30 +859,23 @@ impl Terminal for FakeTerminal {
 
     fn send(&self, agent: &Identity, text: &str) -> Sent {
         self.log.push(format!("send {agent}"));
-        let key = agent.to_string();
-        let live = self.read(&key) != AgentState::Stopped;
-        let mut state = lock(&self.state);
-        if !state.sends {
-            return Sent::Refused {
-                reason: "this terminal cannot send to a running agent".into(),
-            };
+        self.deliver(agent, text)
+    }
+
+    /// Delivered and refused as `send` is, logged `send-watching
+    /// <identity>`, answering as [`FakeTerminal::watch_as`] scripted for
+    /// the agent once delivered, and the turn seen where nothing was
+    /// (171, C.5).
+    fn send_watching(&self, agent: &Identity, text: &str, _within: Duration) -> SentWatching {
+        self.log.push(format!("send-watching {agent}"));
+        match self.deliver(agent, text) {
+            Sent::Refused { reason } => SentWatching::Refused { reason },
+            Sent::Sent => lock(&self.state)
+                .watched
+                .get(&agent.to_string())
+                .cloned()
+                .unwrap_or(SentWatching::Began),
         }
-        if !live {
-            return Sent::Refused {
-                reason: format!("no agent runs under {key}"),
-            };
-        }
-        if let Some(running) = state.agents.get_mut(&key) {
-            if !running.typed.is_empty() {
-                running.typed.clear();
-                running.cleared += 1;
-            }
-            if std::mem::take(&mut running.leaves_typed) {
-                running.typed.push_str(text);
-            }
-        }
-        state.sent.push((key, text.into()));
-        Sent::Sent
     }
 
     /// Whether it sends, as scripted: true until [`FakeTerminal::cannot_send`],
