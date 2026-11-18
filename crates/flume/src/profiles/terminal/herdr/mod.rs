@@ -37,7 +37,11 @@
 //! ready, with no trust question on its screen, is not come up with the
 //! screen (34, 35). The
 //! program in the pane's foreground must be the one the settings name,
-//! or the start is closed and refused naming what ran (32). A pane is
+//! or the start is closed and refused naming what ran (32); the agent's
+//! record keeps that program by its absolute path, and the process that
+//! runs it is read again, by `pane process-info`, as the foreground
+//! process running it, by its id, nothing where none does or the pane is
+//! gone (35, C.5). A pane is
 //! held by its id and its server's socket, and found again by the
 //! agent's herdr name where its id no longer answers, its new id
 //! recorded before anything is sent (30, 98).
@@ -142,13 +146,14 @@
 //! the recorded server's socket passed (98, core.29).
 
 use super::common::{
-    asks, base_label, digest, focused, quoted, read_json, runs_program, write_json, Running,
+    asks, base_label, digest, focused, program_process, quoted, read_json, runs_program,
+    write_json, Running,
 };
 use crate::host::process::program_path;
 use flume_seams::{
     AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, FolderTrust, Identity, Key,
-    KeyName, NamedAgent, OpenIn, Opened, PlaceRef, Relay, RelayScreen, Sent, SessionRuns, Shown,
-    ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
+    KeyName, NamedAgent, OpenIn, Opened, PlaceRef, ProgramProcess, Relay, RelayScreen, Sent,
+    SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -398,6 +403,34 @@ struct Kept {
     /// path; none in a record written before (35, C.5).
     program: Option<PathBuf>,
 }
+
+/// The foreground processes `pane process-info` answered with (32, 35,
+/// C.5).
+fn foreground(info: &Value) -> Vec<Running> {
+    info["process_info"]["foreground_processes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|process| {
+            Some(Running {
+                pid: u32::try_from(process["pid"].as_u64()?).ok()?,
+                args: process["argv"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|arg| arg.as_str().map(str::to_string))
+                    .collect(),
+                cwd: process["cwd"].as_str().map(PathBuf::from),
+                cmdline: process["cmdline"].as_str().map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+/// What [`Terminal::program_process`] answers for an agent whose record,
+/// written before, names no program (35, C.5).
+pub const NO_PROGRAM_KEPT: &str =
+    "the agent's record, written before herdr kept its program, names no program";
 
 /// Where a pane was found: there, gone, or not readable now.
 enum Found {
@@ -1438,25 +1471,7 @@ impl Herdr {
     /// arguments; or what ran in its place (32; record 0018).
     fn runs(&self, pane: &Pane, program: &Path) -> Result<(), String> {
         let info = self.answered(&pane.socket, &["pane", "process-info", "--pane", &pane.id])?;
-        let processes: Vec<Running> = info["process_info"]["foreground_processes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|process| {
-                Some(Running {
-                    pid: u32::try_from(process["pid"].as_u64()?).ok()?,
-                    args: process["argv"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|arg| arg.as_str().map(str::to_string))
-                        .collect(),
-                    cwd: process["cwd"].as_str().map(PathBuf::from),
-                    cmdline: process["cmdline"].as_str().map(str::to_string),
-                })
-            })
-            .collect();
-        match runs_program(&processes, program) {
+        match runs_program(&foreground(&info), program) {
             Ok(()) => Ok(()),
             Err(ran) if ran.is_empty() => Err(format!(
                 "herdr shows nothing running in the pane {}, not {}",
@@ -2176,6 +2191,41 @@ impl Terminal for Herdr {
         Opened::Opened {
             carried: false,
             printed: None,
+        }
+    }
+
+    /// The process in the agent's pane's foreground that runs the program
+    /// its open checked, by its id, as the open's check reads it, by
+    /// `pane process-info` within the profile's bound: nothing where none
+    /// runs it or the pane is gone; unknown in herdr's words where herdr
+    /// does not answer, and where the agent's record, written before,
+    /// names no program (35, C.5; core.29).
+    fn program_process(&self, agent: &Identity) -> ProgramProcess {
+        let program = self.kept(agent).and_then(|kept| kept.program);
+        let pane = match self.found(agent) {
+            Found::At(pane) => pane,
+            Found::Gone => return ProgramProcess::Nothing,
+            Found::Unknown(why) => return ProgramProcess::Unknown { why },
+        };
+        let Some(program) = program else {
+            return ProgramProcess::Unknown {
+                why: NO_PROGRAM_KEPT.into(),
+            };
+        };
+        match self.ask(&pane.socket, &["pane", "process-info", "--pane", &pane.id]) {
+            Call::Answered(info) => match program_process(&foreground(&info), &program) {
+                Ok(pid) => ProgramProcess::Runs { pid },
+                Err(_) => ProgramProcess::Nothing,
+            },
+            Call::Refused { code, .. }
+                if code == "pane_not_found" || code == "server_not_running" =>
+            {
+                ProgramProcess::Nothing
+            }
+            Call::Refused { code, words } => ProgramProcess::Unknown {
+                why: format!("herdr refused ({code}): {words}"),
+            },
+            Call::Unanswered(why) => ProgramProcess::Unknown { why },
         }
     }
 

@@ -1577,6 +1577,67 @@ fn a_program_started_through_the_launcher() {
     assert_eq!(profile.close(&who), Closed::Closed);
 }
 
+/// An agent opened through the scratch launcher under `who`, waiting, and
+/// its pane.
+fn opened_through_a_launcher(server: &TestServer, profile: &Herdr, who: &Identity) -> Pane {
+    opened(server, profile, who, &through_a_launcher(server))
+}
+
+/// The terminal-profiles spec's scenario "The launcher's process, then
+/// one started by hand" (35, S74).
+#[test]
+fn launched_process_then_one_started_by_hand() {
+    let server = TestServer::start("herdr-process");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    let launcher = pid_of(&server, "launcher").expect("the launcher's process");
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Runs { pid: launcher },
+        "the process the launcher became"
+    );
+    // amp ends, and a person runs it again by its path in the same pane.
+    server.herdr(&["pane", "send-keys", &pane.id, "ctrl+d"]);
+    server.within("amp did not end", || {
+        profile.program_process(&who) == ProgramProcess::Nothing
+    });
+    let amp = server
+        .scratch
+        .path("bin/amp")
+        .to_string_lossy()
+        .into_owned();
+    server.herdr(&["pane", "run", &pane.id, &amp]);
+    server.within("amp was not run again by hand", || {
+        pid_of(&server, "amp").is_some_and(|pid| pid != launcher)
+    });
+    let by_hand = pid_of(&server, "amp").expect("amp's process");
+    server.within("the process run by hand was not read", || {
+        profile.program_process(&who) == ProgramProcess::Runs { pid: by_hand }
+    });
+    assert_ne!(by_hand, launcher, "amp ran again in the launcher's process");
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "A pane that is gone" (35).
+#[test]
+fn launched_process_of_a_gone_pane_reads_nothing() {
+    let server = TestServer::start("herdr-process-gone");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    assert!(
+        matches!(profile.program_process(&who), ProgramProcess::Runs { .. }),
+        "the launcher's process was not read"
+    );
+    server.herdr(&["pane", "close", &pane.id]);
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Nothing,
+        "the process of a gone pane"
+    );
+}
+
 #[test]
 fn a_program_that_runs_another_in_its_place_is_refused_naming_it() {
     let server = TestServer::start("herdr-program");
