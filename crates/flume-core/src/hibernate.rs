@@ -19,9 +19,9 @@
 //! its last write not made, is carried on by that settle once the agent
 //! is quiet, so every step is safe to repeat (31, 74, 75; core.17).
 //!
-//! A resume (213): its caller's `flume resume`, a tell or the answer the
-//! hibernated agent waits on puts the stage waiting for room to carry the
-//! hibernated start's conversation, as a lost conversation's retry does,
+//! A resume (213): its caller's `flume resume`, a message or the answer
+//! the hibernated agent waits on puts the stage waiting for room to carry
+//! the hibernated start's conversation, as a lost conversation's retry does,
 //! with the resume's words, and starts it: one fresh agent under an
 //! identity of its own, carrying the session where its profile can, on
 //! the account the hibernated agent ran under while it is usable, and
@@ -30,7 +30,7 @@
 use crate::acts::{asked, waited_key, Answering};
 use crate::open_sessions::waits_on_answer;
 use crate::start::{Start, StartReason};
-use crate::{Answer, Engine, Step, TELL_BOUND};
+use crate::{Answer, Engine, Step, MESSAGE_BOUND};
 use flume_seams::*;
 
 /// What a hibernate of a place's current stage finds: the stage's index
@@ -46,9 +46,10 @@ impl Engine {
     /// kept open for its answer, its agent ended once quiet, one not quiet
     /// only when `force`; refused, naming the place, for a stage whose
     /// kind does not hibernate it and for a place with no live agent, and
-    /// naming the agent where it is not quiet, or the tell where one is
-    /// being handed to it, and the caller did not force it (54). The place is then settled, so a stage waiting for the
-    /// room it freed starts (70).
+    /// naming the agent where it is not quiet, or the message where one
+    /// is being handed to it, and the caller did not force it (54). The
+    /// place is then settled, so a stage waiting for the room it freed
+    /// starts (70).
     pub fn hibernate(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
@@ -84,7 +85,7 @@ impl Engine {
     /// words that its session resumes and what ran in it then has stopped
     /// as its prompt's words; refused, naming the place, where nothing of
     /// it hibernates, or where its agent hibernated waiting on its answer,
-    /// which a tell or a retry with words gives (42, 213).
+    /// which a message or a retry with words gives (42, 213).
     pub fn resume(&self, place: &PlaceId) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
@@ -113,7 +114,7 @@ impl Engine {
                 .is_some_and(|closed| closed.by == ClosedBy::Hibernated);
         if held.phase == Phase::Live && answer_resumes {
             return Answer::refused(format!(
-                "the stage {} of the place {place} hibernated waiting on its answer, which resumes it: flume tell {place} <answer>, or flume retry {place} --words <answer> (213)",
+                "the stage {} of the place {place} hibernated waiting on its answer, which resumes it: flume message {place} <answer>, or flume retry {place} --words <answer> (213)",
                 stage.name
             ));
         }
@@ -152,7 +153,7 @@ impl Engine {
             .and_then(|end| end.words.clone())
             .unwrap_or_default();
         let name = stage.name.clone();
-        let _claimed = match self.claim_answer(place, &key, answering, TELL_BOUND) {
+        let _claimed = match self.claim_answer(place, &key, answering, MESSAGE_BOUND) {
             Ok(claimed) => claimed,
             Err(reason) => return Answer::refused(reason),
         };
@@ -195,11 +196,13 @@ impl Engine {
         }
     }
 
-    /// A tell's words to the place's hibernating stage, its resume's words:
-    /// taken at once and answered with the place's status (53, 213).
-    pub(crate) fn tell_hibernating(&self, place: &PlaceId, index: usize, words: &str) -> Answer {
-        match self.resume_stage(place, index, ResumedBy::Tell, words.to_string(), &|_| true) {
-            Ok(()) => self.acted(Act::Tell, place),
+    /// A message's words to the place's hibernating stage, its resume's
+    /// words: taken at once and answered with the place's status (53, 213).
+    pub(crate) fn message_hibernating(&self, place: &PlaceId, index: usize, words: &str) -> Answer {
+        match self.resume_stage(place, index, ResumedBy::Message, words.to_string(), &|_| {
+            true
+        }) {
+            Ok(()) => self.acted(Act::Message, place),
             Err(reason) => Answer::refused(reason),
         }
     }
@@ -284,8 +287,8 @@ impl Engine {
     /// its agent ended once quiet, or working where `force`; true where
     /// this call recorded the hibernation, false where another had or the
     /// place moved on; refused where the agent is not quiet and not forced,
-    /// a tell is being handed to it, or the terminal did not end it (31,
-    /// 212).
+    /// a message is being handed to it, or the terminal did not end it
+    /// (31, 212).
     pub(crate) fn hibernate_stage(
         &self,
         id: &PlaceId,
@@ -338,7 +341,7 @@ impl Engine {
         let now = self.host.now();
         if let Some(until) = due.start.handing.filter(|until| now < *until && !force) {
             return Err(format!(
-                "a tell is being handed to the agent {identity}, until {until} at the latest; ask again once it ends, or forced to hibernate it"
+                "a message is being handed to the agent {identity}, until {until} at the latest; ask again once it ends, or forced to hibernate it"
             ));
         }
         let reading = self.read_agent(id, &due.start);

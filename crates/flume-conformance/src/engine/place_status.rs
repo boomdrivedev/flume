@@ -42,7 +42,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_resume_not_carried_in_status,
         },
         Scenario {
-            name: "status: asked three times of one place, it answers the same and starts or tells nothing",
+            name: "status: asked three times of one place, it answers the same and starts or messages nothing",
             cites: &["S14", "57", "60", "69", "72"],
             run: s14_asked_three_times,
         },
@@ -97,7 +97,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: its_agent_let_go,
         },
         Scenario {
-            name: "status: a fix whose code took one answer by a retry and one by a tell in its first start's session gives both under code in order, each with its question, its answer, retry or tell, and when it was sent and received, in the JSON form",
+            name: "status: a fix whose code took one answer by a retry and one by a message in its first start's session gives both under code in order, each with its question, its answer, retry or message, and when it was sent and received, in the JSON form",
             cites: &["42", "56", "198"],
             run: two_answers_in_one_session,
         },
@@ -1045,7 +1045,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
     world.settle(&id);
     world.host.advance(60);
     let second = world.host.now();
-    taken(&world.engine.tell(&id, "the first line", None))?;
+    taken(&world.engine.message(&id, "the first line", None))?;
     let handed = |at| {
         Some(Handed {
             sent_at: at,
@@ -1071,7 +1071,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
                 question: Some(again.into()),
                 answer: AnswerHeld {
                     words: "the first line".into(),
-                    act: Act::Tell,
+                    act: Act::Message,
                     at: second,
                     session: handed(second),
                     by: None,
@@ -1095,7 +1095,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
             {
                 "question": again,
                 "words": "the first line",
-                "act": "tell",
+                "act": "message",
                 "at": second,
                 "session": { "sent_at": second, "received_at": second },
             },
@@ -1157,7 +1157,7 @@ fn places(answer: Answer) -> Result<Vec<PlaceStatus>, String> {
     }
 }
 
-/// The calls that would start, tell or write.
+/// The calls that would start, message or write.
 fn acting_calls(world: &World) -> (usize, usize, usize, usize) {
     (
         world.terminal.log.count("open"),
@@ -1180,7 +1180,7 @@ fn s14_asked_three_times(_: &()) -> Outcome {
     ensure_eq!(
         acting_calls(&world),
         before,
-        "calls that start, tell or write"
+        "calls that start, message or write"
     );
     Ok(())
 }
@@ -1210,7 +1210,7 @@ fn a_change_ticked_between_asks(_: &()) -> Outcome {
     ensure_eq!(
         acting_calls(&world),
         before,
-        "calls that start, tell or write"
+        "calls that start, message or write"
     );
     Ok(())
 }
@@ -1433,7 +1433,7 @@ fn a_place_gone(_: &()) -> Outcome {
 
 fn a_stalled_place_with_a_pending_end(_: &()) -> Outcome {
     let world = World::new();
-    world.terminal.add_session("ops", AgentState::Working);
+    world.terminal.add_session("ops", AgentState::Waiting);
     super::role_waking::answerer_behind(&world, DEFAULT_STREAM);
     let (id, asked) =
         super::caller_waits::construct_asks(&world, "plan", &["ops", "madswan/planner"], None)?;
@@ -2968,7 +2968,7 @@ fn a_hibernating_conversations_status(_: &()) -> Outcome {
 fn a_resumed_stages_status(_: &()) -> Outcome {
     let world = World::new();
     let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
-    taken(&world.engine().tell(&id, "where were we?", None))?;
+    taken(&world.engine().message(&id, "where were we?", None))?;
     let status = world.status(&id)?;
     let talk = stage_status(&status, "talk")?;
     ensure_eq!(talk.resumes.len(), 1, "talk's resumes");
@@ -2979,7 +2979,7 @@ fn a_resumed_stages_status(_: &()) -> Outcome {
             resume.conversation.carried,
             resume.conversation.cause
         ),
-        (ResumedBy::Tell, true, CarryCause::Hibernated),
+        (ResumedBy::Message, true, CarryCause::Hibernated),
         "talk's resume"
     );
     ensure!(
@@ -3004,7 +3004,7 @@ fn a_resume_not_carried_in_status(_: &()) -> Outcome {
         flume_fakes::FakeAgent::LOGIN,
         Carry::No { why: gone.into() },
     );
-    taken(&world.engine().tell(&id, "carry on", None))?;
+    taken(&world.engine().message(&id, "carry on", None))?;
     let status = world.status(&id)?;
     let talk = stage_status(&status, "talk")?;
     let agent = status.agent.clone().ok_or("status gives no agent")?;

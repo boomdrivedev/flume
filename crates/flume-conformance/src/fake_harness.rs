@@ -807,6 +807,11 @@ impl TerminalHarness for FakeTerminalHarness {
         self.terminal.notices(session)
     }
 
+    fn working_recipient(&self) -> Option<String> {
+        self.terminal.add_session("busy", AgentState::Working);
+        Some("busy".into())
+    }
+
     fn no_session(&self) -> String {
         "nobody".into()
     }

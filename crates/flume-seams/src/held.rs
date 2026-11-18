@@ -324,7 +324,11 @@ pub enum Act {
     Drop,
     Done,
     Finish,
-    Tell,
+    /// A message to a place's agent, written `message` and read from
+    /// `tell`, the verb it replaced, so held state that recorded an
+    /// answer by a tell reads it as a message's (53; record 0069).
+    #[serde(alias = "tell")]
+    Message,
     Needs,
     Priority,
     Hold,
@@ -417,6 +421,17 @@ pub struct Owing {
     pub deliveries: BTreeMap<String, EndDelivery>,
     /// Each name a recipient has confirmed under (weir 106).
     pub known: std::collections::BTreeSet<String>,
+    /// Each delivery's key in the order the host's deliveries recorded
+    /// them, by which a recipient takes what is pending for it (43, 214).
+    pub order: Vec<String>,
+}
+
+impl Owing {
+    /// Each delivery in the order the host's deliveries recorded them
+    /// (43, 214).
+    pub fn in_order(&self) -> impl Iterator<Item = &EndDelivery> {
+        self.order.iter().filter_map(|key| self.deliveries.get(key))
+    }
 }
 
 /// One end's delivery as the host's deliveries hold it at the time it was
@@ -430,6 +445,8 @@ pub struct EndDelivery {
     /// way to confirm it, which a notice adds for the recipient it goes
     /// to (43; weir 100; core.11).
     pub message: String,
+    /// When it was recorded (C.8; weir 100).
+    pub recorded_at: Seconds,
     pub expires_at: Seconds,
     /// Each reader that has not confirmed it, in its readers' order.
     pub owed: Vec<OwedTo>,
@@ -1000,8 +1017,9 @@ pub struct Delivery {
     pub by: DeliveredBy,
 }
 
-/// What handed an end over: a notice through the terminal, a wait by
-/// place, the inbox, or a session's start collecting it (43, C.4).
+/// What handed an end or a message over: a notice through the terminal,
+/// a wait by place, the inbox, a session's start collecting it, or a
+/// message handed into its address's session at its wait (43, 214, C.4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveredBy {
@@ -1009,6 +1027,7 @@ pub enum DeliveredBy {
     Wait,
     Inbox,
     SessionStart,
+    Message,
 }
 
 impl DeliveredBy {
@@ -1020,6 +1039,7 @@ impl DeliveredBy {
             DeliveredBy::Wait => "wait",
             DeliveredBy::Inbox => "inbox",
             DeliveredBy::SessionStart => "session-start",
+            DeliveredBy::Message => "message",
         }
     }
 
@@ -1031,6 +1051,7 @@ impl DeliveredBy {
             DeliveredBy::Wait,
             DeliveredBy::Inbox,
             DeliveredBy::SessionStart,
+            DeliveredBy::Message,
         ]
         .into_iter()
         .find(|by| by.way() == way)
@@ -1039,9 +1060,10 @@ impl DeliveredBy {
 
 /// Where a launch took a place's recipients from, the first of these
 /// that gave any: the recipients the launch named, `FLUME_RECIPIENT` in
-/// the launching command's environment, the session the launching
-/// command ran in as the terminal names it, or the answerer behind the
-/// place's stream, with the source that declares it (7, 190, 193).
+/// the launching command's environment, the address of the role's run
+/// the launching command runs in, the session the launching command ran
+/// in as the terminal names it, or the answerer behind the place's
+/// stream, with the source that declares it (7, 190, 193, 214).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "from", rename_all = "kebab-case")]
 pub enum RecipientsFrom {
@@ -1054,6 +1076,9 @@ pub enum RecipientsFrom {
     /// A base place's fix takes its base place's recipients, who asked for
     /// the work (43, 203; core.54).
     BasePlace,
+    /// A launch from a role's run, naming no recipient, reports to the
+    /// run's address (7, 132, 214).
+    RoleRun,
 }
 
 /// Where a launch read its base's revision (9, 56, 126, C.1).
@@ -1333,7 +1358,7 @@ pub enum StageState {
     Finished,
     /// Its kind hibernates it, and its agent was ended with its session
     /// kept, once idle past its hibernate time or at its caller's word:
-    /// the stage neither ended nor moved on, and a resume, a tell or a
+    /// the stage neither ended nor moved on, and a resume, a message or a
     /// caller's word resumes it (212, 213).
     Hibernating,
 }
@@ -1483,8 +1508,8 @@ pub struct CarryFrom {
     /// Why it does not, where it may not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
-    /// What resumed a hibernated start: its caller's resume, a tell or
-    /// its answer; none for any other carry, and in a wait written before
+    /// What resumed a hibernated start: its caller's resume, a message
+    /// or its answer; none for any other carry, and in a wait written before
     /// (213).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resumed_by: Option<ResumedBy>,
@@ -1729,12 +1754,17 @@ pub struct StartHeld {
     /// (56, 213).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resumes: Vec<ResumeHeld>,
-    /// Until when a tell is being handed to its agent, marked in one write
-    /// before the tell reads the agent and cleared once it ends: no settle
-    /// hibernates the agent, and no caller's hibernate is taken unforced,
-    /// while it stands (54, 212).
+    /// Until when a message is being handed to its agent, marked in one
+    /// write before the message reads the agent and cleared once it ends:
+    /// no settle hibernates the agent, and no caller's hibernate is taken
+    /// unforced, while it stands (54, 212).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handing: Option<Seconds>,
+    /// Each message to its place waiting for its agent's take, where its
+    /// agent's profile offers deliver, in the order sent; none in a start
+    /// written before (53, 54, 75, 215).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub messages: Vec<MessageHeld>,
 }
 
 /// A start's agent hibernated: since when, why, and the account it ran
@@ -1780,13 +1810,13 @@ pub struct ResumeHeld {
     pub conversation: Conversation,
 }
 
-/// What resumed a hibernating stage: its caller's resume, a tell, or the
+/// What resumed a hibernating stage: its caller's resume, a message, or the
 /// answer to the stop-short its agent waits on (213).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResumedBy {
     Caller,
-    Tell,
+    Message,
     Answer,
 }
 
@@ -1794,10 +1824,24 @@ impl ResumedBy {
     pub fn name(self) -> &'static str {
         match self {
             ResumedBy::Caller => "caller",
-            ResumedBy::Tell => "tell",
+            ResumedBy::Message => "message",
             ResumedBy::Answer => "answer",
         }
     }
+}
+
+/// A message to a place waiting on its start for its agent's deliver
+/// part: its words, when it was sent, who sent it where the sending
+/// command named one, and when the agent took it, none until it did (53,
+/// 54, 215).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageHeld {
+    pub words: String,
+    pub at: Seconds,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken_at: Option<Seconds>,
 }
 
 /// A start's own settings beyond its keys: each file a layer named for

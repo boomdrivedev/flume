@@ -382,7 +382,7 @@ fn asking_own_work_a_tell_refuse_a_callers_hibernate(_: &()) -> Outcome {
         });
         *into.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((answer, mark));
     });
-    taken(&world.engine().tell(&id, "go on", None))?;
+    taken(&world.engine().message(&id, "go on", None))?;
     let (answer, mark) = during
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -537,7 +537,7 @@ fn asking_own_work_a_tell_hold_a_settle_off(_: &()) -> Outcome {
     world.host.at_next_sleep(move || {
         other.settle(Some(&place));
     });
-    taken(&world.engine().tell(&id, "go on", None))?;
+    taken(&world.engine().message(&id, "go on", None))?;
     ensure_eq!(
         (world.stage_state(&id, "talk"), closed(&world).len()),
         (Some(StageState::Begun), 0),
@@ -1061,7 +1061,7 @@ fn forty_days_hibernated(_: &()) -> Outcome {
     world
         .agent
         .carry_to(FakeAgent::LOGIN, Carry::No { why: gone.into() });
-    taken(&world.engine().tell(&id, "carry on", None))?;
+    taken(&world.engine().message(&id, "carry on", None))?;
     afresh_after_hibernated(&world, &id, 2, Some("carry on"), gone)?;
     let agent = world.status(&id)?.agent.ok_or("status gives no agent")?;
     ensure_eq!(
@@ -1123,10 +1123,10 @@ fn a_message_next_morning(_: &()) -> Outcome {
     world.settle(&id);
     hibernating(&world, &id, at, HibernatedBy::Idle, 1)?;
     world.host.advance(14 * HOUR);
-    let answered = world.engine().tell(&id, "where were we?", None);
+    let answered = world.engine().message(&id, "where were we?", None);
     match &answered {
         Answer::Acted {
-            act: Act::Tell,
+            act: Act::Message,
             status: Some(status),
             ..
         } if status.place == id => {}
@@ -1136,7 +1136,7 @@ fn a_message_next_morning(_: &()) -> Outcome {
         &world,
         &id,
         &talk_resumed("one", 1, 1),
-        ResumedBy::Tell,
+        ResumedBy::Message,
         "where were we?",
         1,
     )?;
@@ -1228,7 +1228,7 @@ fn the_answer_three_hours_later(_: &()) -> Outcome {
     taken(
         &world
             .engine()
-            .tell_answering(&id, "use notes.md", None, &answering),
+            .message_answering(&id, "use notes.md", None, &answering),
     )?;
     let held = world.held(&id).ok_or("no held state")?;
     let answer = held
@@ -1248,7 +1248,7 @@ fn the_answer_three_hours_later(_: &()) -> Outcome {
         ),
         (
             "use notes.md",
-            Act::Tell,
+            Act::Message,
             Some("ops"),
             Some(code_key()),
             at,
@@ -1320,7 +1320,7 @@ fn working_past_its_limit_from_the_resume(_: &()) -> Outcome {
 fn hibernating_again(_: &()) -> Outcome {
     let world = World::new();
     let (id, _) = hibernated_talk(&world, "one")?;
-    taken(&world.engine().tell(&id, "go on", None))?;
+    taken(&world.engine().message(&id, "go on", None))?;
     let first = talk_resumed("one", 1, 1);
     world.settle(&id);
     ensure_eq!(
@@ -1350,12 +1350,12 @@ fn hibernating_again(_: &()) -> Outcome {
         "talk's first resume's agent was not closed: {:?}",
         closed(&world)
     );
-    taken(&world.engine().tell(&id, "and now?", None))?;
+    taken(&world.engine().message(&id, "and now?", None))?;
     resumed_as(
         &world,
         &id,
         &talk_resumed("one", 1, 2),
-        ResumedBy::Tell,
+        ResumedBy::Message,
         "and now?",
         1,
     )?;
@@ -1390,7 +1390,7 @@ fn spent_after_a_resume(_: &()) -> Outcome {
     let id = world.patching("one")?;
     taken(&world.engine().hibernate(&id, false))?;
     world.host.advance(HOUR);
-    taken(&world.engine().tell(&id, "use notes.md", None))?;
+    taken(&world.engine().message(&id, "use notes.md", None))?;
     let resumed = Identity {
         resume: 1,
         ..patch_code("one", 1)

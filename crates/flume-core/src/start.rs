@@ -251,7 +251,10 @@ impl Engine {
     /// change could not be read, and `{{notes}}` with its notes' path; a
     /// stage that does not repeat fills neither (27, 141). The roles in
     /// `listed`, which a stop-short may name, come last, after every part
-    /// the stage's repetitions share (28, 41; core.31).
+    /// the stage's repetitions share (28, 41; core.31). A role's run's
+    /// start's `batch`, every delivery pending at its address, comes after
+    /// the kind's template and before the way to stop short (214; design
+    /// 9).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn fill(
         &self,
@@ -262,6 +265,7 @@ impl Engine {
         agent: Option<&dyn Agent>,
         group: Option<Option<&GroupHeld>>,
         listed: &[AnsweringRole],
+        batch: Option<&str>,
     ) -> Result<String, PromptPart> {
         let place = &held.place;
         let stage = &place.kind.stages[index];
@@ -293,6 +297,10 @@ impl Engine {
             }
         };
         let mut text = render(&stage.prompt, fill)?;
+        if let Some(batch) = batch {
+            text.push_str("\n\n");
+            text.push_str(batch);
+        }
         if !asks(&stage.prompt, PromptPart::Needs) {
             text.push_str("\n\n");
             text.push_str(&stop_short.clone().ok_or(PromptPart::Needs)?);
@@ -560,6 +568,16 @@ impl Engine {
         // its claim, so a claim written again reads no file again (28, 41,
         // 193).
         let listed = self.may_name(&read.state);
+        // A role's run's start whose prompt is filled carries its
+        // address's batch, claimed under the start's identity before the
+        // start is written, and let go of where the start is not made
+        // with it (214; design 9).
+        let batched = match (&read.state.role, &resume, &resolution) {
+            (Some(address), None, Ok(_)) => {
+                self.claim_for_start(address, &self.next_identity(&read.state, index))
+            }
+            _ => None,
+        };
         let claimed = self.update(id, |held| {
             if let Admit::Waiting(_) = admit {
                 if held.phase != Phase::Live
@@ -677,6 +695,10 @@ impl Engine {
                     Some(agent),
                     group.as_ref().map(Option::as_ref),
                     &listed,
+                    batched
+                        .as_ref()
+                        .filter(|batched| batched.identity == identity)
+                        .map(|batched| batched.words.as_str()),
                 ) {
                     Err(part) => {
                         let stage = &mut held.stages[index];
@@ -856,6 +878,7 @@ impl Engine {
                 hibernated: None,
                 resumes: resumed,
                 handing: None,
+                messages: vec![],
             });
             if !held
                 .terminals
@@ -883,6 +906,11 @@ impl Engine {
             }))
         });
         let claimed = claimed.unwrap_or(Err(Start::NoPlace));
+        if let Some(batched) = &batched {
+            if !matches!(&claimed, Ok(claim) if claim.identity == batched.identity) {
+                self.release_start(&batched.identity);
+            }
+        }
         if let (Ok(claim), Some(place), Some(program)) = (&claimed, self.store.read(id), &program) {
             if let Some(account) = &claim.account {
                 self.affinity_after(&place.state.place, program, account, intent_moved.as_ref());

@@ -14,8 +14,8 @@
 //! ended once quiet and its stage started afresh, unless it delivered
 //! (146). A conversation whose kind hibernates it is read for its quiet
 //! as well, from flume's first reading of it quiet, asking nothing, with
-//! no own work and no tell being handed to it, started again whenever it
-//! is read otherwise; once quiet its hibernate time, the settle
+//! no own work and no message being handed to it, started again whenever
+//! it is read otherwise; once quiet its hibernate time, the settle
 //! hibernates it (44, 90, 91, 212).
 
 use crate::open_sessions::last_answer;
@@ -146,7 +146,7 @@ impl Engine {
 
     /// A running conversation whose kind hibernates it, read as `reading`
     /// reads its agent: quiet, asking nothing, no own work running and no
-    /// tell being handed to it, its quiet kept in its start's
+    /// message being handed to it, its quiet kept in its start's
     /// `first_quiet` from flume's first reading of it so and cleared
     /// whenever it is read otherwise; once quiet its start's
     /// `hibernate_after`, hibernated for its idling, `0` hibernating it

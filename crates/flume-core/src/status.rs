@@ -790,8 +790,8 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
         ),
         StageState::Stopped => retry(Waits::Stopped, None),
         // A hibernating stage waits on no move of its caller's, and is
-        // never stalled: a resume, a tell or its answer wakes it (130,
-        // 212, 213).
+        // never stalled: a resume, a message or its answer wakes it
+        // (130, 212, 213).
         StageState::Hibernating => None,
         StageState::Delivered | StageState::Finished if index == last => {
             if !place.kind.lands {
