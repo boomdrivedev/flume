@@ -203,6 +203,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_profile_that_offers_no_hooks,
         },
         Scenario {
+            name: "status: a place whose fake agent reads received, asking, own work, ended and last words from its terminal and builds every other part gives those five degraded, in that order, each with how flume reads it from the terminal",
+            cites: &["56", "171", "174"],
+            run: a_profile_that_reads_the_five_from_its_terminal,
+        },
+        Scenario {
             name: "status: an agent whose profile builds every part names none degraded, its JSON holding no degraded",
             cites: &["56", "174"],
             run: a_profile_that_builds_every_part,
@@ -877,6 +882,60 @@ fn a_profile_that_offers_no_hooks(_: &()) -> Outcome {
             {
                 "part": "on_quiet",
                 "read": "not offered, so the host's watch, or a command where none keeps watch, settles its place"
+            }
+        ]),
+        "degraded in the JSON form"
+    );
+    Ok(())
+}
+
+/// The place-status spec's scenario "A profile that reads the five from
+/// its terminal" (56, 171, 174).
+fn a_profile_that_reads_the_five_from_its_terminal(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    world
+        .agent
+        .reads_from_its_terminal(&flume_fakes::FakeAgent::FROM_TERMINAL);
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    let five = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+    ];
+    ensure_eq!(
+        agent.degraded,
+        five.map(|part| DegradedPart {
+            part,
+            read: part.read().into(),
+        })
+        .to_vec(),
+        "the agent's degraded parts"
+    );
+    ensure_eq!(
+        json["degraded"].clone(),
+        serde_json::json!([
+            {
+                "part": "received",
+                "read": "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds"
+            },
+            {
+                "part": "asking",
+                "read": "read from the terminal, asking while it reads the agent waiting on a question"
+            },
+            {
+                "part": "own_work",
+                "read": "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then"
+            },
+            {
+                "part": "ended",
+                "read": "read from the terminal, ended once it reads the agent stopped"
+            },
+            {
+                "part": "last_words",
+                "read": "read from the terminal, what it shows of the agent"
             }
         ]),
         "degraded in the JSON form"
