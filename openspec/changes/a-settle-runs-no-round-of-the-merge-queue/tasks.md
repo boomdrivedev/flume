@@ -21,7 +21,7 @@ scratch, as the harnesses already do (core.51).
 
 ## 3. The seam's scenarios
 
-- [ ] 3.1 In `crates/flume-conformance/src/seams/merge_queue.rs`, have `unreadable_says_so` ask that step of an unreadable queue is anything but `Stepped::Stepped`, its words "an unreadable queue was stepped", as design section 3 says. Leave its inbox and read-submission checks as they are (99, 125). True when `devenv shell -- cargo test -p flume-conformance --test seams the_fake_merge_queue_passes_the_merge_queue_scenarios` passes.
+- [x] 3.1 In `crates/flume-conformance/src/seams/merge_queue.rs`, have `unreadable_says_so` ask that step of an unreadable queue is anything but `Stepped::Stepped`, its words "an unreadable queue was stepped", as design section 3 says. Leave its inbox and read-submission checks as they are (99, 125). True when `devenv shell -- cargo test -p flume-conformance --test seams the_fake_merge_queue_passes_the_merge_queue_scenarios` passes.
 
 ## 4. Against the pinned sluice
 
