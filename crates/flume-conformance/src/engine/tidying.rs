@@ -62,6 +62,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["S117", "64", "207"],
             run: a_dropped_place_whose_session_a_person_runs,
         },
+        Scenario {
+            name: "tidy: Finished and removed: east/ops' talk finished with its checkouts holding nothing, the tidy removes both checkouts and the location, removing no branch and giving none kept",
+            cites: &["62", "109", "193"],
+            run: a_standing_role_finished_and_removed,
+        },
+        Scenario {
+            name: "tidy: A checkout holding a file: east/ops' place done while its blueprints checkout holds an untracked file is kept whole, neither checkout removed, status naming the file under blueprints",
+            cites: &["65", "193"],
+            run: a_standing_roles_checkout_holding_a_file,
+        },
     ]
 }
 
@@ -446,6 +456,78 @@ fn a_dropped_place_whose_session_a_person_runs(_: &()) -> Outcome {
         (tidy.removed, world.place.log.count("remove")),
         (vec![id.clone()], 1),
         "the place removed once its session ended"
+    );
+    Ok(())
+}
+
+fn a_standing_role_finished_and_removed(_: &()) -> Outcome {
+    use super::standing_roles::{checkout_at, ops_hibernated, taken};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let branches = world.place.log.count("remove_branch");
+    taken(&world.engine().finish(&id, false))?;
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the place's held state stands");
+    ensure_eq!(
+        (
+            checkout_at(&world, &id, "repository").1,
+            checkout_at(&world, &id, "blueprints").1,
+            world.place.stands(&id.0)
+        ),
+        (None, None, false),
+        "the checkouts and what stands at the location"
+    );
+    ensure_eq!(
+        world.place.log.count("remove_checkouts"),
+        1,
+        "the checkouts' removes"
+    );
+    ensure_eq!(
+        (
+            world.place.log.count("remove_branch"),
+            world.place.log.count("remove")
+        ),
+        (branches, 0),
+        "branches and worktrees removed"
+    );
+    Ok(())
+}
+
+fn a_standing_roles_checkout_holding_a_file(_: &()) -> Outcome {
+    use super::standing_roles::{checkout_at, ops_hibernated, taken};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let (blueprints, _) = checkout_at(&world, &id, "blueprints");
+    world.place.set_holds(
+        &blueprints,
+        Holds {
+            untracked: vec!["notes.md".into()],
+            ..Holds::default()
+        },
+    );
+    taken(&world.engine().finish(&id, false))?;
+    world.settle(&id);
+    let status = world.status(&id)?;
+    match &status.phase {
+        Phase::Over {
+            kept: Some(Kept::Holds { holds }),
+            ..
+        } => ensure_eq!(
+            holds.untracked.clone(),
+            vec!["blueprints/notes.md".to_string()],
+            "the files status names"
+        ),
+        other => return Err(format!("the place's phase: {other:?}")),
+    }
+    ensure!(
+        checkout_at(&world, &id, "repository").1.is_some()
+            && checkout_at(&world, &id, "blueprints").1.is_some(),
+        "a checkout was removed"
+    );
+    ensure_eq!(
+        world.place.log.count("remove_checkouts"),
+        0,
+        "the checkouts' removes"
     );
     Ok(())
 }
