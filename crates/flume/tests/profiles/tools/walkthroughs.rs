@@ -12,7 +12,8 @@
 //! from it goes back to code once and lands on the next (124, C.6); a bare
 //! `change` runs flume's newest, change@5, through construct, code started
 //! once and verify, each agent started in `full` from the kind, its report
-//! committed in the archived change (S2, S35, 162); verify finding work sends the place back to code (131); a fix
+//! committed in the archived change (S2, S35, S119, 162); verify finding
+//! work sends the place back to code (131); a fix
 //! whose code finds work waits on an answer, with one agent opened, and
 //! its caller's retry with the answer starts code once more, the findings
 //! then the answer in its prompt, and lands (41, 42, 48, 49, 131); a fix
@@ -34,11 +35,14 @@
 //! second account and lands (S55; 146, 151), and, where the second's
 //! `projects` is a link to the first's, goes on there in its own
 //! conversation and lands, flume writing nothing in either home (S78;
-//! 179); a most-left pool starts a fix on the account whose reading
-//! leaves more, and, that reading written past ninety percent, the
-//! intent's next fix on the other, status giving both readings and the
-//! first account past its threshold with no reading's path, and the fix
-//! running on it lands (145, 147, 184, 185); and a fix whose first code
+//! 179); a most-left pool, each account's reading reported by an agent
+//! flume started on it through `flume hook usage` as the plugin's module
+//! passes it, starts a fix on the account whose reading leaves more, and,
+//! that fix's agent reporting past ninety percent, the intent's next fix
+//! on the other, status giving both readings with the agents and sessions
+//! that reported them and the first account past its threshold with no
+//! path, and the fix running on it lands (145, 147, 184, 185, 211); and a
+//! fix whose first code
 //! agent comes up without its account's variable is ended and its stage
 //! started afresh under the account, and lands (S65; 161); a fix whose
 //! host's table gives `edits` over its repository's `full` starts its
@@ -280,7 +284,7 @@ fn a_fix_agents_line_is_status_line_and_the_fix_lands() {
     });
 
     let line = status_line(&walk, &place);
-    assert_eq!(line, "fix--one · fix@1 · code · run 1 · working");
+    assert_eq!(line, "fix--one · fix@2 · code · run 1 · working");
     assert_eq!(walk.person(&["status", &place, "--line"]).trim_end(), line);
     assert_eq!(walk.status(&place)["line"]["full"], line.as_str());
 
@@ -626,12 +630,12 @@ fn in_full_from_the_kind(status: &Value) {
 
 #[test]
 fn a_change_runs_construct_code_and_verify() {
-    // S2, S35, 162: a bare `change` runs flume's newest, change@5, each
-    // stage's agent started in `full` from the kind; construct writes the
-    // change, code's one agent ticks its tasks, status showing them ticked
-    // along the way, and verify commits its report and archives the change,
-    // the code stage started once; the place lands with the report in the
-    // archive.
+    // S2, S35, S119, 162: a bare `change` runs flume's newest, change@5,
+    // each stage's agent started in `full` from the kind (records 0064,
+    // 0077); construct writes the change, code's one agent ticks its tasks,
+    // status showing them ticked along the way, and verify commits its
+    // report and archives the change, the code stage started once; the place
+    // lands with the report in the archive.
     let walk = Walk::new("walk-change");
     let place = walk.launch("change", "add-parser", &["--brief", "add a parser"]);
     let status = walk.until(&place, "its construct's agent", |status| {
@@ -1618,72 +1622,153 @@ fn a_spent_agents_conversation_goes_on_under_the_pools_next_and_the_fix_lands() 
     }
 }
 
-/// `at`, seconds by the host's clock, as an RFC 3339 time with its
-/// offset, as a reading writes its times (C.7).
-fn rfc3339(at: u64) -> String {
-    chrono::DateTime::from_timestamp(i64::try_from(at).expect("a time"), 0)
-        .expect("a time")
-        .to_rfc3339()
+/// `flume hook usage` run in the place in its agent's environment, as the
+/// plugin's module runs it on each measure of the session that names its
+/// rate limits, its input the engine's report `rate_limits`; and the time
+/// by the host's clock before it ran (184, 211, C.4).
+fn reports_windows(walk: &Walk, place: &str, rate_limits: Value) -> u64 {
+    let before = now();
+    let mut hook = walk
+        .command(env!("CARGO_BIN_EXE_flume"), Path::new(place))
+        .envs(agents_environment(walk, place))
+        .args(["hook", "usage"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("flume runs");
+    std::io::Write::write_all(
+        &mut hook.stdin.take().expect("the hook's input"),
+        json!({ "rateLimits": rate_limits }).to_string().as_bytes(),
+    )
+    .expect("the report written");
+    let output = hook.wait_with_output().expect("flume ends");
+    assert!(output.status.success(), "hook usage exits 0");
+    assert!(output.stdout.is_empty(), "hook usage printed");
+    before
 }
 
-/// An account's reading read at `read_at` with `windows`, written whole at
-/// `path` as a host's reader writes one: a new file beside it renamed over
-/// the old (184, C.7).
-fn reads(path: &Path, read_at: u64, windows: Value) {
-    let new = path.with_extension("json.new");
-    std::fs::write(
-        &new,
-        json!({ "read_at": rfc3339(read_at), "reader": "the walk's", "windows": windows })
-            .to_string(),
-    )
-    .expect("the reading");
-    std::fs::rename(&new, path).expect("the reading written whole");
+/// A fix launched as `name` under an intent of its own, its agent started
+/// waiting on `go` and then committing `<name>.rs`, once its stage is
+/// working: the place, and the agent's process.
+fn working_on_its_own_intent(walk: &Walk, name: &str, go: &Path) -> (String, std::process::Child) {
+    let place = walk.launch(
+        "fix",
+        name,
+        &["--brief", &format!("fix {name}"), "--intent", name],
+    );
+    let mut acts = vec![json!({ "wait_for": go })];
+    acts.extend(
+        commits(&format!("{name}.rs"), "fn warm() {}\n")
+            .as_array()
+            .cloned()
+            .expect("the acts"),
+    );
+    let agent = walk.start_agent(&place, Value::Array(acts));
+    walk.until(&place, "its code agent working", |status| {
+        status["line"]["state"] == "working"
+    });
+    (place, agent)
+}
+
+/// The sessions whose transcripts `home` holds for `place`, by each
+/// file's name in the folder the stand-in names for the place.
+fn sessions_in(home: &Path, place: &str) -> Vec<String> {
+    let folder = Path::new(place)
+        .file_name()
+        .expect("the place's folder")
+        .to_string_lossy()
+        .into_owned();
+    transcripts(home)
+        .into_iter()
+        .filter(|transcript| {
+            transcript
+                .parent()
+                .and_then(Path::file_name)
+                .is_some_and(|name| name.to_string_lossy().ends_with(&folder))
+        })
+        .filter_map(|transcript| {
+            transcript
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+        })
+        .collect()
 }
 
 #[test]
 fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_threshold() {
-    // 145, 147, 184, 185, under the printed command: on a most-left pool of
-    // two accounts, each a scratch `CLAUDE_CONFIG_DIR` whose `usage` names a
-    // scratch file under the home, the second's reading leaving more, a fix
-    // starts on the second. Its reading is then written past ninety percent
-    // in its 5-hour window, and the intent's next fix starts on the first,
-    // the intent moving off the second for `claude` with the window and its
-    // reset. Status gives the pool's threshold, both readings and the
-    // second past its threshold, in the JSON form and the person's, with no
-    // reading's path; the fix already running on the second goes on and
-    // lands under its account, and flume wrote neither reading.
+    // 145, 147, 184, 185, 211, under the printed command: on a most-left
+    // pool of two accounts, each a scratch `CLAUDE_CONFIG_DIR`, two fixes
+    // each of an intent of its own start one on each account, as
+    // least-busy would where no account has a reading; each agent, while
+    // it works, reports its account's windows by `flume hook usage` as the
+    // plugin's module passes them, the second's leaving more, and both
+    // fixes land. A fix then starts on the second. Its agent reports past
+    // ninety percent in its 5-hour window, and the intent's next fix starts
+    // on the first, the intent moving off the second for `claude` with the
+    // window and its reset. Status gives the pool's threshold, each reading
+    // with when flume took it and the agent and session that reported it,
+    // and the second past its threshold, in the JSON form and the person's,
+    // with no path of an account's document; the fix already running on
+    // the second goes on and lands under its account.
     let walk = Walk::new("walk-most-left");
     let first = walk.account().to_path_buf();
     let second = walk.account_folder("account-2");
-    let readings = walk.home().join("readings");
-    std::fs::create_dir_all(&readings).expect("the readings' folder");
-    let usage = [
-        readings.join("stand-in-1.json"),
-        readings.join("stand-in-2.json"),
-    ];
     walk.configure_whole(&format!(
-        "[streams.default]\npool = \"stand-in\"\n\n[pools.stand-in]\nstrategy = \"most-left\"\naccounts = [\n  {{ name = \"stand-in-1\", program = \"claude\", env = {{ CLAUDE_CONFIG_DIR = {:?} }}, usage = \"~/readings/stand-in-1.json\" }},\n  {{ name = \"stand-in-2\", program = \"claude\", env = {{ CLAUDE_CONFIG_DIR = {:?} }}, usage = \"~/readings/stand-in-2.json\" }},\n]\n",
-        first.display().to_string(),
-        second.display().to_string(),
+        "[streams.default]\npool = \"stand-in\"\n\n[pools.stand-in]\nstrategy = \"most-left\"\naccounts = [\n  {},\n  {},\n]\n",
+        walk.stand_in_account("stand-in-1", &first),
+        walk.stand_in_account("stand-in-2", &second),
     ));
-    let read = now();
-    let reset = read - read % 3600 + 2 * 3600;
-    reads(
-        &usage[0],
-        read,
+    let reset = now() - now() % 3600 + 2 * 3600;
+
+    let go = walk.signal("warm");
+    let (warm_1, agent_1) = working_on_its_own_intent(&walk, "warm-1", &go);
+    let (warm_2, agent_2) = working_on_its_own_intent(&walk, "warm-2", &go);
+    for (place, name) in [(&warm_1, "stand-in-1"), (&warm_2, "stand-in-2")] {
+        assert_eq!(
+            walk.status(place)["agent"]["account"],
+            json!({ "pool": "stand-in", "name": name, "from": "strategy" }),
+            "no account read, so the least busy"
+        );
+    }
+    let warmed = walk.status(&warm_1)["agent"]["identity"].clone();
+    let read = reports_windows(
+        &walk,
+        &warm_1,
         json!([
-            { "name": "5-hour", "used": 40, "resets_at": rfc3339(reset) },
-            { "name": "7-day", "used": 55 },
+            { "kind": "five_hour", "percentUsed": 40, "resetsAt": flume_seams::rfc3339_of(reset) },
+            { "kind": "seven_day", "percentUsed": 55 },
         ]),
     );
-    reads(
-        &usage[1],
-        read,
+    let read_2 = reports_windows(
+        &walk,
+        &warm_2,
         json!([
-            { "name": "5-hour", "used": 12.5, "resets_at": rfc3339(reset) },
-            { "name": "7-day", "used": 30 },
+            { "kind": "five_hour", "percentUsed": 12.5, "resetsAt": flume_seams::rfc3339_of(reset) },
+            { "kind": "seven_day", "percentUsed": 30 },
         ]),
     );
+    let read_at = |name: &str| {
+        let answer = walk.flume(&["status"]);
+        answer["status"]["host"]["pools"][0]["accounts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|account| account["name"] == name)
+            .and_then(|account| account["reading"]["read_at"].as_u64())
+            .unwrap_or_else(|| panic!("no reading of {name}: {answer}"))
+    };
+    let taken = read_at("stand-in-1");
+    assert!(
+        (read..=now()).contains(&taken),
+        "stand-in-1's reading taken at {taken}"
+    );
+    let read = taken;
+    std::fs::write(&go, "").expect("the signal");
+    for (place, agent) in [(&warm_1, agent_1), (&warm_2, agent_2)] {
+        let ran = finish(agent);
+        assert_eq!(ran.code, 0, "{}", ran.out);
+        until_landed(&walk, place);
+    }
 
     let one = walk.launch("fix", "one", &["--brief", "fix the parser"]);
     assert_eq!(
@@ -1691,23 +1776,42 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         json!({ "pool": "stand-in", "name": "stand-in-2", "from": "strategy" }),
         "the account whose reading leaves more"
     );
-
-    let past = now();
-    reads(
-        &usage[1],
-        past,
+    let go = walk.signal("go");
+    let mut acts = vec![json!({ "wait_for": go })];
+    acts.extend(
+        commits("parser.rs", "fn parse() {}\n")
+            .as_array()
+            .cloned()
+            .expect("the acts"),
+    );
+    let agent = walk.start_agent(&one, Value::Array(acts));
+    let status = walk.until(&one, "its code agent working", |status| {
+        status["line"]["state"] == "working"
+    });
+    let coding = status["agent"]["identity"].clone();
+    let taken_2 = read_at("stand-in-2");
+    assert!(
+        (read_2..=now()).contains(&taken_2),
+        "stand-in-2's reading taken at {taken_2}"
+    );
+    while now() <= taken_2 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let past = reports_windows(
+        &walk,
+        &one,
         json!([
-            { "name": "5-hour", "used": 93, "resets_at": rfc3339(reset) },
-            { "name": "7-day", "used": 30 },
+            { "kind": "five_hour", "percentUsed": 93, "resetsAt": flume_seams::rfc3339_of(reset) },
+            { "kind": "seven_day", "percentUsed": 30 },
         ]),
     );
-    let written = usage.each_ref().map(|path| {
-        let file = std::fs::read_to_string(path).expect("the reading");
-        let at = std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .expect("the reading's write time");
-        (file, at)
-    });
+    let taken = read_at("stand-in-2");
+    assert!(
+        (past..=now()).contains(&taken),
+        "stand-in-2's reading taken at {taken}"
+    );
+    let past = taken;
+
     let two = walk.launch("fix", "two", &["--brief", "fix the reader"]);
     let status = walk.status(&two);
     assert_eq!(
@@ -1735,7 +1839,7 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
             &json!("stand-in-2"),
             &json!("stand-in-1"),
             &json!("threshold"),
-            &json!("5-hour"),
+            &json!("five_hour"),
             &json!(reset)
         ),
         "{status}"
@@ -1763,10 +1867,12 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         accounts[0]["reading"],
         json!({
             "read_at": read,
+            "agent": warmed,
+            "session": sessions_in(&first, &warm_1).first(),
             "fresh": true,
             "windows": [
-                { "name": "5-hour", "used": 40, "resets_at": reset, "past": false },
-                { "name": "7-day", "used": 55, "past": false },
+                { "name": "five_hour", "used": 40, "resets_at": reset, "past": false },
+                { "name": "seven_day", "used": 55, "past": false },
             ],
         }),
         "{pool}"
@@ -1777,55 +1883,62 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         (&json!("stand-in-2"), &json!(1)),
         "{pool}"
     );
+    let session = accounts[1]["reading"]["session"].clone();
     assert_eq!(
         accounts[1]["reading"],
         json!({
             "read_at": past,
+            "agent": coding,
+            "session": session,
             "fresh": true,
             "windows": [
-                { "name": "5-hour", "used": 93, "resets_at": reset, "past": true },
-                { "name": "7-day", "used": 30, "past": false },
+                { "name": "five_hour", "used": 93, "resets_at": reset, "past": true },
+                { "name": "seven_day", "used": 30, "past": false },
             ],
         }),
         "{pool}"
     );
     assert_eq!(
         accounts[1]["past"],
-        json!({ "window": "5-hour", "until": reset }),
+        json!({ "window": "five_hour", "until": reset }),
         "{pool}"
     );
     let said = walk.person(&["status"]);
+    let (warmed, coding) = (
+        warmed.as_str().expect("warm-1's agent"),
+        coding.as_str().expect("one's agent"),
+    );
     for lines in [
-        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      5-hour 40% (resets {reset}) · 7-day 55% · read at {read}\n"),
-        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      5-hour 93% (resets {reset}) · 7-day 30% · read at {past}\n      past its threshold in 5-hour until {reset}\n"),
-        format!("stand-in-2 past its threshold in 5-hour until {reset}"),
+        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      five_hour 40% (resets {reset}) · seven_day 55% · taken at {read} from {warmed}\n"),
+        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      five_hour 93% (resets {reset}) · seven_day 30% · taken at {past} from {coding}\n      past its threshold in five_hour until {reset}\n"),
+        format!("stand-in-2 past its threshold in five_hour until {reset}"),
     ] {
         assert!(said.contains(&lines), "{lines} in {said}");
     }
-    for words in [answer.to_string(), said] {
-        for path in [readings.to_string_lossy().into_owned(), "readings/".into()] {
-            assert!(!words.contains(&path), "a reading's path in {words}");
-        }
+    for words in [pool.to_string(), said] {
+        assert!(
+            !words.contains("accounts/stand-in"),
+            "an account's document's path in {words}"
+        );
     }
 
-    walk.agent(&one, commits("parser.rs", "fn parse() {}\n"));
+    std::fs::write(&go, "").expect("the signal");
+    let ran = finish(agent);
+    assert_eq!(ran.code, 0, "{}", ran.out);
     until_landed(&walk, &one);
     assert_eq!(
         walk.on_remote("parser.rs").as_deref(),
         Some("fn parse() {}\n"),
         "the fix on the account past its threshold"
     );
-    assert!(
-        second.join("projects").exists() && !first.join("projects").exists(),
-        "the fix's agent under stand-in-2's home alone"
+    assert_eq!(
+        (sessions_in(&second, &one), sessions_in(&first, &one)),
+        (
+            vec![session.as_str().expect("one's session").to_string()],
+            vec![]
+        ),
+        "the fix's agent under stand-in-2's home alone, in the session that reported"
     );
-    for (path, (file, at)) in usage.iter().zip(written) {
-        let now = std::fs::read_to_string(path).expect("the reading");
-        let now_at = std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .expect("the reading's write time");
-        assert_eq!((now, now_at), (file, at), "{} written", path.display());
-    }
 }
 
 #[test]
@@ -1910,7 +2023,9 @@ fn a_hosts_mode_over_the_repositorys_and_none_where_no_layer_gives_one() {
     // acceptEdits`, the started ack is taken on the program and the
     // variables, the stand-in's first prompt names `acceptEdits` and is
     // taken as received, so code begins, status names `edits` from
-    // `host-kind` passed as `acceptEdits`, and the fix lands.
+    // `host-kind` passed as `acceptEdits`, and the fix lands. Then fix@1
+    // named with no layer giving a mode, and a bare fix, fix@2, in `full`
+    // from its kind.
     let walk = Walk::new("walk-mode");
     walk.configure("[kinds.fix.agents]\nmode = \"edits\"\n");
     the_repository_gives(&walk, "[kinds.fix.agents]\nmode = \"full\"\n");
@@ -1958,10 +2073,11 @@ fn a_hosts_mode_over_the_repositorys_and_none_where_no_layer_gives_one() {
         Some("fn parse() {}\n")
     );
 
-    // 162: no layer gives a mode, so none is passed, the start records
-    // none, the account's own configuration decides, and the fix lands.
+    // 162: fix@1 named, whose declaration gives no mode, and no other
+    // layer gives one, so none is passed, the start records none, the
+    // account's own configuration decides, and the fix lands.
     let walk = Walk::new("walk-no-mode");
-    let place = walk.launch("fix", "one", &["--brief", "fix the parser"]);
+    let place = walk.launch("fix@1", "one", &["--brief", "fix the parser"]);
     let printed = walk.printed(&place);
     assert!(
         !printed.contains("--permission-mode"),
@@ -1971,6 +2087,39 @@ fn a_hosts_mode_over_the_repositorys_and_none_where_no_layer_gives_one() {
     assert!(status["agent"]["mode"].is_null(), "{status}");
     assert!(
         status["agent"]["settings"]["from"]["mode"].is_null(),
+        "{status}"
+    );
+    walk.agent(&place, commits("parser.rs", "fn parse() {}\n"));
+    until_landed(&walk, &place);
+    assert_eq!(
+        walk.on_remote("parser.rs").as_deref(),
+        Some("fn parse() {}\n")
+    );
+
+    // 22, 154, 162; record 0064: a bare fix runs flume's own newest,
+    // fix@2, whose stage gives its agent `full` in the kind's layer, the
+    // last, so with no other layer giving a mode the printed command
+    // passes `--permission-mode bypassPermissions`, status names `full`
+    // from `kind` passed as `bypassPermissions` and read back, and the fix
+    // lands.
+    let walk = Walk::new("walk-own-mode");
+    let place = walk.launch("fix", "one", &["--brief", "fix the parser"]);
+    let printed = walk.printed(&place);
+    assert!(
+        printed.contains("--permission-mode bypassPermissions"),
+        "the printed command: {printed}"
+    );
+    let status = walk.status(&place);
+    assert_eq!(status["identity"], "flume/fix@2", "{status}");
+    assert_eq!(
+        (
+            &status["agent"]["settings"]["from"]["mode"],
+            &status["agent"]["mode"]
+        ),
+        (
+            &json!({ "layer": "kind", "value": "full" }),
+            &json!({ "passed": "bypassPermissions", "entry": null, "read_back": true })
+        ),
         "{status}"
     );
     walk.agent(&place, commits("parser.rs", "fn parse() {}\n"));

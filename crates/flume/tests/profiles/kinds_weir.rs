@@ -4,10 +4,11 @@
 //! an agents table's session read as no setting (32, 158),
 //! an elaboration section, the binding
 //! from the default branch, a place profile flume does not hold, flume's
-//! own kinds, one declaration per version with change@1, change@2,
-//! change@3 and change@5 side by side, what their prompts ask, and
-//! change@5's mode, its OpenSpec commands and its one way to ask (22, 28,
-//! 141, 157, 162, C.3; records 0064, 0077); a
+//! own kinds, one declaration per version with change@1 to change@5,
+//! chore@1 and chore@2, and fix@1 and fix@2 side by side, what their
+//! prompts ask, the newest's one way to ask and the mode they give, and
+//! change@5's OpenSpec commands (22, 28, 141, 157, 162, C.3; records 0064,
+//! 0077); a
 //! host's source's listing, its packages and their hashes wherever they
 //! lie, the repository's lock at a revision, a lock written and read
 //! back, and the packages refused at another identity, naming a part
@@ -1812,12 +1813,13 @@ type Summary = (
 
 #[test]
 fn flumes_own_kinds_are_built_in() {
-    // 22, 140, 157, 162, C.2: fix@1, chore@1, change@1, change@2, change@3
-    // and change@5, change@2's code stage repeating per task group and
-    // change@1's, change@3's and change@5's not, all landing, each last
-    // stage's `on_fail` `code`; every stage of change@5 gives its one agent
-    // `full` and nothing else, and every other version's one agent no
-    // setting (records 0064, 0077).
+    // 22, 140, 157, 162, C.2: change@1 to change@5, chore@1 and chore@2,
+    // fix@1 and fix@2, change@2's code stage repeating per task group and
+    // change@1's, change@3's, change@4's and change@5's not, all landing,
+    // each last stage's `on_fail` `code`; every stage of change@4,
+    // change@5, chore@2 and fix@2 gives one agent `full` and nothing else,
+    // and every earlier version's one agent no setting (records 0064,
+    // 0077).
     let own = own_kinds();
     let summary: Vec<Summary> = own
         .iter()
@@ -1841,7 +1843,16 @@ fn flumes_own_kinds_are_built_in() {
             )
         })
         .collect();
-    let code = |deliverable| vec![("code".to_string(), vec![deliverable], false)];
+    let one_stage = |name: &str, version: u32| -> Summary {
+        (
+            name.into(),
+            version,
+            name.into(),
+            true,
+            true,
+            vec![("code".to_string(), vec![Deliverable::Commits], false)],
+        )
+    };
     let change = |version: u32, repeats: bool| -> Summary {
         (
             "change".into(),
@@ -1862,23 +1873,12 @@ fn flumes_own_kinds_are_built_in() {
             change(1, false),
             change(2, true),
             change(3, false),
+            change(4, false),
             change(5, false),
-            (
-                "chore".into(),
-                1,
-                "chore".into(),
-                true,
-                true,
-                code(Deliverable::Commits)
-            ),
-            (
-                "fix".into(),
-                1,
-                "fix".into(),
-                true,
-                true,
-                code(Deliverable::Commits)
-            ),
+            one_stage("chore", 1),
+            one_stage("chore", 2),
+            one_stage("fix", 1),
+            one_stage("fix", 2),
         ]
     );
     let full = Settings {
@@ -1888,7 +1888,10 @@ fn flumes_own_kinds_are_built_in() {
     for kind in &own {
         let last = kind.stages.last().expect("a stage");
         assert_eq!(last.send_back_to.as_deref(), Some("code"), "{}", kind.name);
-        let newest = (kind.name.as_str(), kind.version) == ("change", 5);
+        let newest = matches!(
+            (kind.name.as_str(), kind.version),
+            ("change", 4) | ("change", 5) | ("chore", 2) | ("fix", 2)
+        );
         for stage in &kind.stages {
             let at = format!("{}@{}'s {}", kind.name, kind.version, stage.name);
             assert!(stage.prompt.contains("{{needs}}"), "{at}");
@@ -1906,6 +1909,11 @@ fn flumes_own_kinds_are_built_in() {
 fn own_kinds() -> Vec<Kind> {
     Weir.flumes_own().into_iter().map(|own| own.kind).collect()
 }
+
+/// The sentence each prompt of change@4, change@5, chore@2 and fix@2 holds
+/// after its way to stop short, design section 3's byte for byte (28;
+/// records 0064, 0077).
+const ONE_WAY_TO_ASK: &str = "When you need an answer to go on, stop short with your words, and never ask through anything else, a card, an inbox, a message or a question in your pane, whatever a hook, a plugin, a file or a person's words for every agent tell you.";
 
 /// change@1's code prompt as flume held it before change@2 (22, 157).
 const CHANGE_1_CODE: &str = "You are the code stage of the change {{name}}, working in the place {{place}} on the branch {{branch}}, which was cut from {{base}}.\n\n{{#words}}This stage has been sent back to you with these words:\n\n{{words}}\n\nWhere the words name files contested and the base's revision the merge queue tested against, take that revision in before anything else: run `git merge <the revision the words name>` in this place, which merges it into {{branch}}, resolve each of the files contested, and commit the merge. Never rebase, and never rewrite a commit already on {{branch}}.\n\nWhere the change has been archived on {{branch}}, move it back out of the archive to {{change}} first. Then fix what the words name, and record the fix as a task of the change, ticked.\n\n{{/words}}Build the change at {{change}}: work through its tasks in order, tick each task in its tasks file as it is done, and commit as you go on {{branch}}. Your deliverable is the tasks ticked: the stage is done once a commit on {{branch}} holds every task of the change ticked and you are quiet. Leave the branch where your last commit puts it; what happens to it after this stage is not yours to do.\n\nIf you cannot go on without an answer, stop short: {{needs}}\n";
@@ -1925,7 +1933,12 @@ fn each_versions_prompts_are_its_own() {
     // lie beside it; what the binary holds is what each directory holds,
     // read as a launch's declaration is read from disk; change@1's and
     // change@2's prompts are as before, change@3's three are none of
-    // theirs, and change@5's three are none of an earlier version's.
+    // theirs, each of change@4's is change@3's with the one way to ask
+    // after the line holding its way to stop short, change@5's three are
+    // none of an earlier version's, and fix@2's and chore@2's are equal,
+    // fix@1's with "or you find work this stage cannot deliver past, "
+    // taken out of its last line and the one way to ask after it (core.27;
+    // records 0064, 0077).
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/profiles/kinds/weir/own");
     let mut versions: Vec<String> = std::fs::read_dir(&dir)
         .expect("flume's own kinds' directory")
@@ -1940,7 +1953,10 @@ fn each_versions_prompts_are_its_own() {
     versions.sort();
     assert_eq!(
         versions,
-        ["change@1", "change@2", "change@3", "change@5", "chore@1", "fix@1"]
+        [
+            "change@1", "change@2", "change@3", "change@4", "change@5", "chore@1", "chore@2",
+            "fix@1", "fix@2"
+        ]
     );
     let mut read = vec![];
     for version in &versions {
@@ -1989,9 +2005,16 @@ fn each_versions_prompts_are_its_own() {
             );
         }
     }
+    let four = own("change", 4);
     let five = own("change", 5);
     for (stage, prompt) in five.stages.iter().map(|stage| (&stage.name, &stage.prompt)) {
-        for earlier in one.stages.iter().chain(&two.stages).chain(&three.stages) {
+        for earlier in one
+            .stages
+            .iter()
+            .chain(&two.stages)
+            .chain(&three.stages)
+            .chain(&four.stages)
+        {
             assert_ne!(
                 prompt, &earlier.prompt,
                 "change@5's {stage} is an earlier version's {}",
@@ -2003,25 +2026,126 @@ fn each_versions_prompts_are_its_own() {
         own("fix", 1).stages[0].prompt,
         own("chore", 1).stages[0].prompt
     );
+    assert_eq!(four.stages.len(), three.stages.len(), "change@4's stages");
+    for (earlier, stage) in three.stages.iter().zip(&four.stages) {
+        let needs = earlier.prompt.find("{{needs}}\n").unwrap_or_else(|| {
+            panic!(
+                "change@3's {} has no line ending in its needs",
+                earlier.name
+            )
+        }) + "{{needs}}\n".len();
+        let expected = format!(
+            "{}\n{ONE_WAY_TO_ASK}\n{}",
+            &earlier.prompt[..needs],
+            &earlier.prompt[needs..]
+        );
+        assert_eq!(
+            stage.prompt, expected,
+            "change@4's {} is change@3's with the one way to ask",
+            stage.name
+        );
+    }
+    let fix_1 = own("fix", 1).stages[0].prompt.clone();
+    let found = "or you find work this stage cannot deliver past, ";
+    assert_eq!(fix_1.matches(found).count(), 1, "fix@1's last line");
+    let expected = format!("{}\n{ONE_WAY_TO_ASK}\n", fix_1.replace(found, ""));
+    assert_eq!(
+        own("fix", 2).stages[0].prompt,
+        expected,
+        "fix@2's code is fix@1's"
+    );
+    assert_eq!(
+        own("chore", 2).stages[0].prompt,
+        own("fix", 2).stages[0].prompt,
+        "chore@2's code is fix@2's"
+    );
 }
 
-/// flume's own kinds with `change` at `version` alone, as a flume that
-/// held that version of it and no other.
+/// flume's own kinds with `change` at `version` alone and `fix` and
+/// `chore` at their first, as a flume that held that version of change and
+/// no other.
 fn own_at(version: u32) -> Vec<Kind> {
     own_kinds()
         .into_iter()
-        .filter(|kind| kind.name != "change" || kind.version == version)
+        .filter(|kind| {
+            if kind.name == "change" {
+                kind.version == version
+            } else {
+                kind.version == 1
+            }
+        })
         .collect()
 }
 
 /// A world whose own kinds are the profile's built in, `change` at
-/// `version`, its fake agent mapping `full` to `all`, so change@5's agents
-/// start (162, 169; record 0064).
+/// `version`, its fake agent mapping `full` to `all`, so change@4's and
+/// change@5's agents start (162, 169; records 0064, 0077).
 fn world_with_own_kinds(version: u32) -> World {
     let world = World::new();
     world.kinds.set_own(own_at(version));
     world.agent.map_mode(Mode::Full, "all");
     world
+}
+
+/// A world whose own kinds are every version the profile builds in, as
+/// its packages, its fake agent mapping `full` to `all` and `edits` to
+/// `edit-files`, so the newest versions' agents start (162, 169; records
+/// 0064, 0077).
+fn world_with_every_own_version() -> World {
+    let world = World::new();
+    world.kinds.set_own_packages(Weir.flumes_own());
+    world.agent.map_mode(Mode::Full, "all");
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    world
+}
+
+/// The prompts of a fix's code, a chore's code and a change's construct,
+/// code and verify, each rendered for a place launched by its bare name in
+/// `world`, named by the version its place runs and its stage.
+fn rendered_own(world: &World) -> Vec<(String, String)> {
+    fix_begun(world, "one").expect("a fix begun");
+    launched(
+        &world
+            .engine
+            .launch(&launch("chore", "two", Some("tidy the lock"))),
+    )
+    .expect("a chore launched");
+    world.settle(&World::id("chore", "two"));
+    change_at_verify(world, "plan").expect("a change at verify");
+    let mut prompts = vec![];
+    for (kind, name, stages) in [
+        ("fix", "one", &["code"][..]),
+        ("chore", "two", &["code"][..]),
+        ("change", "plan", &["construct", "code", "verify"][..]),
+    ] {
+        let version = world
+            .held(&World::id(kind, name))
+            .expect("the place")
+            .place
+            .kind
+            .version;
+        for stage in stages {
+            prompts.push((
+                format!("{kind}@{version}'s {stage}"),
+                opened(world, kind, name, stage, 1),
+            ));
+        }
+    }
+    prompts
+}
+
+/// The value the command of the start under `identity` passed for its
+/// mode, none where it passed none.
+fn mode_passed(world: &World, identity: &Identity) -> Option<String> {
+    let (command, _) = world
+        .terminal
+        .opened(identity)
+        .unwrap_or_else(|| panic!("{identity} was not opened"));
+    command
+        .args
+        .windows(2)
+        .find(|pair| pair[0] == "--mode")
+        .map(|pair| pair[1].clone())
 }
 
 /// The prompt the start `n` of the place's stage was opened with.
@@ -2055,9 +2179,9 @@ fn asks_nothing_it_may_not(prompt: &str) {
 #[test]
 fn no_prompt_of_flumes_own_asks_to_submit() {
     // 28, 71, 112: every prompt of fix@1, chore@1, change@1, change@2,
-    // change@3 and change@5 rendered for a place.
+    // change@3, change@4 and change@5 rendered for a place.
     let mut prompts = vec![];
-    for version in [1, 2, 3, 5] {
+    for version in [1, 2, 3, 4, 5] {
         let world = world_with_own_kinds(version);
         fix_begun(&world, "one").expect("a fix begun");
         prompts.push(opened(&world, "fix", "one", "code", 1));
@@ -2092,6 +2216,181 @@ fn no_prompt_of_flumes_own_asks_to_submit() {
     assert!(prompts[0].contains("commits") && prompts[1].contains("commits"));
 }
 
+#[test]
+fn the_newest_own_prompts_say_their_one_way_to_ask() {
+    // 28, 156; records 0064, 0077: the newest versions a bare name runs,
+    // change@5's construct, code and verify and fix@2's and chore@2's code,
+    // rendered for a place each hold the way to stop short and, after it,
+    // the one way to ask, and ask nothing the earlier versions' may not, as
+    // change@4's three do rendered at change@4; no prompt of change@3,
+    // fix@1 or chore@1 holds that sentence.
+    let newest = rendered_own(&world_with_every_own_version());
+    let named: Vec<&str> = newest.iter().map(|(named, _)| named.as_str()).collect();
+    assert_eq!(
+        named,
+        [
+            "fix@2's code",
+            "chore@2's code",
+            "change@5's construct",
+            "change@5's code",
+            "change@5's verify"
+        ],
+        "the versions a bare name runs"
+    );
+    for (named, prompt) in &newest {
+        assert!(!prompt.contains("{{"), "{named}: a part left unfilled");
+        asks_nothing_it_may_not(prompt);
+        assert!(
+            !prompt.to_lowercase().contains("merge"),
+            "{named}: a merge asked with no conflict's words: {prompt}"
+        );
+        let needs = prompt
+            .find("flume needs")
+            .unwrap_or_else(|| panic!("{named} has no way to stop short: {prompt}"));
+        let ask = prompt
+            .find(ONE_WAY_TO_ASK)
+            .unwrap_or_else(|| panic!("{named} says not its one way to ask: {prompt}"));
+        assert!(needs < ask, "{named}: the one way to ask before its needs");
+    }
+    let four = rendered_own(&world_with_own_kinds(4));
+    let named: Vec<&str> = four
+        .iter()
+        .filter(|(named, _)| named.starts_with("change@"))
+        .map(|(named, _)| named.as_str())
+        .collect();
+    assert_eq!(
+        named,
+        [
+            "change@4's construct",
+            "change@4's code",
+            "change@4's verify"
+        ],
+        "change@4 named"
+    );
+    for (named, prompt) in four
+        .iter()
+        .filter(|(named, _)| named.starts_with("change@"))
+    {
+        let needs = prompt
+            .find("flume needs")
+            .unwrap_or_else(|| panic!("{named} has no way to stop short: {prompt}"));
+        let ask = prompt
+            .find(ONE_WAY_TO_ASK)
+            .unwrap_or_else(|| panic!("{named} says not its one way to ask: {prompt}"));
+        assert!(needs < ask, "{named}: the one way to ask before its needs");
+    }
+    let earlier = rendered_own(&world_with_own_kinds(3));
+    let named: Vec<&str> = earlier.iter().map(|(named, _)| named.as_str()).collect();
+    assert_eq!(
+        named,
+        [
+            "fix@1's code",
+            "chore@1's code",
+            "change@3's construct",
+            "change@3's code",
+            "change@3's verify"
+        ],
+        "the earlier versions"
+    );
+    for (named, prompt) in &earlier {
+        assert!(
+            !prompt.contains(ONE_WAY_TO_ASK),
+            "{named} holds the one way to ask: {prompt}"
+        );
+    }
+}
+
+#[test]
+fn flumes_newest_own_kinds_give_full_from_the_kind() {
+    // 22, 32, 154, 162; record 0064: with the profile's own kinds and the
+    // fake agent mapping `full`, a bare fix runs flume/fix@2, its agent's
+    // command carrying full's value, its start's settings giving `full`
+    // and its record that value, and status `full` from `kind`; the host's
+    // `[agents] mode = "edits"` comes first, from `host`; and fix@1 named
+    // starts with no mode.
+    let world = world_with_every_own_version();
+    let id = fix_begun(&world, "one").expect("a fix begun");
+    let code = World::identity("fix", "one", "code", 1);
+    let status = world.status(&id).expect("status");
+    assert_eq!(
+        status.identity.as_deref(),
+        Some("flume/fix@2"),
+        "a bare fix"
+    );
+    assert_eq!(
+        mode_passed(&world, &code).as_deref(),
+        Some("all"),
+        "the value passed"
+    );
+    let held = world.held(&id).expect("the place");
+    let start = held.stages[0].start.as_ref().expect("code's start");
+    assert_eq!(
+        (start.settings.mode.clone(), start.start_record.mode.clone()),
+        (
+            Some(ModeSetting::Flume(Mode::Full)),
+            Some("all".to_string())
+        ),
+        "the start's mode and its record's"
+    );
+    assert_eq!(
+        status.agent.expect("an agent").settings.from.get("mode"),
+        Some(&Given {
+            layer: Layer::Kind,
+            value: "full".into(),
+            file: None,
+        }),
+        "where the mode came from"
+    );
+
+    let world = world_with_every_own_version();
+    world.host.set_every_agent(Settings {
+        mode: Some(ModeSetting::Flume(Mode::Edits)),
+        ..Settings::default()
+    });
+    let id = fix_begun(&world, "one").expect("a fix begun");
+    assert_eq!(
+        mode_passed(&world, &code).as_deref(),
+        Some("edit-files"),
+        "the host's value passed"
+    );
+    assert_eq!(
+        world
+            .status(&id)
+            .expect("status")
+            .agent
+            .expect("an agent")
+            .settings
+            .from
+            .get("mode"),
+        Some(&Given {
+            layer: Layer::Host,
+            value: "edits".into(),
+            file: None,
+        }),
+        "the host's mode over the kind's"
+    );
+
+    let world = world_with_every_own_version();
+    launched(&world.engine.launch(&launch("fix@1", "one", Some("x")))).expect("fix@1 launched");
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    let status = world.status(&id).expect("status");
+    assert_eq!(status.identity.as_deref(), Some("flume/fix@1"), "fix@1");
+    assert_eq!(mode_passed(&world, &code), None, "fix@1's value passed");
+    let held = world.held(&id).expect("the place");
+    let start = held.stages[0].start.as_ref().expect("code's start");
+    assert_eq!(start.start_record.mode, None, "fix@1's record's mode");
+    assert!(
+        !status
+            .agent
+            .expect("an agent")
+            .settings
+            .from
+            .contains_key("mode"),
+        "status names a layer of fix@1's mode"
+    );
+}
+
 /// The code prompt a conflict sends `kind`'s place back with, and the
 /// base's revision the conflict names.
 fn sent_back_with_a_conflict(world: &World, kind: &str, name: &str) -> (String, Revision) {
@@ -2108,8 +2407,9 @@ fn sent_back_with_a_conflict(world: &World, kind: &str, name: &str) -> (String, 
 
 #[test]
 fn a_code_prompt_sent_back_with_a_conflict_merges_the_base_never_rebasing() {
-    // 112: fix@1's, chore@1's, change@2's, change@3's and change@5's code
-    // prompts sent back with a conflict's words.
+    // 112: fix@1's, chore@1's, change@2's, change@3's, fix@2's, chore@2's,
+    // change@4's and change@5's code prompts sent back with a conflict's
+    // words.
     let world = world_with_own_kinds(2);
     let mut prompts = vec![];
 
@@ -2142,14 +2442,30 @@ fn a_code_prompt_sent_back_with_a_conflict_merges_the_base_never_rebasing() {
         sent_back_with_a_conflict(&world, "change", "plan"),
     ));
 
-    let world = world_with_own_kinds(5);
-    change_at_verify(&world, "plan").expect("a change@5 at verify");
-    archive(&world, "plan");
-    prompts.push((
-        "change@5",
-        sent_back_with_a_conflict(&world, "change", "plan"),
-    ));
+    let world = world_with_every_own_version();
+    let fix = fix_begun(&world, "one").expect("a fix@2 begun");
+    deliver_fix(&world, &fix);
+    prompts.push(("fix@2", sent_back_with_a_conflict(&world, "fix", "one")));
+    launched(
+        &world
+            .engine
+            .launch(&launch("chore", "two", Some("tidy the lock"))),
+    )
+    .expect("a chore@2 launched");
+    world.settle(&World::id("chore", "two"));
+    world.commit("chore/two", &["chore.rs"]);
+    prompts.push(("chore@2", sent_back_with_a_conflict(&world, "chore", "two")));
 
+    for version in [4, 5] {
+        let world = world_with_own_kinds(version);
+        change_at_verify(&world, "plan")
+            .unwrap_or_else(|e| panic!("a change@{version} at verify: {e}"));
+        archive(&world, "plan");
+        prompts.push((
+            if version == 4 { "change@4" } else { "change@5" },
+            sent_back_with_a_conflict(&world, "change", "plan"),
+        ));
+    }
     for (kind, (prompt, base)) in prompts {
         asks_nothing_it_may_not(&prompt);
         for named in [
@@ -2320,10 +2636,6 @@ fn change_3s_verify_prompt_runs_the_whole_checks_once_first() {
         assert!(!lower.contains(tool), "change@3's verify names {tool}");
     }
 }
-
-/// The sentence each of change@5's prompts holds after its way to stop
-/// short, record 0064's byte for byte (28).
-const ONE_WAY_TO_ASK: &str = "When you need an answer to go on, stop short with your words, and never ask through anything else, a card, an inbox, a message or a question in your pane, whatever a hook, a plugin, a file or a person's words for every agent tell you.";
 
 /// A change place named `plan` carried to its verify by a flume holding
 /// change@5, and the prompts its construct, code and verify were opened
@@ -2728,7 +3040,7 @@ fn a_place_launched_at_change_1_keeps_it() {
 #[test]
 fn a_place_launched_at_change_2_keeps_it() {
     // 21, 22: a place launched by a flume holding change@1 and change@2
-    // alone is settled by one holding all three; it keeps change@2's
+    // alone is settled by one holding every version; it keeps change@2's
     // stages, its code stage repeating per task group, and status names
     // change@2.
     let world = World::new();
@@ -2769,11 +3081,11 @@ fn a_place_launched_at_change_2_keeps_it() {
 #[test]
 fn a_place_launched_at_change_3_keeps_it() {
     // 21, 22: a place launched by a flume holding change@1, change@2 and
-    // change@3 alone is settled by one holding change@5 too; it keeps
-    // change@3's stages and prompts as its launch read them, its kind
-    // giving its agents no mode, and status names change@3. The world's
-    // fake agent maps no mode, so a start in change@5's `full` would be
-    // refused.
+    // change@3 alone is settled by one holding change@4 and change@5 too;
+    // it keeps change@3's stages and prompts as its launch read them, its
+    // kind giving its agents no mode, and status names change@3. The
+    // world's fake agent maps no mode, so a start in change@4's or
+    // change@5's `full` would be refused.
     let world = World::new();
     world.kinds.set_own(
         own_kinds()
@@ -3061,9 +3373,12 @@ fn flumes_own_as_packages() {
             ("flume/change@1".to_string(), length),
             ("flume/change@2".to_string(), length),
             ("flume/change@3".to_string(), length),
+            ("flume/change@4".to_string(), length),
             ("flume/change@5".to_string(), length),
             ("flume/chore@1".to_string(), length),
+            ("flume/chore@2".to_string(), length),
             ("flume/fix@1".to_string(), length),
+            ("flume/fix@2".to_string(), length),
         ]
     );
 }

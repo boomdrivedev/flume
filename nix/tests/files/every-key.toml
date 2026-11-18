@@ -12,6 +12,7 @@ effort = "high"
 
 [host]
 agents = 8
+ends_expire = "48h"
 multiplexer = "printed"
 pin = ["streams.work.agents"]
 pool = "work"
@@ -66,7 +67,6 @@ threshold = 90
 agents = 4
 name = "work-1"
 program = "scribe"
-usage = "~/.local/state/usage/work-1.json"
 
 [pools.work.accounts.env]
 SCRIBE_HOME = "$HOME/.scribe-work-1"
@@ -116,11 +116,11 @@ session = "work-design"
 session = "work-review"
 
 [streams.work.labels.construction]
-reserve = 2
+owed = 2
 
 [streams.work.labels.operation]
-keep_free = 1
-reserve = 2
+owed = 2
+reserved = 1
 
 [telemetry]
 collector = "http://localhost:4318"
