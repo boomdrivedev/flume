@@ -60,7 +60,7 @@ configuration of the user's.
 
 ## 11. MCP
 
-- [ ] 11.1 In `crates/flume/src/commands/mcp.rs`, serve `hibernate`, taking `place` and `force`, and `resume`, taking `place`, each turned into the command line's words and run by its parser and act, neither read-only, the tools' descriptions citing 212 and 213 (design 12; 60, C.2). In `crates/flume/tests/commands.rs`, have `the_mcp_tools_listed` assert the six tools, and add `mcp_hibernate_refused_as_the_command_line_refuses_it` and `mcp_resume_refused_as_the_command_line_refuses_it`, asserting claude-code-plugin's two scenarios against the built binary on a scratch repository. Verify with `devenv shell -- cargo test -p flume --test commands mcp`.
+- [x] 11.1 In `crates/flume/src/commands/mcp.rs`, serve `hibernate`, taking `place` and `force`, and `resume`, taking `place`, each turned into the command line's words and run by its parser and act, neither read-only, the tools' descriptions citing 212 and 213 (design 12; 60, C.2). In `crates/flume/tests/commands.rs`, have `the_mcp_tools_listed` assert the six tools, and add `mcp_hibernate_refused_as_the_command_line_refuses_it` and `mcp_resume_refused_as_the_command_line_refuses_it`, asserting claude-code-plugin's two scenarios against the built binary on a scratch repository. Verify with `devenv shell -- cargo test -p flume --test commands mcp`.
 
 ## 12. The site
 
