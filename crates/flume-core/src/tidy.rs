@@ -13,7 +13,12 @@
 //! place has no worktree to remove and no teardown to run: its branch is
 //! closed into its base by the merge queue, never by the place seam, and
 //! one the merge queue keeps is named once with its words (3, 64 to 67,
-//! 204, 206; core.18).
+//! 204, 206; core.18). A standing role's place is tidied by its
+//! checkouts: each read through the place seam, one that cannot be read
+//! or that holds anything keeping the place whole, named with its paths
+//! under the checkout's folder; otherwise every checkout and its location
+//! removed with no teardown, and no branch removed or kept for it (62,
+//! 65, 193; core.18).
 
 use crate::base::base_place;
 use crate::start::Starts;
@@ -141,10 +146,18 @@ impl Engine {
                     );
                 }
             }
+            // A standing role's place is tidied by its checkouts, each read
+            // through the place seam, and removed with no teardown (65,
+            // 193; core.18).
+            if place.standing_role() {
+                if let Some(why) = self.checkouts_kept(place, bound.place.as_ref()) {
+                    return self.keep(id, why, tidied);
+                }
+            }
             // A place read gone, its worktree gone to its repository, is
             // still removed through the place seam, so nothing of it stands
             // at its location (62; record 0057); a base place has none.
-            match if base {
+            match if base || place.standing_role() {
                 None
             } else {
                 Some(bound.place.read(&at))
@@ -171,7 +184,10 @@ impl Engine {
                 Step::Write(())
             });
         }
+        // A standing role's place has no branch: none is removed or kept
+        // for it (193; core.5).
         let removed = match (base, &bound.merge_queue) {
+            _ if place.standing_role() => BranchRemoved::Gone,
             (true, Some(queue)) => {
                 match queue.close(&place.repository, &place.branch, &place.base) {
                     BranchClosed::Removed => BranchRemoved::Removed,
@@ -214,7 +230,7 @@ impl Engine {
             ));
         }
         self.intent_left(&place.intent, id);
-        self.deliver_ends(id);
+        self.hand_batches(Some(id));
         let read = self.store.read(id);
         // A place whose ends stand pending is removed only once the
         // document kept for them stands, so no pending end is left with
@@ -250,6 +266,43 @@ impl Engine {
             }
         }
         true
+    }
+
+    /// Why the standing role's place `place` is kept, its checkouts read
+    /// through the place seam `seam`: one that cannot be read, named; any
+    /// holding a change not committed, a file neither committed nor
+    /// ignored, or a lock, its paths given under its checkout's folder; or
+    /// the seam's refusal to remove them, with its words. None where every
+    /// checkout and what stands at the location were removed, with no
+    /// teardown and no branch (62, 65, 81, 193; core.18).
+    pub(crate) fn checkouts_kept(&self, place: &PlaceRecord, seam: &dyn Place) -> Option<Kept> {
+        let mut held = Holds::default();
+        for checkout in &place.checkouts {
+            let under = |path: &String| format!("{}/{path}", checkout.folder);
+            match seam.read(&checkout.place_ref(&place.location)) {
+                PlaceRead::CouldNotRead { reason } => {
+                    return Some(Kept::Unreadable {
+                        reason: format!("the checkout {}: {reason}", checkout.folder),
+                    })
+                }
+                PlaceRead::Live { holds, .. } => {
+                    held.uncommitted.extend(holds.uncommitted.iter().map(under));
+                    held.untracked.extend(holds.untracked.iter().map(under));
+                    if let Some(lock) = holds.lock {
+                        held.lock
+                            .get_or_insert(format!("{}: {lock}", checkout.folder));
+                    }
+                }
+                PlaceRead::Gone => {}
+            }
+        }
+        if held.any() {
+            return Some(Kept::Holds { holds: held });
+        }
+        match seam.remove_checkouts(&place.location, &crate::standing_role::checkouts(place)) {
+            Removed::Removed => None,
+            Removed::Refused { step, words } => Some(Kept::Teardown { step, words }),
+        }
     }
 
     /// Keeps a place whose work is over, naming why (64 to 66, 68, 207).

@@ -158,6 +158,7 @@ impl Engine {
                         cause: CarryCause::Spent,
                         carry: true,
                         why: None,
+                        resumed_by: None,
                     }),
                     ..RoomWait::default()
                 });

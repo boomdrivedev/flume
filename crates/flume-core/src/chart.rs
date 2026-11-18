@@ -506,6 +506,7 @@ fn session(
             send_back_limit: None,
             makes: vec![],
             repeats: false,
+            hibernates: false,
         },
     };
     session.declared.name = session.name();

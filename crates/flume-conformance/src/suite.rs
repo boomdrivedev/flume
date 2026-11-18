@@ -110,6 +110,18 @@ impl Place for LaxPlace {
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved {
         self.0.place.remove_branch(repository, branch, base)
     }
+
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.0.place.make_checkouts(location, checkouts)
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.0.place.move_checkout(checkout, revision)
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.0.place.remove_checkouts(location, checkouts)
+    }
 }
 
 impl PlaceHarness for LaxPlace {
@@ -157,6 +169,18 @@ impl PlaceHarness for LaxPlace {
 
     fn apply_to_base(&self, repository: &str, base: &str, commit: &Revision) {
         self.0.apply_to_base(repository, base, commit)
+    }
+
+    fn second_repository(&self) -> (String, String, Revision) {
+        self.0.second_repository()
+    }
+
+    fn in_the_way(&self, checkout: &PlaceRef) -> Revision {
+        self.0.in_the_way(checkout)
+    }
+
+    fn stands(&self, location: &str) -> bool {
+        self.0.stands(location)
     }
 }
 

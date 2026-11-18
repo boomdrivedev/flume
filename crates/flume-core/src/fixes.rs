@@ -333,7 +333,7 @@ impl Engine {
             number,
             cause: fix.cause.clone(),
         };
-        let Err(reason) = self.make_place(&launch, None, Some(&fix_of)) else {
+        let Err(reason) = self.make_place(&launch, None, Some(&fix_of), None) else {
             return;
         };
         if self.fix_standing(base, number).is_some() {

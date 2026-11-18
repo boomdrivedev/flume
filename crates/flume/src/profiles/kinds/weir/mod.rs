@@ -1139,6 +1139,11 @@ fn map_stage(
             None => false,
             Some(weir_kinds::Repeat::PerTaskGroup) => true,
         },
+        // weir gives `hibernate` as written, `None` where it is left out,
+        // since the format gives no default (weir 53, 58); flume reads a
+        // stage that leaves it out as not hibernating (212), and never
+        // reads its sections for it (core.4).
+        hibernates: stage.hibernate.unwrap_or(false),
     }
 }
 
@@ -1231,6 +1236,11 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
             "{at}.keep_open: how long an agent is kept open for an answer is the host's or the launch's to give, and no declaration gives one"
         ));
     }
+    if agent.contains_key("hibernate_after") {
+        problems.push(format!(
+            "{at}.hibernate_after: how long a conversation may idle before it hibernates is the host's or the launch's to give, and no declaration gives one"
+        ));
+    }
     if let Some(program) = program.as_deref().filter(|program| program.contains('/')) {
         problems.push(format!(
             "{at}.program: `{program}` names a program by a location, which is the host's, and a declaration names its program by name"
@@ -1246,8 +1256,10 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
         // A kind names nothing a host owns, a session among it (158).
         session: None,
         programs,
-        // Nor how long an agent is kept open for an answer, refused above
-        // (158, 198).
+        // Nor how long an agent is kept open for an answer, nor how long a
+        // conversation may idle before it hibernates, each refused above
+        // (158, 198, 212).
         keep_open: None,
+        hibernate_after: None,
     }
 }

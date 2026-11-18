@@ -190,6 +190,14 @@ pub struct Stage {
     /// where it declares nothing, and in a held state written before.
     #[serde(default)]
     pub repeats: bool,
+    /// Whether its kind hibernates the stage: a conversation's agent is
+    /// ended once idle past its hibernate time, and any such stage's at
+    /// its caller's word or at the end of its keep-open wait, its session
+    /// kept for a resume (212, 213). Read from weir's `Stage` alone,
+    /// never from its sections (core.4); false where the kind declares
+    /// nothing, and in a held state written before.
+    #[serde(default)]
+    pub hibernates: bool,
 }
 
 /// What must exist for a stage to end, in one of the six forms (24), or
@@ -251,6 +259,14 @@ pub struct Settings {
     /// and in settings written before (32, 198).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keep_open: Option<String>,
+    /// How long a conversation of a stage whose kind hibernates it may be
+    /// quiet before it is hibernated, flume's own time and passed to no
+    /// program, as its layer wrote it, in the forms `keep_open` takes;
+    /// given by the launch's settings and the host's alone; none where
+    /// the layer gives none, and in settings written before (212, C.2,
+    /// C.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernate_after: Option<String>,
 }
 
 /// One program's own settings as one table of a layer gives them, each
@@ -469,6 +485,10 @@ impl Settings {
                 over.programs.clone()
             },
             keep_open: over.keep_open.clone().or_else(|| self.keep_open.clone()),
+            hibernate_after: over
+                .hibernate_after
+                .clone()
+                .or_else(|| self.hibernate_after.clone()),
         }
     }
 }

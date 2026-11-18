@@ -1262,6 +1262,8 @@ fn role_run(source: &str, answerer: bool) -> RoleRun {
         agents: RoleAgents::default(),
         answers: None,
         answerer,
+        repositories: Vec::new(),
+        kinds: Default::default(),
     }
 }
 

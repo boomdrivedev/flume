@@ -113,6 +113,7 @@ pub fn bump(agents: usize) -> Kind {
             send_back_limit: Some(3),
             makes: vec![],
             repeats: false,
+            hibernates: false,
         }],
         fix: None,
         fix_limit: None,
