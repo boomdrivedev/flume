@@ -43,7 +43,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_watched_host_with_one_stream_unwatched,
         },
         Scenario {
-            name: "settle: a caller's settle with a bound of two minutes holds the host's watch, flume unattended three minutes on and attended at five with no other settle between",
+            name: "settle: a caller's settle with a bound of two minutes holds the host's watch, when its settle began and ended and the command that ran it, flume unattended three minutes on and attended at five with no other settle between",
             cites: &["119", "208", "S118"],
             run: a_watch_kept_then_lapsed,
         },
@@ -1185,15 +1185,16 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     }
     let began = world.host.now();
     world.engine.settle_every(120);
+    let watched = Watched {
+        began,
+        bound: 120,
+        by: Some(world.host.command()),
+        ended: Some(began),
+    };
     ensure_eq!(
         host_watch(&world),
-        Some(Watched {
-            began,
-            bound: 120,
-            by: None,
-            ended: None,
-        }),
-        "the host's watch"
+        Some(watched.clone()),
+        "the host's watch: when its settle began, the command that ran it, when it ended and its bound"
     );
     world
         .terminal
@@ -1222,12 +1223,7 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     );
     ensure_eq!(
         host_watch(&world),
-        Some(Watched {
-            began,
-            bound: 120,
-            by: None,
-            ended: None,
-        }),
+        Some(watched),
         "the host's watch, which only a caller's settle with a bound writes"
     );
     Ok(())

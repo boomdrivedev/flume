@@ -46,24 +46,30 @@ impl Engine {
 
     /// Settles every place on the host as a caller's watch over it,
     /// whose bound is `bound`: the host's watch written first, when this
-    /// settle began and its bound, by compare-and-set, then every place
-    /// settled as [`Engine::settle`] naming none settles them. A caller
-    /// keeps watch while its newest such settle began less than twice its
-    /// bound ago; the watch decides nothing of what the settle does (46,
-    /// 119, 120, 208; core.13).
+    /// settle began, its bound and this command, by compare-and-set, then
+    /// every place settled as [`Engine::settle`] naming none settles
+    /// them, and when the settle ended written last, only where the watch
+    /// held is still this settle's. A caller keeps watch while its newest
+    /// such settle runs and until twice its bound after it ended, or after
+    /// it began where its command died with no end; the watch is renewed
+    /// by that settle alone and decides nothing of what it does (46, 119,
+    /// 120, 208; core.13, core.16).
     pub fn settle_every(&self, bound: Seconds) -> Answer {
         if bound == 0 {
             return Answer::refused(
                 "a watch's bound is a positive duration, and 0 seconds is none",
             );
         }
-        self.keep_watch(Watched {
+        let watched = Watched {
             began: self.host.now(),
             bound,
-            by: None,
+            by: Some(self.host.command()),
             ended: None,
-        });
-        self.settle(None)
+        };
+        self.keep_watch(watched.clone());
+        let answer = self.settle(None);
+        self.end_watch(&watched);
+        answer
     }
 
     /// Writes the host's watch as `watched`, by compare-and-set, reading
@@ -95,6 +101,38 @@ impl Engine {
         ));
     }
 
+    /// Writes when the watch's settle `watched` ended, by compare-and-set,
+    /// reading it again where its version moved, only where the watch held
+    /// still names its `began` and its command: a watch another settle
+    /// wrote since is that settle's to end (208; core.16).
+    fn end_watch(&self, watched: &Watched) {
+        for _ in 0..TRIES {
+            let Some(read) = self.store.read_host(&HostKey::Watch) else {
+                return;
+            };
+            let HostDocument::Watch(standing) = read.document else {
+                return;
+            };
+            if standing.began != watched.began || standing.by != watched.by {
+                return;
+            }
+            let ended = Watched {
+                ended: Some(self.host.now()),
+                ..standing
+            };
+            if let Written::Written { .. } = self.store.write_host(
+                &HostKey::Watch,
+                Some(read.version),
+                Some(&HostDocument::Watch(ended)),
+            ) {
+                return;
+            }
+        }
+        self.log(&format!(
+            "the end of the host's watch was not written: its version moved {TRIES} times"
+        ));
+    }
+
     /// The host's watch as it is held, none where none is held, a host's
     /// state written before among it (153, 208).
     pub(crate) fn watched(&self) -> Option<Watched> {
@@ -107,7 +145,8 @@ impl Engine {
     /// The host's watch as status gives it: the bound a caller keeping
     /// watch stated, or none; when its newest settle began; and, while
     /// flume runs attended after a watch lapsed, when it lapsed, read
-    /// from the watch held (56, 119, 208).
+    /// from the watch held and whether the command running its settle
+    /// lives (56, 76, 119, 208).
     pub(crate) fn watch_status(&self) -> (Watch, Option<Seconds>, Option<Seconds>) {
         let Some(watched) = self.watched() else {
             return (Watch::None, None, None);
@@ -125,7 +164,8 @@ impl Engine {
 
     /// Whether flume runs attended: no caller keeps watch over the host,
     /// none being held or the newest lapsed, twice its bound having
-    /// passed since it began. No terminal is read (119, 208).
+    /// passed since its settle ended, or since it began where the command
+    /// running it died with no end. No terminal is read (76, 119, 208).
     pub fn attended(&self) -> bool {
         !self
             .watched()
