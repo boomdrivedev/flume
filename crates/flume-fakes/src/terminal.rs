@@ -648,9 +648,10 @@ impl FakeTerminal {
             .insert(agent.to_string(), process);
     }
 
-    /// Each watched send to `agent` that delivers answers `watched` from
-    /// now on, a turn not seen with words or a refusal among them, where
-    /// it answered that it saw the turn begin (171, C.5).
+    /// Each watched send to `agent` answers `watched` from now on where it
+    /// answered that it saw the turn begin: a turn not seen with words once
+    /// it delivered, or a refusal with words and nothing delivered (95,
+    /// 171, C.5).
     pub fn watch_as(&self, agent: &Identity, watched: SentWatching) {
         lock(&self.state).watched.insert(agent.to_string(), watched);
     }
@@ -864,17 +865,17 @@ impl Terminal for FakeTerminal {
 
     /// Delivered and refused as `send` is, logged `send-watching
     /// <identity>`, answering as [`FakeTerminal::watch_as`] scripted for
-    /// the agent once delivered, and the turn seen where nothing was
-    /// (171, C.5).
+    /// the agent once delivered, a refusal scripted with nothing delivered,
+    /// and the turn seen where nothing was (95, 171, C.5).
     fn send_watching(&self, agent: &Identity, text: &str, _within: Duration) -> SentWatching {
         self.log.push(format!("send-watching {agent}"));
+        let scripted = lock(&self.state).watched.get(&agent.to_string()).cloned();
+        if let Some(refused @ SentWatching::Refused { .. }) = scripted {
+            return refused;
+        }
         match self.deliver(agent, text) {
             Sent::Refused { reason } => SentWatching::Refused { reason },
-            Sent::Sent => lock(&self.state)
-                .watched
-                .get(&agent.to_string())
-                .cloned()
-                .unwrap_or(SentWatching::Began),
+            Sent::Sent => scripted.unwrap_or(SentWatching::Began),
         }
     }
 

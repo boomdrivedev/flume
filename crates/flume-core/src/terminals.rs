@@ -116,6 +116,19 @@ impl AgentOn<'_> {
         }
     }
 
+    /// `text` sent as `send` sends it, with the terminal's word whether
+    /// it saw the turn the sending began within `within`, refused in the
+    /// words naming the profile where none answers for it (89, 171, 190,
+    /// C.5).
+    pub fn send_watching(&self, text: &str, within: std::time::Duration) -> SentWatching {
+        match &self.terminal {
+            Ok(terminal) => terminal.send_watching(self.identity, text, within),
+            Err(reason) => SentWatching::Refused {
+                reason: reason.clone(),
+            },
+        }
+    }
+
     pub fn state(&self) -> AgentState {
         match &self.terminal {
             Ok(terminal) => terminal.state(self.identity),

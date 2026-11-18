@@ -13,6 +13,7 @@ use crate::start::{Start, Starts};
 use crate::status::waiting_on;
 use crate::{Act, Answer, Engine, Step, Tidied, POLL, RECEIVED_WITHIN, TELL_BOUND};
 use flume_seams::*;
+use std::time::Duration;
 
 /// What a retry names (49).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -743,9 +744,13 @@ impl Engine {
     /// them: once it said it started, waits and asks nothing, within the
     /// bound, ten minutes where none is given, its input cleared by the
     /// terminal's send, and read received within 60 seconds of each
-    /// sending or sent once more. When it was last sent and read
-    /// received, or the tell's words saying why nothing more was typed
-    /// (37, 38, 53, 54; core.11).
+    /// sending or sent once more; where its profile does not build
+    /// received, sent by the terminal's send that watches the turn and read
+    /// received on its word that it saw the turn begin, or where a reading
+    /// within the 60 seconds reads the agent working or asking. Each
+    /// sending clears when a settle read the agent waiting. When it was
+    /// last sent and read received, or the tell's words saying why nothing
+    /// more was typed (37, 38, 53, 54, 89, 171; core.11).
     pub(crate) fn hand(
         &self,
         place: &PlaceId,
@@ -788,13 +793,44 @@ impl Engine {
             }
             self.host.sleep(POLL);
         }
+        let watched = !agent.parts().builds(Part::Received);
         for _ in 0..2 {
-            if let Sent::Refused { reason } = self.agent_on(start).send(words) {
+            self.clear_waiting(place, identity);
+            let answer = if watched {
+                let sent_at = self.host.now();
+                match self
+                    .agent_on(start)
+                    .send_watching(words, Duration::from_secs(RECEIVED_WITHIN))
+                {
+                    SentWatching::Began => {
+                        return Ok(Handed {
+                            sent_at,
+                            received_at: self.host.now(),
+                        })
+                    }
+                    SentWatching::NotSeen { .. } => Sent::Sent,
+                    SentWatching::Refused { reason } => Sent::Refused { reason },
+                }
+            } else {
+                self.agent_on(start).send(words)
+            };
+            if let Sent::Refused { reason } = answer {
                 return Err(format!("the terminal did not send the words: {reason}"));
             }
             let sent_at = self.host.now();
             loop {
-                if let Received::Received { .. } = agent.received(&folder, identity, words) {
+                let received = if watched {
+                    matches!(
+                        self.state_of(Some(agent.as_ref()), &folder, start),
+                        AgentState::Working | AgentState::Asking
+                    )
+                } else {
+                    matches!(
+                        agent.received(&folder, identity, words),
+                        Received::Received { .. }
+                    )
+                };
+                if received {
                     return Ok(Handed {
                         sent_at,
                         received_at: self.host.now(),
@@ -808,6 +844,24 @@ impl Engine {
             }
         }
         Err(format!("the agent {identity} did not receive the words"))
+    }
+
+    /// Clears when a settle read the agent of the start under `identity`
+    /// waiting, since something is sent to it; nothing written where none
+    /// was read (31, 171; core.17).
+    pub(crate) fn clear_waiting(&self, place: &PlaceId, identity: &Identity) {
+        self.update(place, |held| {
+            let Some(index) = held.index_of(identity) else {
+                return Step::Keep(());
+            };
+            match held.stages[index].start.as_mut() {
+                Some(start) if start.waiting.is_some() => {
+                    start.waiting = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
     }
 
     /// The answer to an act taken: the place's status as it then stands.

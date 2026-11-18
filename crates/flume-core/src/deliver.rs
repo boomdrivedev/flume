@@ -22,13 +22,19 @@
 //! 38). A start that carries its stage's conversation and would be read
 //! never begun, at its agent's stop, at the stage's limit or on a prompt
 //! not received, is read as a carried start that did not begin, its agent
-//! sent nothing more, and its stage starts afresh (146, 179).
+//! sent nothing more, and its stage starts afresh (146, 179). Where the
+//! agent's profile does not build received, the prompt is sent by the
+//! terminal's send that watches the turn it began, and read received on
+//! the terminal's word that it saw it, or where a reading within 60 seconds
+//! of the sending reads the agent working or asking; such a start names no
+//! record of its agent's (38, 77, 89, 171).
 
 use crate::reading::shown;
 use crate::start::Starts;
 use crate::uncarried::{carries, uncarried, ENDED_FIRST, NOT_BY_THE_LIMIT, NOT_RECEIVED};
 use crate::{Engine, Step, POLL, QUIET_LIMIT, RECEIVED_WITHIN};
 use flume_seams::*;
+use std::time::Duration;
 
 impl Engine {
     /// Moves the current start's prompt on as far as its agent allows,
@@ -143,15 +149,8 @@ impl Engine {
                 }
                 return sent;
             }
-            if let Received::Received { record } = agent.received(&folder, identity, &prompt.text) {
-                let now = self.host.now();
-                self.with_start(id, identity, |start, state| {
-                    start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
-                    start.begun_at = Some(now);
-                    start.dialog = None;
-                    *state = StageState::Begun;
-                });
+            if let Some(record) = self.received_now(agent.as_ref(), &folder, &start) {
+                self.begin(id, identity, record);
                 return true;
             }
             let state = self.state_of(Some(agent.as_ref()), &folder, &start);
@@ -206,7 +205,22 @@ impl Engine {
             if !self.claim_sending(id, identity, prompt.sendings.len(), now) {
                 continue;
             }
-            match self.agent_on(&start).send(&prompt.text) {
+            let answer = if agent.parts().builds(Part::Received) {
+                self.agent_on(&start).send(&prompt.text)
+            } else {
+                match self
+                    .agent_on(&start)
+                    .send_watching(&prompt.text, Duration::from_secs(RECEIVED_WITHIN))
+                {
+                    SentWatching::Began => {
+                        self.begin(id, identity, None);
+                        return true;
+                    }
+                    SentWatching::NotSeen { .. } => Sent::Sent,
+                    SentWatching::Refused { reason } => Sent::Refused { reason },
+                }
+            };
+            match answer {
                 Sent::Sent => sent = true,
                 Sent::Refused { reason } => {
                     let failure =
@@ -320,10 +334,7 @@ impl Engine {
         {
             return false;
         }
-        let received = match agent.received(&folder, identity, &start.prompt.text) {
-            Received::Received { record } => Some(record),
-            _ => None,
-        };
+        let received = self.received_now(agent.as_ref(), &folder, &start);
         if received.is_none()
             && !(start.prompt.sendings.is_empty()
                 && self.started(agent.as_ref(), &folder, &start) == Reading::Yes)
@@ -347,7 +358,9 @@ impl Engine {
             stage.state = match &received {
                 Some(record) => {
                     start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
+                    if let Some(record) = record {
+                        start.record = Some(record.clone());
+                    }
                     start.begun_at = Some(now);
                     StageState::Begun
                 }
@@ -385,8 +398,53 @@ impl Engine {
         );
     }
 
-    /// Records a sending at `now`, if the start has made `made` so far;
-    /// false when another act made it first.
+    /// Whether the start's prompt was received, with the record its agent
+    /// keeps where its profile names one: from its profile where it builds
+    /// received; otherwise where a reading of the terminal within 60
+    /// seconds of the last sending reads the agent working or asking, since
+    /// it was sent only while read waiting and not asking, naming no record
+    /// (38, 77, 89, 171). None where it was not.
+    fn received_now(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<Option<String>> {
+        if agent.parts().builds(Part::Received) {
+            return match agent.received(folder, &start.identity, &start.prompt.text) {
+                Received::Received { record } => Some(Some(record)),
+                _ => None,
+            };
+        }
+        let last = start.prompt.sendings.last()?;
+        if self.host.now().saturating_sub(*last) > RECEIVED_WITHIN {
+            return None;
+        }
+        matches!(
+            self.state_of(Some(agent), folder, start),
+            AgentState::Working | AgentState::Asking
+        )
+        .then_some(None)
+    }
+
+    /// The start under `identity` begun now, its prompt received, with
+    /// the record its agent keeps where one was named (38, 77).
+    fn begin(&self, id: &PlaceId, identity: &Identity, record: Option<String>) {
+        let now = self.host.now();
+        self.with_start(id, identity, |start, state| {
+            start.prompt.received_at = Some(now);
+            if let Some(record) = &record {
+                start.record = Some(record.clone());
+            }
+            start.begun_at = Some(now);
+            start.dialog = None;
+            *state = StageState::Begun;
+        });
+    }
+
+    /// Records a sending at `now`, if the start has made `made` so far,
+    /// clearing when a settle read its agent waiting, since it is sent to;
+    /// false when another act made it first (31, 171).
     fn claim_sending(&self, id: &PlaceId, identity: &Identity, made: usize, now: Seconds) -> bool {
         self.update(id, |held| {
             let Some(index) = held.index_of(identity) else {
@@ -399,6 +457,7 @@ impl Engine {
                 return Step::Keep(false);
             }
             start.prompt.sendings.push(now);
+            start.waiting = None;
             Step::Write(true)
         })
         .unwrap_or(false)
