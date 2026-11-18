@@ -618,6 +618,26 @@ fn the_profile_passes_the_agent_scenarios() {
     pass_all("agent", &agent::scenarios(), Harness::new);
 }
 
+/// The agent-profile spec's scenario "Claude Code's parts" (174, C.4).
+#[test]
+fn the_profile_builds_every_part() {
+    let harness = Harness::new();
+    let seam = &harness.seam;
+    let parts = seam.parts();
+    for part in Part::ALL {
+        assert!(
+            parts.builds(part),
+            "Claude Code's profile degrades {}",
+            part.name()
+        );
+    }
+    assert_eq!(parts.degraded(), vec![]);
+    assert_eq!(seam.send_back(), Offered::Offered);
+    assert_eq!(seam.on_quiet(), Offered::Offered);
+    assert_eq!(seam.reports_windows(), Offered::Offered);
+    assert_eq!(seam.mode_read_back(), Offered::Offered);
+}
+
 fn identity(stage: &str) -> Identity {
     Identity {
         repository: "/repository".into(),
@@ -839,7 +859,8 @@ fn each_of_the_five_and_two_the_release_reads_otherwise() {
     // and `ultracode`, which the release reads as `medium` and `xhigh`,
     // each naming it, `claude` and the five; it names the variable the
     // release reads over `--effort` (197, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     for word in ["low", "medium", "high", "xhigh", "max"] {
         assert_eq!(seam.effort(word), Ok(()), "{word}");
     }
@@ -1308,7 +1329,8 @@ fn a_repositorys_tagline_written_as_given() {
 fn each_of_the_four() {
     // Each of flume's four maps to the one choice of 2.1.296's that means
     // it (169, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let mapped: Vec<String> = Mode::ALL
         .iter()
         .map(|mode| seam.mode(&ModeEntry::Flume(*mode)).expect("mapped"))
@@ -1324,7 +1346,8 @@ fn its_own_value_under_its_name() {
     // `{ claude = "auto" }`'s entry passes `auto` as written, and `{ claude
     // = "yolo" }`'s is refused naming `yolo`, `claude` and the release's
     // six values (169, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let entry = |value: &str| {
         ModeSetting::from_programs(BTreeMap::from([(NAME.to_string(), value.to_string())]))
             .expect("a table")
@@ -1365,7 +1388,8 @@ fn the_words_a_fixs_code_is_told() {
     // change's verify agent is one text, naming `flume needs --found` for
     // work a stage before this one must do again, with nothing of either
     // agent's identity and no "cannot deliver past" (28, 41, 131; core.31).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let code = identity("code");
     let verify = Identity {
         repository: "/elsewhere".into(),
