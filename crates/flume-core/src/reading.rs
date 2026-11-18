@@ -90,14 +90,21 @@ pub(crate) fn repeats_on(held: &HeldState, index: usize, facts: &Facts) -> bool 
 
 /// Whether a kind reads a change (3, 4).
 pub(crate) fn reads_change(kind: &Kind) -> bool {
-    kind.stages.iter().any(|stage| {
-        stage.deliverables.iter().any(|deliverable| {
-            matches!(
-                deliverable,
-                Deliverable::ChangeWritten | Deliverable::TasksTicked | Deliverable::ChangeArchived
-            )
+    let of_change = |deliverable: &Deliverable| {
+        matches!(
+            deliverable,
+            Deliverable::ChangeWritten | Deliverable::TasksTicked | Deliverable::ChangeArchived
+        )
+    };
+    kind.stages
+        .iter()
+        .any(|stage| stage.deliverables.iter().any(of_change))
+        || kind.statechart.iter().any(|statechart| {
+            statechart
+                .stages
+                .values()
+                .any(|stage| stage.deliverables.iter().any(of_change))
         })
-    })
 }
 
 impl Engine {

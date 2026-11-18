@@ -10,6 +10,11 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "statechart: a statechart kind launched makes its place, holding its statechart, the stage template and its first state",
+            cites: &["2", "21", "175", "176"],
+            run: a_statechart_kind_launched,
+        },
+        Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
             cites: &["4", "175"],
             run: a_template_flume_does_not_bind,
@@ -93,6 +98,46 @@ fn refused_whole(world: &World, kind: Kind) -> Result<String, String> {
     ensure!(world.store.places().is_empty(), "held state was left");
     ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
     Ok(reason)
+}
+
+fn a_statechart_kind_launched(_: &()) -> Outcome {
+    let world = World::new();
+    let text = one_stage(false, "stage", ON_PASSED);
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![one(&text, listed(1))]);
+    launched(&world.engine.launch(&launch("one", "a", Some("the work"))))?;
+    ensure_eq!(world.place.log.count("make"), 1, "places made");
+    let id = World::id("one", "a");
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    ensure_eq!(held.phase, Phase::Live, "the place's phase");
+    ensure_eq!(
+        held.place
+            .kind
+            .statechart
+            .as_ref()
+            .map(|chart| chart.text.as_str()),
+        Some(text.as_str()),
+        "the kind's statechart held"
+    );
+    let chart = held.chart.ok_or("the place holds no statechart")?;
+    ensure_eq!(
+        chart.template.as_str(),
+        flume_core::atoms::STAGE_TEMPLATE,
+        "the stage template held"
+    );
+    ensure_eq!(
+        chart.state.regions.get("main").map(String::as_str),
+        Some("work"),
+        "the region's state"
+    );
+    ensure_eq!(
+        chart.state.regions.get("main.work.run").map(String::as_str),
+        Some("working"),
+        "the stage template's region's state"
+    );
+    ensure!(!chart.over, "the run reads over at its launch");
+    Ok(())
 }
 
 fn a_template_flume_does_not_bind(_: &()) -> Outcome {

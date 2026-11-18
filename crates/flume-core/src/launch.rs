@@ -664,7 +664,7 @@ impl Engine {
             from,
         } = self.resolve_kind(launch, &base_revision)?;
         Self::runs(&kind, &from.identity)?;
-        self.chart_runs(&kind, &from.identity)?;
+        let chart = self.chart_runs(&kind, &from.identity)?;
         let fixes_as = if crate::base::base_place(&kind) {
             self.fix_kind_of(
                 launch,
@@ -715,14 +715,54 @@ impl Engine {
                 "{named} reads a change, and {repository} binds no change profile"
             ));
         }
-        for stage in &kind.stages {
-            if launch.brief.is_none() && crate::prompt::asks(&stage.prompt, PromptPart::Brief) {
+        let prompts = kind
+            .stages
+            .iter()
+            .map(|stage| (stage.name.as_str(), stage.prompt.as_str()))
+            .chain(kind.statechart.iter().flat_map(|statechart| {
+                statechart.stages.iter().filter_map(|(path, stage)| {
+                    stage
+                        .prompt
+                        .as_deref()
+                        .map(|prompt| (path.as_str(), prompt))
+                })
+            }));
+        for (stage, prompt) in prompts {
+            if launch.brief.is_none() && crate::prompt::asks(prompt, PromptPart::Brief) {
                 return Err(format!(
-                    "the stage {} asks for the brief, and the launch gives none",
-                    stage.name
+                    "the stage {stage} asks for the brief, and the launch gives none"
                 ));
             }
         }
+        if let Some(charts) = &chart {
+            let paths = stage_paths(&charts.chart);
+            if let Some(stage) = launch.hold.iter().find(|stage| !paths.contains(stage)) {
+                return Err(format!(
+                    "the launch holds the stage {stage}, which the kind {} does not hold: its stages are {} (47, 175)",
+                    from.identity,
+                    and_list(paths.clone())
+                ));
+            }
+        }
+        let chart = match &chart {
+            Some(charts) => Some(ChartHeld {
+                state: ObjectHeld::of(
+                    &weir_engine::start(&charts.chart, &charts.templates, time_at(self.host.now()))
+                        .map_err(|refusal| {
+                            format!(
+                                "the kind {} could not be started at {}: {} (176)",
+                                from.identity, refusal.path, refusal.reason
+                            )
+                        })?,
+                ),
+                template: atoms::STAGE_TEMPLATE.to_string(),
+                answers: vec![],
+                stages: BTreeMap::new(),
+                words: None,
+                over: false,
+            }),
+            None => None,
+        };
         let branch = format!("{}/{}", kind.branch_prefix, launch.name);
         if !self.history.valid_branch(&branch) {
             return Err(format!(
@@ -855,7 +895,7 @@ impl Engine {
             forecast: None,
             trace: None,
             waits: vec![],
-            chart: None,
+            chart,
         };
         let programs = kind
             .stages
@@ -889,6 +929,21 @@ impl Engine {
         let place_ref = held.place.place_ref();
         let readiness = place_seam.ready(&place_ref, &base_revision);
         let failed = readiness.failed().is_some();
+        if kind.is_statechart() {
+            // A statechart place's first stage starts at its first tick,
+            // in the one settle its launch runs (175, 176).
+            self.update(&id, |held| {
+                held.readiness = readiness.clone();
+                held.phase = Phase::Live;
+                Step::Write(())
+            });
+            self.settle_place(&id);
+            return self
+                .store
+                .read(&id)
+                .map(|read| read.state)
+                .ok_or_else(|| format!("the place {id} was removed while it was launched"));
+        }
         let first = &kind.stages[0];
         let holds = held.hold_on(&first.name).is_some() || first.waits;
         self.update(&id, |held| {
@@ -1309,10 +1364,15 @@ impl Engine {
     /// prompt, no agent listed, no deliverable or one flume cannot read, a
     /// rule other than `every-file` or one with no pattern, `{{file}}` in a
     /// deliverable while its agents are listed, or a count above the agents
-    /// it lists. A simple kind passes (4, 177).
-    pub(crate) fn chart_runs(&self, kind: &Kind, identity: &KindIdentity) -> Result<(), String> {
+    /// it lists. Gives its statechart read back; a simple kind passes with
+    /// none (4, 177).
+    pub(crate) fn chart_runs(
+        &self,
+        kind: &Kind,
+        identity: &KindIdentity,
+    ) -> Result<Option<Charts>, String> {
         let Some(statechart) = &kind.statechart else {
-            return Ok(());
+            return Ok(None);
         };
         let named = format!("the kind {identity}");
         if let Some(fix) = &kind.fix {
@@ -1361,7 +1421,7 @@ impl Engine {
             };
             chart_stage_runs(stage, &at)?;
         }
-        Ok(())
+        Ok(Some(charts))
     }
 }
 
