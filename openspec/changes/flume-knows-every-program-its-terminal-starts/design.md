@@ -324,10 +324,11 @@ kinds.
 `48a94da`. 170, 172 and S75 leave `unbuilt`, each cited by this
 change's scenarios: 170 by `engine/agent_programs.rs`, 172 by
 `engine/agent_model.rs`, S75 by the terminal's refusal in
-`engine/agent_programs.rs`. 171, 173, 174 and S71 to S74 stay unbuilt
-under `PROFILES`, its words naming the common profile's readings, a
-pool's program and the parts. The change beside this one moves 174 on
-the same lines, which the later of the two to land takes in its merge.
+`engine/agent_programs.rs`. 171, 173 and S71 to S74 stay unbuilt under
+`PROFILES`, its words naming the common profile's readings and a pool's
+program. 174 is built by the change beside this one,
+`each-agent-profile-says-which-parts-it-builds`, cited by the agent
+seam's parts scenarios.
 
 ## Rules and clauses
 
