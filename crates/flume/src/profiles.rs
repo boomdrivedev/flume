@@ -36,6 +36,7 @@ pub mod change {
 // ---- the agent seam's profiles: a profile unit appends its module line below ----
 pub mod agent {
     pub mod claude;
+    pub mod programs;
 }
 
 // ---- the terminal seam's profiles: a profile unit appends its module line below ----
