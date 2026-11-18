@@ -27,7 +27,7 @@
 //! alone, `flume settle --every 1m`, each stepping main once, with no
 //! `sluice run` live (124, 125, 208, S109).
 
-use super::walk::{stage, user_scratch, Walk, USER_SCRATCH};
+use super::walk::{stage, unlink_user_scratch, user_scratch, Walk, USER_SCRATCH};
 use crate::common::*;
 use flume::profiles::merge_queue::sluice::{for_place, Sluice, EQUIP};
 use flume::profiles::place::git_worktree::{GitWorktree, Login};
@@ -59,6 +59,19 @@ const TRAINS: &str = "[tests]\nrunner = \"command\"\ncommand = \"sh check.sh\"\n
 /// The policy that lands `train/*` and main on the stand-in origin.
 const TRAINS_ON_ORIGIN: &str = "[tests]\nrunner = \"command\"\ncommand = \"sh check.sh\"\n\n[branches.\"train/*\"]\nremote = \"origin\"\n\n[branches.main]\nremote = \"origin\"\n";
 
+/// The file in a test's scratch that holds its check while it stands.
+const HOLD: &str = "hold";
+
+/// The gate's check: it waits while `hold` stands, looking every 100
+/// milliseconds for at most 120 seconds, and then passes, so a test reads
+/// a submission open for as long as it holds it.
+fn held_check(hold: &Path) -> String {
+    format!(
+        "i=0\nwhile [ -e '{}' ] && [ \"$i\" -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done\nexit 0\n",
+        hold.display()
+    )
+}
+
 /// A scratch repository gated by sluice, and the place it holds.
 struct Harness {
     repository: Repository,
@@ -73,12 +86,17 @@ impl Harness {
         Harness::with_policy(POLICY)
     }
 
-    /// A scratch repository whose policy is `policy`.
+    /// A scratch repository whose policy is `policy`, its check held
+    /// from the start: written before the place is cut, so the place's
+    /// branch carries it, each run of it waits until the test asks a
+    /// submission decided, so sluice's host process decides nothing the
+    /// test reads open.
     fn with_policy(policy: &str) -> Harness {
         let repository = Repository::new("sluice");
         repository.write(".config/sluice.toml", policy);
-        repository.write("check.sh", "exit 0\n");
+        repository.write("check.sh", &held_check(&repository.scratch.path(HOLD)));
         repository.commit("the gate");
+        fs::write(repository.scratch.path(HOLD), "").expect("the hold");
         let home = repository.scratch.path("home");
         fs::create_dir_all(&home).expect("the scratch home");
         let mut seam = Sluice::new()
@@ -177,6 +195,12 @@ impl Harness {
     /// sluice run by the test in `dir`, in the scratch home, with no
     /// multiplexer's session: its JSON answer.
     fn sluice(&self, dir: &Path, args: &[&str]) -> Value {
+        self.sluice_ran(dir, args).1
+    }
+
+    /// sluice run by the test in `dir`, in the scratch home, with no
+    /// multiplexer's session: whether it succeeded, and its JSON answer.
+    fn sluice_ran(&self, dir: &Path, args: &[&str]) -> (bool, Value) {
         let mut command = Command::new("sluice");
         command.args(args).current_dir(dir).stdin(Stdio::null());
         for (name, _) in std::env::vars() {
@@ -195,14 +219,15 @@ impl Harness {
             .env(USER_SCRATCH, user_scratch(&self.repository))
             .output()
             .expect("sluice runs");
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+        let answer = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
             panic!(
                 "sluice {}: {}{}",
                 args.join(" "),
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )
-        })
+        });
+        (output.status.success(), answer)
     }
 
     /// The newest record sluice holds of `branch`'s submissions to main.
@@ -216,8 +241,21 @@ impl Harness {
             .cloned()
     }
 
-    /// Steps main until `branch`'s newest submission is decided.
+    /// The check held: each run of it waits until [`Harness::release`].
+    fn hold(&self) {
+        fs::write(self.repository.scratch.path(HOLD), "").expect("the hold");
+    }
+
+    /// The check released, so a run of it waiting ends and passes.
+    fn release(&self) {
+        let _ = fs::remove_file(self.repository.scratch.path(HOLD));
+    }
+
+    /// The check released, and main's status read until `branch`'s
+    /// newest submission is decided by sluice's host process, which the
+    /// submit started; nothing steps main (124, 125, C.6; sluice 135).
     fn decide(&self, branch: &str) {
+        self.release();
         let deadline = Instant::now() + Duration::from_secs(90);
         loop {
             let state = self
@@ -228,11 +266,25 @@ impl Harness {
             }
             assert!(
                 Instant::now() < deadline,
-                "{branch}'s submission stayed {state:?}"
+                "{branch}'s submission stayed {state:?}; {}",
+                self.host_process()
             );
-            self.sluice(&self.repository.dir, &["step", "main", "--json"]);
             std::thread::sleep(Duration::from_millis(300));
         }
+    }
+
+    /// What the test's state folder says of sluice's host process: the
+    /// one it records, and the end of its log.
+    fn host_process(&self) -> String {
+        let host = self.home.join("state/sluice/host");
+        let read = |name: &str| fs::read_to_string(host.join(name)).unwrap_or_default();
+        let log = read("log");
+        let tail: Vec<&str> = log.lines().rev().take(20).collect::<Vec<_>>();
+        format!(
+            "the host process recorded {}, its log ending:\n{}",
+            read("version").trim(),
+            tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+        )
     }
 }
 
@@ -296,9 +348,13 @@ fn stepped_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &s
 
 impl Drop for Harness {
     fn drop(&mut self) {
+        // Released first, so every run ends and the host process of the
+        // test's state folder ends with nothing in play.
+        self.release();
         if let Some(path) = self.locked.borrow_mut().take() {
             let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
         }
+        unlink_user_scratch(&self.repository);
     }
 }
 
@@ -325,7 +381,9 @@ impl MergeQueueHarness for Harness {
         self.on_main(file, "the base's own\n");
     }
 
-    fn will_hold(&self) {}
+    fn will_hold(&self) {
+        self.hold();
+    }
 
     fn until_decided(&self, place: &PlaceRef) {
         self.decide(&place.branch);
@@ -334,6 +392,7 @@ impl MergeQueueHarness for Harness {
     fn withdraw(&self, place: &PlaceRef) {
         let id = self.record(&place.branch).expect("a submission")["id"].to_string();
         self.sluice(&self.repository.dir, &["withdraw", &id, "--json"]);
+        self.release();
     }
 
     fn land_elsewhere(&self, place: &PlaceRef) {
@@ -357,6 +416,7 @@ impl MergeQueueHarness for Harness {
     }
 
     fn open_submission(&self, place: &PlaceRef) -> Submission {
+        self.hold();
         let entry = self.sluice(
             Path::new(&place.location),
             &["submit", "main", "--no-wait", "--json"],
@@ -419,9 +479,10 @@ impl MergeQueueHarness for Harness {
 
     /// `bolt/x`, its policy naming it, given a submission from `unit/x`,
     /// then a policy at its tip that declares `[[checkout.cache]]`, which
-    /// the pinned sluice refuses: no round of `bolt/x` has read its revision,
-    /// so `sluice status bolt/x` reads the policy at its tip and refuses
-    /// the branch, as it refused one on deneb on 2026-11-04.
+    /// the pinned sluice refuses: `sluice status bolt/x` reads the policy
+    /// at the revision sluice's host process last read of the branch, and
+    /// once it has read the tip refuses the branch, as it refused one on
+    /// deneb on 2026-11-04; given once it does (sluice 129).
     fn refuse_another(&self, _place: &PlaceRef) -> String {
         let other = "bolt/x";
         let at = self.repository.dir.join("places/bolt--x");
@@ -469,6 +530,18 @@ impl MergeQueueHarness for Harness {
         commit(&format!(
             "{policy}\n[[checkout.cache]]\nkey = [\"Cargo.lock\"]\npaths = [\"target\"]\n"
         ));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self
+            .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
+            .0
+        {
+            assert!(
+                Instant::now() < deadline,
+                "sluice never refused {other}'s status; {}",
+                self.host_process()
+            );
+            std::thread::sleep(Duration::from_millis(300));
+        }
         other.into()
     }
 

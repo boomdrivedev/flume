@@ -80,10 +80,49 @@ fn a_callers(name: &str) -> bool {
 /// 0063).
 pub const USER_SCRATCH: &str = "SLUICE_USER_SCRATCH";
 
+/// The socket the pinned sluice's host process binds in the folder that
+/// stands for the host user's own, named by a digest of its state folder.
+const HOST_SOCKET: &str = "sluice/host-0123456789.sock";
+
+/// The short links [`user_scratch`] has made, by the scratch each leads
+/// to, so every command of one test reaches one host process.
+static USER_LINKS: std::sync::Mutex<Vec<(PathBuf, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+
 /// The test's own folder for the scratch of the checkouts sluice makes
-/// for `repository`.
+/// for `repository`, and for the socket of its state folder's host
+/// process: the scratch's `sluice`, through a short link to the scratch
+/// where the socket would not fit beneath it, as a run whose temporary
+/// folder is long needs, `cargo test` by hand on macOS among them; the
+/// test fails naming what lacked room where no link holds it (core.51).
 pub fn user_scratch(repository: &Repository) -> PathBuf {
-    repository.scratch.path("sluice")
+    // SAFETY: an address of all zeros is a valid `sockaddr_un`.
+    let address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    let root = &repository.scratch.root;
+    if root.join(HOST_SOCKET).as_os_str().len() < address.sun_path.len() {
+        return root.join("sluice");
+    }
+    let mut links = USER_LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    let link = match links.iter().find(|(to, _)| to == root) {
+        Some((_, link)) => link.clone(),
+        None => {
+            let link = short_link(root, HOST_SOCKET);
+            links.push((root.clone(), link.clone()));
+            link
+        }
+    };
+    link.join("sluice")
+}
+
+/// The short link [`user_scratch`] made for `repository`, removed.
+pub fn unlink_user_scratch(repository: &Repository) {
+    let mut links = USER_LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(at) = links
+        .iter()
+        .position(|(to, _)| *to == repository.scratch.root)
+    {
+        let (_, link) = links.remove(at);
+        let _ = std::fs::remove_file(link);
+    }
 }
 
 /// The stand-in's run: what it printed and how it ended.
@@ -109,6 +148,12 @@ pub struct Walk {
     /// The folder the stand-in reads each start's script from, which its
     /// account gives as `STAND_IN_SCRIPTS`, on a host under herdr.
     scripts: Option<PathBuf>,
+}
+
+impl Drop for Walk {
+    fn drop(&mut self) {
+        unlink_user_scratch(&self.repository);
+    }
 }
 
 impl Walk {
@@ -957,8 +1002,8 @@ pub fn short_link(target: &Path, socket: &str) -> PathBuf {
         .unwrap_or_else(|| {
             let socket = temporary.join(&named).join(socket);
             panic!(
-                "herdr's socket would be {}, {} bytes, past the {limit} a socket's path holds on \
-                 this host, and /tmp cannot be written",
+                "a socket would be {}, {} bytes, past the {limit} a socket's path holds on this \
+                 host, and /tmp cannot be written",
                 socket.display(),
                 socket.as_os_str().len()
             )

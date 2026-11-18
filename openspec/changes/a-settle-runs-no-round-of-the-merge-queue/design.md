@@ -113,20 +113,37 @@ facts, read again against the pinned release.
 **One state folder per test, and room for its socket.** Each harness
 and each walk already gives sluice its own `XDG_STATE_HOME` and
 `SLUICE_USER_SCRATCH` in the test's scratch. So each test has its own
-host process, and that process's socket fits the scratch the merge
-queue gives the place (core.51). A test whose host process cannot bind
-fails naming what lacked room, never skipping.
+host process. Its socket, `host-<digest>.sock` in
+`SLUICE_USER_SCRATCH`, fits beneath the scratch the merge queue gives
+the place, but not beneath a long temporary folder, as `cargo test`'s
+by hand on macOS is. There `user_scratch` names the scratch through
+one short link of `short_link`'s, kept for the test and removed when
+its harness or walk is dropped (core.51). A test that finds no room
+fails naming what lacked it, never skipping.
 
 **A held submission.** Under the host process a submission is decided
-as soon as its check passes. Several scenarios must read one open:
-`will_hold`, `open_submission` and the tests that read a submission
+as soon as its check passes. Many scenarios and tests read one open:
+`will_hold`, `open_submission`, the scenario of a branch the merge
+queue cannot read, which reads the place's submission open after
+another branch is refused, and the tests that read a submission
 waiting. The harness's `check.sh` therefore waits, polling every 100
 milliseconds for at most 120 seconds, while a file `hold` stands in the
 test's scratch. It is written before the place is cut, so the place's
-branch carries it. `will_hold` and `open_submission` write `hold`.
-`until_decided`, `withdraw` and the harness's drop remove it. The
-drop removes it before the scratch goes, so every run ends and the
-host process of that state folder ends with nothing in play.
+branch carries it. The harness writes `hold` as it makes the
+repository, so every check is held until the test asks a decision, and
+`will_hold` and `open_submission` write it again. `until_decided`,
+`decide`, `withdraw` once it has withdrawn, and the harness's drop
+remove it, and a test that reads a submission to its decision by
+read-submission removes it first. The drop removes it before the
+scratch goes, so every run ends and the host process of that state
+folder ends with nothing in play. A test that reads a submission
+before any verdict reads it open, queued or under test, since the host
+process takes it under test at once.
+
+**A refused branch.** sluice's status reads a branch's policy at the
+revision its host process last read of it (sluice 129). So the
+harness's `refuse_another` reads `sluice status bolt/x` until it
+refuses the branch, within 30 seconds, before it answers.
 
 **Read to a decision, never stepped.** `Harness::decide` and
 `stepped_until_decided` read `sluice status` until the newest entry of
