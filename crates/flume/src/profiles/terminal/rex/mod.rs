@@ -1300,11 +1300,17 @@ fn create_json(path: &Path, value: &Value) -> Result<bool, String> {
     }
 }
 
-/// The agent's Rex name: `f-<place>-<stage>-<start>` lowercased, each
-/// character outside `[a-z0-9_-]` made `-`, cut to 119 characters, then
-/// `-` and the first eight hex digits of the identity's SHA-256 (C.5).
+/// The agent's Rex name: `f-<place>-<stage>-<start>`, `<start>r<resume>`
+/// for a resume, lowercased, each character outside `[a-z0-9_-]` made
+/// `-`, cut to 119 characters, then `-` and the first eight hex digits of
+/// the identity's SHA-256, its resume among it, so a resume's name
+/// differs from its start's (213, C.5; core.10).
 pub fn rex_name(identity: &Identity) -> String {
-    let words: String = format!("f-{}-{}-{}", identity.place, identity.stage, identity.start)
+    let start = match identity.resume {
+        0 => identity.start.to_string(),
+        resume => format!("{}r{resume}", identity.start),
+    };
+    let words: String = format!("f-{}-{}-{start}", identity.place, identity.stage)
         .to_lowercase()
         .chars()
         .map(|c| {
@@ -2367,6 +2373,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         }
     }
 
@@ -2428,6 +2435,26 @@ mod tests {
             "an identity was claimed for a refused open"
         );
         let _ = fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_resumes_rex_name_differs_from_its_starts() {
+        // 213, C.5; core.10: a resume's name carries its resume after its
+        // start's number, and the digest of its whole identity.
+        let resumed = Identity {
+            resume: 2,
+            ..identity()
+        };
+        let (start, resume) = (rex_name(&identity()), rex_name(&resumed));
+        assert_ne!(start, resume);
+        assert_eq!(
+            resume,
+            format!("f-fix--one-code-1r2-{}", &full_of(&resumed)[..8])
+        );
+        assert!(resume
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'));
+        assert_eq!(Rex::name(&resumed), resume);
     }
 
     #[test]

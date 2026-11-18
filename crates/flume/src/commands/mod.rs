@@ -106,6 +106,14 @@ enum Command {
     Drop(Forced),
     /// Declare complete the work of a place whose kind does not land (114).
     Done(Forced),
+    /// Hibernate the place's current stage, whose kind hibernates it: its
+    /// agent ended once quiet, or working with `--force`, and its session
+    /// kept, its room and its account freed (31, 212).
+    Hibernate(Forced),
+    /// Resume the place's hibernating stage in its own session, with
+    /// flume's words that it resumes; a message or its answer resumes it
+    /// with theirs (213).
+    Resume { place: String },
     /// Start a stage again, or submit the place again (49, 50).
     Retry {
         place: String,
@@ -170,7 +178,9 @@ enum Command {
     Settle {
         place: Option<String>,
         /// Read the place's agent until it is quiet, for up to 60 seconds,
-        /// first.
+        /// first, as its own quiet starts the settle: a conversation whose
+        /// kind hibernates it has its quiet started again, since a turn
+        /// ended (121, 212).
         #[arg(long)]
         on_quiet: bool,
         /// Settle every place as a watch over the host whose settles come
@@ -441,13 +451,15 @@ struct LaunchArgs {
     stall_after: Option<String>,
     /// One setting of every stage's agent, or of one stage's (32): the
     /// field one of program, model, effort, instructions, beside, session,
-    /// mode and keep_open, `effort` its program's own word for how hard its
-    /// model works, `session` the terminal's session its agents open in,
-    /// the mode one of plan, ask, edits and full, or `mode.<program>` for
-    /// one program's entry of a mode, and `keep_open` how long the agent
-    /// is kept open for an answer once it stops short, as `<n>`, `<n>s`,
-    /// `<n>m` or `<n>h`, one time for every program, an hour where no
-    /// layer gives one (107, 162, 169, 197, 198).
+    /// mode, keep_open and hibernate_after, `effort` its program's own word
+    /// for how hard its model works, `session` the terminal's session its
+    /// agents open in, the mode one of plan, ask, edits and full, or
+    /// `mode.<program>` for one program's entry of a mode, `keep_open` how
+    /// long the agent is kept open for an answer once it stops short, and
+    /// `hibernate_after` how long a conversation whose kind hibernates it
+    /// may idle before it hibernates, each as `<n>`, `<n>s`, `<n>m` or
+    /// `<n>h`, one time for every program, an hour where no layer gives
+    /// one (107, 162, 169, 197, 198, 212).
     #[arg(long, value_name = "[STAGE.]FIELD=VALUE")]
     agent: Vec<String>,
     /// The stream the place runs in, one the host's configuration
@@ -627,6 +639,11 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         Command::Finish(forced) => build_for(forced, &named, build, Engine::finish)?,
         Command::Drop(forced) => build_for(forced, &named, build, Engine::drop_place)?,
         Command::Done(forced) => build_for(forced, &named, build, Engine::done)?,
+        Command::Hibernate(forced) => build_for(forced, &named, build, Engine::hibernate)?,
+        Command::Resume { place } => {
+            let place = named(place)?;
+            build()?.resume(&place)
+        }
         Command::Retry {
             place,
             stage,
@@ -694,12 +711,13 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         } => {
             let place = maybe(place)?;
             let core = build()?;
-            if *on_quiet {
-                if let Some(place) = &place {
+            match (&place, *on_quiet) {
+                (Some(place), true) => {
                     until_quiet(&core, place, Duration::from_secs(ON_QUIET_WITHIN));
+                    core.settle_on_quiet(place)
                 }
+                _ => core.settle(place.as_ref()),
             }
-            core.settle(place.as_ref())
         }
         Command::Priority { place, priority } => {
             let place = named(place)?;

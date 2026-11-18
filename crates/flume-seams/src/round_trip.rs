@@ -22,6 +22,7 @@ fn settings() -> Settings {
         session: Some("office".into()),
         programs: BTreeMap::new(),
         keep_open: None,
+        hibernate_after: None,
     }
 }
 
@@ -101,6 +102,7 @@ fn stage() -> Stage {
         send_back_limit: Some(3),
         makes: vec!["preview".into(), "spike".into()],
         repeats: true,
+        hibernates: false,
     }
 }
 
@@ -149,6 +151,7 @@ fn identity() -> Identity {
         place: "bump--one".into(),
         stage: "code".into(),
         start: 2,
+        resume: 0,
     }
 }
 
@@ -312,6 +315,7 @@ fn held() -> HeldState {
                     cause: CarryCause::Spent,
                     carry: true,
                     why: None,
+                    resumed_by: None,
                 }),
             }),
             made_from: Some(1),
@@ -425,6 +429,9 @@ fn held() -> HeldState {
                     passed: Some("--own /state/places/x/agent/own.json".into()),
                 }),
                 answered: 0,
+                hibernated: None,
+                resumes: vec![],
+                handing: None,
                 messages: vec![],
             }),
             since: Some(120),
@@ -1281,6 +1288,7 @@ fn a_held_state_with_a_carried_start() {
         cause: CarryCause::Spent,
         carry: false,
         why: Some("the start that carried its conversation ended before it said it started".into()),
+        resumed_by: None,
     });
     round_trips(Conversation {
         from: 1,
@@ -1362,6 +1370,7 @@ fn talk() -> HeldState {
             cause: CarryCause::Lost,
             carry: true,
             why: None,
+            resumed_by: None,
         }),
         live: vec![LiveProcess {
             pid: 4242,
@@ -1383,6 +1392,177 @@ fn talk() -> HeldState {
         why: None,
     });
     state
+}
+
+/// A held state whose talk, a conversation its kind hibernates, ran
+/// under work-2, hibernated idle at 900, was resumed once by a message
+/// at 1000 carrying its conversation, and hibernated again at 2000 (212,
+/// 213).
+fn hibernated_talk() -> HeldState {
+    let mut state = held();
+    state.place.kind.stages[0].name = "talk".into();
+    state.place.kind.stages[0].conversation = true;
+    state.place.kind.stages[0].hibernates = true;
+    let stage = &mut state.stages[0];
+    stage.name = "talk".into();
+    stage.state = StageState::Hibernating;
+    stage.end = None;
+    stage.room = None;
+    stage.since = Some(2000);
+    let start = stage.start.as_mut().expect("a start");
+    let talk = Identity {
+        stage: "talk".into(),
+        start: 1,
+        ..identity()
+    };
+    start.n = 1;
+    start.identity = Identity {
+        resume: 1,
+        ..talk.clone()
+    };
+    start.live = false;
+    start.first_quiet = None;
+    start.account = Some(AccountHeld {
+        pool: "work".into(),
+        name: "work-2".into(),
+        from: AccountFrom::Conversation,
+    });
+    start.conversation = Some(Conversation {
+        from: 1,
+        cause: CarryCause::Hibernated,
+        carried: true,
+        why: None,
+    });
+    start.hibernated = Some(HibernationHeld {
+        since: 2000,
+        why: HibernatedBy::Idle,
+        account: Some("work-2".into()),
+    });
+    start.resumes = vec![ResumeHeld {
+        at: 1000,
+        by: ResumedBy::Message,
+        identity: start.identity.clone(),
+        words: Some("where were we?".into()),
+        conversation: Conversation {
+            from: 1,
+            cause: CarryCause::Hibernated,
+            carried: true,
+            why: None,
+        },
+    }];
+    state
+}
+
+/// seam-contracts' "A hibernated start round-trips" (61, 212, 213).
+#[test]
+fn a_hibernation_held_and_resumed() {
+    let state = hibernated_talk();
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    let stage = &json["stages"][0];
+    assert_eq!(stage["state"], "hibernating");
+    assert_eq!(stage["start"]["hibernated"]["why"], "idle");
+    assert_eq!(stage["start"]["hibernated"]["since"], 2000);
+    assert_eq!(stage["start"]["resumes"][0]["by"], "message");
+    assert_eq!(stage["start"]["resumes"][0]["identity"]["resume"], 1);
+    assert_eq!(
+        stage["start"]["resumes"][0]["conversation"]["cause"],
+        "hibernated"
+    );
+    assert_eq!(json["place"]["kind"]["stages"][0]["hibernates"], true);
+    assert_eq!(StageState::Hibernating.word(), "hibernating");
+    assert!(!StageState::Hibernating.ended());
+    assert!(!StageState::Hibernating.running());
+}
+
+/// seam-contracts' "Each round-trips": a conversation carried from a
+/// hibernated start, an agent kept open closed by its hibernation, the
+/// acts `hibernate` and `resume`, a start marked handing, and settings
+/// giving `hibernate_after` (54, 61, 198, 212, 213).
+#[test]
+fn a_hibernations_types_round_trip() {
+    round_trips(Conversation {
+        from: 1,
+        cause: CarryCause::Hibernated,
+        carried: false,
+        why: Some("its transcript is gone".into()),
+    });
+    assert_eq!(CarryCause::Hibernated.name(), "hibernated");
+    round_trips(CarryFrom {
+        start: identity(),
+        cause: CarryCause::Hibernated,
+        carry: true,
+        why: None,
+        resumed_by: Some(ResumedBy::Message),
+    });
+    round_trips(SessionClosed {
+        at: 3600,
+        by: ClosedBy::Hibernated,
+        ended_at: Some(3660),
+        left_in_pane: false,
+    });
+    assert_eq!(
+        serde_json::to_value(ClosedBy::Hibernated).unwrap(),
+        "hibernated"
+    );
+    for (act, word) in [(Act::Hibernate, "hibernate"), (Act::Resume, "resume")] {
+        round_trips(act);
+        assert_eq!(serde_json::to_value(act).unwrap(), word);
+    }
+    for why in [
+        HibernatedBy::Idle,
+        HibernatedBy::Caller,
+        HibernatedBy::KeptOpen,
+    ] {
+        round_trips(why);
+        assert_eq!(serde_json::to_value(why).unwrap(), why.name());
+    }
+    for by in [ResumedBy::Caller, ResumedBy::Message, ResumedBy::Answer] {
+        round_trips(by);
+        assert_eq!(serde_json::to_value(by).unwrap(), by.name());
+    }
+    let mut handing = held();
+    handing.stages[0].start.as_mut().expect("a start").handing = Some(1600);
+    round_trips(handing.clone());
+    assert_eq!(
+        serde_json::to_value(&handing).unwrap()["stages"][0]["start"]["handing"],
+        1600
+    );
+    round_trips(Settings {
+        hibernate_after: Some("20m".into()),
+        ..Settings::default()
+    });
+}
+
+/// seam-contracts' "A held state written before": its stages hibernate
+/// none and its starts hold no hibernation, no resume and no handing
+/// mark, and none is written back (74).
+#[test]
+fn a_hibernation_absent_from_a_state_written_before() {
+    let mut before = serde_json::to_value(held()).expect("held state as JSON");
+    for stage in before["place"]["kind"]["stages"].as_array_mut().unwrap() {
+        stage.as_object_mut().unwrap().remove("hibernates");
+    }
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert!(read.place.kind.stages.iter().all(|stage| !stage.hibernates));
+    for stage in &read.stages {
+        if let Some(start) = &stage.start {
+            assert_eq!(start.hibernated, None);
+            assert!(start.resumes.is_empty());
+            assert_eq!(start.handing, None);
+            assert_eq!(start.identity.resume, 0);
+        }
+    }
+    let mut again = serde_json::to_value(&read).expect("written again");
+    for stage in again["place"]["kind"]["stages"].as_array_mut().unwrap() {
+        assert_eq!(stage["hibernates"], false);
+        stage.as_object_mut().unwrap().remove("hibernates");
+    }
+    assert_eq!(again, before, "nothing of a hibernation written");
+    let start = &again["stages"][0]["start"];
+    for field in ["hibernated", "resumes", "handing"] {
+        assert!(start.get(field).is_none(), "{field} written");
+    }
 }
 
 /// The seam-contracts spec's scenario "A lost conversation's wait and
@@ -3676,6 +3856,66 @@ fn a_kind_with_its_stages() {
     assert_eq!(serde_json::to_value(Declared::Host).unwrap(), "host");
 }
 
+/// A kind whose conversation hibernates, settings giving its hibernate
+/// time `20m` taken whole as `keep_open` is, and a stage's JSON written
+/// before read as hibernating nothing (212, C.2, C.7; core.4).
+#[test]
+fn a_stage_that_hibernates_and_its_hibernate_time() {
+    let talk = Stage {
+        name: "talk".into(),
+        conversation: true,
+        deliverables: vec![],
+        waits: false,
+        quiet_limit: None,
+        send_back_to: None,
+        send_back_limit: None,
+        repeats: false,
+        hibernates: true,
+        ..stage()
+    };
+    let research = Kind {
+        name: "research".into(),
+        lands: false,
+        stages: vec![talk.clone()],
+        ..kind()
+    };
+    round_trips(research.clone());
+    assert_eq!(
+        serde_json::to_value(&talk).unwrap()["hibernates"],
+        serde_json::json!(true)
+    );
+    let twenty = Settings {
+        hibernate_after: Some("20m".into()),
+        ..settings()
+    };
+    round_trips(twenty.clone());
+    assert_eq!(
+        serde_json::to_value(&twenty).unwrap()["hibernate_after"],
+        "20m"
+    );
+    assert!(serde_json::to_value(settings())
+        .unwrap()
+        .get("hibernate_after")
+        .is_none());
+    let over = Settings {
+        hibernate_after: Some("1h".into()),
+        ..Settings::default()
+    };
+    assert_eq!(twenty.under(&over).hibernate_after.as_deref(), Some("1h"));
+    assert_eq!(
+        twenty
+            .under(&Settings::default())
+            .hibernate_after
+            .as_deref(),
+        Some("20m")
+    );
+    let mut before = serde_json::to_value(stage()).unwrap();
+    before.as_object_mut().unwrap().remove("hibernates");
+    let before: Stage = serde_json::from_value(before).unwrap();
+    assert!(!before.hibernates);
+    assert_eq!(before, stage());
+}
+
 #[test]
 fn a_held_state_with_where_its_kind_came_from() {
     // A held state whose kind came from the host's source acme, with its
@@ -3993,6 +4233,41 @@ fn an_identity_a_secret_and_a_stop_short() {
     assert_eq!(before.addressee, None);
     assert_eq!(before.commits, Vec::<Revision>::new());
     assert_eq!(before.screen, None);
+}
+
+/// seam-contracts' "A resume's identity round-trips" and "An identity
+/// written before": the second resume of talk's first start, as JSON
+/// and as flume spells it, and an identity's JSON with no resume read
+/// as a start's (33, 74, 213).
+#[test]
+fn an_identity_names_its_resume() {
+    let resumed = Identity {
+        repository: "/r".into(),
+        place: "research--one".into(),
+        stage: "talk".into(),
+        start: 1,
+        resume: 2,
+    };
+    round_trips(resumed.clone());
+    assert_eq!(resumed.to_string(), "flume:/r:research--one:talk:1.2");
+    assert!(resumed.to_string().ends_with(":talk:1.2"));
+    let json = serde_json::to_value(&resumed).unwrap();
+    assert_eq!(json["resume"], 2);
+    let start = Identity {
+        resume: 0,
+        ..resumed
+    };
+    assert!(serde_json::to_value(&start)
+        .unwrap()
+        .get("resume")
+        .is_none());
+    assert_eq!(start.to_string(), "flume:/r:research--one:talk:1");
+    let before: Identity =
+        serde_json::from_str(r#"{"repository":"/r","place":"bump--one","stage":"code","start":2}"#)
+            .unwrap();
+    assert_eq!(before, identity());
+    assert_eq!(before.resume, 0);
+    assert_eq!(before.to_string(), "flume:/r:bump--one:code:2");
 }
 
 #[test]

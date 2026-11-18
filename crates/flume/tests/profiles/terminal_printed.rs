@@ -451,6 +451,7 @@ fn the_printed_command_hands_a_running_agent_no_words() {
         place: "fix--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     assert!(matches!(
         Printed.open(

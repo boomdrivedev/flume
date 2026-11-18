@@ -9,7 +9,7 @@
 use flume::commands;
 use flume_conformance::engine::caller_acts::asks_ops;
 use flume_conformance::engine::role_waking::{configure_at, planner_run};
-use flume_conformance::engine::world::World;
+use flume_conformance::engine::world::{launch, World};
 use flume_core::{Answer, PlaceStatus};
 use flume_seams::*;
 use serde_json::Value;
@@ -289,6 +289,57 @@ fn a_bound_on_a_stage_hold() {
     );
     assert!(reason.contains("a bound is given only"), "{reason}");
     assert!(world.held(&id).expect("the place").holds.is_empty());
+}
+
+#[test]
+fn settle_on_quiet_starts_a_conversations_quiet_again() {
+    // 121, 212: a research place's talk, read quiet at t, takes a turn no
+    // settle reads and is quiet again at t plus 50 minutes, when its own
+    // quiet runs `flume settle <place> --on-quiet`; a settle at t plus 70
+    // minutes does not hibernate it, its quiet running from the on-quiet
+    // settle.
+    let world = World::new();
+    let id = world
+        .researching(launch("research", "one", Some("weigh it")))
+        .expect("talk begun");
+    let talk = World::identity("research", "one", "talk", 1);
+    world.settle(&id);
+    let t = world.host.now();
+    world.terminal.set_state(&talk, AgentState::Working);
+    world.host.advance(50 * 60);
+    world.terminal.set_state(&talk, AgentState::Waiting);
+    let place = &id.to_string();
+    match answered(&world, &["settle", place, "--on-quiet", "--json"]) {
+        Answer::Settled { .. } => {}
+        other => panic!("the settle answered {other:?}"),
+    }
+    let first_quiet = |world: &World| {
+        world.held(&id).expect("held").stages[0]
+            .start
+            .as_ref()
+            .and_then(|start| start.first_quiet)
+    };
+    assert_eq!(first_quiet(&world), Some(t + 50 * 60));
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    assert_eq!(world.stage_state(&id, "talk"), Some(StageState::Begun));
+    assert_eq!(
+        world
+            .terminal
+            .log
+            .calls()
+            .into_iter()
+            .filter(|call| call.starts_with("close"))
+            .count(),
+        0,
+        "talk's agent closed"
+    );
+    world.host.advance(40 * 60);
+    world.settle(&id);
+    assert_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Hibernating)
+    );
 }
 
 /// The planner's address, which acme declares with a run.

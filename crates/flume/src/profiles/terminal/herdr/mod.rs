@@ -1526,23 +1526,39 @@ pub fn plugin_state(flume_state: &Path) -> Option<PathBuf> {
 pub const PLUGIN: &str = "agentplot.flume";
 
 /// The agent's herdr name, made from the identity: at most 32 of the
-/// characters herdr's rule `[a-z][a-z0-9_-]{0,31}` allows, ending in a
-/// digest of the whole identity, so it is unique on the server (C.5;
-/// record 0018).
+/// characters herdr's rule `[a-z][a-z0-9_-]{0,31}` allows, its start's
+/// number followed by `r<resume>` for a resume, ending in a digest of the
+/// whole identity, its resume among it, so it is unique on the server and
+/// a resume's differs from its start's (213, C.5; record 0018; core.10).
 pub fn herdr_name(identity: &Identity) -> String {
-    let words: String = format!("f-{}-{}-{}", identity.place, identity.stage, identity.start)
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .take(23)
-        .collect();
+    let words: String = format!(
+        "f-{}-{}-{}",
+        identity.place,
+        identity.stage,
+        start_word(identity)
+    )
+    .to_lowercase()
+    .chars()
+    .map(|c| {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-' {
+            c
+        } else {
+            '-'
+        }
+    })
+    .take(23)
+    .collect();
     format!("{words}-{}", &digest(&identity.to_string())[..8])
+}
+
+/// The start's number in an agent's name, `<start>` for a start and
+/// `<start>r<resume>` for a resume of it, within the names' characters
+/// (213).
+fn start_word(identity: &Identity) -> String {
+    match identity.resume {
+        0 => identity.start.to_string(),
+        resume => format!("{}r{resume}", identity.start),
+    }
 }
 
 /// The variables of the login environment a pane is not given: the
@@ -2461,7 +2477,41 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         }
+    }
+
+    #[test]
+    fn a_resumes_herdr_name_differs_from_its_starts() {
+        // 213, C.5; core.10: a resume's name carries its resume after its
+        // start's number and its own digest, within herdr's rule.
+        let start = identity();
+        let resumed = Identity {
+            resume: 2,
+            ..identity()
+        };
+        let (start_name, resumed_name) = (herdr_name(&start), herdr_name(&resumed));
+        assert_ne!(start_name, resumed_name);
+        assert!(start_name.starts_with("f-fix--one-code-1-"), "{start_name}");
+        assert!(
+            resumed_name.starts_with("f-fix--one-code-1r2-"),
+            "{resumed_name}"
+        );
+        for name in [&start_name, &resumed_name] {
+            assert!(name.len() <= 32, "{name}");
+            assert!(name.starts_with(|c: char| c.is_ascii_lowercase()));
+            assert!(name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'));
+        }
+        let long = |resume| Identity {
+            place: format!("change--{}", "x".repeat(40)),
+            resume,
+            ..identity()
+        };
+        let (long_start, long_resumed) = (herdr_name(&long(0)), herdr_name(&long(1)));
+        assert_ne!(long_start, long_resumed, "the digest tells them apart");
+        assert_eq!((long_start.len(), long_resumed.len()), (32, 32));
     }
 
     #[test]

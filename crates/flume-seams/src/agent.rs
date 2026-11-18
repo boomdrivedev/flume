@@ -8,8 +8,12 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// The one name flume gives an agent: its repository, its place, its
-/// stage and which start of the stage it is (33). The repository is
-/// named by its id, taken from its common git directory (C.4).
+/// stage, which start of the stage it is, and which resume of that
+/// start, none for the start itself (30, 33, 213). The repository is
+/// named by its id, taken from its common git directory (C.4). A resume
+/// counts no start, so it keeps its start's number and carries its own
+/// after it, and no two live agents share an identity (212, 213;
+/// core.10).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Identity {
     /// The repository's id.
@@ -18,15 +22,31 @@ pub struct Identity {
     pub place: String,
     pub stage: String,
     pub start: u32,
+    /// Which resume of the start this agent is, `0` for the start
+    /// itself; left out of the JSON where it is zero, so an identity
+    /// written before reads as a start's (74, 213).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub resume: u32,
 }
 
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// `flume:<repository>:<place>:<stage>:<start>` for a start, and
+/// `flume:<repository>:<place>:<stage>:<start>.<resume>` for a resume of
+/// it (33, 213).
 impl fmt::Display for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "flume:{}:{}:{}:{}",
             self.repository, self.place, self.stage, self.start
-        )
+        )?;
+        if self.resume != 0 {
+            write!(f, ".{}", self.resume)?;
+        }
+        Ok(())
     }
 }
 

@@ -394,6 +394,21 @@ impl Engine {
                 conversation: declared.conversation,
                 group: change.and_then(|change| group_status(held, index, change)),
                 answers: session_answers(held, index),
+                hibernates: declared.hibernates,
+                hibernate_after: stage
+                    .start
+                    .as_ref()
+                    .filter(|_| declared.hibernates)
+                    .and_then(|start| start.from.get("hibernate_after").cloned()),
+                hibernated: stage
+                    .start
+                    .as_ref()
+                    .and_then(|start| start.hibernated.clone()),
+                resumes: stage
+                    .start
+                    .as_ref()
+                    .map(|start| start.resumes.clone())
+                    .unwrap_or_default(),
             })
             .collect();
         let group = current.and_then(|index| stages[index].group.clone());
@@ -577,7 +592,8 @@ pub(crate) fn group_status(
         | StageState::Lost
         | StageState::NeverBegun
         | StageState::Stopped
-        | StageState::EndedShort => {
+        | StageState::EndedShort
+        | StageState::Hibernating => {
             let given = stage.start.as_ref()?.group.as_ref()?;
             find_group(facts, given)?
         }
@@ -773,6 +789,10 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
                 .or_else(|| stage.refused_setting.clone()),
         ),
         StageState::Stopped => retry(Waits::Stopped, None),
+        // A hibernating stage waits on no move of its caller's, and is
+        // never stalled: a resume, a message or its answer wakes it
+        // (130, 212, 213).
+        StageState::Hibernating => None,
         StageState::Delivered | StageState::Finished if index == last => {
             if !place.kind.lands {
                 waits(Act::Done, None, Waits::Delivered, stage.since, None)

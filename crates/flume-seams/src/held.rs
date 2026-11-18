@@ -336,6 +336,10 @@ pub enum Act {
     /// program shows before it takes its prompt: what a place waits on
     /// for a dialog, never an act a caller asks of flume (34, 35).
     Answer,
+    /// A caller's hibernate of a stage whose kind hibernates it (212).
+    Hibernate,
+    /// A caller's resume of a hibernating stage (213).
+    Resume,
 }
 
 /// Why a place waits on its caller (56, 130).
@@ -556,6 +560,9 @@ pub enum ClosedBy {
     Stopped,
     AgentEnded,
     AccountSpent,
+    /// Its time passed and its stage's kind hibernates it: its session is
+    /// kept, and its answer resumes it (198, 212, 213).
+    Hibernated,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -1349,10 +1356,15 @@ pub enum StageState {
     Repeating,
     EndedShort,
     Finished,
+    /// Its kind hibernates it, and its agent was ended with its session
+    /// kept, once idle past its hibernate time or at its caller's word:
+    /// the stage neither ended nor moved on, and a resume, a message or a
+    /// caller's word resumes it (212, 213).
+    Hibernating,
 }
 
 impl StageState {
-    const ALL: [StageState; 16] = [
+    const ALL: [StageState; 17] = [
         StageState::NotReached,
         StageState::OnHold,
         StageState::WaitingOnReadiness,
@@ -1369,6 +1381,7 @@ impl StageState {
         StageState::Repeating,
         StageState::EndedShort,
         StageState::Finished,
+        StageState::Hibernating,
     ];
 
     /// The state's word in an end's key, `ended-short` for
@@ -1391,6 +1404,7 @@ impl StageState {
             StageState::Repeating => "repeating",
             StageState::EndedShort => "ended-short",
             StageState::Finished => "finished",
+            StageState::Hibernating => "hibernating",
         }
     }
 
@@ -1483,8 +1497,8 @@ pub struct RoomWait {
 /// why not where it may not (49, 146, 179, S79).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CarryFrom {
-    /// The start whose agent stopped at its account's usage limit, or
-    /// whose conversation was reported lost.
+    /// The start whose agent stopped at its account's usage limit, whose
+    /// conversation was reported lost, or whose agent hibernated (213).
     pub start: Identity,
     /// Why that start ended, spent in a wait written before.
     #[serde(default, skip_serializing_if = "CarryCause::is_spent")]
@@ -1494,11 +1508,17 @@ pub struct CarryFrom {
     /// Why it does not, where it may not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
+    /// What resumed a hibernated start: its caller's resume, a message
+    /// or its answer; none for any other carry, and in a wait written before
+    /// (213).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resumed_by: Option<ResumedBy>,
 }
 
 /// Why the start whose conversation a start carries ended: its agent
-/// stopped at its account's usage limit, or its conversation was reported
-/// lost and its caller retried it (49, 146, 179). Spent is written by no
+/// stopped at its account's usage limit, its conversation was reported
+/// lost and its caller retried it, or its agent hibernated and a resume
+/// carries it (49, 146, 179, 213). Spent is written by no
 /// field, so a wait or a conversation written before reads as spent.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1506,6 +1526,8 @@ pub enum CarryCause {
     #[default]
     Spent,
     Lost,
+    /// Its agent was hibernated, and a resume carries its session (213).
+    Hibernated,
 }
 
 impl CarryCause {
@@ -1513,6 +1535,7 @@ impl CarryCause {
         match self {
             CarryCause::Spent => "spent",
             CarryCause::Lost => "lost",
+            CarryCause::Hibernated => "hibernated",
         }
     }
 
@@ -1722,11 +1745,89 @@ pub struct StartHeld {
     /// written before (42, 198).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub answered: u32,
+    /// Its agent hibernated: since when, why, and the account it ran
+    /// under; none while it has not, and in a start written before (212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernated: Option<HibernationHeld>,
+    /// Each resume of the start, in order, the last its current agent's;
+    /// none for a start never resumed, and in a start written before
+    /// (56, 213).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resumes: Vec<ResumeHeld>,
+    /// Until when a message is being handed to its agent, marked in one
+    /// write before the message reads the agent and cleared once it ends:
+    /// no settle hibernates the agent, and no caller's hibernate is taken
+    /// unforced, while it stands (54, 212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handing: Option<Seconds>,
     /// Each message to its place waiting for its agent's take, where its
     /// agent's profile offers deliver, in the order sent; none in a start
     /// written before (53, 54, 75, 215).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub messages: Vec<MessageHeld>,
+}
+
+/// A start's agent hibernated: since when, why, and the account it ran
+/// under, none where it ran under none (212).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HibernationHeld {
+    pub since: Seconds,
+    pub why: HibernatedBy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+}
+
+/// Why a start's agent hibernated: idle past its hibernate time, at its
+/// caller's word, or at the end of its keep-open wait (198, 212).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HibernatedBy {
+    Idle,
+    Caller,
+    KeptOpen,
+}
+
+impl HibernatedBy {
+    pub fn name(self) -> &'static str {
+        match self {
+            HibernatedBy::Idle => "idle",
+            HibernatedBy::Caller => "caller",
+            HibernatedBy::KeptOpen => "kept_open",
+        }
+    }
+}
+
+/// One resume of a start: when, what started it, its agent's identity,
+/// the words it was given, none at a bare resume, and whether it carried
+/// the start's conversation or why not (56, 213).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeHeld {
+    pub at: Seconds,
+    pub by: ResumedBy,
+    pub identity: Identity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words: Option<String>,
+    pub conversation: Conversation,
+}
+
+/// What resumed a hibernating stage: its caller's resume, a message, or the
+/// answer to the stop-short its agent waits on (213).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResumedBy {
+    Caller,
+    Message,
+    Answer,
+}
+
+impl ResumedBy {
+    pub fn name(self) -> &'static str {
+        match self {
+            ResumedBy::Caller => "caller",
+            ResumedBy::Message => "message",
+            ResumedBy::Answer => "answer",
+        }
+    }
 }
 
 /// A message to a place waiting on its start for its agent's deliver

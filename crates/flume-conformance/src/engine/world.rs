@@ -275,6 +275,7 @@ pub fn stage(name: &str, deliverable: Option<Deliverable>, prompt: &str) -> Stag
         send_back_limit: None,
         makes: vec![],
         repeats: false,
+        hibernates: false,
     }
 }
 
@@ -292,6 +293,31 @@ pub fn kind(name: &str, lands: bool, stages: Vec<Stage>) -> Kind {
         fix: None,
         fix_limit: None,
     }
+}
+
+/// The repository's kind `research`, landing nothing, its one stage
+/// `talk` a conversation its kind hibernates, whose prompt asks for the
+/// words a retry gives (109, 212).
+pub fn research_that_hibernates() -> Kind {
+    let mut talk = stage(
+        "talk",
+        None,
+        "Talk {{name}} over.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    talk.hibernates = true;
+    kind("research", false, vec![talk])
+}
+
+/// The repository's kind `patch`, landing nothing, its one stage `code`
+/// delivering commits, which its kind hibernates (212).
+pub fn patch_that_hibernates() -> Kind {
+    let mut code = stage(
+        "code",
+        Some(Deliverable::Commits),
+        "Patch {{name}}.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    code.hibernates = true;
+    kind("patch", false, vec![code])
 }
 
 /// A launch of `kind` named `name` on `main` with `brief`.
@@ -331,6 +357,7 @@ impl World {
             place: format!("{kind}--{name}"),
             stage: stage.into(),
             start,
+            resume: 0,
         }
     }
 
@@ -436,6 +463,39 @@ impl World {
                 Ok(places.remove(0))
             }
             other => Err(format!("status answered {other:?}")),
+        }
+    }
+
+    /// The research place `name`, of the kind whose talk hibernates,
+    /// launched as `given` launches it and settled once, its talk begun
+    /// (212).
+    pub fn researching(&self, given: Launch) -> Result<PlaceId, String> {
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
+        let id = World::id("research", &given.name);
+        launched(&self.engine.launch(&given))?;
+        self.settle(&id);
+        match self.stage_state(&id, "talk") {
+            Some(StageState::Begun) => Ok(id),
+            other => Err(format!("talk did not begin: {other:?}")),
+        }
+    }
+
+    /// The patch place `name`, of the kind whose code hibernates,
+    /// launched and settled once, its code begun (212).
+    pub fn patching(&self, name: &str) -> Result<PlaceId, String> {
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
+        let id = World::id("patch", name);
+        launched(&self.engine.launch(&launch("patch", name, Some("mend it"))))?;
+        self.settle(&id);
+        match self.stage_state(&id, "code") {
+            Some(StageState::Begun) => Ok(id),
+            other => Err(format!("code did not begin: {other:?}")),
         }
     }
 

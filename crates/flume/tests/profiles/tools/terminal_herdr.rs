@@ -565,6 +565,7 @@ fn identity_of(place: &str, start: u32) -> Identity {
         place: place.into(),
         stage: "code".into(),
         start,
+        resume: 0,
     }
 }
 
@@ -2466,6 +2467,7 @@ fn the_row_follows_the_line() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     server.report(&pane, "working");
@@ -2557,6 +2559,7 @@ fn a_quiet_pane_with_nothing_delivered_is_not_ended() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&code).expect("the pane recorded");
     for _ in 0..3 {
@@ -2596,6 +2599,7 @@ fn s42_a_finished_turn_nobody_looked_at_delivers_and_the_next_stage_starts() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&code).expect("the pane recorded");
     server.report(&pane, "working");
@@ -2657,6 +2661,7 @@ fn a_launch_and_a_retry_each_send_their_agents_prompt_with_no_settle() {
         place: "two--one".into(),
         stage: "code".into(),
         start,
+        resume: 0,
     };
     let took = |pane: &Pane| {
         server
@@ -2738,6 +2743,7 @@ fn a_dialog_before_the_prompt_waits_on_a_person_with_its_words() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     std::thread::sleep(Duration::from_millis(1500));
@@ -2828,6 +2834,7 @@ fn an_agent_that_began_after_its_start_read_never_begun_is_begun_and_a_retry_lea
         place: "two--one".into(),
         stage: "talk".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     std::thread::sleep(Duration::from_millis(1500));

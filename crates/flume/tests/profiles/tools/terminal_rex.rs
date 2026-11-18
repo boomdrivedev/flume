@@ -695,6 +695,7 @@ fn identity_of(place: &str, start: u32) -> Identity {
         place: place.into(),
         stage: "code".into(),
         start,
+        resume: 0,
     }
 }
 
@@ -2154,6 +2155,7 @@ fn a_done_agent_with_nothing_delivered_waits_and_no_settle_ends_it() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let profile = fixture.profile();
     let block = profile.block(&code).expect("the block recorded");

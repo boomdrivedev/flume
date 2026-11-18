@@ -594,6 +594,7 @@ fn identity(stage: &str) -> Identity {
         place: "fix--one".into(),
         stage: stage.into(),
         start: 1,
+        resume: 0,
     }
 }
 
@@ -1342,6 +1343,7 @@ fn the_words_a_fixs_code_is_told() {
         place: "change--two".into(),
         stage: "verify".into(),
         start: 7,
+        resume: 0,
     };
     let way = seam.stop_short(&code);
     assert_eq!(seam.stop_short(&verify), way, "the verify agent's words");

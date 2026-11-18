@@ -11,6 +11,16 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "stage runs: A hibernating conversation over a day: talk hibernates, its pane gone through the terminal, and settles over a day read it hibernating at each, never lost or stuck, asking the terminal nothing of its agent",
+            cites: &["45", "212"],
+            run: a_hibernating_conversation_over_a_day,
+        },
+        Scenario {
+            name: "stage runs: A hibernating code stage: a caller hibernates code of a kind that hibernates it, settles past its quiet limit read it hibernating, never stuck, and another place waiting for room on a host at its bound starts",
+            cites: &["44", "70", "212"],
+            run: a_hibernating_code_stage,
+        },
+        Scenario {
             name:
                 "prompt: the brief whole and the way to stop short, rendered with nothing started",
             cites: &["5", "28", "29", "119"],
@@ -1424,5 +1434,75 @@ fn s25_an_agent_tries_to_submit(_: &()) -> Outcome {
     );
     ensure_eq!(world.queue.log.count("submit"), 0, "submissions");
     ensure_eq!(status.stages[0].state, StageState::Begun, "the code stage");
+    Ok(())
+}
+
+fn a_hibernating_conversation_over_a_day(_: &()) -> Outcome {
+    let world = World::new();
+    let id = world.researching(launch("research", "one", Some("weigh it")))?;
+    let talk = World::identity("research", "one", "talk", 1);
+    if let Some(reason) = world.engine().hibernate(&id, false).refusal() {
+        return Err(format!("the hibernate was refused: {reason}"));
+    }
+    world.terminal.kill(&talk);
+    let asked = |world: &World| {
+        world
+            .terminal
+            .log
+            .calls()
+            .into_iter()
+            .filter(|call| call.contains(&talk.to_string()))
+            .count()
+    };
+    let before = asked(&world);
+    for _ in 0..24 {
+        world.host.advance(60 * 60);
+        world.settle(&id);
+        ensure_eq!(
+            world.stage_state(&id, "talk"),
+            Some(StageState::Hibernating),
+            "talk at each settle"
+        );
+        ensure!(
+            world.status(&id)?.waiting_on.is_none(),
+            "a hibernating talk waits on its caller"
+        );
+    }
+    ensure_eq!(asked(&world), before, "calls on talk's agent over the day");
+    Ok(())
+}
+
+fn a_hibernating_code_stage(_: &()) -> Outcome {
+    let world = World::new();
+    world.host.set_bound(Some(1));
+    let id = world.patching("one")?;
+    launched(&world.engine.launch(&launch("fix", "two", Some("x"))))?;
+    let two = World::id("fix", "two");
+    world.settle(&two);
+    ensure_eq!(
+        world.stage_state(&two, "code"),
+        Some(StageState::WaitingForRoom),
+        "two's code while one's code runs"
+    );
+    if let Some(reason) = world.engine().hibernate(&id, false).refusal() {
+        return Err(format!("the hibernate was refused: {reason}"));
+    }
+    for _ in 0..4 {
+        world.host.advance(flume_core::QUIET_LIMIT);
+        world.settle(&id);
+        let code = world.held(&id).ok_or("no held state")?.stages.remove(0);
+        ensure_eq!(
+            (code.state, code.end.is_none()),
+            (StageState::Hibernating, true),
+            "one's code at each settle past its quiet limit"
+        );
+    }
+    ensure!(
+        world
+            .stage_state(&two, "code")
+            .is_some_and(StageState::running),
+        "two's code did not start in the room one's code freed: {:?}",
+        world.stage_state(&two, "code")
+    );
     Ok(())
 }

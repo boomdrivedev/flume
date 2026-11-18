@@ -22,10 +22,11 @@ with the layer it came from, and the account with what chose it.
 | `beside` | a pane the agent's pane opens beside, under herdr |
 | `mode` | how far the agent may act in its place without asking a person: one of flume's four modes, or a table of programs ([the mode](#the-mode)) |
 | `keep_open` | how long the agent is kept open for an answer once it stops short needing one, as `<n>`, `<n>s`, `<n>m` or `<n>h` ([how long an agent is kept open](#how-long-an-agent-is-kept-open)) |
+| `hibernate_after` | how long a conversation whose kind hibernates it may idle before flume hibernates it, in the same form ([how long a conversation idles](#how-long-a-conversation-idles)) |
 | `programs` | each program's own settings, in that program's words: a settings file and keys given inline ([a program's own settings](#a-programs-own-settings)) |
 
-`program` defaults to `claude` and `keep_open` to `1h`. Every other
-setting is empty unless a layer gives it.
+`program` defaults to `claude`, and `keep_open` and `hibernate_after`
+to `1h`. Every other setting is empty unless a layer gives it.
 
 ## The eight layers
 
@@ -40,7 +41,7 @@ Each setting comes from the first of these layers that gives it:
 | the host, for every agent | `host` | the host's `[agents]` |
 | the repository | `repository` | the repository's `[kinds.<kind>.agents]`, for a kind it does not declare, then its `[agents]` for every kind |
 | the kind | `kind` | the kind's own `agents` table and its stage's agent table |
-| flume's default | `default` | the program `claude` and a `keep_open` of `1h`, and nothing else |
+| flume's default | `default` | the program `claude`, a `keep_open` of `1h` and a `hibernate_after` of `1h`, and nothing else |
 
 Within a layer, a stage's own setting, in a further `.stages.<stage>`
 table, or `--agent <stage>.<field>=<value>` at the launch, comes before
@@ -51,7 +52,7 @@ Each setting is taken whole from the first layer that gives it, and a
 program's own settings key by key ([key by key](#key-by-key)).
 
 The host's layers give `model`, `effort`, `instructions`, `mode`,
-`keep_open` and `programs`, and never a program, since the host chooses a program by the accounts
+`keep_open`, `hibernate_after` and `programs`, and never a program, since the host chooses a program by the accounts
 it pools. flume reads no other key of a host's kind tables. Its tables
 for a stream, for every agent and for all of a repository's kinds name
 no stage, since a stage's name is its kind's. Each refuses a `program`,
@@ -75,8 +76,9 @@ table.
 The host's layers are read from its configuration as it stands at each
 agent's start, and so is every file they name. Change a model in the
 host's file and retry a stage, and the next agent runs on the new model,
-with no new launch. A mode, a `keep_open` or a program's own setting
-changed the same way reaches the next agent's start the same way, and
+with no new launch. A mode, a `keep_open`, a `hibernate_after` or a
+program's own setting changed the same way reaches the next agent's
+start the same way, a resume's among them, and
 an agent already started keeps its own. Every other layer is
 what the launch read: a place keeps its launch's settings, its
 repository's and its kind's for its whole life. It keeps every file
@@ -94,8 +96,8 @@ flume launch --kind change --name csv-export --brief "Export the ledger as CSV."
 ```
 
 The field is one of `program`, `model`, `effort`, `instructions`,
-`beside`, `session`, `mode`, `keep_open` and `programs`, with an
-optional stage before it. A
+`beside`, `session`, `mode`, `keep_open`, `hibernate_after` and
+`programs`, with an optional stage before it. A
 setting for a stage the kind does not hold refuses the launch, naming
 the stage, and so does a field that is none of these.
 
@@ -111,6 +113,12 @@ answer you know comes late, `--agent construct.keep_open=0` for a stage
 whose answer you'd rather a fresh agent take. Any other value refuses
 the launch, and so does `keep_open.<program>`, since it is one time for
 every program.
+
+`hibernate_after=<time>` gives how long a conversation whose kind
+hibernates it may idle before flume hibernates it, in the same form:
+`--agent talk.hibernate_after=20m`, or `--agent hibernate_after=0` for a
+conversation that should idle in its pane all day. Any other value
+refuses the launch, and so does `hibernate_after.<program>`.
 
 `programs.<program>.settings.<key>=<value>` gives one of a program's
 own settings ([a program's own settings](#a-programs-own-settings)).
@@ -251,8 +259,8 @@ instructions = "Check every scenario of the change's specs, not only its tasks."
 A declaration gives no environment: an `env` in any agents table of a
 repository's file or a launch's declaration refuses the launch, naming
 the field. What a host's agents run under is that host's to say. A
-`keep_open` refuses the launch the same way ([how long an agent is kept
-open](#how-long-an-agent-is-kept-open)).
+`keep_open` or a `hibernate_after` refuses the launch the same way
+([how long an agent is kept open](#how-long-an-agent-is-kept-open)).
 
 The repository's `[agents]`, flume's own table beside `[profiles]` and
 no part of any kind, gives settings to every agent of every kind the
@@ -273,8 +281,8 @@ kind comes before its table for every kind. `[agents]` gives `program`,
 the repository declares, as the repository's layer comes before the
 kind's. A repository whose own kind should differ on a key leaves the
 key out of `[agents]` and gives it in each kind's table. A `stages`, a
-`streams`, an `env`, a `keep_open` or a `beside` in `[agents]` refuses
-the launch, naming the field. A launch's declaration is not read for it.
+`streams`, an `env`, a `keep_open`, a `hibernate_after` or a `beside`
+in `[agents]` refuses the launch, naming the field. A launch's declaration is not read for it.
 
 ## How long an agent is kept open
 
@@ -326,6 +334,42 @@ gives it with its layer, as `keep_open = 1h (from default)`.
 An agent is kept open only where its multiplexer can type words into a
 running agent: under herdr, and never under the printed command
 ([places and herdr](/flume/guides/places-and-herdr/#an-agent-kept-open)).
+
+Where the stage's kind hibernates it, an agent kept open whose time
+passes is hibernated rather than let go: flume ends it once quiet and
+keeps its session, and its answer, by a message or a retry with words,
+resumes that session with the question and the answer
+([`flume hibernate` and `resume`](/flume/reference/commands/#flume-hibernate-and-resume)).
+
+## How long a conversation idles
+
+`hibernate_after` is how long a conversation whose kind hibernates it
+may be quiet before flume hibernates it. Its quiet runs from flume's
+first reading of it quiet, asking no one, with no work of its own
+running and no message being handed to it, and starts again whenever
+a reading finds otherwise, and at the settle its own quiet starts, since
+a turn ended then. Once it has been quiet that long, a settle ends the
+agent and keeps its session, freeing the host's room and the account.
+A message, `flume resume` or an answer resumes it in its own session,
+which carries what it had read. flume's own hour is about as long as an
+account's prompt cache lives, past which a resumed session pays the
+same as a fresh one.
+
+It is `<n>`, `<n>s`, `<n>m` or `<n>h`, `0` hibernating no conversation
+on its idling, and only the launch and the host's agents tables give
+it, a stage's own first in each, as `keep_open`:
+
+```toml
+[kinds.research.agents]
+hibernate_after = "20m"
+```
+
+A `hibernate_after` in any agents table of a repository's
+`.config/flume.toml` or of a kind's declaration refuses the launch,
+naming the table and the field. It is one time for every program, and
+a table of programs refuses the host's configuration or the launch.
+Each start resolves it and keeps it, a resume's among them, and status
+gives it with its layer, as `hibernates once idle 1h (from default)`.
 
 ## The effort
 

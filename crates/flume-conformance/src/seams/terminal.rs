@@ -144,6 +144,7 @@ fn identity(start: u32) -> Identity {
         place: "fix--one".into(),
         stage: "code".into(),
         start,
+        resume: 0,
     }
 }
 

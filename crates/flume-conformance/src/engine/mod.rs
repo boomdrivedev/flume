@@ -13,6 +13,7 @@ pub mod caller_waits;
 pub mod carried_conversations;
 pub mod end_delivery;
 pub mod held_state;
+pub mod hibernation;
 pub mod host_layers;
 pub mod host_queue;
 pub mod kind_sources;
@@ -82,6 +83,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(open::scenarios());
     every.extend(list::scenarios());
     every.extend(own_settings::scenarios());
+    every.extend(hibernation::scenarios());
     every.extend(base_places::scenarios());
     every.extend(open_sessions::scenarios());
     every

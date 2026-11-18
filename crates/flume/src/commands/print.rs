@@ -863,6 +863,16 @@ fn kept_open_line(waiting: &WaitingOn) -> Option<String> {
         ClosedBy::AgentEnded => "its agent ended",
         ClosedBy::AccountSpent => "its account spent",
         ClosedBy::Stopped => "its caller stopped it",
+        ClosedBy::Hibernated => {
+            let ended = match closed.ended_at {
+                Some(at) => format!("ended at {at}"),
+                None => "to be ended once quiet".to_string(),
+            };
+            return Some(format!(
+                "    its agent hibernated at {}, its time passed, {ended}: its answer resumes its session, by a message or a retry with --words",
+                closed.at
+            ));
+        }
     };
     let ended = match (closed.ended_at, closed.left_in_pane) {
         (Some(at), _) => format!("and ended at {at}"),
@@ -1476,6 +1486,7 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
         line.push_str(&format!(", refused: {setting}"));
     }
     let mut lines = vec![line];
+    lines.extend(hibernation_lines(stage));
     for answer in &stage.answers {
         lines.push(answer_line(answer));
     }
@@ -1485,6 +1496,62 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
             Made::Text(text) => text.clone(),
         };
         lines.push(format!("    made: {line}"));
+    }
+    lines
+}
+
+/// A stage's hibernation in the person's form: its hibernate time with its
+/// layer where its kind hibernates it, since when it hibernates and why,
+/// with the account it ran under, and each resume of its current start,
+/// when, by what, its agent and whether it carried its conversation (56,
+/// 212, 213).
+fn hibernation_lines(stage: &StageStatus) -> Vec<String> {
+    let mut lines = vec![];
+    if stage.hibernates {
+        lines.push(match &stage.hibernate_after {
+            Some(given) => format!(
+                "    hibernates once idle {} (from {})",
+                given.value,
+                word(json!(given.layer))
+            ),
+            None => "    hibernates".to_string(),
+        });
+    }
+    if let Some(held) = &stage.hibernated {
+        let account = held
+            .account
+            .as_ref()
+            .map(|account| format!(", its session kept under {account}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    hibernating since {}, {}{account}",
+            held.since,
+            word(json!(held.why))
+        ));
+    }
+    for resume in &stage.resumes {
+        let carried = match (&resume.conversation.why, resume.conversation.carried) {
+            (None, true) => format!(
+                "carries the conversation of start {}",
+                resume.conversation.from
+            ),
+            (why, _) => format!(
+                "starts afresh after start {}: {}",
+                resume.conversation.from,
+                why.as_deref().unwrap_or("its conversation stayed behind")
+            ),
+        };
+        let words = resume
+            .words
+            .as_ref()
+            .map(|words| format!(", given: {words}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    resumed at {} by {} as {}: {carried}{words}",
+            resume.at,
+            word(json!(resume.by)),
+            resume.identity
+        ));
     }
     lines
 }
@@ -1781,6 +1848,7 @@ fn unsettled_line(unsettled: &UnsettledStart) -> String {
 fn conversation_line(conversation: &Conversation) -> String {
     let lost = match conversation.cause {
         CarryCause::Lost => ", lost",
+        CarryCause::Hibernated => ", hibernated",
         CarryCause::Spent => "",
     };
     match &conversation.why {
@@ -4405,6 +4473,10 @@ mod tests {
                     2400,
                 ),
             ],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
@@ -4735,6 +4807,10 @@ mod tests {
                 title: Some("Two".into()),
             }),
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
@@ -4748,6 +4824,99 @@ mod tests {
             stage_lines(&once),
             vec!["  stage code: begun, started 2 times".to_string()]
         );
+    }
+
+    #[test]
+    fn a_hibernating_stage_and_its_resumes() {
+        // 56, 212, 213: a stage hibernating since when and why, its
+        // hibernate time with its layer, and each resume, whether it
+        // carried its conversation, in the person's form; and in the JSON
+        // form as fields.
+        let resumed = flume_seams::Identity {
+            repository: "r1".into(),
+            place: "research--one".into(),
+            stage: "talk".into(),
+            start: 1,
+            resume: 1,
+        };
+        let stage = StageStatus {
+            name: "talk".into(),
+            state: StageState::Hibernating,
+            starts: 1,
+            end: None,
+            refused_part: None,
+            refused_setting: None,
+            conversation: true,
+            group: None,
+            answers: vec![],
+            hibernates: true,
+            hibernate_after: Some(Given {
+                layer: Layer::Host,
+                value: "30m".into(),
+                file: None,
+            }),
+            hibernated: Some(flume_seams::HibernationHeld {
+                since: 7200,
+                why: flume_seams::HibernatedBy::Idle,
+                account: Some("work-1".into()),
+            }),
+            resumes: vec![flume_seams::ResumeHeld {
+                at: 3600,
+                by: flume_seams::ResumedBy::Message,
+                identity: resumed.clone(),
+                words: Some("where were we?".into()),
+                conversation: Conversation {
+                    from: 1,
+                    cause: CarryCause::Hibernated,
+                    carried: true,
+                    why: None,
+                },
+            }],
+        };
+        assert_eq!(
+            stage_lines(&stage),
+            vec![
+                "  stage talk: hibernating, started 1 times".to_string(),
+                "    hibernates once idle 30m (from host)".to_string(),
+                "    hibernating since 7200, idle, its session kept under work-1".to_string(),
+                format!(
+                    "    resumed at 3600 by message as {resumed}: carries the conversation of start 1, given: where were we?"
+                ),
+            ]
+        );
+        let json = serde_json::to_value(&stage).expect("the stage as JSON");
+        assert_eq!(json["hibernated"]["why"], "idle");
+        assert_eq!(json["resumes"][0]["by"], "message");
+        assert_eq!(json["hibernate_after"]["layer"], "host");
+        // A resume that could not carry its conversation reads why, and the
+        // agent's conversation after it its cause.
+        assert_eq!(
+            conversation_line(&Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: false,
+                why: Some("its transcript is gone".into()),
+            }),
+            "    starts afresh after start 1, hibernated: its transcript is gone"
+        );
+        assert_eq!(
+            conversation_line(&Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: true,
+                why: None,
+            }),
+            "    carries the conversation of start 1, hibernated"
+        );
+        // A stage whose kind does not hibernate it prints none of it.
+        let plain = StageStatus {
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
+            ..stage
+        };
+        assert_eq!(stage_lines(&plain).len(), 1);
     }
 
     #[test]
@@ -4955,6 +5124,10 @@ mod tests {
             conversation: false,
             group: None,
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),

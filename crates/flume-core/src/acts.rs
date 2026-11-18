@@ -7,6 +7,7 @@
 
 use crate::base::base_place;
 use crate::held::refresh_waiting;
+use crate::hibernate::{hibernated_waiting, hibernating};
 use crate::launch::and_list;
 use crate::open_sessions::waits_on_answer;
 use crate::start::{Start, Starts};
@@ -243,6 +244,11 @@ impl Engine {
             if let Some(kept) = self.kept_open(&held).filter(|kept| kept.index() == index) {
                 return self.answer(place, &kept, words, Act::Retry, None, answering);
             }
+            // An answer to an agent hibernated waiting on it resumes its
+            // session (42, 49, 213).
+            if hibernated_waiting(&held) == Some(index) {
+                return self.answer_hibernated(place, index, words, Act::Retry, answering);
+            }
         }
         // An answer naming its key, carried by a fresh agent: claimed on
         // its stop-short before any agent is ended or started, so a second
@@ -355,6 +361,7 @@ impl Engine {
                             cause: CarryCause::Lost,
                             carry: true,
                             why: None,
+                            resumed_by: None,
                         }),
                         ..RoomWait::default()
                     });
@@ -508,17 +515,34 @@ impl Engine {
     }
 
     /// Ends the place's agent and nothing else: the stage neither ends nor
-    /// moves on, and waits for a retry or a drop (51).
+    /// moves on, and waits for a retry or a drop (51). A stop of a place
+    /// whose stage hibernates ends no agent: the hibernation is over and
+    /// the stage reads stopped, or, where it waits on its answer, stays
+    /// ended short with its close read stopped, so nothing resumes it
+    /// after (42, 51, 212).
     pub fn stop(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
             return Answer::refused(format!("no place {place} stands on this host"));
         };
+        if hibernating(&read.state).is_some() || hibernated_waiting(&read.state).is_some() {
+            return match self.stop_hibernated(place) {
+                true => self.acted(Act::Stop, place),
+                false => Answer::refused(format!(
+                    "the place {place} moved before its hibernating stage was stopped"
+                )),
+            };
+        }
         if read.state.live_start().is_none() {
             return Answer::refused(format!("the place {place} has no live agent"));
         }
         match self.end_agent(place, force) {
-            Ok(()) => self.acted(Act::Stop, place),
+            Ok(()) => {
+                // An agent kept open whose close read hibernated, not yet
+                // ended: its caller's stop is the cause now (51, 212).
+                self.stop_hibernated(place);
+                self.acted(Act::Stop, place)
+            }
             Err(reason) => Answer::refused(reason),
         }
     }
@@ -642,8 +666,8 @@ impl Engine {
 
     /// Ends a conversation's agent once quiet, one not quiet only when
     /// forced, and the conversation then counts as delivered (109, 40).
-    /// A conversation whose agent was lost has no agent to end, and waits
-    /// on a retry or this finish (45).
+    /// A conversation whose agent was lost, or that hibernates, has no
+    /// agent to end, and waits on a retry or this finish (45, 212).
     pub fn finish(&self, place: &PlaceId, force: bool) -> Answer {
         self.settle_attended();
         let Some(read) = self.store.read(place) else {
@@ -653,7 +677,9 @@ impl Engine {
         let current = held.current.filter(|index| {
             let state = held.stages[*index].state;
             held.place.kind.stages[*index].conversation
-                && (state.running() || state == StageState::Lost)
+                && (state.running()
+                    || state == StageState::Lost
+                    || state == StageState::Hibernating)
         });
         let Some(index) = current else {
             return Answer::refused(format!("the place {place} runs no conversation"));
@@ -693,8 +719,11 @@ impl Engine {
     /// A message to a place whose stage ended short needing an answer is that
     /// answer while its agent is kept open for it, carrying the stage on
     /// in its session, and is refused, naming the retry that answers it,
-    /// once its agent is not (42, 53 to 55, 198). It names no key and no
-    /// one who gives it: [`Engine::message_answering`] with neither.
+    /// once its agent is not, but where its agent hibernated, whose session
+    /// the answer resumes; and a message to a place whose stage hibernates
+    /// resumes it with the message's words (42, 53 to 55, 198, 213). It
+    /// names no key and no one who gives it: [`Engine::message_answering`]
+    /// with neither.
     pub fn message(&self, place: &PlaceId, words: &str, bound: Option<Seconds>) -> Answer {
         self.message_answering(place, words, bound, &Answering::default())
     }
@@ -724,12 +753,23 @@ impl Engine {
             }
         }
         if let Some(stage) = waits_on_answer(&read.state) {
-            return match self.kept_open(&read.state) {
-                Some(kept) => self.answer(place, &kept, words, Act::Message, bound, answering),
-                None => Answer::refused(format!(
+            return match (
+                self.kept_open(&read.state),
+                hibernated_waiting(&read.state),
+            ) {
+                (Some(kept), _) => self.answer(place, &kept, words, Act::Message, bound, answering),
+                (None, Some(index)) => {
+                    self.answer_hibernated(place, index, words, Act::Message, answering)
+                }
+                (None, None) => Answer::refused(format!(
                     "the stage {stage} of {place} waits on an answer and its agent is no longer kept open; give the answer as a retry: flume retry {place} --words <answer>"
                 )),
             };
+        }
+        // A message to a hibernating stage resumes it, its words the resumed
+        // agent's prompt (53, 213).
+        if let Some(index) = hibernating(&read.state) {
+            return self.message_hibernating(place, index, words);
         }
         let Some((_, start)) = read.state.live_start() else {
             return Answer::refused(format!("the place {place} has no live agent"));
@@ -746,7 +786,11 @@ impl Engine {
     /// terminal's send, and read received within 60 seconds of each
     /// sending or sent once more. When it was last sent and read
     /// received, or the message's words saying why nothing more was typed
-    /// (37, 38, 53, 54; core.11).
+    /// (37, 38, 53, 54; core.11). The start is marked handing, in one
+    /// write before the agent is read, until the bound and the readings of
+    /// its receipt pass, and the mark is cleared once the hand ends
+    /// whatever it came to, so no settle hibernates the agent and no
+    /// caller's hibernate is taken unforced while it stands (212).
     pub(crate) fn hand(
         &self,
         place: &PlaceId,
@@ -764,6 +808,7 @@ impl Engine {
         };
         let folder = self.store.folder(place);
         let deadline = self.host.now() + bound.unwrap_or(MESSAGE_BOUND);
+        let _handing = Handing::mark(self, place, identity, deadline + 2 * RECEIVED_WITHIN);
         if agent.deliver() == Offered::Offered {
             return self.hand_by_take(place, start, agent.as_ref(), words, deadline, by);
         }
@@ -813,6 +858,41 @@ impl Engine {
             }
         }
         Err(format!("the agent {identity} did not receive the words"))
+    }
+
+    /// A stop of the place's hibernating stage: no agent to end, its
+    /// hibernation over and the stage stopped, or, where it waits on its
+    /// answer and its agent's close reads hibernated, its close read
+    /// stopped, in one write; true when it was written (42, 51, 212).
+    fn stop_hibernated(&self, place: &PlaceId) -> bool {
+        self.update(place, |held| {
+            if let Some(index) = hibernating(held) {
+                let stage = &mut held.stages[index];
+                stage.state = StageState::Stopped;
+                if let Some(start) = stage.start.as_mut() {
+                    start.hibernated = None;
+                }
+                return Step::Write(true);
+            }
+            let Some(index) = held.current.filter(|_| held.phase == Phase::Live) else {
+                return Step::Keep(false);
+            };
+            let stage = &mut held.stages[index];
+            if stage.state != StageState::EndedShort {
+                return Step::Keep(false);
+            }
+            match stage.end.as_mut().and_then(|end| end.closed.as_mut()) {
+                Some(closed) if closed.by == ClosedBy::Hibernated => {
+                    closed.by = ClosedBy::Stopped;
+                    if let Some(start) = stage.start.as_mut() {
+                        start.hibernated = None;
+                    }
+                    Step::Write(true)
+                }
+                _ => Step::Keep(false),
+            }
+        })
+        .unwrap_or(false)
     }
 
     /// Hands the agent of `start`, whose profile offers deliver, `words`
@@ -970,6 +1050,55 @@ impl Engine {
             tidy: None,
         }
     }
+}
+
+/// A start's mark that a message is being handed to its agent, written
+/// when made and cleared when dropped, where it still stands as written
+/// (54, 212).
+struct Handing<'a> {
+    engine: &'a Engine,
+    place: PlaceId,
+    identity: Identity,
+    until: Seconds,
+}
+
+impl<'a> Handing<'a> {
+    fn mark(engine: &'a Engine, place: &PlaceId, identity: &Identity, until: Seconds) -> Self {
+        engine.update(place, |held| match start_under(held, identity) {
+            Some(start) => {
+                start.handing = Some(until);
+                Step::Write(())
+            }
+            None => Step::Keep(()),
+        });
+        Handing {
+            engine,
+            place: place.clone(),
+            identity: identity.clone(),
+            until,
+        }
+    }
+}
+
+impl Drop for Handing<'_> {
+    fn drop(&mut self) {
+        let until = self.until;
+        self.engine.update(&self.place, |held| {
+            match start_under(held, &self.identity) {
+                Some(start) if start.handing == Some(until) => {
+                    start.handing = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
+    }
+}
+
+/// The start under `identity` in `held`, where a stage holds it.
+fn start_under<'a>(held: &'a mut HeldState, identity: &Identity) -> Option<&'a mut StartHeld> {
+    let index = held.index_of(identity)?;
+    held.stages[index].start.as_mut()
 }
 
 /// A retry's words for a stage: where the stage ended short, the

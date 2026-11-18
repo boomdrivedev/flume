@@ -27,6 +27,21 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "status: A hibernating conversation: status of a place whose talk hibernated idle under the host's hibernate_after 30m gives talk hibernating since then, why idle, its hibernate_after from host and no live agent",
+            cites: &["56", "212", "S124"],
+            run: a_hibernating_conversations_status,
+        },
+        Scenario {
+            name: "status: A resumed stage: status of a place whose talk was resumed by a message, carrying its conversation, gives talk's one resume, by message, its agent's identity ending talk:1.1, carried",
+            cites: &["56", "213"],
+            run: a_resumed_stages_status,
+        },
+        Scenario {
+            name: "status: A resume not carried: status of a place whose talk's resume found its transcript gone gives the resume not carried with the profile's words why, naming no path, and talk's second start fresh",
+            cites: &["56", "213", "S127"],
+            run: a_resume_not_carried_in_status,
+        },
+        Scenario {
             name: "status: asked three times of one place, it answers the same and starts or messages nothing",
             cites: &["S14", "57", "60", "69", "72"],
             run: s14_asked_three_times,
@@ -2885,4 +2900,132 @@ fn drop_field(value: &mut serde_json::Value, path: &[&str]) -> bool {
     } else {
         drop_field(inner, rest)
     }
+}
+
+/// The stage `name` of a place's status.
+fn stage_status(status: &PlaceStatus, name: &str) -> Result<flume_core::StageStatus, String> {
+    status
+        .stages
+        .iter()
+        .find(|stage| stage.name == name)
+        .cloned()
+        .ok_or_else(|| format!("status gives no stage {name}"))
+}
+
+fn a_hibernating_conversations_status(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .host
+        .set_every_agent(super::agent_settings::hibernates_after("30m"));
+    let id = super::hibernation::research(&world, "one")?;
+    world.settle(&id);
+    world.host.advance(30 * 60);
+    let at = world.host.now();
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    ensure_eq!(
+        (
+            talk.state,
+            talk.hibernates,
+            talk.hibernated.map(|held| (held.since, held.why)),
+            talk.hibernate_after,
+            status.agent.is_none()
+        ),
+        (
+            StageState::Hibernating,
+            true,
+            Some((at, HibernatedBy::Idle)),
+            Some(Given {
+                layer: Layer::Host,
+                value: "30m".into(),
+                file: None,
+            }),
+            true
+        ),
+        "talk's state, whether it hibernates, its hibernation, its hibernate_after and whether status gives an agent"
+    );
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    let stage = &json["stages"][0];
+    ensure_eq!(
+        (
+            stage["state"].clone(),
+            stage["hibernated"]["why"].clone(),
+            stage["hibernate_after"]["layer"].clone(),
+            stage["hibernate_after"]["value"].clone()
+        ),
+        (
+            serde_json::json!("hibernating"),
+            serde_json::json!("idle"),
+            serde_json::json!("host"),
+            serde_json::json!("30m")
+        ),
+        "talk's state, why it hibernated and its hibernate_after in the JSON"
+    );
+    Ok(())
+}
+
+fn a_resumed_stages_status(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    taken(&world.engine().message(&id, "where were we?", None))?;
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    ensure_eq!(talk.resumes.len(), 1, "talk's resumes");
+    let resume = &talk.resumes[0];
+    ensure_eq!(
+        (
+            resume.by,
+            resume.conversation.carried,
+            resume.conversation.cause
+        ),
+        (ResumedBy::Message, true, CarryCause::Hibernated),
+        "talk's resume"
+    );
+    ensure!(
+        resume.identity.to_string().ends_with("talk:1.1"),
+        "the resume's agent's identity: {}",
+        resume.identity
+    );
+    let agent = status.agent.ok_or("status gives no agent")?;
+    ensure!(
+        agent.identity.ends_with("talk:1.1"),
+        "the agent status gives: {}",
+        agent.identity
+    );
+    Ok(())
+}
+
+fn a_resume_not_carried_in_status(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    let gone = "its transcript is gone, cleaned after thirty days";
+    world.agent.carry_to(
+        flume_fakes::FakeAgent::LOGIN,
+        Carry::No { why: gone.into() },
+    );
+    taken(&world.engine().message(&id, "carry on", None))?;
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    let agent = status.agent.clone().ok_or("status gives no agent")?;
+    ensure_eq!(
+        (talk.starts, talk.resumes.is_empty(), agent.conversation),
+        (
+            2,
+            true,
+            Some(Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: false,
+                why: Some(gone.into()),
+            })
+        ),
+        "talk's starts, its resumes and its agent's conversation"
+    );
+    let json = serde_json::to_string(&status).map_err(|error| error.to_string())?;
+    ensure!(
+        !json.contains("/homes/") && !json.contains("CLAUDE_CONFIG_DIR="),
+        "status names a path: {json}"
+    );
+    Ok(())
 }

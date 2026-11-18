@@ -709,6 +709,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         };
         claude.command(
             &folder.to_string_lossy(),
