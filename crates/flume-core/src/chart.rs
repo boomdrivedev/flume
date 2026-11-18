@@ -171,7 +171,22 @@ impl Engine {
                     return false;
                 }
             };
-        if tick.fired.is_empty() {
+        // The run is over once every top region holds a final state, as the
+        // tick leaves it (176).
+        let over = charts.chart.regions.iter().all(|(name, region)| {
+            tick.next
+                .regions
+                .get(name)
+                .and_then(|held| region.states.get(held))
+                .is_some_and(|state| state.is_final)
+        });
+        // A submission failed or conflicting that the tick takes nowhere
+        // leaves the run over and the place waiting on its caller with the
+        // merge queue's words (112, 130).
+        let untaken = (over && held.submission.waiting.is_none() && !held.submission.due)
+            .then(|| failure_words(&held.submission))
+            .flatten();
+        if tick.fired.is_empty() && over == chart.over && untaken.is_none() {
             return false;
         }
         // Each stage `start_sessions` was planned at, by its path, with the
@@ -217,6 +232,24 @@ impl Engine {
                 return Step::Keep(vec![]);
             }
             chart.state = next.clone();
+            let turned = over && !chart.over;
+            chart.over = over;
+            if turned && held.place.kind.lands {
+                // Submitted once no session of it is live (111).
+                held.submission.due = true;
+                held.submission.waiting = None;
+            } else if turned && held.role.is_some() {
+                // A role's run is done at its run's end, with no caller's
+                // word (114, 132; core.28).
+                held.phase = Phase::Over {
+                    over: Over::Done,
+                    kept: None,
+                };
+            }
+            if let Some(words) = &untaken {
+                held.submission.waiting = Some(words.clone());
+                held.submission.waiting_since = Some(now);
+            }
             for (path, words) in &sent_back {
                 chart.stages.entry(path.clone()).or_default().send_backs += 1;
                 if words.is_some() {
@@ -645,6 +678,9 @@ fn snapshot_of(
         Value::Integer(i64::from(submission.submits)),
     )]);
     let outcome = match &submission.verdict {
+        // A submission due is one in flight: the outcome of the one before
+        // it is no longer the newest (111, 133).
+        _ if submission.due => Some("open"),
         Some(verdict) => Some(verdict_word(verdict)),
         None if submission.submits > 0 => Some("open"),
         None => None,
@@ -662,6 +698,19 @@ fn snapshot_of(
         responses: vec![],
         owner: None,
         children: vec![],
+    }
+}
+
+/// The merge queue's words of a failed or conflicting submission, as a
+/// statechart place's held state words them; none for any other outcome
+/// (112, 133).
+pub(crate) fn failure_words(submission: &SubmissionHeld) -> Option<String> {
+    match submission.verdict.as_ref()? {
+        Verdict::Failed { words } => Some(format!("the submission failed: {words}")),
+        Verdict::Conflict { words, .. } => {
+            Some(format!("the submission conflicted with its base: {words}"))
+        }
+        _ => None,
     }
 }
 

@@ -784,9 +784,30 @@ fn chart_waiting_on(held: &HeldState) -> Option<WaitingOn> {
             closed: None,
         });
     }
-    (0..held.stages.len())
+    let session = (0..held.stages.len())
         .filter(|index| held.stages[*index].session.is_some() && crate::chart::works(held, *index))
-        .find_map(|index| stage_waits(held, index))
+        .find_map(|index| stage_waits(held, index));
+    if session.is_some() {
+        return session;
+    }
+    let chart = held.chart.as_ref()?;
+    // A run over whose kind lands nothing waits on its caller's done (114,
+    // 130).
+    (chart.over && !held.place.kind.lands).then(|| WaitingOn {
+        act: Act::Done,
+        stage: None,
+        why: Waits::Delivered,
+        since: chart
+            .state
+            .entered_at
+            .iter()
+            .filter(|(path, _)| !path.contains('.'))
+            .map(|(_, at)| *at)
+            .max(),
+        words: None,
+        open_until: None,
+        closed: None,
+    })
 }
 
 /// The move the stage at `index` waits on its caller for from its own

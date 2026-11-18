@@ -6,6 +6,7 @@
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Answering, Retry, Waits};
+use flume_fakes::Plan;
 use flume_seams::*;
 use std::collections::BTreeMap;
 
@@ -85,6 +86,26 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "statechart: a launch's hold naming a stage's path holds each of its sessions, the place waiting on a retry, and a retry naming the path starts them",
             cites: &["47", "130", "175"],
             run: a_hold_on_a_stages_path,
+        },
+        Scenario {
+            name: "statechart: a kind whose build delivers and whose test passes, its top region reaching passed, is submitted through the merge queue once, as after a last stage's delivery",
+            cites: &["111", "176", "S76"],
+            run: persona_passes_and_is_submitted,
+        },
+        Scenario {
+            name: "statechart: a kind that does not land, each top region final, waits on its caller, whose done makes its work over",
+            cites: &["114", "130"],
+            run: a_run_that_does_not_land,
+        },
+        Scenario {
+            name: "statechart: a failed submission a final state's transition takes moves the run back to build at the next settle, build's sessions prompted with the merge queue's words",
+            cites: &["112", "176"],
+            run: a_failure_taken_back_to_a_stage,
+        },
+        Scenario {
+            name: "statechart: a failed submission no transition takes leaves the place waiting on its caller with the merge queue's words, and its retry submits it again",
+            cites: &["112", "130"],
+            run: a_failure_nothing_takes,
         },
         Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
@@ -1206,5 +1227,179 @@ fn a_hold_on_a_stages_path(_: &()) -> Outcome {
         "the retry was refused: {answer:?}"
     );
     ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    Ok(())
+}
+
+/// `bt` landing, its final state `passed` taking a failed submission back
+/// to `build` where `back` (111, 112, 176).
+fn landing(back: bool) -> Kind {
+    let mut text = BUILD_TEST.replace(
+        "title = \"Build and test\"\n",
+        "title = \"Build and test\"\nlands = true\n",
+    );
+    if back {
+        text = text.replace(
+            "[kinds.bt.regions.main.states.passed]\nfinal = true\n",
+            "[kinds.bt.regions.main.states.passed]\nfinal = true\ntransitions = [{ when = { ev = \"place.submission\", is = \"failed\" }, to = \"build\" }]\n",
+        );
+    }
+    build_test(&text, 2, true)
+}
+
+/// `bt`'s place `a` run to its test stage's delivery and the run's end at
+/// `passed`, its submission made in that settle.
+fn to_passed(world: &World) -> Result<PlaceId, String> {
+    let id = to_test(world, 1)?;
+    world.commit("bt/a", &["report.md"]);
+    world.settle(&id);
+    ensure_eq!(
+        at(world, &id, "main.test.run"),
+        Some("passed".to_string()),
+        "the test stage's end"
+    );
+    world.settle(&id);
+    Ok(id)
+}
+
+fn persona_passes_and_is_submitted(_: &()) -> Outcome {
+    let world = World::new();
+    world.queue.plan_submits(vec![Plan::Hold]);
+    world.kinds.set_kinds(REPOSITORY, vec![landing(false)]);
+    let id = to_passed(&world)?;
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("passed".to_string()),
+        "the top region"
+    );
+    ensure!(
+        world
+            .held(&id)
+            .and_then(|held| held.chart)
+            .is_some_and(|chart| chart.over),
+        "the run is not over"
+    );
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    settles(&world, &id, 2);
+    ensure_eq!(
+        world.queue.log.count("submit"),
+        1,
+        "submissions after two more settles"
+    );
+    Ok(())
+}
+
+fn a_run_that_does_not_land(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![one(&one_stage(false, "stage", ON_PASSED), listed(1))],
+    );
+    launched(&world.engine.launch(&launch("one", "a", Some("the work"))))?;
+    let id = World::id("one", "a");
+    world.settle(&id);
+    world.commit("one/a", &["work.rs"]);
+    settles(&world, &id, 2);
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("done".to_string()),
+        "the region"
+    );
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage, waiting.why),
+        (Act::Done, None, Waits::Delivered),
+        "the move the place waits on"
+    );
+    ensure_eq!(world.queue.log.count("submit"), 0, "submissions");
+    let answer = world.engine.done(&id, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the done was refused: {answer:?}"
+    );
+    ensure!(
+        world.held(&id).is_none_or(|held| matches!(
+            held.phase,
+            Phase::Over {
+                over: Over::Done,
+                ..
+            } | Phase::Gone { .. }
+                | Phase::Tidied { .. }
+        )),
+        "the place's work is not over"
+    );
+    Ok(())
+}
+
+fn a_failure_taken_back_to_a_stage(_: &()) -> Outcome {
+    let world = World::new();
+    let words = "check test-x failed";
+    world
+        .queue
+        .plan_submits(vec![Plan::Fail(words.into()), Plan::Hold]);
+    world.kinds.set_kinds(REPOSITORY, vec![landing(true)]);
+    let id = to_passed(&world)?;
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("build".to_string()),
+        "the region the failure took"
+    );
+    world.settle(&id);
+    let identity = World::identity("bt", "a", "main.build#2/1", 1);
+    let prompt = world
+        .prompt(&id, &identity)
+        .ok_or("build's second entry was given no prompt")?;
+    ensure!(
+        prompt.contains(words),
+        "build's second entry's prompt holds not the merge queue's words: {prompt}"
+    );
+    ensure!(
+        world.status(&id)?.waiting_on.is_none(),
+        "the place waits on its caller"
+    );
+    Ok(())
+}
+
+fn a_failure_nothing_takes(_: &()) -> Outcome {
+    let world = World::new();
+    let words = "check test-x failed";
+    world
+        .queue
+        .plan_submits(vec![Plan::Fail(words.into()), Plan::Hold]);
+    world.kinds.set_kinds(REPOSITORY, vec![landing(false)]);
+    let id = to_passed(&world)?;
+    world.settle(&id);
+    ensure_eq!(
+        at(&world, &id, "main"),
+        Some("passed".to_string()),
+        "the region"
+    );
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage, waiting.why),
+        (Act::Retry, None, Waits::Submission),
+        "the move the place waits on"
+    );
+    ensure!(
+        waiting
+            .words
+            .as_deref()
+            .is_some_and(|said| said.contains(words)),
+        "the wait gives not the merge queue's words: {:?}",
+        waiting.words
+    );
+    let answer = world.engine.retry(&id, Retry::Submission, None, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the retry was refused: {answer:?}"
+    );
+    ensure_eq!(world.queue.log.count("submit"), 2, "submissions");
     Ok(())
 }

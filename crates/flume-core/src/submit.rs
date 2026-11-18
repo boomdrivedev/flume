@@ -447,6 +447,13 @@ impl Engine {
             if held.phase != Phase::Live {
                 return Step::Write(None);
             }
+            // A statechart place's outcome is evidence its statechart reads
+            // at the next tick: no fix round starts, and its words wait for
+            // the stage the run enters next (112, 176).
+            if let Some(chart) = held.chart.as_mut() {
+                chart.words = crate::chart::failure_words(&held.submission);
+                return Step::Write(None);
+            }
             if base_place(&held.place.kind) {
                 let submission = held.submission.id.clone().unwrap_or_default();
                 let found = Found::submission(&held.place, &submission, &verdict, onto.as_ref());
