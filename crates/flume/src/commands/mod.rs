@@ -206,8 +206,9 @@ enum Command {
         /// One of the plugin's hooks; any other does nothing.
         event: String,
     },
-    /// From an agent flume started: it started, or it received a prompt
-    /// (35, 89, 135).
+    /// From an agent flume started: it started, or it received a prompt;
+    /// or, run by a terminal flume opened in the program's place, its
+    /// launcher, which becomes the program (35, 89, 135, 171, C.4).
     Ack {
         #[command(subcommand)]
         ack: Ack,
@@ -404,6 +405,25 @@ enum Ack {
         #[arg(long)]
         mode: Option<String>,
     },
+    /// Run by a terminal flume opened, in the program's place, under the
+    /// identity and secret its environment names: it checks the start,
+    /// writes its word once and becomes the program in its own process,
+    /// or runs nothing and says why (35, 41, 161, 171, C.4).
+    ///
+    /// It compares each variable the start's record names, by its digest
+    /// keyed by the secret, and the program with the one the record
+    /// names. Where nothing differs it writes its word, naming its
+    /// process, and becomes the program with its arguments, passed whole.
+    /// Where anything differs, a word already stands for the start, or no
+    /// start is under its identity and secret, it runs nothing and exits
+    /// 1; a difference is written in its word, by each variable's name
+    /// alone, and settles the place.
+    Launched {
+        /// The program, by its path or its name, and its arguments, after
+        /// `--`.
+        #[arg(last = true, required = true, value_name = "PROGRAM")]
+        command: Vec<String>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -557,6 +577,13 @@ where
                 }
                 Ack::Received { digest, mode } => {
                     crate::profiles::ack_received(digest, mode.as_deref(), build)
+                }
+                Ack::Launched { command } => {
+                    return Outcome {
+                        text: format!("refused: {}", crate::profiles::ack_launched(command, build)),
+                        usage: true,
+                        code: 1,
+                    };
                 }
             };
             return match acked {

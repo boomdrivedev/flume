@@ -662,6 +662,40 @@ pub fn ack_started(
     )
 }
 
+/// flume's launcher, run by a terminal flume opened in the program's
+/// place, for the start this process's environment names: `command`, the
+/// program and its arguments, is run in this process, which becomes it,
+/// where the start's record matches; otherwise nothing runs. It answers
+/// only where nothing ran, saying why (35, 41, 161, 171, C.4; design 1,
+/// 2).
+pub fn ack_launched(command: &[String], build: &dyn Fn() -> Result<Engine, String>) -> String {
+    use std::os::unix::process::CommandExt;
+    let Some((program, args)) = command.split_first() else {
+        return "no program is given after `--`, so nothing runs".into();
+    };
+    let binary = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .unwrap_or_else(|_| "flume".into());
+    match agent::launcher::launch(
+        &agent::launcher::Launching::of_process(),
+        program,
+        args,
+        build,
+        &binary,
+        |name| std::env::var_os(name).map(|value| value.to_string_lossy().into_owned()),
+        &std::env::var("PATH").unwrap_or_default(),
+        std::process::id(),
+    ) {
+        Ok(becomes) => {
+            let error = std::process::Command::new(&becomes.program)
+                .args(&becomes.args)
+                .exec();
+            format!("{} could not be run: {error}", becomes.program.display())
+        }
+        Err(why) => why,
+    }
+}
+
 /// The received ack of the agent this process's environment names: the
 /// submitted prompt's digest, not taken at the start's first prompt where
 /// the mode the session runs in, as its program names it, is not the one
