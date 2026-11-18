@@ -20,6 +20,11 @@ use std::sync::{Arc, Mutex};
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "hibernation: Nothing pending while asleep: two hours after talk hibernated, a watch's settle settles no place and asks the terminal and the agent program nothing of the place, and talk still reads hibernating",
+            cites: &["212", "225"],
+            run: nothing_pending_while_asleep,
+        },
+        Scenario {
             name: "hibernation: A conversation hibernated at its caller's word: its quiet agent is ended, and talk reads hibernating since then, why caller",
             cites: &["31", "212"],
             run: a_conversation_hibernated_at_its_callers_word,
@@ -1453,6 +1458,30 @@ fn spent_after_a_resume(_: &()) -> Outcome {
         start.prompt.text
     );
     Ok(())
+}
+
+/// A place whose talk hibernates waits on its caller's resume, a message
+/// or its answer alone, so nothing is pending on it: a watch's settle
+/// reads none of it (212, 225; core.62).
+fn nothing_pending_while_asleep(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, at) = hibernated_talk(&world, "one")?;
+    world.host.advance(2 * 60 * 60);
+    world.terminal.log.clear();
+    world.agent.log.clear();
+    match world.engine.settle_every(120) {
+        Answer::Settled { places, .. } => ensure!(
+            !places.contains(&id),
+            "the watch's settle settled {id}: {places:?}"
+        ),
+        other => return Err(format!("the watch's settle answered {other:?}")),
+    }
+    let asked = [world.terminal.log.calls(), world.agent.log.calls()].concat();
+    ensure!(
+        !asked.iter().any(|call| call.contains("research--one")),
+        "the watch's settle asked of the place: {asked:?}"
+    );
+    hibernating(&world, &id, at, HibernatedBy::Caller, 1)
 }
 
 fn a_hibernating_research_place_done(_: &()) -> Outcome {
