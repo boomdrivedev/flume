@@ -533,6 +533,23 @@ sessions start with the merge queue's words. A failure no transition
 takes leaves the place waiting on you, and `flume retry <place>
 --submission` submits it again.
 
+### Decisions
+
+A state may carry a decision, `decision = { kind, answers, shows }`,
+that a person answers while its region holds the state. The place
+waits on you while one stands, status gives its region, its kind, the
+answers it takes and what it shows, and the place stalls as for any
+wait. Answer it with its region and one of its answers:
+
+```sh
+flume answer persona--checkout stages retry
+```
+
+The next settle gives the answer to the statechart, and a transition
+reading `{ response = "retry" }` moves the region on. An answer is
+taken once: a second one given before the first is applied is refused,
+naming the first, who gave it and when.
+
 ### What a statechart kind may name
 
 flume binds one template, `stage`, one rule, `every-file`, and three
