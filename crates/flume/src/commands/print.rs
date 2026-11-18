@@ -1078,10 +1078,12 @@ fn own_lines(own: &OwnStatus) -> Vec<String> {
 /// the account from the intent's affinity for the agent's program, the
 /// strategy, or the account a lost conversation's start ran under, its
 /// conversation's, its mode as written with its layer, the entry it took of
-/// a table and the value passed, where a layer gave one, and its effort
-/// as written with its layer, the value passed and the account's variable
-/// that outranks it, by its name alone, where a layer gave one (56, 145,
-/// 147, 169, 197).
+/// a table and the value passed, where a layer gave one, its model as
+/// written with its layer, and for a table the entry it took and the name
+/// passed, where a layer gave one, and its effort as written with its
+/// layer, the entry it took of a table, the value passed and the
+/// account's variable that outranks it, by its name alone, where a layer
+/// gave one (56, 145, 147, 169, 172, 197).
 fn agent_line(agent: &AgentStatus) -> String {
     let mut line = format!("  agent {} ({})", agent.identity, agent.program);
     if let Some(account) = &agent.account {
@@ -1099,6 +1101,16 @@ fn agent_line(agent: &AgentStatus) -> String {
     if agent.past_limit {
         line.push_str(", past its limit");
     }
+    if let Some(model) = &agent.model {
+        line.push_str(&format!(
+            ", on the model {} (from {})",
+            model.name,
+            word(json!(model.layer))
+        ));
+        if let Some(entry) = &model.entry {
+            line.push_str(&format!(", the entry {entry}, passed as {}", model.passed));
+        }
+    }
     if let (Some(mode), Some(given)) = (&agent.mode, agent.settings.from.get("mode")) {
         line.push_str(&format!(
             ", in the mode {} (from {})",
@@ -1115,11 +1127,15 @@ fn agent_line(agent: &AgentStatus) -> String {
     }
     if let Some(effort) = &agent.effort {
         line.push_str(&format!(
-            ", at the effort {} (from {}) passed as {}",
+            ", at the effort {} (from {})",
             effort.word,
             word(json!(effort.layer)),
-            effort.passed
         ));
+        match &effort.entry {
+            Some(entry) => line.push_str(&format!(", the entry {entry}, passed as ")),
+            None => line.push_str(" passed as "),
+        }
+        line.push_str(&effort.passed);
         if !effort.read_back {
             line.push_str(", not read back");
         }
@@ -1878,9 +1894,9 @@ mod tests {
     use super::*;
     use flume_core::EndStatus;
     use flume_core::{
-        AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, MoveStatus,
-        OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted, StreamListed,
-        StreamStatus, TitleFrom, TitleHeld, WindowStatus,
+        AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, ModelStatus,
+        MoveStatus, OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted,
+        StreamListed, StreamStatus, TitleFrom, TitleHeld, WindowStatus,
     };
     use flume_seams::{
         AccountFrom, AccountHeld, AccountMove, AgentState, AnswerHeld, BaseFix, Declared, EndHeld,
@@ -2680,6 +2696,49 @@ mod tests {
         assert_eq!(
             agent_lines(&agent, "work", "fix")[2..],
             ["    effort = xhigh (from launch)"]
+        );
+    }
+
+    #[test]
+    fn an_agents_model_and_its_tables_entry() {
+        // 56, 172, 197: a model given whole names its layer; a model's
+        // table names the entry the agent took and the name passed, and
+        // an effort's table its entry, as design 7 words them.
+        let base = with_effort(None, Layer::Launch, false);
+        let whole = AgentStatus {
+            model: Some(ModelStatus {
+                name: "opus".into(),
+                layer: Layer::Launch,
+                entry: None,
+                passed: "opus".into(),
+            }),
+            ..base.clone()
+        };
+        assert_eq!(
+            agent_line(&whole),
+            "  agent flume:r:fix--one:code:1 (agent): working, on the model opus (from launch)"
+        );
+        let table = AgentStatus {
+            model: Some(ModelStatus {
+                name: r#"{ claude = "opus", codex = "gpt-5.5" }"#.into(),
+                layer: Layer::HostKind,
+                entry: Some("claude".into()),
+                passed: "opus".into(),
+            }),
+            ..base
+        };
+        assert_eq!(
+            agent_line(&table),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, on the model { claude = "opus", codex = "gpt-5.5" } (from host-kind), the entry claude, passed as opus"#
+        );
+        let mut effort = with_effort(Some(r#"{ claude = "xhigh" }"#), Layer::Kind, false);
+        if let Some(status) = effort.effort.as_mut() {
+            status.entry = Some("claude".into());
+            status.passed = "xhigh".into();
+        }
+        assert_eq!(
+            agent_line(&effort),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, at the effort { claude = "xhigh" } (from kind), the entry claude, passed as xhigh, not read back"#
         );
     }
 
