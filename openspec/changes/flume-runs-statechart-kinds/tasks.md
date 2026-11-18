@@ -69,4 +69,4 @@ names another file, and cites the clauses its spec scenario cites.
 ## 8. The statement at 3a3b287
 
 - [x] 8.1 In `crates/flume-conformance/src/clauses.rs`, read the statement at `3a3b287`: `REVISION` and `the_clauses_listed` say so, every clause and scenario as it is, and `STATECHART` and its 175 to 178, S76 and S77 gone from `unbuilt`, `the_clauses_unbuilt_are_named_by_the_changes_that_build_them` listing them built (core.19; design 14), the clause-coverage spec's "The clauses listed". Check: `devenv shell -- cargo test -p flume-conformance --lib the_clauses_listed`.
-- [ ] 8.2 Have every clause this change builds cited by a scenario of the suite, 175 to 178, S76 and S77 among them, adding a citation where one is missing (106; core.19). Check: `sluice exec <base> -- moon run conformance:coverage`.
+- [x] 8.2 Have every clause this change builds cited by a scenario of the suite, 175 to 178, S76 and S77 among them, adding a citation where one is missing (106; core.19). Check: `sluice exec <base> -- moon run conformance:coverage`.

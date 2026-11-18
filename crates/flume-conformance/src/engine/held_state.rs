@@ -25,7 +25,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "held state: a statechart place whose stage recorded its sessions, read by an engine built anew after a restart, settles from the same engine state, starting no session twice and performing no effect already proven",
-            cites: &["74", "76", "176", "core.17"],
+            cites: &["74", "76", "176"],
             run: a_restart_between_two_settles,
         },
         Scenario {

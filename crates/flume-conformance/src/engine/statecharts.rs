@@ -114,7 +114,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "statechart: an answer naming a region that carries no decision is refused naming it, and a second answer to a decision standing before a settle is refused naming the answer taken, who gave it and when",
-            cites: &["176", "core.54"],
+            cites: &["130", "176"],
             run: an_answer_refused,
         },
         Scenario {
@@ -139,12 +139,12 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "statechart: a stage with no prompt refuses the launch naming the state and its prompt",
-            cites: &["4", "C.2"],
+            cites: &["4", "175"],
             run: a_stage_with_no_prompt,
         },
         Scenario {
             name: "statechart: a deliverable naming {{file}} on a stage of listed agents refuses the launch naming the state and the part",
-            cites: &["4", "C.2"],
+            cites: &["4", "27", "175"],
             run: a_file_no_rule_gives,
         },
         Scenario {

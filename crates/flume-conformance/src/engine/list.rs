@@ -96,7 +96,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "list: persona at its test stage gives the line `persona--a · stages.test · working`, its kind persona@1, reading no worktree, branch or deliverable for it",
-            cites: &["200", "core.52"],
+            cites: &["200"],
             run: personas_line,
         },
     ]

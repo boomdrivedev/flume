@@ -344,7 +344,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "status: two sessions of a statechart place running give both agents, each with its identity naming its session and its settings with where each came from, and a simple kind's place gives no statechart and no agents in its JSON",
-            cites: &["56", "core.14"],
+            cites: &["30", "56"],
             run: two_agents,
         },
     ]
