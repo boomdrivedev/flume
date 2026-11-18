@@ -8,6 +8,7 @@ use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Retry;
 use flume_fakes::Plan;
 use flume_seams::*;
+use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -46,6 +47,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "settle: a caller's settle with a bound of two minutes holds the host's watch, when its settle began and ended and the command that ran it, flume unattended three minutes on and attended at five with no other settle between",
             cites: &["119", "208", "S118"],
             run: a_watch_kept_then_lapsed,
+        },
+        Scenario {
+            name: "settle: a caller's settle with a bound of one minute that reads the host's places for five holds the watch throughout, flume unattended while it runs and a minute after it ended, and attended two minutes after",
+            cites: &["119", "208"],
+            run: a_settle_that_runs_past_its_bound,
+        },
+        Scenario {
+            name: "settle: a watch whose settle another command began and never ended holds while that command lives, ten minutes on among it, and lapses once it died, twice its bound after the settle began",
+            cites: &["119", "208", "76"],
+            run: a_watch_whose_settle_died,
         },
         Scenario {
             name: "settle: no terminal keeps watch: with no caller's settle with a bound, nothing settles at an agent's change and a caller's drop settles every place first",
@@ -1225,6 +1236,104 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
         host_watch(&world),
         Some(watched),
         "the host's watch, which only a caller's settle with a bound writes"
+    );
+    Ok(())
+}
+
+/// The settling spec's "A settle that runs past its bound": a caller
+/// settles with a bound of one minute, and while that settle reads the
+/// host's places the fake clock passes five minutes; flume runs unattended
+/// throughout that settle and a minute after it ended, and attended once
+/// two minutes have passed since it ended (119, 208).
+fn a_settle_that_runs_past_its_bound(_: &()) -> Outcome {
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x"))))?;
+    let during = Arc::new(Mutex::new(None));
+    {
+        let host = world.host.clone();
+        let engine = world.engine();
+        let during = during.clone();
+        world.store.during_next_read_every(move || {
+            host.advance(5 * 60);
+            *during.lock().expect("the reading") = Some(engine.attended());
+        });
+    }
+    let began = world.host.now();
+    let settled = world.engine.settle_every(60);
+    ensure!(
+        settled.refusal().is_none(),
+        "the settle was refused: {settled:?}"
+    );
+    ensure_eq!(
+        *during.lock().expect("the reading"),
+        Some(false),
+        "whether flume ran attended while the settle read the places, five minutes on"
+    );
+    let ended = began + 5 * 60;
+    ensure_eq!(
+        host_watch(&world).map(|watched| (watched.began, watched.ended)),
+        Some((began, Some(ended))),
+        "when the watch's settle began and ended"
+    );
+    world.host.advance(60);
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended a minute after the settle ended"
+    );
+    world.host.advance(60);
+    ensure!(
+        world.engine.attended(),
+        "flume ran unattended two minutes after the settle ended"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        Some(ended + 2 * 60),
+        "when the watch lapsed"
+    );
+    Ok(())
+}
+
+/// The settling spec's "A watch whose settle died": the host's watch names
+/// a settle with a bound of one minute begun by another command, which has
+/// not ended it; flume runs unattended while that command lives, ten
+/// minutes on among it, and attended once the command has died, two
+/// minutes having passed since that settle began (76, 119, 208).
+fn a_watch_whose_settle_died(_: &()) -> Outcome {
+    let world = World::new();
+    let other = world.host.another_command();
+    let began = world.host.now();
+    let watched = Watched {
+        began,
+        bound: 60,
+        by: Some(other.clone()),
+        ended: None,
+    };
+    world
+        .store
+        .write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(watched)));
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended while the other command's settle runs"
+    );
+    world.host.advance(10 * 60);
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended ten minutes on, the other command living"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        None,
+        "when the watch lapsed while its settle runs"
+    );
+    world.host.end_command(&other);
+    ensure!(
+        world.engine.attended(),
+        "flume ran unattended once the command running the watch's settle died"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        Some(began + 2 * 60),
+        "when the watch whose settle died lapsed"
     );
     Ok(())
 }
