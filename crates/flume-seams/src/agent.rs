@@ -1,7 +1,8 @@
-//! The agent seam's answers (88 to 93, 115, 116, 121, 134, 135, 151, 161, 179, 196, 207), an
-//! agent's identity and its start's secret (33, 41). Every reading of an agent's
-//! own record is handed the place's own folder with the identity, where
-//! the agent profile keeps its marks (128).
+//! The agent seam's answers (88 to 93, 115, 116, 121, 134, 135, 151, 161, 179, 196, 207), the
+//! parts a profile builds (171, 174), an agent's identity and its start's
+//! secret (33, 41). Every reading of an agent's own record is handed the
+//! place's own folder with the identity, where the agent profile keeps its
+//! marks (128).
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -252,6 +253,115 @@ pub enum Offered {
     NotOffered,
 }
 
+/// A part of the agent seam a profile may build for its program from the
+/// program's own record, or degrade, flume then reading it a lesser way:
+/// the parts flume reads a lesser way, in 171's order, each written as its
+/// word, any other word refused naming it (171, 174). Command, started and
+/// stop-short are never degraded, and every other part is answered from
+/// the program's own record by every profile (93).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Part {
+    Spent,
+    Windows,
+    SendBack,
+    Guard,
+    OnQuiet,
+    Mode,
+    Carry,
+    OwnSettings,
+}
+
+impl Part {
+    /// The eight, in 171's order.
+    pub const ALL: [Part; 8] = [
+        Part::Spent,
+        Part::Windows,
+        Part::SendBack,
+        Part::Guard,
+        Part::OnQuiet,
+        Part::Mode,
+        Part::Carry,
+        Part::OwnSettings,
+    ];
+
+    /// The part's name as the statement writes it (171).
+    pub fn name(self) -> &'static str {
+        match self {
+            Part::Spent => "spent",
+            Part::Windows => "windows",
+            Part::SendBack => "send-back",
+            Part::Guard => "guard",
+            Part::OnQuiet => "on-quiet",
+            Part::Mode => "mode",
+            Part::Carry => "carry",
+            Part::OwnSettings => "own settings",
+        }
+    }
+
+    /// How flume reads the part where its profile does not build it, the
+    /// same for every profile, naming no program (93, 171; core.1).
+    pub fn read(self) -> &'static str {
+        match self {
+            Part::Spent => "unknown, so the account it runs under is never recorded spent",
+            Part::Windows => "unknown, so the account it runs under has no reading",
+            Part::SendBack => "not offered, so it may go quiet with its deliverable missing",
+            Part::Guard => {
+                "not offered, so nothing refuses its submitting, merging or pushing its place's branch"
+            }
+            Part::OnQuiet => {
+                "not offered, so the host's watch, or a command where none keeps watch, settles its place"
+            }
+            Part::Mode => "recorded and not compared with the mode it began in",
+            Part::Carry => {
+                "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
+            }
+            Part::OwnSettings => {
+                "none reserved and none taken, so own settings given for its program are refused"
+            }
+        }
+    }
+}
+
+/// The parts a profile builds for its program; every other part is
+/// degraded (171, 174).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Parts(std::collections::BTreeSet<Part>);
+
+impl Parts {
+    /// No part built, every part degraded: the seam's default (174).
+    pub fn none() -> Parts {
+        Parts::default()
+    }
+
+    /// The parts `built`, each named once or more.
+    pub fn of(built: &[Part]) -> Parts {
+        Parts(built.iter().copied().collect())
+    }
+
+    /// Whether the profile builds `part`.
+    pub fn builds(&self, part: Part) -> bool {
+        self.0.contains(&part)
+    }
+
+    /// The parts the profile does not build, in 171's order.
+    pub fn degraded(&self) -> Vec<Part> {
+        Part::ALL
+            .into_iter()
+            .filter(|part| !self.builds(*part))
+            .collect()
+    }
+
+    /// Whether the profile offers `part`, which it does where it builds it.
+    fn offered(&self, part: Part) -> Offered {
+        if self.builds(part) {
+            Offered::Offered
+        } else {
+            Offered::NotOffered
+        }
+    }
+}
+
 /// guard: each act the agent would have taken that submits, merges or
 /// pushes its place's branch, refused and reported, or that the program
 /// gives no way to (116, 108).
@@ -346,6 +456,19 @@ pub trait Agent: Send + Sync {
     /// or cannot be read (43, 128).
     fn last_words(&self, folder: &str, agent: &Identity) -> Option<String>;
 
+    /// The parts of the seam the profile builds for its program from the
+    /// program's own record, every other degraded and read as
+    /// [`Part::read`] says; none by default, so a profile that declares
+    /// nothing shows every part degraded and none is read as built (170,
+    /// 171, 174). Whether it offers send-back and on-quiet, reports
+    /// windows and reads its mode back is read from them, and each answer
+    /// of a part it does not build is the lesser one: spent and windows
+    /// unknown, guard and carry not offered, no own settings taken and no
+    /// key reserved (93).
+    fn parts(&self) -> Parts {
+        Parts::none()
+    }
+
     /// Whether the agent's own record shows its account reached a usage
     /// limit, and the reset it names, read in the place's own `folder`
     /// (151, 146, 128); unknown by default, for a program whose record
@@ -368,9 +491,9 @@ pub trait Agent: Send + Sync {
     }
 
     /// Whether the profile builds the windows' part, so its accounts can
-    /// have a reading (171, 174, 211); not by default.
+    /// have a reading, read from its [`Agent::parts`] (171, 174, 211).
     fn reports_windows(&self) -> Offered {
-        Offered::NotOffered
+        self.parts().offered(Part::Windows)
     }
 
     /// Whether its program can carry the conversation of `earlier`, the
@@ -455,10 +578,10 @@ pub trait Agent: Send + Sync {
 
     /// Whether the program's word at its start, its word that it started
     /// or at its start's first prompt, names the mode it began in, so its
-    /// start is compared with the mode it asked (161, 169); not by
-    /// default.
+    /// start is compared with the mode it asked, read from its
+    /// [`Agent::parts`] (161, 169, 174).
     fn mode_read_back(&self) -> Offered {
-        Offered::NotOffered
+        self.parts().offered(Part::Mode)
     }
 
     /// Each key of its program's settings that another of flume's
@@ -512,14 +635,20 @@ pub trait Agent: Send + Sync {
     fn stop_short_to(&self) -> String;
 
     /// Whether the program lets flume keep an agent about to go quiet at
-    /// work, with words naming its deliverable (115).
-    fn send_back(&self) -> Offered;
+    /// work, with words naming its deliverable, read from its
+    /// [`Agent::parts`] (115, 174).
+    fn send_back(&self) -> Offered {
+        self.parts().offered(Part::SendBack)
+    }
 
     /// Each act the agent would have taken that submits, merges or pushes
     /// its place's branch, refused and reported (116, 108, 128).
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded;
 
     /// Whether the program tells flume at once each time the agent goes
-    /// quiet, so that flume settles its place (121).
-    fn on_quiet(&self) -> Offered;
+    /// quiet, so that flume settles its place, read from its
+    /// [`Agent::parts`] (121, 174).
+    fn on_quiet(&self) -> Offered {
+        self.parts().offered(Part::OnQuiet)
+    }
 }
