@@ -141,11 +141,19 @@ impl Engine {
         let live = held.phase == Phase::Live;
         let change = change.filter(|_| live);
         let at = live.then(|| stage_at(held)).flatten();
-        let stage = at.map(|index| {
-            let group = change.and_then(|facts| group_status(held, index, facts));
-            label(&held.stages[index].name, group.as_ref())
-        });
+        // A statechart place names each stage whose sessions are live by
+        // its path, and no run of one session's (175, 200).
+        let chart = held.chart.is_some();
+        let stage = if chart {
+            live.then(|| live_stages(held)).flatten()
+        } else {
+            at.map(|index| {
+                let group = change.and_then(|facts| group_status(held, index, facts));
+                label(&held.stages[index].name, group.as_ref())
+            })
+        };
         let run = at
+            .filter(|_| !chart)
             .map(|index| held.stages[index].starts)
             .filter(|starts| *starts > 0);
         let tasks = change.filter(|facts| !facts.tasks.is_empty()).map(|facts| {
@@ -194,8 +202,29 @@ pub(crate) fn stage_at(held: &HeldState) -> Option<usize> {
     })
 }
 
-/// Whether `identity` is the current stage's live start.
+/// The stages of a statechart place whose sessions are live, by their
+/// paths in the order their sessions were recorded, joined by `, `; none
+/// where no session is live (175, 200).
+pub(crate) fn live_stages(held: &HeldState) -> Option<String> {
+    let mut paths: Vec<&str> = vec![];
+    for (index, _) in held.live_starts() {
+        if let Some(session) = &held.stages[index].session {
+            if !paths.contains(&session.stage.as_str()) {
+                paths.push(&session.stage);
+            }
+        }
+    }
+    (!paths.is_empty()).then(|| paths.join(", "))
+}
+
+/// Whether `identity` is the current stage's live start, or a live
+/// session's of a statechart place (175).
 fn its_agent(held: &HeldState, identity: &Identity) -> bool {
+    if held.chart.is_some() {
+        return held
+            .live_starts()
+            .any(|(_, start)| &start.identity == identity);
+    }
     held.live_start()
         .is_some_and(|(index, start)| Some(index) == held.current && &start.identity == identity)
 }
