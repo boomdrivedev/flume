@@ -2372,7 +2372,7 @@ fn the_processs_answers_round_trip() {
         ProgramProcess::Runs { pid: 41 },
         ProgramProcess::Nothing,
         ProgramProcess::Unknown {
-            why: "herdr did not answer within 5 seconds".into(),
+            why: "the terminal did not answer within 5 seconds".into(),
         },
     ] {
         round_trips(process);
