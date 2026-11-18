@@ -277,12 +277,20 @@ pub enum Offered {
 /// A part of the agent seam a profile may build for its program from the
 /// program's own record, or degrade, flume then reading it a lesser way:
 /// the parts flume reads a lesser way, in 171's order, each written as its
-/// word, any other word refused naming it (171, 174). Command, started and
-/// stop-short are never degraded, and every other part is answered from
-/// the program's own record by every profile (93).
+/// word, any other word refused naming it (171, 174). Received, asking,
+/// own work, ended and last words, where the profile does not build them,
+/// the core reads from the agent's terminal, asking the profile nothing of
+/// them (93, 171; core.2). Command, started and stop-short are never
+/// degraded, and every other part is answered from the program's own
+/// record by every profile (93).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Part {
+    Received,
+    Asking,
+    OwnWork,
+    Ended,
+    LastWords,
     Spent,
     Windows,
     SendBack,
@@ -294,8 +302,13 @@ pub enum Part {
 }
 
 impl Part {
-    /// The eight, in 171's order.
-    pub const ALL: [Part; 8] = [
+    /// The thirteen, in 171's order.
+    pub const ALL: [Part; 13] = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
         Part::Spent,
         Part::Windows,
         Part::SendBack,
@@ -309,6 +322,11 @@ impl Part {
     /// The part's name as the statement writes it (171).
     pub fn name(self) -> &'static str {
         match self {
+            Part::Received => "received",
+            Part::Asking => "asking",
+            Part::OwnWork => "own work",
+            Part::Ended => "ended",
+            Part::LastWords => "last words",
             Part::Spent => "spent",
             Part::Windows => "windows",
             Part::SendBack => "send-back",
@@ -321,9 +339,21 @@ impl Part {
     }
 
     /// How flume reads the part where its profile does not build it, the
-    /// same for every profile, naming no program (93, 171; core.1).
+    /// same for every profile, naming no program and no terminal (93, 171;
+    /// core.1).
     pub fn read(self) -> &'static str {
         match self {
+            Part::Received => {
+                "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds"
+            }
+            Part::Asking => {
+                "read from the terminal, asking while it reads the agent waiting on a question"
+            }
+            Part::OwnWork => {
+                "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then"
+            }
+            Part::Ended => "read from the terminal, ended once it reads the agent stopped",
+            Part::LastWords => "read from the terminal, what it shows of the agent",
             Part::Spent => "unknown, so the account it runs under is never recorded spent",
             Part::Windows => "unknown, so the account it runs under has no reading",
             Part::SendBack => "not offered, so it may go quiet with its deliverable missing",
@@ -419,7 +449,10 @@ pub struct StopShort {
 
 /// The agent seam (B.4). The guarantee: each answer is what the agent's
 /// own record shows, and an answer the record does not give is unknown,
-/// never guessed from the terminal (93).
+/// never guessed from the terminal (93). A part the profile does not build
+/// is read by the core as 171 says, received, asking, own work, ended and
+/// last words from the agent's terminal, and the profile is asked nothing
+/// of it (171; core.2).
 pub trait Agent: Send + Sync {
     /// How to start the agent with its settings and `env`, its account's
     /// variables read against the login environment, in the place under
@@ -504,9 +537,10 @@ pub trait Agent: Send + Sync {
     /// nothing shows every part degraded and none is read as built (170,
     /// 171, 174). Whether it offers send-back and on-quiet, reports
     /// windows and reads its mode back is read from them, and each answer
-    /// of a part it does not build is the lesser one: spent and windows
-    /// unknown, guard and carry not offered, no own settings taken and no
-    /// key reserved (93).
+    /// of a part it does not build is the lesser one where it is asked:
+    /// received, asking, own work, ended, spent and windows unknown, last
+    /// words none, guard and carry not offered, no own settings taken and
+    /// no key reserved (93).
     fn parts(&self) -> Parts {
         Parts::none()
     }

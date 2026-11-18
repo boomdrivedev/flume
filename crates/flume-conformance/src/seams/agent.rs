@@ -434,13 +434,19 @@ fn kind_names_the_programs_kind<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 /// The seam-contracts spec's scenario "A profile's answers agree with its
-/// parts" (174, 93): a part not built is answered the lesser way, spent and
-/// windows unknown, guard and carry not offered, own settings given refused
-/// and no key reserved, after the harness scripted what a profile that
-/// builds the part would answer by.
+/// parts" (174, 93): a part not built is answered the lesser way, received,
+/// asking, own work, ended, spent and windows unknown, last words none,
+/// guard and carry not offered, own settings given refused and no key
+/// reserved, after the harness scripted what a profile that builds the part
+/// would answer by.
 fn answers_agree_with_the_parts<H: AgentHarness>(harness: &H) -> Outcome {
     let seam = harness.seam();
     let who = started(harness, "code");
+    harness.deliver(&who, "the prompt");
+    harness.ask(&who);
+    harness.start_own_work(&who);
+    harness.say_last(&who, "I could not sign in");
+    harness.end_session(&who);
     harness.hit_usage_limit(&who);
     harness.carry_accounts(&who);
     harness.report_windows(&who, AT_1402, &reported(4_200));
@@ -476,6 +482,15 @@ fn answers_agree_with_the_parts<H: AgentHarness>(harness: &H) -> Outcome {
     for part in degraded {
         let what = format!("{}, degraded", part.name());
         match part {
+            Part::Received => ensure_eq!(
+                seam.received(&folder, &who, "the prompt"),
+                Received::Unknown,
+                what
+            ),
+            Part::Asking => ensure_eq!(seam.asking(&folder, &who), Reading::Unknown, what),
+            Part::OwnWork => ensure_eq!(seam.own_work(&folder, &who), Reading::Unknown, what),
+            Part::Ended => ensure_eq!(seam.ended(&folder, &who), Reading::Unknown, what),
+            Part::LastWords => ensure_eq!(seam.last_words(&folder, &who), None, what),
             Part::Spent => ensure_eq!(seam.spent(&folder, &who), Spent::Unknown, what),
             Part::Windows => ensure_eq!(seam.windows(&folder, &who), Windows::Unknown, what),
             Part::Guard => ensure_eq!(seam.guard(&folder, &who), Guarded::NotOffered, what),

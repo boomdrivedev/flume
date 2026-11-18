@@ -527,14 +527,24 @@ impl Agent for Claude {
     }
 
     /// Every part, each named in turn, so a part added to the seam's list
-    /// is built here only by the change that builds it: spent from the
-    /// StopFailure hook's words, windows from the plugin's module,
-    /// send-back and on-quiet from the Stop hook, the guard from the
-    /// PreToolUse hook, the mode read back from UserPromptSubmit's input,
-    /// carry from the session's transcript and own settings by
-    /// `--settings` (171, 174, C.4).
+    /// is built here only by the change that builds it, and none is read
+    /// from the terminal: received from the plugin's received ack or the
+    /// session's transcript, asking from the plugin's mark until the
+    /// transcript holds its answer, own work from the transcript's
+    /// background shells and tasks, ended from the SessionEnd hook's mark,
+    /// last words from the StopFailure hook's reason or the transcript's
+    /// last message, spent from the StopFailure hook's words, windows from
+    /// the plugin's module, send-back and on-quiet from the Stop hook, the
+    /// guard from the PreToolUse hook, the mode read back from
+    /// UserPromptSubmit's input, carry from the session's transcript and
+    /// own settings by `--settings` (171, 174, C.4).
     fn parts(&self) -> Parts {
         Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
             Part::Spent,
             Part::Windows,
             Part::SendBack,

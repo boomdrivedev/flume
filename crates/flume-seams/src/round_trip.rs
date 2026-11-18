@@ -2149,6 +2149,11 @@ impl Agent for Bare {
 #[test]
 fn each_part_written_and_read() {
     let words = [
+        "received",
+        "asking",
+        "own_work",
+        "ended",
+        "last_words",
         "spent",
         "windows",
         "send_back",
@@ -2158,6 +2163,7 @@ fn each_part_written_and_read() {
         "carry",
         "own_settings",
     ];
+    assert_eq!(Part::ALL.len(), words.len());
     for (part, word) in Part::ALL.into_iter().zip(words) {
         assert_eq!(serde_json::to_value(part).unwrap(), serde_json::json!(word));
         assert_eq!(
@@ -2177,15 +2183,28 @@ fn each_part_written_and_read() {
 #[test]
 fn a_parts_name_and_its_lesser_reading() {
     assert_eq!(Part::SendBack.name(), "send-back");
+    assert_eq!(Part::OwnWork.name(), "own work");
     assert_eq!(Part::OwnSettings.name(), "own settings");
     assert_eq!(
         Part::Carry.read(),
         "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
     );
+    assert!(
+        Part::OwnWork.read().starts_with(
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting"
+        ),
+        "{}",
+        Part::OwnWork.read()
+    );
     let names: Vec<&str> = Part::ALL.into_iter().map(Part::name).collect();
     assert_eq!(
         names,
         [
+            "received",
+            "asking",
+            "own work",
+            "ended",
+            "last words",
             "spent",
             "windows",
             "send-back",
@@ -2213,6 +2232,11 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(
         reads,
         [
+            "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+            "read from the terminal, asking while it reads the agent waiting on a question",
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+            "read from the terminal, ended once it reads the agent stopped",
+            "read from the terminal, what it shows of the agent",
             "unknown, so the account it runs under is never recorded spent",
             "unknown, so the account it runs under has no reading",
             "not offered, so it may go quiet with its deliverable missing",
@@ -2227,6 +2251,20 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(Bare.on_quiet(), Offered::NotOffered);
     assert_eq!(Bare.reports_windows(), Offered::NotOffered);
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+    // No part's lesser reading names a terminal (core.1).
+    for part in Part::ALL {
+        for name in ["herdr", "Rex", "tmux"] {
+            assert!(!part.read().contains(name), "{}", part.read());
+        }
+    }
+    assert_eq!(
+        Bare.received("/folder", &identity(), "go"),
+        Received::Unknown
+    );
+    assert_eq!(Bare.asking("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.own_work("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.ended("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.last_words("/folder", &identity()), None);
     assert_eq!(Bare.spent("/folder", &identity()), Spent::Unknown);
     assert_eq!(Bare.windows("/folder", &identity()), Windows::Unknown);
     assert_eq!(Bare.guard("/folder", &identity()), Guarded::NotOffered);
@@ -2245,6 +2283,11 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(
         parts.degraded(),
         [
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
             Part::Spent,
             Part::Windows,
             Part::Guard,
