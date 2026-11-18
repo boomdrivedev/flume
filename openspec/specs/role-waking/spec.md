@@ -66,14 +66,15 @@ earlier flume named by the role alone SHALL be found by its role (3,
 - **WHEN** a run of `east/planner` stands as `turn--planner`, made by an earlier flume, and an end comes for the address
 - **THEN** no run is launched, and the end is delivered into that run's pane
 
-### Requirement: An end pending for an address with no run wakes the role
+### Requirement: A delivery pending for an address with no run wakes the role
 
-A settle that finds an end pending for an address, handed to it by
-nothing, with no run live or waiting for room SHALL launch the address's
-run, inside that settle; an end for an address whose run is live SHALL
-be sent into the pane of that run's agent as a notice, as to any
-recipient; an end a run was handed and did not confirm SHALL wake no run
-again (43, 132, core.13, core.28).
+A settle that finds an end or a message pending for an address, handed
+to it by nothing, with no run live or waiting for room SHALL launch the
+address's run, inside that settle, and a message's own act SHALL do the
+same; deliveries for an address whose run is live SHALL be handed to
+that run's session at its next wait, as to any recipient; a delivery a
+run was handed and did not confirm SHALL wake no run again (43, 132,
+214, core.13, core.28).
 
 #### Scenario: Three ends, one run
 
@@ -95,6 +96,11 @@ again (43, 132, core.13, core.28).
 - **WHEN** the unit's next end comes for `madswan/planner` with no run live, and the run it wakes runs `flume inbox`
 - **THEN** one run is launched, its inbox gives both ends, and once it runs `flume confirm` with both delivery keys both are delivered to the address (S122)
 
+#### Scenario: A message wakes the role
+
+- **WHEN** a caller messages `madswan/planner` while no planner run is live or waiting
+- **THEN** the message's own act launches one planner run, and a settle that follows launches none (132, 214)
+
 ### Requirement: A carrier may wake an address
 
 `flume wake <address>` SHALL launch the address's run where none is live
@@ -109,13 +115,13 @@ or waiting for room, and SHALL do nothing, answering so, where one is
 ### Requirement: A role run collects for its address
 
 `flume inbox` run in a role's run with no recipient named SHALL collect
-for the run's address, and flume SHALL decide nothing else of what the
-run does (43, 69, 72, 132).
+for the run's address, its ends and its messages, and flume SHALL decide
+nothing else of what the run does (43, 69, 72, 132, 214).
 
 #### Scenario: The run starts
 
 - **WHEN** the planner run's agent runs `flume inbox --confirm` with no recipient
-- **THEN** it collects every end pending for `madswan/planner`, each handed to that address by the inbox and confirmed by it
+- **THEN** it collects every end and every message pending for `madswan/planner`, each handed to that address by the inbox and confirmed by it
 
 ### Requirement: A role's run runs in its address's stream
 
@@ -228,12 +234,13 @@ recipient's name of any other form SHALL be a session's (4, 7, 132,
 ### Requirement: A role's entry gives its run
 
 An entry SHALL give its address's run: a kind of its own source's, its
-version the locks'; its repository by its location on the host; its
-priority; its base, else the repository's default branch; and an
-optional brief, name, intent, `agents`, `answers` and `answerer`. The
-run's settings SHALL be taken as a launch's, in their layers. An entry
-that gives `points` SHALL declare nothing for its address, since this
-flume takes points for no place (7, 32, 70, 147, 155, 165, 193, C.7).
+version the locks'; its repository by its location on the host, or a
+standing role's `repositories`; its priority; its base, else the
+repository's default branch; and an optional brief, name, intent,
+`agents`, `kinds`, `answers` and `answerer`, its settings taken as a
+launch's. An entry giving `points` SHALL declare nothing for its
+address, as this flume takes points for no place (7, 32, 70, 147, 155,
+165, 193, C.7).
 
 #### Scenario: The run's intent and settings
 
@@ -244,6 +251,11 @@ flume takes points for no place (7, 32, 70, 147, 155, 165, 193, C.7).
 
 - **WHEN** `acme`'s file gives `east/planner` a run's keys and `points = 3`
 - **THEN** `east/planner` wakes nothing, and status names the entry and that `points` is no word of a role's run, since this flume takes a place's points from nothing (165)
+
+#### Scenario: A standing role's repositories and kinds
+
+- **WHEN** `acme`'s file gives `east/ops` the kind `desk`, `repositories = ["~/code/flume", "~/code/blueprints"]` and `[roles."east/ops".kinds]` with `fix` and `change`, each with its words
+- **THEN** the host's roles give `east/ops` a run whose repositories are both locations read under the home, whose repository is the first, and whose kinds are `change` and `fix` with their words (193, C.7)
 
 ### Requirement: A source may declare a standing agent for an address
 
@@ -373,17 +385,112 @@ address (130, 132, 193).
 
 ### Requirement: A role's run takes no notice before its prompt
 
-While the current start of an address's live run is starting, or
-started with its prompt not yet received, a settle SHALL send no notice
-into the run's session, which its agent would take as its prompt, and
-the end SHALL stay pending until a settle reads the start begun or the
-run's inbox collects it. A standing agent of the address SHALL be
-delivered to as before (37, 38, 43, 132).
+While the current start of an address's run is starting, or started
+with its prompt not yet received, a settle SHALL hand nothing into the
+run's session, which its agent would take as its prompt, and what came
+after the prompt was filled SHALL wait for the run's next wait. A
+standing agent of the address SHALL be delivered to as before (37, 38,
+43, 132, 214).
 
 #### Scenario: A run not yet given its prompt
 
 - **WHEN** a fix's end wakes `east/planner`'s run, whose agent waits in the session `east/planner` before it says it started, and the fix is settled again
-- **THEN** no notice goes into the run's session and the end stays pending; once the agent says it started and its prompt is received, the next settle of the fix delivers the end into the run's pane once (37, 38, 43)
+- **THEN** no notice goes into the run's session, and once the agent says it started and its prompt is received the end is recorded handed to `east/planner`, carried in that prompt, and no settle sends it again (37, 38, 43)
+
+#### Scenario: What came after the prompt
+
+- **WHEN** an end comes for `east/planner` after its run's prompt was filled and before it was received
+- **THEN** the end is handed to none until the run's agent next waits, and then goes in one prompt alone (214; record 0058)
+
+### Requirement: A role's run's first prompt carries its batch
+
+Each start of an address's run SHALL fill its prompt with the batch
+pending at its address when the prompt is filled, after the kind's
+template and before the way to stop short, claiming those deliveries
+for the address under the start's identity and recording them handed
+once its prompt is read received; a start read never begun, or ended
+before its prompt was received, SHALL let its claims go and record
+nothing (28, 37, 43, 214).
+
+#### Scenario: The first prompt carries the batch
+
+- **WHEN** a message and a fix's end are pending for `east/planner` when its run's start fills its prompt
+- **THEN** the prompt holds the kind's template, then the message and the end, each with its confirm, then the way to stop short (28, 214)
+
+#### Scenario: A start that never began
+
+- **WHEN** the run's start carrying a batch is read never begun
+- **THEN** its claims are let go, nothing is recorded handed, and the next start's prompt carries the same batch
+
+### Requirement: A role's run takes nothing while it waits on an answer
+
+While a role's run's stage ended short and waits on its answer, a
+settle SHALL hand its address's batch to no one, and its take SHALL
+answer nothing, so a delivery is never taken for the answer (42, 53,
+214).
+
+#### Scenario: A message while the run waits on its answer
+
+- **WHEN** a role's run's code ended short needing an answer, its agent kept open, and a message comes for its address
+- **THEN** nothing is typed into its session and the message stays handed to none; once a retry answers the stop-short and the agent goes quiet again, the next settle hands it the message
+
+### Requirement: A launch from a role's run reports to its address
+
+A launch that names no recipient, with `$FLUME_RECIPIENT` unset, run
+where `$FLUME_PLACE` names a role's run, SHALL have that run's address
+as its recipient, `recipients_from` `role-run`, ahead of the terminal's
+session and the answerer behind its stream (7, 132, 214).
+
+#### Scenario: A role's run launches its project
+
+- **WHEN** the run of `east/ops` launches a fix naming no recipient, its environment naming the run's place, and the fix delivers
+- **THEN** the fix's recipients are `east/ops` from `role-run`, and its end is pending at `east/ops` with the address's other deliveries (S128)
+
+#### Scenario: Through MCP
+
+- **WHEN** the same run's session calls flume's MCP `launch` for a chore naming no recipient
+- **THEN** the chore's recipients are `east/ops` from `role-run` (S128)
+
+### Requirement: A standing role's entry at fault declares nothing
+
+An entry SHALL declare nothing for its address, status naming why,
+where its `repositories` is empty, names one location twice, gives two
+whose folders are one, or stands beside `repository` or `base`; where a
+value of its `kinds` is not words; or where an entry giving `agent` or
+`carried` gives `kinds` (191, 193, C.7).
+
+#### Scenario: Two folders of one name
+
+- **WHEN** `acme`'s file gives `east/ops` `repositories = ["~/a/flume", "~/b/flume"]`
+- **THEN** `east/ops` wakes nothing, and status names the entry and the folder `flume` both would take
+
+#### Scenario: A base beside repositories
+
+- **WHEN** the entry gives `repositories` and `base = "next"`
+- **THEN** `east/ops` wakes nothing, and status names that each checkout is at its repository's default branch, so a standing role's entry gives no base
+
+#### Scenario: Kinds for a standing agent
+
+- **WHEN** an entry gives `agent = "ops"` and `kinds`
+- **THEN** it declares nothing for its address, and status names `kinds` as no word of a standing agent's entry
+
+### Requirement: A delivery to a hibernating role's run resumes it
+
+Where a batch is pending at a role's address whose run stands with its
+current stage hibernating, the address's wake, by a settle, a carrier,
+a message or the host's settle, SHALL resume that stage by `delivery`
+and launch nothing; a run whose stage waits on its answer SHALL take
+nothing (42, 132, 213, 214).
+
+#### Scenario: A carrier's wake of a hibernating run
+
+- **WHEN** `east/ops`'s run hibernates, an end is pending for it, and `flume wake east/ops` runs
+- **THEN** nothing is launched, the run's stage is resumed by `delivery`, and the answer gives the run that stands (132, 213)
+
+#### Scenario: Nothing pending
+
+- **WHEN** `east/ops`'s run hibernates with nothing pending at its address, and `flume wake east/ops` runs
+- **THEN** nothing is launched or resumed, and the answer gives the run that stands, hibernating
 
 ### Requirement: A standing agent's command acts as the address it holds
 
@@ -392,7 +499,7 @@ run in no role's run, SHALL act as the address a source gives the
 standing agent it runs in: the one agent of the entry's name that the
 address's delivery reaches, at the pane its stream's terminal names as
 the command's session. `flume confirm`, `flume inbox` and `flume wait`
-SHALL act as that address, and a retry's or a tell's answer SHALL be
+SHALL act as that address, and a retry's or a message's answer SHALL be
 recorded as given by it (7, 43, 132, 193; core.28).
 
 #### Scenario: A confirm from the standing agent's pane

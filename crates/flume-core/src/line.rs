@@ -208,7 +208,9 @@ fn its_agent(held: &HeldState, identity: &Identity) -> bool {
 /// 51, 63, 70, 90, 112, 114, 118, 130); a stage waiting for room while a
 /// process runs the conversation its start would carry reads `waiting on
 /// its session`, as the last settle left its wait (49, 207); the list
-/// gives a place the same words (200; core.14). A base place's, with
+/// gives a place the same words (200; core.14). A place whose current
+/// stage hibernates reads `hibernating`, after `stalled` and before `held`
+/// (57, 212). A base place's, with
 /// `on_branch` the count of the live places on its branch, is `<n> on its
 /// branch · open` while any is live and its submission is not open, and
 /// `waiting on its caller` while it waits for its submission's retry
@@ -236,10 +238,19 @@ pub(crate) fn state_words(
             return format!("{count} on its branch{SEPARATOR}open");
         }
     }
-    if let Some(waiting) = &waiting_now(held, on_branch) {
-        if waiting.stalled {
-            return "stalled".into();
-        }
+    let waiting = waiting_now(held, on_branch);
+    if waiting.as_ref().is_some_and(|waiting| waiting.stalled) {
+        return "stalled".into();
+    }
+    // A hibernating stage, after a stall and before a hold: its agent is
+    // ended and its session kept for a resume (212).
+    if held
+        .current
+        .is_some_and(|index| held.stages[index].state == StageState::Hibernating)
+    {
+        return "hibernating".into();
+    }
+    if let Some(waiting) = &waiting {
         return match waiting.on.why {
             Waits::OnHold => "held",
             Waits::Answer => "waiting on an answer",
@@ -351,6 +362,7 @@ mod tests {
             fix_of: None,
             fixes_as: None,
             token: None,
+            checkouts: Vec::new(),
         };
         serde_json::from_value(json!({
             "place": to_value(place).unwrap(),

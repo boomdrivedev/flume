@@ -11,7 +11,7 @@ sidebar:
 | `flume status [<place>]` | Every fact of a place, or of every place, and of the host; with `--line`, each place's one line. |
 | `flume list` | A line for each place on the host, under its repository, and each stream, reading only what flume keeps; `--all` adds the places that landed or were dropped. |
 | `flume prompt <place> <stage>` | The exact prompt a stage would be sent at its next start, starting nothing. |
-| `flume tell <place> <words>` | Hand the place's agent words as a prompt, once it waits; to an agent kept open for its answer, the answer, `--answers <key>` naming the stop-short it answers. |
+| `flume message <target> <words>` | Hand a place's agent words as a prompt, once it waits, or leave them at a role's address, `<stream>/<role>`, as a delivery its session takes at its next wait; to an agent kept open for its answer, the answer, `--answers <key>` naming the stop-short it answers. `flume tell` runs it too. |
 | `flume hold <place> <words>` | Hold the place's next stage, `--stage`, or its submission, `--submission`, with words saying what for; or, `--waiting`, the move the place waits on, with words saying who makes it and an optional bound. |
 | `flume retry <place>` | Start a stage again with a fresh agent, hand an answer to the agent kept open for it, or submit the place again; `--answers <key>` names the stop-short the words answer. |
 | `flume stop <place>` | End the place's agent and nothing else. |
@@ -22,13 +22,13 @@ sidebar:
 | `flume tidy [<place>]` | Remove what is over, for one place or every place. |
 | `flume settle [<place>]` | Move a place, or every place, on; with `--every <time>`, the places where something is pending, as a watch over the host. |
 | `flume wait <place>` | Wait on a stage's end or the submission's outcome, as a recipient; `--confirm` confirms the end as it is answered. |
-| `flume inbox [<place>]` | Collect every end pending for a recipient, on every place of the host, or on the place named alone; `--confirm` confirms each as it is given. |
-| `flume confirm <key>…` | Confirm, as a recipient, each end's delivery by its key, so the end is delivered and pending for it no more. |
+| `flume inbox [<place>]` | Collect every end and every message pending for a recipient, on every place of the host, or the ends of the place named alone; `--confirm` confirms each as it is given. |
+| `flume confirm <key>…` | Confirm, as a recipient, each end's or message's delivery by its key, so it is delivered and pending for it no more. |
 | `flume wake <address>` | Wake a role's address, `<stream>/<role>`: launch its run where none stands, and nothing where an agent already holds it. |
 | `flume kinds lock <identity>…` | Record each kind at its content's hash in a lock of kinds, or take it out. |
 | `flume open [<session>]` | Show a session of a stream's, by the session's name, in its stream's view: a window its terminal app opens, its multiplexer's own app, or the line to run. |
 | `flume relay <place>` | Relay the place's live agent's terminal to a program that carries a person's screen and keys: the screen out and the person's input in, as JSON lines. |
-| `flume mcp` | Serve flume's status over MCP on standard input and output. |
+| `flume mcp` | Serve flume's status, and its `message`, `launch`, `wake`, `hibernate` and `resume`, over MCP on standard input and output. |
 | `flume needs <words>` | From an agent flume started: its stage cannot deliver without an answer, or found work; `--to` names the role the words are for. |
 | `flume ack started`, `flume ack received` | From an agent flume started: it started, or it received a prompt. |
 | `flume hook <event>` | From an agent program's hook: what flume does with the hook's input. |
@@ -60,13 +60,13 @@ repository, such as `fix--the-parser-reads-tabs`.
 Words that name no command or flag exit `2`, with the usage on standard
 error. `flume wait` has exits of its own.
 
-**Settling first.** Every command that acts, `launch`, `tell`,
-`hold`, `retry`, `stop`, `finish`, `drop`, `done`, `priority`, `tidy`,
-`wait`, `inbox` and `wake`, settles the places on the host where
-something is pending first, unless a caller keeps watch over the host
-with `flume settle --every`. A place that waits only on an answer, its
-caller's word or a drop is not read then; the command that acts on it
-settles it.
+**Settling first.** Every command that acts, `launch`, `message`,
+`hold`, `retry`, `stop`, `finish`, `drop`, `done`, `hibernate`,
+`resume`, `priority`, `tidy`, `wait`, `inbox` and `wake`, settles the
+places on the host where something is pending first, unless a caller
+keeps watch over the host with `flume settle --every`. A place that
+waits only on an answer, its caller's word or a drop is not read then;
+the command that acts on it settles it.
 `flume status`, `flume list`, `flume prompt` and `flume mcp`
 only read, `flume status --line` and `flume hook status-line` among
 them. `flume open` and `flume relay` settle nothing, and `flume kinds
@@ -92,7 +92,7 @@ flume launch --kind <kind> --name <name> [--brief <text> | --brief-file <file>] 
 | `--mark <mark>` | A mark the caller finds its places by, given back in status. |
 | `--priority <n>` | The place's priority in the host's queue, a whole number, negative allowed; `0` where none is given. |
 | `--stall-after <time>` | How long the place may wait on its caller under no hold's words before it is said stalled; five minutes where none is given. |
-| `--agent [<stage>.]<field>=<value>` | One setting of every stage's agent, or of one stage's. The field is `program`, `model`, `effort`, `instructions`, `beside`, `session`, `mode`, `keep_open` or `programs`. `effort=<word>` gives the agent's effort in its program's own word, as Claude Code's `low`, `medium`, `high`, `xhigh` or `max`, and a word its program does not take refuses the launch ([the effort](/flume/guides/agent-settings/#the-effort)). `session=<name>` opens the agent in that herdr session whatever its stream's, and `beside` opens it beside a pane before any session. `mode=<mode>` gives one of `plan`, `ask`, `edits` and `full`, and `mode.<program>=<value>` one entry of a table of programs, several building one table. A mode word and a table for the same stage refuse the launch. `keep_open=<time>` gives how long the agent is kept open for an answer once it stops short needing one, as a time, `0` keeping none; a `keep_open.<program>` refuses the launch ([how long an agent is kept open](/flume/guides/agent-settings/#how-long-an-agent-is-kept-open)). `programs.<program>.settings.<key>=<value>` gives one top-level key of a program's own settings, several building one entry. Its value is read as JSON where it parses and as the text written otherwise. A nested key, or one key given twice for one stage, refuses the launch. `programs.<program>.file=<path>` names a program's settings file, relative to the working directory, read once at the launch ([a program's own settings](/flume/guides/agent-settings/#a-programs-own-settings)). Repeatable. |
+| `--agent [<stage>.]<field>=<value>` | One setting of every stage's agent, or of one stage's. The field is `program`, `model`, `effort`, `instructions`, `beside`, `session`, `mode`, `keep_open`, `hibernate_after` or `programs`. `effort=<word>` gives the agent's effort in its program's own word, as Claude Code's `low`, `medium`, `high`, `xhigh` or `max`, and a word its program does not take refuses the launch ([the effort](/flume/guides/agent-settings/#the-effort)). `session=<name>` opens the agent in that herdr session whatever its stream's, and `beside` opens it beside a pane before any session. `mode=<mode>` gives one of `plan`, `ask`, `edits` and `full`, and `mode.<program>=<value>` one entry of a table of programs, several building one table. A mode word and a table for the same stage refuse the launch. `keep_open=<time>` gives how long the agent is kept open for an answer once it stops short needing one, as a time, `0` keeping none; a `keep_open.<program>` refuses the launch ([how long an agent is kept open](/flume/guides/agent-settings/#how-long-an-agent-is-kept-open)). `hibernate_after=<time>` gives how long a conversation whose kind hibernates it may idle before flume hibernates it, `0` never; a `hibernate_after.<program>` refuses the launch ([how long a conversation idles](/flume/guides/agent-settings/#how-long-a-conversation-idles)). `programs.<program>.settings.<key>=<value>` gives one top-level key of a program's own settings, several building one entry. Its value is read as JSON where it parses and as the text written otherwise. A nested key, or one key given twice for one stage, refuses the launch. `programs.<program>.file=<path>` names a program's settings file, relative to the working directory, read once at the launch ([a program's own settings](/flume/guides/agent-settings/#a-programs-own-settings)). Repeatable. |
 | `--stream <stream>` | The stream the place runs in, one the host's configuration declares. Where none is named: the intent's stream, else the one the host's configuration names for the repository and kind, the repository or the kind, else `default`. Fixed at the launch. |
 | `--intent <name>` | The intent the place serves, by name. Places of one intent keep to one account while it is usable. Where none is named, the repository and base name the intent. |
 
@@ -115,7 +115,8 @@ nothing it made, when:
 - the name gives no valid branch;
 - the base's current revision cannot be read, a failed fetch among the
   causes;
-- a declaration sets `env` or `keep_open` in an agents table, or a
+- a declaration sets `env`, `keep_open` or `hibernate_after` in an
+  agents table, or a
   setting names a stage the kind lacks, or a program no agent profile
   runs;
 - a program's own setting is a key its agent profile reserves for
@@ -326,29 +327,59 @@ The exact prompt the stage would be sent at its next start, every part
 filled, with nothing started, sent, settled or written. A prompt that
 asks for a part with nothing to fill it is refused, naming the part.
 
-## `flume tell`
+## `flume message`
 
 ```sh
-flume tell <place> <words> [--within <time>] [--answers <key>]
+flume message <target> <words> [--within <time>] [--answers <key>]
 ```
 
-Hands the place's current agent the words as a prompt once it has said
-it started and waits, read back as received or sent once more. flume
-waits up to ten minutes, or `--within`, for the agent to wait. It
-refuses with nothing typed when the place has no live agent, its agent
-is asking a person a question, or the words are not delivered within
-the bound. A tell starts and ends no agent, and moves no stage but
-one it answers.
+The target is a role's address where it is `<stream>/<role>`, each part
+a word and neither `.` nor `..`, and otherwise a place, named as every
+command names one; `./east/planner` names a place's location.
+
+To a place, it hands the place's current agent the words as a prompt
+once it has said it started and waits, read back as received or sent
+once more. flume waits up to ten minutes, or `--within`, for the agent
+to wait. It refuses with nothing typed when the place has no live
+agent, its agent is asking a person a question, or the words are not
+delivered within the bound. A message starts and ends no agent, and
+moves no stage but one it answers or resumes. Where the agent's program
+takes words by its own channel, the message waits on the agent's start
+until the agent takes it at its wait, and nothing goes through the
+multiplexer.
+
+To a place whose stage hibernates, the message resumes it at once: a
+fresh agent carries the stage's own session, the words its prompt, and
+flume answers with the place's status
+([`flume hibernate` and `resume`](#flume-hibernate-and-resume)).
+
+To a role's address, it records the words at once as a delivery to the
+address, keyed `message/<stream>/<role>/<token>`, its first line naming
+who sent it, and answers with the key, the address and what it found:
+the address's run woken, live or waiting, its standing agent, carried
+to another host, or the message handed. It wakes the address's run
+where none stands. The message waits at the address, with no bound,
+until the address's session takes it at its next wait, with every other
+end and message pending for it in one prompt, and confirms it
+([a message to a role](/flume/guides/callers-and-holds/#a-message-to-a-role)).
+An address no source declares, two declare, or whose stream the host
+does not declare is refused, recording nothing, and so are `--within`
+and `--answers` with an address.
+
+`flume tell`, the command's earlier name, runs as `flume message`.
 
 To a stage that ended short needing an answer, while its agent is kept
-open for it, the tell is the answer. flume types the question and the
+open for it, the message is the answer. flume types the question and the
 words into that agent's session and records the answer on the
 stop-short. The stage carries on there under the same start
 ([the answer in its session](/flume/guides/callers-and-holds/#the-answer-in-its-session)).
-Once the agent is no longer kept open, the tell is refused with
-nothing typed, naming the retry that gives the answer:
+Where its agent hibernated at the end of that time, the message is the
+answer too: flume records it on the stop-short and resumes the agent's
+session with the question and the words. Once the agent is let go
+otherwise, the message is refused with nothing typed, naming the retry
+that gives the answer:
 `flume retry <place> --words <answer>`. Under the printed command every
-tell is refused, since flume holds no pane to type into.
+message to a place is refused, since flume holds no pane to type into.
 
 `--answers <key>` names the stop-short the words answer, by the key the
 inbox and status give it, as `stage/construct/1/ended-short`. flume
@@ -406,13 +437,18 @@ agent, and `flume stop <place>` ends it first.
 A retry with `--words` naming a stage that ended short needing an
 answer, while its agent is kept open for it, is the answer instead. It
 starts and ends no agent. flume types the question and the words into
-that agent's session as it types a tell, within ten minutes, and
+that agent's session as it types a message, within ten minutes, and
 records the answer on the stop-short. The stage carries on there under
 the same start. An answer the agent does not take is refused with nothing
 recorded, and the stage still waits
 ([the answer in its session](/flume/guides/callers-and-holds/#the-answer-in-its-session)).
 A retry with no words runs as above, the question alone in the fresh
 agent's prompt.
+
+A retry with `--words` naming a stage whose agent hibernated waiting on
+its answer is that answer: it resumes the agent's session with the
+question and the words, its starts unchanged. A retry of any other
+hibernating stage starts it afresh, carrying no conversation.
 
 ## `flume stop`, `finish`, `drop` and `done`
 
@@ -433,6 +469,43 @@ flume done <place> [--force]
 Each ends an agent only once it is quiet, unless `--force` is given.
 Under the printed command flume cannot end an agent, and the act is
 refused until the agent's session ends where it runs.
+
+A place whose stage hibernates has no agent to end. `stop` ends its
+hibernation and the stage reads stopped, or, where it waits on its
+answer, leaves it waiting with its close read stopped, so nothing
+resumes it. `finish` counts a hibernating conversation delivered, and
+`drop` and `done` end its work.
+
+## `flume hibernate` and `resume`
+
+```sh
+flume hibernate <place> [--force]
+flume resume <place>
+```
+
+`hibernate` ends the agent of the place's current stage once it is
+quiet, `--force` ending one that works, and keeps its session. The
+stage reads `hibernating`, neither ended nor moved on, its room and its
+account free, and counts no start. It is taken only for a stage whose
+kind hibernates it ([a stage's fields](/flume/guides/kinds/#a-stages-fields)),
+and refused for any other, for a place with no live agent, and, unless
+forced, while a message is being handed to the agent. flume also
+hibernates such a stage on its own: a conversation once it idles its
+`hibernate_after` ([how long a conversation
+idles](/flume/guides/agent-settings/#how-long-a-conversation-idles)),
+and any such stage's agent kept open for an answer once its time
+passes.
+
+`resume` starts the hibernating stage again in its own session: one
+fresh agent, named `<stage>:<start>.<resume>`, on the account the
+hibernated agent ran under while that account is usable. It waits for
+room, and while a process runs the session, as a lost conversation's
+retry does. Its prompt is flume's words that the session resumes, then
+the way to stop short. A message resumes it with the message's words,
+and an answer to the stop-short its agent waits on with the question
+and the answer. Where no account reaches the conversation, or its
+transcript is gone, the stage starts afresh, saying why. A resume of a
+place with nothing hibernating is refused, naming the place.
 
 ## `flume priority`
 
@@ -489,7 +562,9 @@ Moves a place, or every place, on. It reads each stage's deliverable,
 starts the next stage or the waiting ones there is room for, and
 submits. It collects the merge queue's outcomes, delivers pending
 ends, wakes roles and tidies. Safe to repeat. `--on-quiet` first reads the place's
-agent until it is quiet, for up to sixty seconds; the Stop hook runs it.
+agent until it is quiet, for up to sixty seconds, and starts again the
+idle time of a conversation whose kind hibernates it, since a turn
+ended; the Stop hook runs it.
 No multiplexer and no plugin of one runs it.
 
 Naming no place and no `--every`, it settles every place on the host,
@@ -579,7 +654,9 @@ flume inbox [<place>] [--recipient <name>] [--confirm]
 Every end pending for the recipient, on every place of the host, a
 tidied place's kept record among them, each recorded handed to it by
 the inbox, each with its key and its delivery's key, a drop's or a
-done's among them, and whether it is expired. A hand-over delivers
+done's among them, and whether it is expired; and, under `messages`,
+every message pending at it, with its key, who sent it, when and its
+words, each handed to it by the inbox. A hand-over delivers
 nothing: an end the inbox gives stays pending, and the next inbox gives
 it again, until the recipient confirms it, by `--confirm` as the inbox
 gives it, or by [`flume confirm`](#flume-confirm) naming its delivery's
@@ -587,7 +664,7 @@ key. Prints `nothing pending for <recipient>` when there is none. The
 recipient defaults as for `flume wait`.
 
 Naming a place, as `flume status` names one, the inbox collects that
-place's ends alone: those of its record, or, once it was tidied, of the
+place's ends alone, and no message: those of its record, or, once it was tidied, of the
 records kept for it, `<place>@<at>` naming one record. It reads them
 before it moves anything on, so it collects nothing tidied since. A
 name under which no record stands is refused, and nothing is handed
@@ -609,7 +686,8 @@ flume confirm <key>… [--recipient <name>]
 ```
 
 Confirms, as the recipient, each end's delivery by its key,
-`<kind>--<name>/<token>/<end key>`, as the inbox, a wait, status and
+`<kind>--<name>/<token>/<end key>`, or each message's,
+`message/<stream>/<role>/<token>`, as the inbox, a wait, status and
 the notice give it, each in the command that confirms it as its
 recipient, `flume confirm --recipient <recipient> <key>`. A notice, a wait, the inbox and a session's start
 hand an end over, and a hand-over delivers nothing: the end stays
@@ -883,10 +961,21 @@ $ printf '%s\n' '{"text":"yes"}' '{"keys":["enter"]}' | flume relay fix--the-par
 
 ## `flume mcp`
 
-Serves MCP on standard input and output with one tool, `status`, which
-takes an optional place and answers as `flume status --json` does. It
-settles nothing. flume's Claude Code plugin runs it as its `flume`
-server.
+Serves MCP on standard input and output with six tools. `status` takes
+an optional place, answers as `flume status --json` does and settles
+nothing. `message`, with `target`, `words`, `within` and `answers`;
+`launch`, with `kind`, `name`, `brief` and the command's other
+switches by their long names, `base`, `recipient`, `hold`,
+`hold_submission`, `mark`, `priority`, `stall_after`, `agent`, `stream`
+and `intent`, a list where the switch is given again and again;
+`wake`, with `address`; `hibernate`, with `place` and `force`; and
+`resume`, with `place`: each call is run as the command line runs the
+same words, every default, check and refusal the command's, its result
+the command's JSON and a refusal marked an error. A launch takes no
+file over MCP: its brief is text. The server runs in its caller's
+environment, so a launch over MCP from a role's run that names no
+recipient reports to the run's address. flume's Claude Code plugin runs
+it as its `flume` server.
 
 ## Run by agents
 
@@ -901,11 +990,13 @@ case do nothing but `session-start`, which collects for the session
 | `flume ack started --session <id> --transcript <path> --plugin-version <v> [--source <how>]` | The agent started under its identity and secret, in a session with a transcript. `--source` says how the session began, `startup` where none is given. flume takes it only where the agent runs the program its start recorded and every variable of the record matches. Otherwise it refuses, naming each variable that differed and whether the program did, and starts a settle of the place. |
 | `flume ack received --digest <hex> [--mode <mode>]` | The agent received a prompt, by the SHA-256 digest of its text with paste tags taken off and whitespace collapsed. At the start's first prompt, where its start passed a mode, flume takes it only where `--mode` names that mode as the program names it. Otherwise it refuses, naming the mode asked and the one given, records the start begun without its settings and starts a settle of the place. A later prompt compares no mode. |
 | `flume hook <event>` | What the hook for the event does with the input on standard input: `session-start`, `user-prompt-submit`, `pre-tool-use`, `permission-request`, `post-tool-use`, `stop`, `stop-failure` or `session-end`. Any other event does nothing. It always exits `0`. |
+| `flume hook deliver` | Prints what the agent `FLUME_AGENT` names, under the secret `FLUME_SECRET` gives, takes at its wait in the place `FLUME_PLACE` names: a message to its place waiting on its start, else every end and message pending at a role's run's address as one prompt, each recorded handed. Only where the agent's program takes words by its own channel; it prints nothing where nothing waits, the agent asks or its prompt is not yet received, reads no standard input and always exits `0`. |
 | `flume hook status-line` | Prints the line of the place `FLUME_PLACE` names, as `flume status <place> --line` gives it, ending `· this session is not its agent` where `FLUME_AGENT` is not the current stage's live start. It needs `FLUME_PLACE` and `FLUME_AGENT` alone, and reads no standard input. It prints nothing where they are missing or the place cannot be read, writes nothing, settles nothing and always exits `0`. |
 | `flume hook usage` | Keeps the usage windows its standard input reports, `{"rateLimits": […]}` as Claude Code gives them, beside the start's record with the time it ran, and has flume take them as the reading of the account the start `FLUME_AGENT` names runs under, with `FLUME_SECRET`. A report with a window in no form it reads keeps nothing, and one taken no later than the reading kept changes nothing. It reads and writes nothing without `FLUME_AGENT` and `FLUME_SECRET`, prints nothing and always exits `0` ([the account's usage windows](/flume/guides/claude-code/#the-accounts-usage-windows)). |
 
 flume's Claude Code plugin runs `flume hook` for every event, and its
-module runs `flume hook status-line` to pin the place's line and
-`flume hook usage` to pass the account's usage windows;
+module runs `flume hook status-line` to pin the place's line,
+`flume hook usage` to pass the account's usage windows and, where the
+agent's program takes words by its own channel, `flume hook deliver`;
 [the Claude Code plugin](/flume/guides/claude-code/#what-each-hook-does)
 says what each does.

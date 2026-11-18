@@ -6,6 +6,7 @@
 //! vocabulary (design 6), not fields of the kind format (core.4).
 
 use flume_seams::{Agent, AnsweringRole, GroupHeld, Identity, PromptPart};
+use std::collections::BTreeMap;
 
 const OPEN: &str = "{{#words}}";
 const CLOSE: &str = "{{/words}}";
@@ -102,6 +103,50 @@ pub(crate) fn roles_text(
         agent.stop_short_to(),
         names.join("\n")
     ))
+}
+
+/// What a role's place's prompt says of the kinds its entry names before
+/// listing them: how to launch one so its ends come back. It names
+/// `flume` alone, and no program (193; core.1).
+pub const KINDS_WORDS: &str = "Work that must be committed, or that runs past one turn, launch as a place of one of these kinds, by `flume launch` in the repository the work is in, naming no recipient, so its ends come back to you here:";
+
+/// The kinds a role's entry names as its prompt gives them after the
+/// roles a stop-short may name: [`KINDS_WORDS`], then each kind with the
+/// words of when it serves, in the kinds' order; none where it names
+/// none (28, 193; core.31).
+pub(crate) fn kinds_text(kinds: &BTreeMap<String, String>) -> Option<String> {
+    if kinds.is_empty() {
+        return None;
+    }
+    let named: Vec<String> = kinds
+        .iter()
+        .map(|(kind, words)| format!("- `{kind}`: {words}"))
+        .collect();
+    Some(format!(
+        "{KINDS_WORDS}
+{}",
+        named.join(
+            "
+"
+        )
+    ))
+}
+
+/// What a prompt gives after every part its starts share: the roles a
+/// stop-short of a place in `stream` may name, then the kinds a role's
+/// entry names, each where there is any, joined by one blank line (28,
+/// 193; core.31).
+pub(crate) fn after_roles(
+    listed: &[AnsweringRole],
+    kinds: &BTreeMap<String, String>,
+    stream: &str,
+    agent: &dyn Agent,
+) -> Option<String> {
+    let parts: Vec<String> = [roles_text(listed, stream, agent), kinds_text(kinds)]
+        .into_iter()
+        .flatten()
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 /// What `{{group}}` renders for a repetition: its group's number and
@@ -347,6 +392,49 @@ mod tests {
     }
 
     #[test]
+    fn the_kinds_a_role_launches_follow_the_roles() {
+        let agent = agent();
+        let kinds = BTreeMap::from([
+            ("fix".to_string(), "a failing landing or check".to_string()),
+            (
+                "change".to_string(),
+                "a change a design asks for".to_string(),
+            ),
+        ]);
+        assert_eq!(kinds_text(&BTreeMap::new()), None);
+        assert_eq!(
+            kinds_text(&kinds).as_deref(),
+            Some(
+                format!(
+                    "{KINDS_WORDS}\n- `change`: a change a design asks for\n- `fix`: a failing landing or check"
+                )
+                .as_str()
+            )
+        );
+        let roles = [role("east/design", "design")];
+        let roles_only = roles_text(&roles, "east", &agent).expect("a list");
+        assert_eq!(
+            after_roles(&roles, &kinds, "east", &agent),
+            Some(format!(
+                "{roles_only}\n\n{}",
+                kinds_text(&kinds).expect("the kinds")
+            )),
+            "the kinds after the roles"
+        );
+        assert_eq!(
+            after_roles(&[], &kinds, "east", &agent),
+            kinds_text(&kinds),
+            "the kinds where no role is listed"
+        );
+        assert_eq!(
+            after_roles(&roles, &BTreeMap::new(), "east", &agent),
+            Some(roles_only),
+            "the roles where the entry names no kind"
+        );
+        assert_eq!(after_roles(&[], &BTreeMap::new(), "east", &agent), None);
+    }
+
+    #[test]
     fn the_way_to_stop_short_says_it_is_the_one_way_to_ask() {
         let agent = agent();
         let identity = Identity {
@@ -354,6 +442,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         };
         let way = way_to_stop_short(&agent, &identity);
         assert!(way.starts_with(&agent.stop_short(&identity)), "{way}");

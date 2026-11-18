@@ -13,6 +13,7 @@ fn identity(stage: &str, start: u32) -> Identity {
         place: "fix--one".into(),
         stage: stage.into(),
         start,
+        resume: 0,
     }
 }
 
@@ -1710,6 +1711,14 @@ fn the_terminal_holds_recipients_sessions_by_name() {
     terminal.remove_session("ops");
     assert_eq!(terminal.send_to("ops", "three"), ToSession::NotFound);
     terminal.add_session("ops", AgentState::Working);
+    assert_eq!(
+        terminal.send_to("ops", "four"),
+        ToSession::Refused {
+            reason: "the session ops works; nothing was typed".into()
+        },
+        "a session at work is typed nothing (54, 214)"
+    );
+    terminal.set_session_state("ops", AgentState::Waiting);
     assert_eq!(terminal.send_to("ops", "four"), ToSession::Sent);
     assert_eq!(terminal.notices("ops"), vec!["two", "four"]);
 
@@ -1802,6 +1811,8 @@ fn the_roles_its_sources_declare() {
         agents: RoleAgents::default(),
         answers: answers.map(str::to_string),
         answerer,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     };
     host.set_role(
         "east/planner",
@@ -1982,6 +1993,7 @@ fn two_of_one_name() {
             ]
         }
     );
+    terminal.set_session_state(&second, AgentState::Waiting);
     assert_eq!(terminal.send_to(&second, "one"), ToSession::Sent);
     assert_eq!(terminal.notices(&second), vec!["one"]);
     assert!(
