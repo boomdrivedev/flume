@@ -72,7 +72,8 @@ const UNSTARTED: &str = "stand-in-unstarted";
 /// its session ended once the test writes the mark
 /// `stand-in/<stage>-<start>` in the place's folder. It maps each mode to
 /// its own word and reads none back, takes its program's own settings,
-/// passing them nowhere (195), and takes every effort, passing it as
+/// passing them nowhere (195), takes every model, passing it as
+/// `--model <name>` (172), and takes every effort, passing it as
 /// `--effort <word>` (197).
 struct StandInAgent {
     says_started: bool,
@@ -160,6 +161,9 @@ impl Agent for StandInAgent {
         Ok(())
     }
     /// Every word, passed as written.
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn effort(&self, _word: &str) -> Result<(), String> {
         Ok(())
     }
