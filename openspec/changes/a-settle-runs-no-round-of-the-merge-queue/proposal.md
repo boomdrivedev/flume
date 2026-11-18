@@ -79,8 +79,13 @@ None.
 - `crates/flume-conformance/src/seams/merge_queue.rs`: the unreadable
   scenario's step check.
 - `crates/flume/tests/profiles/tools/merge_queue_sluice.rs`: the
-  harness's hold and its reads to a decision, and the tests that
-  stepped.
+  harness's hold and its reads to a decision, the tests that stepped,
+  and the tests the host process moves under them.
+- `crates/flume/tests/profiles/tools/walk.rs`: the walk's hold, and a
+  short link that gives the host process's socket room where the
+  test's scratch is long.
+- `crates/flume/tests/profiles/tools/walkthroughs.rs`: the two
+  walkthroughs that read what the host process changes.
 - `docs/adr/0012-…` (amended), `docs/architecture/core.md`,
   `site/src/content/docs/architecture/rules.md`,
   `site/src/content/docs/guides/merge-queue.md`,
