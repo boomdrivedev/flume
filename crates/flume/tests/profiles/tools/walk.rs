@@ -169,6 +169,7 @@ impl Walk {
             std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_flume-stand-in"), bin.join("claude"))
                 .expect("the stand-in as claude");
         }
+        pinned_sluice(&bin, &user_scratch(&repository));
         let flume = Path::new(env!("CARGO_BIN_EXE_flume"))
             .parent()
             .expect("flume's folder")
@@ -236,14 +237,20 @@ impl Walk {
     /// The stand-in for sluice first on `PATH` as `sluice`, so the
     /// first submission is answered decided.
     pub fn sluice_decides_the_first_submit(&self) {
-        stand_in_sluice(&self.repository.scratch.path("bin"));
+        stand_in_sluice(
+            &self.repository.scratch.path("bin"),
+            &user_scratch(&self.repository),
+        );
     }
 
     /// The stand-in for sluice on a base that takes pull requests first
     /// on `PATH` as `sluice`, so each submission is a pull request that
     /// waits to be taken in.
     pub fn sluice_takes_pull_requests(&self) {
-        stand_in_pull_requests(&self.repository.scratch.path("bin"));
+        stand_in_pull_requests(
+            &self.repository.scratch.path("bin"),
+            &user_scratch(&self.repository),
+        );
     }
 
     /// The place's pull request taken in as an entry, as the host that
@@ -691,18 +698,13 @@ impl Walk {
 /// whose record names the pull request: a settle beside the submit, the
 /// Stop hook's or a caller's, collects nothing until the answer comes.
 /// Every other command, and every later submit, is the pinned sluice's
-/// own.
-pub fn stand_in_sluice(bin: &Path) {
-    let pinned = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        .map(|dir| dir.join("sluice"))
-        .find(|path| path.is_file())
-        .expect("the pinned sluice on PATH");
-    std::fs::create_dir_all(bin).expect("the stand-in's folder");
-    let path = bin.join("sluice");
-    let script = format!(
-        r#"#! /bin/sh -e
-pinned='{pinned}'
-if [ "$1" = inbox ] && [ -d '{submitting}' ]; then
+/// own, each given `scratch` as [`pinned_sluice`] gives it.
+pub fn stand_in_sluice(bin: &Path, scratch: &Path) {
+    sluice_script(
+        bin,
+        scratch,
+        &format!(
+            r#"if [ "$1" = inbox ] && [ -d '{submitting}' ]; then
   printf '%s\n' '{{"outcomes": []}}'
   exit 0
 fi
@@ -719,9 +721,37 @@ if [ "$1" = submit ] && mkdir '{submitted}' 2>/dev/null; then
 fi
 exec "$pinned" "$@"
 "#,
+            submitted = bin.join(".sluice-submitted").display(),
+            submitting = bin.join(".sluice-submitting").display(),
+        ),
+    );
+}
+
+/// The pinned sluice written into `bin` as `sluice`, run with `scratch`
+/// for its `SLUICE_USER_SCRATCH`: a place's equip and release run in the
+/// login environment alone (11, 29, 79), which names no variable of
+/// sluice's, and the pinned sluice's release of a worktree it holds
+/// nothing for makes `/tmp/sluice-<uid>/<key>`, which the gate's sandbox
+/// refuses, so the walk's `sluice` gives it the test's own folder in the
+/// gate's scratch, standing for the host user's own (core.51).
+fn pinned_sluice(bin: &Path, scratch: &Path) {
+    sluice_script(bin, scratch, "exec \"$pinned\" \"$@\"\n");
+}
+
+/// `body` written into `bin` as `sluice`, run with `$pinned` naming the
+/// pinned sluice, as the test's own `PATH` finds it, and `scratch`
+/// exported as its `SLUICE_USER_SCRATCH`.
+pub fn sluice_script(bin: &Path, scratch: &Path, body: &str) {
+    let pinned = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|dir| dir.join("sluice"))
+        .find(|path| path.is_file())
+        .expect("the pinned sluice on PATH");
+    std::fs::create_dir_all(bin).expect("the stand-in's folder");
+    let path = bin.join("sluice");
+    let script = format!(
+        "#! /bin/sh -e\npinned='{pinned}'\n{USER_SCRATCH}='{scratch}'\nexport {USER_SCRATCH}\n{body}",
         pinned = pinned.display(),
-        submitted = bin.join(".sluice-submitted").display(),
-        submitting = bin.join(".sluice-submitting").display(),
+        scratch = scratch.display(),
     );
     std::fs::write(&path, script).expect("the stand-in for sluice");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
@@ -774,21 +804,15 @@ pub const PULL_REQUEST: &str = "7";
 /// intake took in from a pull request, `pull/<n>` its `from.worktree`
 /// and the branch its `from.head`; and inbox gives nothing, sluice having
 /// delivered each outcome to the request (133). Every other command is
-/// the pinned sluice's own.
-pub fn stand_in_pull_requests(bin: &Path) {
-    let on_path = |program: &str| {
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-            .map(|dir| dir.join(program))
-            .find(|path| path.is_file())
-            .unwrap_or_else(|| panic!("the pinned {program} on PATH"))
-    };
-    let (pinned, jq) = (on_path("sluice"), on_path("jq"));
-    std::fs::create_dir_all(bin).expect("the stand-in's folder");
-    let path = bin.join("sluice");
-    let script = format!(
-        r#"#! /bin/sh -e
-state='{state}'
-pinned='{pinned}'
+/// the pinned sluice's own, each given `scratch` as [`pinned_sluice`]
+/// gives it.
+pub fn stand_in_pull_requests(bin: &Path, scratch: &Path) {
+    let jq = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|dir| dir.join("jq"))
+        .find(|path| path.is_file())
+        .expect("the pinned jq on PATH");
+    let body = format!(
+        r#"state='{state}'
 mkdir -p "$state"
 case "$1" in
 submit)
@@ -832,13 +856,10 @@ status)
 esac
 "#,
         state = bin.join(".sluice-request").display(),
-        pinned = pinned.display(),
         jq = jq.display(),
         number = PULL_REQUEST,
     );
-    std::fs::write(&path, script).expect("the stand-in for sluice");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-        .expect("the stand-in for sluice made executable");
+    sluice_script(bin, scratch, &body);
 }
 
 /// The stand-in's run waited on to its end.
