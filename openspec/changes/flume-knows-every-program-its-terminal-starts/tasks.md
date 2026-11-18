@@ -49,7 +49,7 @@ outcome. Design sections are this change's `design.md`.
 
 ## 6. The statement's clauses
 
-- [ ] 6.1 In `crates/flume-conformance/src/clauses.rs`, keep `REVISION` at `48a94da` and take 170, 172 and S75 out of `unbuilt`, `PROFILES` naming record 0026's change for what it still builds, the common profile's readings, a pool's program and each profile's parts; `the_clauses_listed` and `the_clauses_unbuilt_are_named_by_the_changes_that_build_them` reading the list so (106; design 9), the clause-coverage spec's "The clauses listed" and "The suite as this change leaves it". Check: `sluice exec <base> -- moon run conformance:coverage`.
+- [x] 6.1 In `crates/flume-conformance/src/clauses.rs`, keep `REVISION` at `48a94da` and take 170, 172 and S75 out of `unbuilt`, `PROFILES` naming record 0026's change for what it still builds, the common profile's readings, a pool's program and each profile's parts; `the_clauses_listed` and `the_clauses_unbuilt_are_named_by_the_changes_that_build_them` reading the list so (106; design 9), the clause-coverage spec's "The clauses listed" and "The suite as this change leaves it". Check: `sluice exec <base> -- moon run conformance:coverage`.
 
 ## 7. The site
 
