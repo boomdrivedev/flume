@@ -60,6 +60,8 @@ impl Engine {
         self.keep_watch(Watched {
             began: self.host.now(),
             bound,
+            by: None,
+            ended: None,
         });
         self.settle(None)
     }
@@ -80,10 +82,11 @@ impl Engine {
                 }
             }
             let at = read.map(|read| read.version);
-            if let Written::Written { .. } =
-                self.store
-                    .write_host(&HostKey::Watch, at, Some(&HostDocument::Watch(watched)))
-            {
+            if let Written::Written { .. } = self.store.write_host(
+                &HostKey::Watch,
+                at,
+                Some(&HostDocument::Watch(watched.clone())),
+            ) {
                 return;
             }
         }
@@ -109,13 +112,14 @@ impl Engine {
         let Some(watched) = self.watched() else {
             return (Watch::None, None, None);
         };
-        if watched.kept(self.host.now()) {
+        let alive = |by: &str| self.host.alive(by);
+        if watched.kept(self.host.now(), alive) {
             let watch = Watch::Bound {
                 seconds: watched.bound,
             };
             (watch, Some(watched.began), None)
         } else {
-            (Watch::None, Some(watched.began), Some(watched.lapses()))
+            (Watch::None, Some(watched.began), watched.lapses(alive))
         }
     }
 
@@ -125,7 +129,7 @@ impl Engine {
     pub fn attended(&self) -> bool {
         !self
             .watched()
-            .is_some_and(|watched| watched.kept(self.host.now()))
+            .is_some_and(|watched| watched.kept(self.host.now(), |by| self.host.alive(by)))
     }
 
     /// Settles every place on the host, then lets go of every done

@@ -1465,15 +1465,23 @@ fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     let first = Watched {
         began: host.now(),
         bound: 30,
+        by: None,
+        ended: None,
     };
-    let Written::Written { version } =
-        store.write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(first)))
-    else {
+    let alive = |by: &str| host.alive(by);
+    let Written::Written { version } = store.write_host(
+        &HostKey::Watch,
+        None,
+        Some(&HostDocument::Watch(first.clone())),
+    ) else {
         panic!("the first watch was not written");
     };
-    assert!(first.kept(host.now()));
+    assert!(first.kept(host.now(), alive));
     host.advance(61);
-    assert!(!first.kept(host.now()), "a watch kept past twice its bound");
+    assert!(
+        !first.kept(host.now(), alive),
+        "a watch kept past twice its bound"
+    );
     assert_eq!(
         store.write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(first))),
         Written::Moved,
@@ -1482,20 +1490,22 @@ fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     let next = Watched {
         began: host.now(),
         bound: 30,
+        by: None,
+        ended: None,
     };
     assert!(matches!(
         store.write_host(
             &HostKey::Watch,
             Some(version),
-            Some(&HostDocument::Watch(next))
+            Some(&HostDocument::Watch(next.clone()))
         ),
         Written::Written { .. }
     ));
+    assert!(next.kept(host.now(), alive));
     assert_eq!(
         store.host_document(&HostKey::Watch),
         Some(HostDocument::Watch(next))
     );
-    assert!(next.kept(host.now()));
 }
 
 #[test]

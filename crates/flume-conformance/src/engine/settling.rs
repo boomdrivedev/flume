@@ -1187,7 +1187,12 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     world.engine.settle_every(120);
     ensure_eq!(
         host_watch(&world),
-        Some(Watched { began, bound: 120 }),
+        Some(Watched {
+            began,
+            bound: 120,
+            by: None,
+            ended: None,
+        }),
         "the host's watch"
     );
     world
@@ -1217,7 +1222,12 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     );
     ensure_eq!(
         host_watch(&world),
-        Some(Watched { began, bound: 120 }),
+        Some(Watched {
+            began,
+            bound: 120,
+            by: None,
+            ended: None,
+        }),
         "the host's watch, which only a caller's settle with a bound writes"
     );
     Ok(())
