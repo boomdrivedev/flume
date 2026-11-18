@@ -70,6 +70,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["49", "193"],
             run: a_retry,
         },
+        Scenario {
+            name: "standing-roles: A file changed in a checkout: blueprints holding a change the move to main's new head would overwrite, a resume's agent opens with blueprints where it stood, its change kept, and the move not made held with when, the tip and the fake's words",
+            cites: &["193", "213"],
+            run: a_file_changed_in_a_checkout,
+        },
+        Scenario {
+            name: "standing-roles: Moved at the next start: the change gone, the talk resumed again moves the checkout, and no move not made is held",
+            cites: &["193", "213"],
+            run: moved_at_the_next_start,
+        },
     ]
 }
 
@@ -506,6 +516,97 @@ fn a_retry(_: &()) -> Outcome {
             (blueprints, Some(world.host.now()))
         ],
         "each checkout's revision and when it was moved"
+    );
+    Ok(())
+}
+
+/// The fake's words for a move over a change in the checkout.
+pub const IN_THE_WAY: &str = "your local changes to design.md would be overwritten by checkout";
+
+/// east/ops hibernated, `/blueprints`' `main` moved on, and the fake
+/// place told the blueprints checkout holds a change that move would
+/// overwrite, then the talk resumed: the place and the tip (193, 213).
+fn resumed_over_a_change(world: &World) -> Result<(PlaceId, Revision), String> {
+    let id = ops_hibernated(world)?;
+    world.host.advance(3600);
+    let tip = world.git.commit(BLUEPRINTS, "main", &["design.md"]);
+    let (blueprints, _) = checkout_at(world, &id, "blueprints");
+    world.place.in_the_way(&blueprints, IN_THE_WAY);
+    taken(&world.engine().resume(&id))?;
+    Ok((id, tip))
+}
+
+fn a_file_changed_in_a_checkout(_: &()) -> Outcome {
+    let world = World::new();
+    let before = world.blueprints();
+    let (id, tip) = resumed_over_a_change(&world)?;
+    ensure_eq!(
+        world
+            .held(&id)
+            .and_then(|held| held.stages[0].start.clone())
+            .map(|start| start.identity),
+        Some(Identity {
+            resume: 1,
+            ..talk_of(1)
+        }),
+        "the resume's start"
+    );
+    ensure_eq!(
+        checkout_at(&world, &id, "blueprints").1,
+        Some(before.clone()),
+        "blueprints' checkout"
+    );
+    let held = world.held(&id).ok_or("no place")?;
+    let blueprints = &held.place.checkouts[1];
+    ensure_eq!(blueprints.revision, before, "blueprints' revision held");
+    ensure_eq!(
+        blueprints.unmoved,
+        Some(Unmoved {
+            at: world.host.now(),
+            tip: Some(tip),
+            reason: IN_THE_WAY.into(),
+        }),
+        "blueprints' move not made"
+    );
+    ensure_eq!(
+        held.place.checkouts[0].moved_at,
+        Some(world.host.now()),
+        "the world's repository's checkout moved"
+    );
+    let (location, _) = checkout_at(&world, &id, "blueprints");
+    ensure!(
+        matches!(
+            world.place.read(&held.place.checkouts[1].place_ref(&id.0)),
+            PlaceRead::Live { holds, .. } if holds.any()
+        ),
+        "the change in {location} went"
+    );
+    Ok(())
+}
+
+fn moved_at_the_next_start(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, tip) = resumed_over_a_change(&world)?;
+    world.settle(&id);
+    taken(&world.engine().hibernate(&id, false))?;
+    let (blueprints, _) = checkout_at(&world, &id, "blueprints");
+    world.place.out_of_the_way(&blueprints);
+    world.host.advance(600);
+    taken(&world.engine().resume(&id))?;
+    ensure_eq!(
+        checkout_at(&world, &id, "blueprints").1,
+        Some(tip.clone()),
+        "blueprints' checkout"
+    );
+    let held = world.held(&id).ok_or("no place")?;
+    ensure_eq!(
+        (
+            &held.place.checkouts[1].revision,
+            held.place.checkouts[1].moved_at,
+            &held.place.checkouts[1].unmoved
+        ),
+        (&tip, Some(world.host.now()), &None),
+        "blueprints' revision, when it was moved and its move not made"
     );
     Ok(())
 }
