@@ -451,6 +451,17 @@ impl FakeAgentHarness {
         harness
     }
 
+    /// The fake scripted to read received, asking, own work, ended and
+    /// last words from its terminal, as a profile whose program gives
+    /// flume no record of them, building every other part (93, 171, 174).
+    pub fn reading_from_its_terminal() -> Self {
+        let harness = FakeAgentHarness::default();
+        harness
+            .agent
+            .reads_from_its_terminal(&FakeAgent::FROM_TERMINAL);
+        harness
+    }
+
     /// The session the harness gives `identity`'s word that it started
     /// where it reports windows (211).
     fn session_of(identity: &Identity) -> String {

@@ -169,6 +169,13 @@ fn identity(stage: &str) -> Identity {
     }
 }
 
+/// Whether the harness's profile builds `part`: a scenario of a part
+/// reads it from the profile only where it does, the parts scenario
+/// holding a part it does not build to its lesser answer (93, 171, 174).
+fn builds<H: AgentHarness>(harness: &H, part: Part) -> bool {
+    harness.seam().parts().builds(part)
+}
+
 fn started<H: AgentHarness>(harness: &H, stage: &str) -> Identity {
     let who = identity(stage);
     let command = harness.seam().command(
@@ -1019,16 +1026,20 @@ fn begun_without_and_no_turn<H: AgentHarness>(harness: &H) -> Outcome {
         harness.seam().started_without(&folder, &who).is_some(),
         "the agent read begun with its settings"
     );
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::No,
-        "own work of an agent that has had no turn"
-    );
-    ensure_eq!(
-        harness.seam().asking(&folder, &who),
-        Reading::No,
-        "asking, of an agent that has had no turn"
-    );
+    if builds(harness, Part::OwnWork) {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::No,
+            "own work of an agent that has had no turn"
+        );
+    }
+    if builds(harness, Part::Asking) {
+        ensure_eq!(
+            harness.seam().asking(&folder, &who),
+            Reading::No,
+            "asking, of an agent that has had no turn"
+        );
+    }
     Ok(())
 }
 
@@ -1218,6 +1229,9 @@ fn started_reads_the_agents_word<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 fn last_words_from_the_record<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::LastWords) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     harness.say_last(&who, "I could not sign in");
@@ -1283,6 +1297,9 @@ fn command_carries_identity_and_secret<H: AgentHarness>(harness: &H) -> Outcome 
 }
 
 fn received_reads_the_record<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::Received) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     ensure!(
@@ -1306,20 +1323,32 @@ fn received_reads_the_record<H: AgentHarness>(harness: &H) -> Outcome {
 fn asking_and_own_work<H: AgentHarness>(harness: &H) -> Outcome {
     let who = started(harness, "code");
     let folder = harness.folder();
-    ensure_eq!(harness.seam().asking(&folder, &who), Reading::No, "asking");
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::No,
-        "own work"
+    let (asking, own_work) = (
+        builds(harness, Part::Asking),
+        builds(harness, Part::OwnWork),
     );
+    if asking {
+        ensure_eq!(harness.seam().asking(&folder, &who), Reading::No, "asking");
+    }
+    if own_work {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::No,
+            "own work"
+        );
+    }
     harness.ask(&who);
     harness.start_own_work(&who);
-    ensure_eq!(harness.seam().asking(&folder, &who), Reading::Yes, "asking");
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::Yes,
-        "own work"
-    );
+    if asking {
+        ensure_eq!(harness.seam().asking(&folder, &who), Reading::Yes, "asking");
+    }
+    if own_work {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::Yes,
+            "own work"
+        );
+    }
     Ok(())
 }
 
@@ -1327,6 +1356,7 @@ fn unknown_when_the_record_cannot_say<H: AgentHarness>(harness: &H) -> Outcome {
     let who = started(harness, "code");
     let folder = harness.folder();
     harness.hide_record(&who);
+    // Unknown whether the profile builds them or not (93).
     ensure_eq!(
         harness.seam().own_work(&folder, &who),
         Reading::Unknown,
@@ -1385,13 +1415,15 @@ fn the_folder_handed_to_the_readings<H: AgentHarness>(harness: &H) -> Outcome {
     let folder = harness.folder();
     let elsewhere = format!("{folder}-of-another-place");
     harness.deliver(&who, "the prompt");
-    ensure!(
-        matches!(
-            harness.seam().received(&folder, &who, "the prompt"),
-            Received::Received { .. }
-        ),
-        "the prompt delivered read as not received in the place's folder"
-    );
+    if builds(harness, Part::Received) {
+        ensure!(
+            matches!(
+                harness.seam().received(&folder, &who, "the prompt"),
+                Received::Received { .. }
+            ),
+            "the prompt delivered read as not received in the place's folder"
+        );
+    }
     ensure_eq!(
         harness.seam().received(&elsewhere, &who, "the prompt"),
         Received::Unknown,
@@ -1416,6 +1448,9 @@ fn the_folder_handed_to_the_readings<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 fn ended_reads_the_session<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::Ended) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     ensure_eq!(
