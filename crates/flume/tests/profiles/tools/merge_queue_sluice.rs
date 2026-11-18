@@ -1752,3 +1752,107 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     assert!(!Path::new(&place).exists(), "the place is left");
     assert!(!walk.has_branch("chore/one"), "the place's branch is left");
 }
+
+/// The pid of the host process the walk's state folder records, as the
+/// pinned sluice writes it in `host/version`.
+fn host_pid(walk: &Walk) -> Option<i32> {
+    let version = fs::read_to_string(walk.home().join("state/sluice/host/version")).ok()?;
+    let named: Value = serde_json::from_str(&version).ok()?;
+    i32::try_from(named["pid"].as_u64()?).ok()
+}
+
+#[test]
+fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_read() {
+    // S109 and sluice 135: the chore's check is held, and sluice's host
+    // process, which its submit started, is ended while the check waits,
+    // its run outliving it. The hold then goes, and the watch's first
+    // settle reads the submission, which starts a host process again;
+    // that one lands the chore, and a settle reads the landing and tidies
+    // it, no settle running a round of the queue (124, 208, S109).
+    let walk = Walk::new("watch-restart");
+    let log = counting_sluice(&walk);
+    walk.hold();
+    let place = walk.launch("chore", "one", &["--brief", "tidy the parser"]);
+    walk.agent(
+        &place,
+        json!([
+            { "write": { "path": "parser.rs", "text": "fn parse() {}\n" } },
+            { "bash": "git add -A && git commit --quiet -m 'tidy the parser'" },
+        ]),
+    );
+    until_the_quiet_settle_ends(&log);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let entry = walk.submissions();
+        assert_eq!(entry.len(), 1, "{entry:?}");
+        if entry[0]["state"] == "testing" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline && entry[0]["state"] == "queued",
+            "the chore's held check never ran: {entry:?}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    // Once its round has recorded the run started, as sluice's own test
+    // of a host process killed under a run waits.
+    std::thread::sleep(Duration::from_secs(1));
+    let ended = host_pid(&walk).expect("the host process the state folder records");
+    // SAFETY: a signal to the host process of the walk's own state folder.
+    unsafe { libc::kill(ended, libc::SIGKILL) };
+    let deadline = Instant::now() + Duration::from_secs(30);
+    // SAFETY: signal 0 only asks whether the process stands.
+    while unsafe { libc::kill(ended, 0) } == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the host process {ended} never ended"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    walk.release();
+
+    let watched = asked(&log).len();
+    walk.flume(&["settle", "--every", "1m"]);
+    let started = host_pid(&walk);
+    assert!(
+        started.is_some_and(|pid| pid != ended),
+        "the settle's read started no host process: {started:?} after {ended}"
+    );
+    let began = Instant::now();
+    loop {
+        let status = walk.status(&place);
+        if status.is_null() {
+            break;
+        }
+        assert_eq!(stage(&status, "code")["starts"], 1, "{status}");
+        assert!(
+            began.elapsed() < Duration::from_secs(120),
+            "the chore never landed: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        walk.flume(&["settle", "--every", "1m"]);
+    }
+
+    let asked = asked(&log);
+    assert!(
+        !asked
+            .iter()
+            .any(|(_, command)| command.split_whitespace().next() == Some("step")),
+        "a settle stepped the queue: {asked:?}"
+    );
+    assert!(
+        !asked[watched..]
+            .iter()
+            .any(|(_, command)| command.starts_with("submit")),
+        "a submit under the watch: {asked:?}"
+    );
+    let submissions = walk.submissions();
+    assert_eq!(submissions.len(), 1, "{submissions:?}");
+    assert_eq!(submissions[0]["state"], "landed", "{submissions:?}");
+    assert_eq!(
+        walk.on_remote("parser.rs").as_deref(),
+        Some("fn parse() {}\n")
+    );
+    assert!(!Path::new(&place).exists(), "the place is left");
+    assert!(!walk.has_branch("chore/one"), "the place's branch is left");
+}
