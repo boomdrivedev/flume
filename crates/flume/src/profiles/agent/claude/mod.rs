@@ -372,7 +372,7 @@ impl Agent for Claude {
                 next: TRUST_NEXT.into(),
                 confirm: TRUST_CONFIRM.into(),
             }),
-            kind: Some(KIND.into()),
+            kind: self.kind().map(str::to_string),
             files,
         }
     }
@@ -616,6 +616,11 @@ impl Agent for Claude {
     /// ([`effort::VARIABLE`]; 197, C.4).
     fn effort_variable(&self) -> Option<&'static str> {
         Some(effort::VARIABLE)
+    }
+
+    /// [`KIND`], herdr's kind for Claude Code (170, C.4).
+    fn kind(&self) -> Option<&str> {
+        Some(KIND)
     }
 
     /// The start's first prompt's UserPromptSubmit input names the mode
