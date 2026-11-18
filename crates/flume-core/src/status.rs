@@ -674,6 +674,9 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
     if base_place(&place.kind) {
         return base_waiting_on(held, on_branch.unwrap_or(0));
     }
+    if held.chart.is_some() {
+        return chart_waiting_on(held);
+    }
     let last = held.stages.len().checked_sub(1)?;
     let waits = |act, stage: Option<usize>, why, since, words| {
         Some(WaitingOn {
@@ -741,42 +744,7 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
     }
     let index = held.current?;
     let stage = &held.stages[index];
-    let retry = |why, words| waits(Act::Retry, Some(index), why, stage.since, words);
     match stage.state {
-        StageState::Starting | StageState::Started => {
-            let dialog = stage.start.as_ref()?.dialog.as_ref()?;
-            waits(
-                Act::Answer,
-                Some(index),
-                Waits::Dialog,
-                Some(dialog.since),
-                Some(dialog.words.clone()),
-            )
-        }
-        StageState::EndedShort => {
-            if crate::submit::sent_back_by(held, index) {
-                return None;
-            }
-            let end = stage.end.as_ref();
-            let closed = end.and_then(|end| end.closed);
-            retry(Waits::Answer, end.and_then(|end| end.words.clone())).map(|on| WaitingOn {
-                open_until: end
-                    .and_then(|end| end.open_until)
-                    .filter(|_| closed.is_none()),
-                closed,
-                ..on
-            })
-        }
-        StageState::Lost => retry(Waits::Lost, None),
-        StageState::NeverBegun => retry(Waits::NeverBegun, None),
-        StageState::Refused => retry(
-            Waits::Refused,
-            stage
-                .refused_part
-                .clone()
-                .or_else(|| stage.refused_setting.clone()),
-        ),
-        StageState::Stopped => retry(Waits::Stopped, None),
         StageState::Delivered | StageState::Finished if index == last => {
             if !place.kind.lands {
                 waits(Act::Done, None, Waits::Delivered, stage.since, None)
@@ -792,6 +760,105 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
                 None
             }
         }
+        _ => stage_waits(held, index),
+    }
+}
+
+/// The move a statechart place waits on its caller for (42, 45, 47, 130,
+/// 175): its submission's, where it waits on a retry of it; else the
+/// first of its sessions, in the order recorded, of a stage that works,
+/// that waits on its caller, on hold by its own name or its stage's path,
+/// unready, asking, lost, never begun, refused or stopped; none where
+/// none does. A session that found work waits on no one: its stage's end
+/// is flume's to read.
+fn chart_waiting_on(held: &HeldState) -> Option<WaitingOn> {
+    let submission = &held.submission;
+    if let Some(words) = &submission.waiting {
+        return Some(WaitingOn {
+            act: Act::Retry,
+            stage: None,
+            why: Waits::Submission,
+            since: submission.waiting_since,
+            words: Some(words.clone()),
+            open_until: None,
+            closed: None,
+        });
+    }
+    (0..held.stages.len())
+        .filter(|index| held.stages[*index].session.is_some() && crate::chart::works(held, *index))
+        .find_map(|index| stage_waits(held, index))
+}
+
+/// The move the stage at `index` waits on its caller for from its own
+/// state, a simple kind's or a statechart kind's session: a person's
+/// answer to the dialog its agent's program shows; an answer to its
+/// stop-short, but found work flume acts on; a retry where it is held,
+/// unready, lost, never begun, refused or stopped; none otherwise (34, 35,
+/// 42, 45, 47, 130, 198).
+fn stage_waits(held: &HeldState, index: usize) -> Option<WaitingOn> {
+    let stage = &held.stages[index];
+    let on = |act, why, since, words| {
+        Some(WaitingOn {
+            act,
+            stage: Some(stage.name.clone()),
+            why,
+            since,
+            words,
+            open_until: None,
+            closed: None,
+        })
+    };
+    let retry = |why, words| on(Act::Retry, why, stage.since, words);
+    match stage.state {
+        StageState::Starting | StageState::Started => {
+            let dialog = stage.start.as_ref()?.dialog.as_ref()?;
+            on(
+                Act::Answer,
+                Waits::Dialog,
+                Some(dialog.since),
+                Some(dialog.words.clone()),
+            )
+        }
+        StageState::EndedShort => {
+            let found = stage.end.as_ref().and_then(|end| end.needs) == Some(StopKind::FoundWork);
+            if crate::submit::sent_back_by(held, index) || (held.chart.is_some() && found) {
+                return None;
+            }
+            let end = stage.end.as_ref();
+            let closed = end.and_then(|end| end.closed);
+            retry(Waits::Answer, end.and_then(|end| end.words.clone())).map(|on| WaitingOn {
+                open_until: end
+                    .and_then(|end| end.open_until)
+                    .filter(|_| closed.is_none()),
+                closed,
+                ..on
+            })
+        }
+        StageState::OnHold => retry(
+            Waits::OnHold,
+            held.hold_on(&stage.name)
+                .or_else(|| {
+                    let session = stage.session.as_ref()?;
+                    held.hold_on(&session.stage)
+                })
+                .and_then(|hold| hold.words.clone()),
+        ),
+        StageState::WaitingOnReadiness => retry(
+            Waits::Unready,
+            held.readiness
+                .failed()
+                .map(|step| format!("{}: {}", step.step, step.words)),
+        ),
+        StageState::Lost => retry(Waits::Lost, None),
+        StageState::NeverBegun => retry(Waits::NeverBegun, None),
+        StageState::Refused => retry(
+            Waits::Refused,
+            stage
+                .refused_part
+                .clone()
+                .or_else(|| stage.refused_setting.clone()),
+        ),
+        StageState::Stopped => retry(Waits::Stopped, None),
         _ => None,
     }
 }

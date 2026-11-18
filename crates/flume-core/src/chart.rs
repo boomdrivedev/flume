@@ -10,7 +10,7 @@
 //! decides every transition, and an effect whose proof the evidence
 //! holds is planned no more, so a settle repeated performs nothing twice.
 
-use crate::{atoms, Engine, Step};
+use crate::{atoms, Act, Answer, Engine, Step};
 use flume_seams::*;
 use std::collections::BTreeMap;
 use toml::Value;
@@ -249,10 +249,22 @@ impl Engine {
                 }
                 let words = (!sessions.is_empty()).then(|| chart.words.take()).flatten();
                 for session in sessions {
-                    started.push((held.stages.len(), words.clone()));
+                    // A hold naming the stage's path, or the session, holds
+                    // it until a retry names either (47, 175).
+                    let name = session.name();
+                    let on_hold = held.holds.iter().any(|hold| {
+                        matches!(&hold.on, HoldOn::Stage { stage } if *stage == *path || *stage == name)
+                    });
+                    if !on_hold {
+                        started.push((held.stages.len(), words.clone()));
+                    }
                     held.stages.push(StageHeld {
-                        name: session.name(),
-                        state: StageState::NotReached,
+                        name,
+                        state: if on_hold {
+                            StageState::OnHold
+                        } else {
+                            StageState::NotReached
+                        },
                         starts: 0,
                         refused_part: None,
                         refused_setting: None,
@@ -316,6 +328,66 @@ impl Engine {
             .zip(1..)
             .map(|((settings, file), n)| session(path, entry, n, file, settings, stage))
             .collect()
+    }
+
+    /// A retry naming a statechart place's stage by its path: the hold on
+    /// it ended, and each of its sessions it held, but those held by their
+    /// own names, started; refused, naming its sessions, where no hold names
+    /// it (47, 49, 175).
+    pub(crate) fn retry_chart_stage(&self, place: &PlaceId, path: &str) -> Answer {
+        let on = HoldOn::Stage {
+            stage: path.to_string(),
+        };
+        let held_sessions = self.update(place, |held| {
+            if !held.holds.iter().any(|hold| hold.on == on) {
+                return Step::Keep(None);
+            }
+            held.holds.retain(|hold| hold.on != on);
+            let sessions: Vec<usize> = (0..held.stages.len())
+                .filter(|index| {
+                    let stage = &held.stages[*index];
+                    stage.state == StageState::OnHold
+                        && held.hold_on(&stage.name).is_none()
+                        && stage
+                            .session
+                            .as_ref()
+                            .is_some_and(|session| session.stage == path)
+                })
+                .collect();
+            Step::Write(Some(sessions))
+        });
+        let Some(Some(sessions)) = held_sessions else {
+            let names = self
+                .store
+                .read(place)
+                .map(|read| {
+                    read.state
+                        .stages
+                        .iter()
+                        .filter(|stage| {
+                            stage
+                                .session
+                                .as_ref()
+                                .is_some_and(|session| session.stage == path)
+                        })
+                        .map(|stage| stage.name.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            return Answer::refused(format!(
+                "the stage {path} of the place {place} is not on hold; a retry names one of its sessions{}",
+                if names.is_empty() {
+                    ", and it has none yet".to_string()
+                } else {
+                    format!(": {}", names.join(", "))
+                }
+            ));
+        };
+        for index in sessions {
+            self.start_stage(place, index, None);
+        }
+        self.settle_place(place);
+        self.acted(Act::Retry, place)
     }
 
     /// A tick that could not be made, recorded once among the place's
@@ -387,6 +459,16 @@ fn session(
     };
     session.declared.name = session.name();
     session
+}
+
+/// Whether `name` is a stage of `held`'s statechart kind, by its path
+/// (175).
+pub(crate) fn is_chart_stage(held: &HeldState, name: &str) -> bool {
+    held.place
+        .kind
+        .statechart
+        .as_ref()
+        .is_some_and(|statechart| statechart.stages.contains_key(name))
 }
 
 /// The stage template's region under the stage at `path` (175).

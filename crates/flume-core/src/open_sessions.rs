@@ -39,7 +39,14 @@ impl Engine {
     /// kept open not yet passed, its start live and no letting go recorded;
     /// none otherwise (42, 198).
     pub(crate) fn kept_open(&self, held: &HeldState) -> Option<Kept> {
-        let kept = Kept::of(held)?;
+        self.kept_open_at(held, answer_index(held)?)
+    }
+
+    /// The agent of the stage at `index` kept open for its answer, as
+    /// [`Engine::kept_open`] reads the current one: a statechart place's
+    /// session among them (175, 198).
+    pub(crate) fn kept_open_at(&self, held: &HeldState, index: usize) -> Option<Kept> {
+        let kept = Kept::at(held, Some(index))?;
         let open = kept.end.closed.is_none()
             && kept.start.live
             && kept
@@ -351,13 +358,36 @@ fn brought_back_bare(reading: &AgentReading) -> bool {
 /// nowhere, from a stage before the kind's last or from a last stage that
 /// is its kind's own fix round (42, 131).
 pub(crate) fn waits_on_answer(held: &HeldState) -> Option<&str> {
-    let index = held.current?;
-    let stage = &held.stages[index];
-    if held.phase != Phase::Live || stage.state != StageState::EndedShort {
+    answer_index(held).map(|index| held.stages[index].name.as_str())
+}
+
+/// The index of the stage whose stop-short the place waits on an answer
+/// to: a simple kind's current stage where it ended short needing one, or
+/// having found work that sends the place back nowhere; a statechart
+/// place's first session, in the order recorded, of a stage that works,
+/// that ended short needing one, its found work its stage's end (42, 131,
+/// 175).
+pub(crate) fn answer_index(held: &HeldState) -> Option<usize> {
+    if held.phase != Phase::Live {
         return None;
     }
-    let found = stage.end.as_ref().and_then(|end| end.needs) == Some(StopKind::FoundWork);
-    (!found || !crate::submit::found_goes_back(held, index)).then_some(stage.name.as_str())
+    let needs = |index: usize| {
+        let stage = &held.stages[index];
+        (stage.state == StageState::EndedShort)
+            .then(|| stage.end.as_ref().and_then(|end| end.needs))
+            .flatten()
+    };
+    if held.chart.is_some() {
+        return (0..held.stages.len()).find(|index| {
+            crate::chart::works(held, *index) && needs(*index) == Some(StopKind::NeedsAnswer)
+        });
+    }
+    let index = held.current?;
+    if held.stages[index].state != StageState::EndedShort {
+        return None;
+    }
+    let found = needs(index) == Some(StopKind::FoundWork);
+    (!found || !crate::submit::found_goes_back(held, index)).then_some(index)
 }
 
 /// When the start `start` of the stage at `index` last took an answer in
@@ -416,10 +446,6 @@ pub(crate) struct Kept {
 }
 
 impl Kept {
-    fn of(held: &HeldState) -> Option<Kept> {
-        Kept::at(held, None)
-    }
-
     /// The stage at `at`, else the current stage, where it ended short
     /// needing an answer and its agent is kept open (175, 198).
     fn at(held: &HeldState, at: Option<usize>) -> Option<Kept> {
@@ -435,11 +461,6 @@ impl Kept {
             start: stage.start.clone()?,
             end,
         })
-    }
-
-    /// The index of the stage whose agent is kept open.
-    pub(crate) fn index(&self) -> usize {
-        self.index
     }
 
     /// The same stage's end in `held`, as a write decides it: none where

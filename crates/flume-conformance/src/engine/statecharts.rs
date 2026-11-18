@@ -5,6 +5,7 @@
 
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
+use flume_core::{Act, Answering, Retry, Waits};
 use flume_seams::*;
 use std::collections::BTreeMap;
 
@@ -59,6 +60,31 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "statechart: a stage whose rule matches no file at the head ends stopped, and status names the rule and its pattern",
             cites: &["175"],
             run: a_rule_that_matches_no_file,
+        },
+        Scenario {
+            name: "statechart: a stage of three sessions on a host with room for two runs two agents in one place, the third waiting for room and starting once one of the two ends",
+            cites: &["30", "70"],
+            run: several_agents_in_one_place,
+        },
+        Scenario {
+            name: "statechart: a session that stops short needing an answer leaves the place waiting on it, an answer naming its key reaches the session kept open, and the other session works on",
+            cites: &["42", "198"],
+            run: a_session_asks_and_is_answered,
+        },
+        Scenario {
+            name: "statechart: a session whose agent goes with nothing delivered and nothing said leaves the place waiting on its caller, whose retry naming the session starts it again with one fresh agent",
+            cites: &["45", "49"],
+            run: a_lost_session_retried,
+        },
+        Scenario {
+            name: "statechart: each session reads its own report, `{{file}}` filled with its file, delivered only where its own is committed",
+            cites: &["24", "175"],
+            run: each_personas_own_report,
+        },
+        Scenario {
+            name: "statechart: a launch's hold naming a stage's path holds each of its sessions, the place waiting on a retry, and a retry naming the path starts them",
+            cites: &["47", "130", "175"],
+            run: a_hold_on_a_stages_path,
         },
         Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
@@ -933,5 +959,252 @@ fn a_rule_that_matches_no_file(_: &()) -> Outcome {
         "status names not the rule and its pattern: {:?}",
         status.failures
     );
+    Ok(())
+}
+
+/// `one`, its `main.work` a stage of `n` listed sessions, each committing
+/// `out/<n>.md` (175).
+fn listed_sessions(n: usize) -> Kind {
+    let stage = chart_stage(
+        listed(n),
+        Deliverable::CommittedReport {
+            path: "out/{{session}}.md".into(),
+        },
+        "Work.",
+    );
+    chart_kind(
+        "one",
+        &one_stage(false, "stage", ON_PASSED),
+        vec![("main.work", stage)],
+    )
+}
+
+fn several_agents_in_one_place(_: &()) -> Outcome {
+    let world = World::new();
+    world.host.set_bound(Some(2));
+    world.kinds.set_kinds(REPOSITORY, vec![listed_sessions(3)]);
+    launched(&world.engine.launch(&launch("one", "a", None)))?;
+    let id = World::id("one", "a");
+    world.settle(&id);
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    ensure_eq!(
+        session(&world, &id, "main.work#1/3"),
+        Some((StageState::WaitingForRoom, false)),
+        "the third session"
+    );
+    world.commit("one/a", &["out/1.md"]);
+    world.settle(&id);
+    ensure_eq!(
+        session(&world, &id, "main.work#1/1"),
+        Some((StageState::Delivered, false)),
+        "the first session"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 3, "agents opened");
+    ensure!(
+        session(&world, &id, "main.work#1/3").is_some_and(|(_, live)| live),
+        "the third session did not start once room was made"
+    );
+    Ok(())
+}
+
+fn a_session_asks_and_is_answered(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(REPOSITORY, vec![listed_sessions(2)]);
+    launched(&world.engine.launch(&launch("one", "a", None)))?;
+    let id = World::id("one", "a");
+    world.settle(&id);
+    let question = "Which parser do I mend?";
+    stops_short(
+        &world,
+        ("one", "a"),
+        "main.work#1/1",
+        question,
+        StopKind::NeedsAnswer,
+    )?;
+    world.settle(&id);
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (
+            waiting.act,
+            waiting.stage.as_deref(),
+            waiting.why,
+            waiting.words.as_deref()
+        ),
+        (
+            Act::Retry,
+            Some("main.work#1/1"),
+            Waits::Answer,
+            Some(question)
+        ),
+        "the move the place waits on"
+    );
+    ensure!(waiting.open_until.is_some(), "the session is not kept open");
+    let key = EndKey::Stage {
+        stage: "main.work#1/1".into(),
+        start: 1,
+        state: StageState::EndedShort,
+        answered: 0,
+    };
+    let answer = world.engine.tell_answering(
+        &id,
+        "The fast one.",
+        None,
+        &Answering {
+            key: Some(key),
+            by: Some("ops".into()),
+        },
+    );
+    ensure!(
+        answer.refusal().is_none(),
+        "the answer was refused: {answer:?}"
+    );
+    let first = World::identity("one", "a", "main.work#1/1", 1);
+    ensure!(
+        world
+            .terminal
+            .sent_to(&first)
+            .iter()
+            .any(|sent| sent.contains("The fast one.")),
+        "the answer did not reach the session"
+    );
+    ensure_eq!(
+        session(&world, &id, "main.work#1/1"),
+        Some((StageState::Begun, true)),
+        "the session answered"
+    );
+    ensure_eq!(
+        session(&world, &id, "main.work#1/2"),
+        Some((StageState::Begun, true)),
+        "the other session"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    Ok(())
+}
+
+fn a_lost_session_retried(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(REPOSITORY, vec![listed_sessions(2)]);
+    launched(&world.engine.launch(&launch("one", "a", None)))?;
+    let id = World::id("one", "a");
+    world.settle(&id);
+    world
+        .terminal
+        .kill(&World::identity("one", "a", "main.work#1/1", 1));
+    world.settle(&id);
+    ensure_eq!(
+        session(&world, &id, "main.work#1/1"),
+        Some((StageState::Lost, false)),
+        "the lost session"
+    );
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage.as_deref(), waiting.why),
+        (Act::Retry, Some("main.work#1/1"), Waits::Lost),
+        "the move the place waits on"
+    );
+    ensure_eq!(
+        at(&world, &id, "main.work.run"),
+        Some("working".to_string()),
+        "the stage"
+    );
+    let answer = world
+        .engine
+        .retry(&id, Retry::Stage("main.work#1/1".into()), None, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the retry was refused: {answer:?}"
+    );
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let retried = held
+        .stages
+        .iter()
+        .find(|stage| stage.name == "main.work#1/1")
+        .ok_or("the session is gone")?;
+    ensure_eq!(retried.starts, 2, "the session's starts");
+    ensure!(
+        retried
+            .start
+            .as_ref()
+            .is_some_and(|start| start.live && start.n == 2),
+        "the session's second start is not live"
+    );
+    ensure_eq!(
+        session(&world, &id, "main.work#1/2"),
+        Some((StageState::Begun, true)),
+        "the other session"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 3, "agents opened");
+    Ok(())
+}
+
+fn each_personas_own_report(_: &()) -> Outcome {
+    let world = World::new();
+    world.commit("main", &["personas/a.md", "personas/b.md"]);
+    world.kinds.set_kinds(REPOSITORY, vec![persona()]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    let id = World::id("persona", "a");
+    world.settle(&id);
+    world.commit("persona/a", &["results/personas/a.md"]);
+    world.settle(&id);
+    ensure_eq!(
+        session(&world, &id, "stages.test#1/1").map(|(state, _)| state),
+        Some(StageState::Delivered),
+        "the session for personas/a.md"
+    );
+    ensure_eq!(
+        session(&world, &id, "stages.test#1/2"),
+        Some((StageState::Begun, true)),
+        "the session for personas/b.md"
+    );
+    Ok(())
+}
+
+fn a_hold_on_a_stages_path(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(REPOSITORY, vec![listed_sessions(2)]);
+    let mut held = launch("one", "a", None);
+    held.hold = vec!["main.work".into()];
+    held.hold_words =
+        BTreeMap::from([("main.work".to_string(), "Wait for the review.".to_string())]);
+    launched(&world.engine.launch(&held))?;
+    let id = World::id("one", "a");
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    for n in 1..=2 {
+        ensure_eq!(
+            session(&world, &id, &format!("main.work#1/{n}")),
+            Some((StageState::OnHold, false)),
+            format!("session {n}")
+        );
+    }
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.why, waiting.words.as_deref()),
+        (Act::Retry, Waits::OnHold, Some("Wait for the review.")),
+        "the move the place waits on"
+    );
+    let mut refused_launch = launch("one", "b", None);
+    refused_launch.hold = vec!["main.nowhere".into()];
+    let reason = refused(&world.engine.launch(&refused_launch))?;
+    ensure!(
+        reason.contains("main.nowhere") && reason.contains("main.work"),
+        "the refusal names not the hold and the stages: {reason}"
+    );
+    let answer = world
+        .engine
+        .retry(&id, Retry::Stage("main.work".into()), None, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the retry was refused: {answer:?}"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
     Ok(())
 }
