@@ -58,6 +58,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_recipient_asking,
         },
         Scenario {
+            name: "end delivery: an end its recipient's pane was asking at keeps its place pending, the watch's next settle once the pane waits hands it over by notice, and the settle after it reads nothing of the place in the terminal",
+            cites: &["43", "225"],
+            run: an_end_handed_on_once_its_recipient_waits,
+        },
+        Scenario {
             name: "end delivery: a recipient no session holds leaves the end pending, and the settle goes on",
             cites: &["43", "95", "46"],
             run: a_recipient_gone,
@@ -575,6 +580,56 @@ fn a_recipient_asking(_: &()) -> Outcome {
         world.terminal.notices("ops"),
         vec![world.confirming(&delivered("one"), "ops")],
         "the notices once ops asks nothing"
+    );
+    Ok(())
+}
+
+/// The settling spec's "An end handed on once its recipient waits": a
+/// fix's code stage delivers while its recipient's pane asks a question,
+/// so no notice is sent, its submission held, and the pane then waits;
+/// the watch's next settle hands the end to the recipient by notice, and
+/// the settle after it names nothing of the fix in the fake terminal's log
+/// (43, 225).
+fn an_end_handed_on_once_its_recipient_waits(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session("ops", AgentState::Asking);
+    let mut fix = launch("fix", "one", Some("mend it"));
+    fix.recipients = vec!["ops".into()];
+    fix.hold_submission = true;
+    launched(&world.engine.launch(&fix))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    deliver_fix(&world, &id);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Delivered),
+        "code"
+    );
+    ensure!(
+        world.terminal.notices("ops").is_empty(),
+        "a notice sent into a question"
+    );
+    world.terminal.set_session_state("ops", AgentState::Waiting);
+    world.engine.settle_every(60);
+    let notices = world.terminal.notices("ops");
+    ensure!(
+        notices.len() == 1 && notices[0].contains("code delivered"),
+        "the notices at the watch's next settle: {notices:?}"
+    );
+    world.terminal.log.clear();
+    world.engine.settle_every(60);
+    let asked = world.terminal.log.calls();
+    ensure!(
+        !asked
+            .iter()
+            .any(|call| call.contains("fix--one") || call.contains("fix/one")),
+        "the settle after the hand-over asked the terminal of the fix: {asked:?}"
+    );
+    ensure_eq!(
+        world.terminal.notices("ops").len(),
+        1,
+        "the notices after the next settle"
     );
     Ok(())
 }
