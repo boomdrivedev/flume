@@ -45,7 +45,7 @@ impl Engine {
     /// Launches one place, or refuses naming why (2).
     pub fn launch(&self, launch: &Launch) -> Answer {
         self.settle_attended();
-        match self.make_place(launch, None, None) {
+        match self.make_place(launch, None, None, None) {
             Ok(held) => Answer::Launched {
                 place: self.place_status(&held),
             },
@@ -502,7 +502,7 @@ impl Engine {
     /// copy the host holds is read while origin holds the base; else the
     /// host's own branch, where the repository has no `origin` or `origin`
     /// holds no such branch. A fetch that fails refuses the launch.
-    fn base_now(
+    pub(crate) fn base_now(
         &self,
         repository: &str,
         base: &str,
@@ -622,7 +622,11 @@ impl Engine {
 
     /// Makes the launch's place, a role's run where `role` names the
     /// address it serves: its agents' session named by the address and no
-    /// recipient of its own (132); and a base place's fix where `fix_of`
+    /// recipient of its own (132); a standing role's place where
+    /// `checkouts` names its checkouts as its wake read them, the first
+    /// the launch's repository at its base's revision, its kind checked
+    /// as a standing role's and its place made of those checkouts with no
+    /// branch (193; design 2, 3, 5); and a base place's fix where `fix_of`
     /// names the base place, holding it, its recipients the base place's
     /// as the launch carries them (43, 203).
     pub(crate) fn make_place(
@@ -630,6 +634,7 @@ impl Engine {
         launch: &Launch,
         role: Option<&str>,
         fix_of: Option<&FixOf>,
+        checkouts: Option<&[CheckoutHeld]>,
     ) -> Result<HeldState, String> {
         let repository = &launch.repository;
         let kinds = self.resolver.kinds();
@@ -649,8 +654,15 @@ impl Engine {
             .bind(repository, &binding)
             .map_err(|reason| format!("{repository}'s binding: {reason}"))?;
         self.on_a_places_branch(repository, &launch.base)?;
-        let (base_revision, base_from) =
-            self.base_now(repository, &launch.base, merge_queue.as_deref())?;
+        // A standing role's base was read for its first checkout at its
+        // wake, and is not read again (9, 193).
+        let (base_revision, base_from) = match checkouts.and_then(<[CheckoutHeld]>::first) {
+            Some(first) => (
+                first.revision.clone(),
+                first.base_from.unwrap_or(BaseFrom::NoOrigin),
+            ),
+            None => self.base_now(repository, &launch.base, merge_queue.as_deref())?,
+        };
         let Resolved {
             kind,
             declared,
@@ -659,6 +671,13 @@ impl Engine {
             from,
         } = self.resolve_kind(launch, &base_revision)?;
         Self::runs(&kind, &from.identity)?;
+        if let Some(address) = role {
+            if let Some(reason) =
+                crate::standing_role::refused(address, &kind, &from.identity, checkouts.is_some())
+            {
+                return Err(reason);
+            }
+        }
         let fixes_as = if crate::base::base_place(&kind) {
             self.fix_kind_of(
                 launch,
@@ -717,8 +736,12 @@ impl Engine {
                 ));
             }
         }
-        let branch = format!("{}/{}", kind.branch_prefix, launch.name);
-        if !self.history.valid_branch(&branch) {
+        // A standing role's place has no branch (193).
+        let branch = match checkouts {
+            Some(_) => String::new(),
+            None => format!("{}/{}", kind.branch_prefix, launch.name),
+        };
+        if checkouts.is_none() && !self.history.valid_branch(&branch) {
             return Err(format!(
                 "the name {} gives no valid branch: {branch}",
                 launch.name
@@ -804,7 +827,7 @@ impl Engine {
                 fix_of: fix_of.cloned(),
                 fixes_as,
                 token: Some(crate::deliveries::token(&self.host.secret())),
-                checkouts: Vec::new(),
+                checkouts: checkouts.map(<[CheckoutHeld]>::to_vec).unwrap_or_default(),
             },
             phase: Phase::Making {
                 by: self.host.command(),
@@ -863,6 +886,9 @@ impl Engine {
         }
         if let (true, Some(queue)) = (crate::base::base_place(&kind), &merge_queue) {
             return self.open_base_place(&held, queue.as_ref());
+        }
+        if held.place.standing_role() {
+            return self.open_standing_role(&held, place_seam.as_ref());
         }
         let refused = match place_seam.make(repository, &base_revision, &branch, &location) {
             MakeOutcome::Made => None,

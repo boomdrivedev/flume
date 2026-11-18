@@ -36,6 +36,9 @@
 //! wake (132; core.13, core.28; record 0039's amendment). A role's run
 //! that stalls with its own stream's answerer standing behind it, so its
 //! stall reaches no one, is named under the host's addresses (130, 193).
+//! A run whose entry gives `repositories` is a standing role's, its
+//! checkouts read before anything is made and its place made of them, as
+//! `standing_role.rs` says (193; design 2, 5).
 
 use crate::message::{is_message_key, sent};
 use crate::standing::Standing;
@@ -110,9 +113,16 @@ impl Engine {
         if let Some(held) = self.run_of(address, &run) {
             return Ok((standing(&held), held));
         }
-        let base = match &run.base {
-            Some(base) => base.clone(),
-            None => self
+        // A standing role's checkouts are read before anything is made,
+        // each at its repository's default branch (193; design 5).
+        let checkouts = match run.repositories.as_slice() {
+            [] => None,
+            repositories => Some(self.checkouts_of(address, repositories)?),
+        };
+        let base = match (&checkouts, &run.base) {
+            (Some(checkouts), _) => checkouts[0].base.clone(),
+            (None, Some(base)) => base.clone(),
+            (None, None) => self
                 .history
                 .default_branch(&run.repository)
                 .ok_or_else(|| {
@@ -135,7 +145,7 @@ impl Engine {
             settings: run.agents.stages.clone(),
             ..Launch::default()
         };
-        match self.make_place(&launch, Some(address), None) {
+        match self.make_place(&launch, Some(address), None, checkouts.as_deref()) {
             Ok(held) => Ok((Woke::Launched, held)),
             Err(reason) => match self.run_of(address, &run) {
                 Some(held) => Ok((standing(&held), held)),

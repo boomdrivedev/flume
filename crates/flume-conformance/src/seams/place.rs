@@ -146,7 +146,7 @@ pub fn scenarios<H: PlaceHarness>() -> Vec<Scenario<H>> {
         },
         Scenario {
             name: "place: a standing role's checkouts are made under the location, each detached at its revision on no branch",
-            cites: &["78", "80", "193", "C.1"],
+            cites: &["78", "80", "193"],
             run: checkouts_made_under_the_location::<H>,
         },
         Scenario {
@@ -161,7 +161,7 @@ pub fn scenarios<H: PlaceHarness>() -> Vec<Scenario<H>> {
         },
         Scenario {
             name: "place: a standing role's checkouts are removed with what stands at the location, no teardown run and no branch removed",
-            cites: &["81", "83", "193", "C.1"],
+            cites: &["81", "83", "193"],
             run: checkouts_removed_with_no_teardown::<H>,
         },
     ]

@@ -38,6 +38,7 @@ mod settings;
 mod settle;
 mod spent;
 mod standing;
+mod standing_role;
 mod start;
 mod start_record;
 mod status;
