@@ -74,6 +74,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: an_unwatched_drop,
         },
         Scenario {
+            name: "settle: a fix waiting on an answer under no hold's words is read by no watch's settle four minutes on, and the watch's settle six minutes on records its stall and delivers it to the fix's recipients",
+            cites: &["130", "225"],
+            run: a_stalls_time_comes,
+        },
+        Scenario {
+            name: "settle: a fix whose waiting move is held for ten minutes is read by no watch's settle nine minutes on, and the watch's settle eleven minutes on lapses the hold and records the fix stalled",
+            cites: &["130", "225"],
+            run: a_holds_bound_passes,
+        },
+        Scenario {
             name: "settle: S109, under a caller's watch a submitted chore with no agent is settled at each of the caller's settles, each stepping its base once, and once it lands the next delivers the landing and tidies it",
             cites: &["S109", "46", "124", "125", "208", "I8"],
             run: s109_a_submitted_place_with_no_agent_moves_under_a_watch,
@@ -1541,6 +1551,108 @@ fn an_unwatched_drop(_: &()) -> Outcome {
         world.stage_state(&one, "code"),
         Some(StageState::EndedShort),
         "the waiting fix's code"
+    );
+    Ok(())
+}
+
+/// Whether `calls` name the fix `name` by its place or its branch.
+fn names_fix(calls: &[String], name: &str) -> bool {
+    let (place, branch) = (format!("fix--{name}"), format!("fix/{name}"));
+    calls
+        .iter()
+        .any(|call| call.contains(&place) || call.contains(&branch))
+}
+
+/// The stalls the place's held state records.
+fn stalls_of(world: &World, id: &PlaceId) -> Vec<EndHeld> {
+    world
+        .held(id)
+        .map(|held| held.ends)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|end| matches!(end.of, EndOf::Stall { .. }))
+        .collect()
+}
+
+/// The settling spec's "A stall's time comes": a fix waits on an answer
+/// whose agent has ended, under no hold's words, and a caller settles with
+/// a bound of one minute four minutes after the fix began to wait and
+/// again six minutes after; the first settle reads nothing of the fix, and
+/// the second records its stall and delivers it to the fix's recipients
+/// (130, 225).
+fn a_stalls_time_comes(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = fix_waiting_on_an_answer(&world, "one")?;
+    world.host.advance(4 * 60);
+    clear_seams(&world);
+    world.engine.settle_every(60);
+    ensure!(
+        !names_fix(&seams_asked(&world), "one"),
+        "the settle four minutes on asked of the fix: {:?}",
+        seams_asked(&world)
+    );
+    ensure!(stalls_of(&world, &id).is_empty(), "a stall four minutes on");
+    world.host.advance(2 * 60);
+    world.engine.settle_every(60);
+    ensure_eq!(stalls_of(&world, &id).len(), 1, "the stalls six minutes on");
+    ensure!(world.status(&id)?.stalled, "status does not say stalled");
+    ensure!(
+        world
+            .terminal
+            .notices(CALLER)
+            .iter()
+            .any(|notice| notice.contains("stalled")),
+        "the stall was not delivered to the fix's recipient: {:?}",
+        world.terminal.notices(CALLER)
+    );
+    Ok(())
+}
+
+/// The settling spec's "A hold's bound passes": a fix's waiting move is
+/// held for ten minutes, and a caller settles with a bound of one minute
+/// nine minutes after the hold and again eleven minutes after; the first
+/// settle reads nothing of the fix, and the second lapses the hold and
+/// records the fix stalled (130, 225).
+fn a_holds_bound_passes(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = fix_waiting_on_an_answer(&world, "one")?;
+    let held = world
+        .engine
+        .hold(&id, HoldOn::Waiting, "on the user's card", Some(10 * 60));
+    ensure!(held.refusal().is_none(), "the hold was refused: {held:?}");
+    world.host.advance(9 * 60);
+    clear_seams(&world);
+    world.engine.settle_every(60);
+    ensure!(
+        !names_fix(&seams_asked(&world), "one"),
+        "the settle nine minutes on asked of the fix: {:?}",
+        seams_asked(&world)
+    );
+    ensure!(
+        world
+            .held(&id)
+            .is_some_and(|held| held.waiting_hold().is_some()),
+        "the hold lapsed nine minutes on"
+    );
+    world.host.advance(2 * 60);
+    let lapsed_at = world.host.now();
+    world.engine.settle_every(60);
+    let after = world.held(&id).ok_or("the fix is gone")?;
+    ensure!(
+        after
+            .holds
+            .iter()
+            .any(|hold| hold.on == HoldOn::Waiting && hold.lapsed == Some(lapsed_at)),
+        "the hold did not lapse eleven minutes on: {:?}",
+        after.holds
+    );
+    ensure!(world.status(&id)?.stalled, "status does not say stalled");
+    ensure_eq!(
+        stalls_of(&world, &id).len(),
+        1,
+        "the stalls eleven minutes on"
     );
     Ok(())
 }
