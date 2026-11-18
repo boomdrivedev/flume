@@ -1455,20 +1455,22 @@ fn the_kinds_and_change_are_set() {
 fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     // The seam-fakes spec's "A watch the clock lets lapse": the fake
     // store holds the host's watch as any host document, by
-    // compare-and-set, so a watch written at the fake clock's time lapses
-    // once the clock passes twice its bound and is kept again by the next
-    // one written; the fake terminal answers nothing of a watch (106,
-    // 119, 122, 208).
+    // compare-and-set, the command running its settle and when that
+    // settle ended among it, so a watch written at the fake clock's time
+    // is kept while its settle runs, lapses once the clock passes twice
+    // its bound after it ended, and is kept again by the next one
+    // written; the fake terminal answers nothing of a watch (106, 119,
+    // 122, 208).
     let host = Arc::new(FakeHost::default());
     let store = FakeStore::default();
     assert!(store.read_host(&HostKey::Watch).is_none());
+    let alive = |by: &str| host.alive(by);
     let first = Watched {
         began: host.now(),
         bound: 30,
-        by: None,
+        by: Some(host.command()),
         ended: None,
     };
-    let alive = |by: &str| host.alive(by);
     let Written::Written { version } = store.write_host(
         &HostKey::Watch,
         None,
@@ -1476,12 +1478,37 @@ fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     ) else {
         panic!("the first watch was not written");
     };
-    assert!(first.kept(host.now(), alive));
-    host.advance(61);
+    host.advance(90);
     assert!(
-        !first.kept(host.now(), alive),
-        "a watch kept past twice its bound"
+        first.kept(host.now(), alive),
+        "a watch whose settle runs, lapsed"
     );
+    let ended = Watched {
+        ended: Some(host.now()),
+        ..first.clone()
+    };
+    let Written::Written { version } = store.write_host(
+        &HostKey::Watch,
+        Some(version),
+        Some(&HostDocument::Watch(ended.clone())),
+    ) else {
+        panic!("the watch's end was not written");
+    };
+    assert_eq!(
+        store.host_document(&HostKey::Watch),
+        Some(HostDocument::Watch(ended.clone()))
+    );
+    host.advance(59);
+    assert!(
+        ended.kept(host.now(), alive),
+        "a watch lapsed before twice its bound after its settle ended"
+    );
+    host.advance(1);
+    assert!(
+        !ended.kept(host.now(), alive),
+        "a watch kept twice its bound after its settle ended"
+    );
+    assert_eq!(ended.lapses(alive), Some(host.now()));
     assert_eq!(
         store.write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(first))),
         Written::Moved,
@@ -1490,8 +1517,8 @@ fn the_store_keeps_the_hosts_watch_and_the_clock_lets_it_lapse() {
     let next = Watched {
         began: host.now(),
         bound: 30,
-        by: None,
-        ended: None,
+        by: Some(host.command()),
+        ended: Some(host.now()),
     };
     assert!(matches!(
         store.write_host(
