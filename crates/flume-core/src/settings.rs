@@ -36,7 +36,7 @@ use crate::own::{fold, Table};
 use crate::{Engine, KEEP_OPEN};
 use flume_seams::{
     Account, Agent, Deliverable, Given, Kind, KindSettings, Layer, Mode, ModeEntry, OwnFile,
-    PerProgram, PlaceRecord, ProgramSettings, Settings, Stage,
+    PerProgram, PlaceRecord, ProgramSettings, Settings, Stage, Terminal,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -312,6 +312,32 @@ fn effort_taken(
         format!(
             "the stage `{stage}`'s effort `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
         )
+    })
+}
+
+/// Whether `terminal` starts the kind of `resolution`'s agent's program
+/// under the login environment with `env` over it, asked only where its
+/// profile names a kind; or why not, naming the stage and the program,
+/// with the terminal's words (4, 27, 32, C.5).
+pub(crate) fn kind_started(
+    terminal: &dyn Terminal,
+    resolution: &Resolution,
+    stage: &str,
+    env: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let Some(kind) = resolution.agent.kind() else {
+        return Ok(());
+    };
+    let program = program_name(
+        resolution
+            .resolved
+            .settings
+            .program
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    terminal.starts(kind, env).map_err(|words| {
+        format!("the stage `{stage}`'s program `{program}` cannot start in its terminal: {words}")
     })
 }
 

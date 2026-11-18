@@ -38,7 +38,7 @@
 
 use crate::own::Table;
 use crate::reading::reads_change;
-use crate::settings::no_stage_lacking;
+use crate::settings::{kind_started, no_stage_lacking};
 use crate::standing::{Standing, StandingHere};
 use crate::{Answer, Bound, Engine, Step};
 use flume_seams::*;
@@ -852,14 +852,24 @@ impl Engine {
             trace: None,
             waits: vec![],
         };
+        // Each stage's agent resolved, and the stream's terminal asked
+        // whether it starts the agent's program's kind, under no account's
+        // environment, before anything is made (4, 8, C.5; core.8).
+        let (terminal, _) = self.stream_terminal(&held.place.stream.name)?;
         let programs = kind
             .stages
             .iter()
             .map(|stage| {
-                self.resolution(&held.place, stage)
-                    .map(|resolution| resolution.resolved.settings.program)
+                let resolution = self.resolution(&held.place, stage)?;
+                kind_started(
+                    terminal.as_ref(),
+                    &resolution,
+                    &stage.name,
+                    &BTreeMap::new(),
+                )?;
+                Ok(resolution.resolved.settings.program)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, String>>()?;
         for (stage, program) in kind.stages.iter().zip(&programs) {
             self.pool_runs(&held.place.stream.name, &stage.name, program.as_deref())?;
         }
