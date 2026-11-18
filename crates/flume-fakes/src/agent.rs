@@ -1,7 +1,7 @@
 use crate::{lock, FakeTerminal, Log};
 use flume_seams::{
     no_effort, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, LiveProcess, Mode,
-    ModeBegan, ModeEntry, Offered, PlaceRef, Reading, Received, Reserved, Seconds, Secret,
+    ModeBegan, ModeEntry, Part, Parts, PlaceRef, Reading, Received, Reserved, Seconds, Secret,
     Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
 };
 use std::collections::BTreeMap;
@@ -39,7 +39,13 @@ use std::sync::{Arc, Mutex};
 /// scripts for a start, read in the folder the start's record is kept in
 /// with the session its word names, the later of two reports standing,
 /// each read logged `windows`, until it is scripted to report none, after
-/// which its profile builds no windows (171, 211).
+/// which its profile builds no windows (171, 211). Its parts follow its
+/// scripts: send-back, guard and on-quiet built unless scripted off,
+/// windows unless scripted to report none, spent always, the mode once
+/// scripted to read it back, carry once a carry is scripted and own
+/// settings once scripted to take them, every other degraded, and the
+/// seam reads whether it offers send-back and on-quiet, reports windows
+/// and reads its mode back from them (174).
 pub struct FakeAgent {
     terminal: Arc<FakeTerminal>,
     /// The other terminals its agents may open in, a stream's (190).
@@ -749,6 +755,25 @@ impl Agent for FakeAgent {
             .and_then(|record| record.last_words)
     }
 
+    /// Each part its scripts give it, every other degraded (174).
+    fn parts(&self) -> Parts {
+        let state = lock(&self.state);
+        let built: Vec<Part> = [
+            (Part::Spent, true),
+            (Part::Windows, !state.no_windows),
+            (Part::SendBack, !state.no_send_back),
+            (Part::Guard, !state.no_guard),
+            (Part::OnQuiet, !state.no_on_quiet),
+            (Part::Mode, state.mode_read_back),
+            (Part::Carry, !state.carries.is_empty()),
+            (Part::OwnSettings, state.takes_own),
+        ]
+        .into_iter()
+        .filter_map(|(part, built)| built.then_some(part))
+        .collect();
+        Parts::of(&built)
+    }
+
     fn spent(&self, folder: &str, agent: &Identity) -> Spent {
         self.read_in("spent", folder, agent)
             .map_or(Spent::Unknown, |record| record.spent)
@@ -775,14 +800,6 @@ impl Agent for FakeAgent {
                 session,
             },
             Some(_) => Windows::NoneYet,
-        }
-    }
-
-    fn reports_windows(&self) -> Offered {
-        if lock(&self.state).no_windows {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
         }
     }
 
@@ -939,14 +956,6 @@ impl Agent for FakeAgent {
         lock(&self.state).effort_variable
     }
 
-    fn mode_read_back(&self) -> Offered {
-        if lock(&self.state).mode_read_back {
-            Offered::Offered
-        } else {
-            Offered::NotOffered
-        }
-    }
-
     fn withheld(&self) -> Vec<String> {
         lock(&self.state).withheld.clone()
     }
@@ -976,14 +985,6 @@ impl Agent for FakeAgent {
         "add `--to <name>` to `flume needs`".into()
     }
 
-    fn send_back(&self) -> Offered {
-        if lock(&self.state).no_send_back {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
-        }
-    }
-
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded {
         let record = self.read_in("guard", folder, agent);
         if lock(&self.state).no_guard {
@@ -991,14 +992,6 @@ impl Agent for FakeAgent {
         }
         Guarded::Refused {
             acts: record.map(|record| record.refused).unwrap_or_default(),
-        }
-    }
-
-    fn on_quiet(&self) -> Offered {
-        if lock(&self.state).no_on_quiet {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
         }
     }
 }

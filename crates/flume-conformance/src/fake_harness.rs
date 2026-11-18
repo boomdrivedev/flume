@@ -437,6 +437,17 @@ impl FakeAgentHarness {
         harness
     }
 
+    /// The fake scripted to offer no send-back, guard or on-quiet, as a
+    /// profile whose program gives flume no hooks, building every other
+    /// part (115, 116, 121, 174).
+    pub fn offering_no_hooks() -> Self {
+        let harness = FakeAgentHarness::default();
+        harness.agent.no_send_back();
+        harness.agent.no_guard();
+        harness.agent.no_on_quiet();
+        harness
+    }
+
     /// The session the harness gives `identity`'s word that it started
     /// where it reports windows (211).
     fn session_of(identity: &Identity) -> String {
