@@ -75,7 +75,7 @@ stands where it says:
 Every one of the eight delta specs' 50 scenarios has its test under
 its own title, and each passed in the run above:
 
-- **standing-roles**: all seven requirements, 17 scenarios, in
+- **standing-roles**: all eight requirements, 17 scenarios, in
   `engine/standing_roles.rs`. `standing_role(kind)` is one stage, a
   conversation its kind hibernates; its wake is refused, before
   anything is made, where its kind lands, where its stage asks for
@@ -118,4 +118,6 @@ its own title, and each passed in the run above:
 
 The change is archived on this branch with this report, its deltas
 applied to `openspec/specs/`, `standing-roles` among them with its
-Purpose as the delta gives it.
+Purpose as the delta gives it; `openspec validate --specs --strict
+--no-interactive`, the command `root:specs` runs, reads 51 of 51 specs
+passing over it.
