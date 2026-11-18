@@ -1920,6 +1920,7 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
         };
         assert_eq!(
             agent_line(&agent),
@@ -2409,6 +2410,7 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
         }
     }
 
@@ -2649,6 +2651,7 @@ mod tests {
             effort: word.map(|word| EffortStatus {
                 word: word.into(),
                 layer,
+                entry: None,
                 passed: word.into(),
                 read_back: false,
                 outranked_by: outranked.then(|| variable.to_string()),

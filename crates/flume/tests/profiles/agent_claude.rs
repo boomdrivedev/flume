@@ -1302,6 +1302,7 @@ fn an_effort_the_accounts_variable_outranks() {
         Some(EffortStatus {
             word: "xhigh".into(),
             layer: Layer::Host,
+            entry: None,
             passed: "xhigh".into(),
             read_back: false,
             outranked_by: Some(effort::VARIABLE.into()),
