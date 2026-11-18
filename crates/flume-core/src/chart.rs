@@ -603,11 +603,7 @@ pub(crate) fn stage_ends(
             .iter()
             .filter(|session| session.state != StageState::Stopped)
             .count();
-        let needed = match stage.join {
-            Join::All => sessions.len(),
-            Join::Any => 1,
-            Join::Count(count) => count as usize,
-        };
+        let needed = stage.join.needs(sessions.len());
         let limit = stage.send_back_limit.unwrap_or(send_backs);
         let ended = |end: &'static str, words: Option<String>| StageEnded { end, words };
         let end = match found {

@@ -3973,6 +3973,8 @@ mod tests {
             forecast: None,
             fixes: vec![],
             fix_of: None,
+            statechart: None,
+            agents: vec![],
         }
     }
 

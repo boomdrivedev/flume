@@ -844,6 +844,7 @@ fn a_statechart_places_held_state() {
             state: "stopped".into(),
             kind: "stalled".into(),
             answers: vec!["retry".into(), "drop".into()],
+            shows: vec!["the persona that failed".into()],
             since: Some(1_200),
         }],
     });

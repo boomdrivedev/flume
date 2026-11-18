@@ -488,6 +488,67 @@ pub struct PlaceStatus {
     /// the fix's number and its cause (56, 203).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_of: Option<FixOf>,
+    /// For a place of a statechart kind, its statechart's run: its
+    /// regions, counters, decisions, answers and stages; none for a simple
+    /// kind's place (56, 175, 176).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statechart: Option<ChartStatus>,
+    /// For a place of a statechart kind, each live session's agent, as
+    /// `agent` gives a simple kind's current stage's; empty for a simple
+    /// kind's place (30, 56; core.14).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<AgentStatus>,
+}
+
+/// A statechart place's run as status gives it (56, 175, 176): each live
+/// region with the state it holds, since when and whether it is final;
+/// its counters; whether its run is over; each decision standing; each
+/// answer given with whether the engine applied it; and each stage entered
+/// with its entry, join, send-backs and sessions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStatus {
+    pub regions: Vec<RegionStatus>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub counters: BTreeMap<String, u64>,
+    pub over: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<DecisionHeld>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<AnswerStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<ChartStageStatus>,
+}
+
+/// A live region of a statechart place: its path, the state it holds,
+/// since when, and whether that state is final (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionStatus {
+    pub region: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<Seconds>,
+    #[serde(rename = "final")]
+    pub is_final: bool,
+}
+
+/// An answer given a decision, with whether the engine applied it (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnswerStatus {
+    #[serde(flatten)]
+    pub given: AnswerGiven,
+    pub applied: bool,
+}
+
+/// A stage of a statechart place entered: its path, the entry its
+/// sessions run, how they join, how many times it was sent back, and its
+/// sessions of every entry by name, in order (175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStageStatus {
+    pub stage: String,
+    pub entry: u32,
+    pub join: Join,
+    pub send_backs: u32,
+    pub sessions: Vec<String>,
 }
 
 /// A stage waiting for room while a process runs the conversation its

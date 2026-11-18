@@ -16,9 +16,10 @@ use crate::reading::{find_group, reads_change};
 use crate::settings::program_name;
 use crate::start::Starts;
 use crate::{
-    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, EffortStatus, EndStatus, Engine,
-    ExpiredEnd, GroupStatus, ModeStatus, MoveStatus, OwnFileStatus, OwnStatus, PlaceStatus,
-    SessionAnswer, SessionWait, SourceStatus, StageStatus, SubmissionStatus, WaitingOn, Waits,
+    side_by_side, Act, AgentSettings, AgentStatus, Answer, AnswerStatus, Bound, ChartStageStatus,
+    ChartStatus, EffortStatus, EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, MoveStatus,
+    OwnFileStatus, OwnStatus, PlaceStatus, RegionStatus, SessionAnswer, SessionWait, SourceStatus,
+    StageStatus, SubmissionStatus, WaitingOn, Waits,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -246,97 +247,107 @@ impl Engine {
             }
             None => None,
         };
-        let agent = held.live_start().map(|(index, start)| {
-            let reading = self.read_agent(&place.id, start);
-            cannot_read.extend(reading.unread());
-            let folder = self.store.folder(&place.id);
-            let mut last_words = None;
-            let mut notes = vec![];
-            let mut read_back = false;
-            let mut reserved = vec![];
-            let mut effort_variable = None;
-            if let Some(agent) = self.agent(&start.program) {
-                if let Guarded::Refused { acts } = agent.guard(&folder, &start.identity) {
-                    refused_acts.extend(acts);
+        // A simple kind's place has one live agent at most; a statechart
+        // place's every live session has its own (30, 56).
+        let live = if held.chart.is_some() { usize::MAX } else { 1 };
+        let agents: Vec<AgentStatus> = held
+            .live_starts()
+            .take(live)
+            .map(|(index, start)| {
+                let reading = self.read_agent(&place.id, start);
+                cannot_read.extend(reading.unread());
+                let folder = self.store.folder(&place.id);
+                let mut last_words = None;
+                let mut notes = vec![];
+                let mut read_back = false;
+                let mut reserved = vec![];
+                let mut effort_variable = None;
+                if let Some(agent) = self.agent(&start.program) {
+                    if let Guarded::Refused { acts } = agent.guard(&folder, &start.identity) {
+                        refused_acts.extend(acts);
+                    }
+                    last_words = agent.last_words(&folder, &start.identity);
+                    notes = agent.notes(&folder, &start.identity);
+                    read_back = agent.mode_read_back() == Offered::Offered;
+                    reserved = agent.reserved();
+                    effort_variable = agent.effort_variable();
                 }
-                last_words = agent.last_words(&folder, &start.identity);
-                notes = agent.notes(&folder, &start.identity);
-                read_back = agent.mode_read_back() == Offered::Offered;
-                reserved = agent.reserved();
-                effort_variable = agent.effort_variable();
-            }
-            let own = start.own.as_ref().map(|own| OwnStatus {
-                passed: own.passed.clone(),
-                read_back: false,
-                files: own
-                    .files
-                    .iter()
-                    .map(|file| OwnFileStatus {
-                        layer: file.layer,
-                        written: file.written.clone(),
-                        read: file.read.clone(),
-                        left_out: file
-                            .left_out
-                            .iter()
-                            .map(|key| Reserved {
-                                key: key.clone(),
-                                owner: reserved
-                                    .iter()
-                                    .find(|reserved| &reserved.key == key)
-                                    .map_or_else(
-                                        || "a setting its profile no longer names".to_string(),
-                                        |reserved| reserved.owner.clone(),
-                                    ),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            });
-            let mode = start.start_record.mode.clone().map(|passed| ModeStatus {
-                passed,
-                entry: matches!(start.settings.mode, Some(ModeSetting::Programs(_)))
-                    .then(|| program_name(&start.program).to_string()),
-                read_back,
-            });
-            let effort = effort_status(start, effort_variable);
-            let starting = held.stages[index].state == StageState::Starting;
-            AgentStatus {
-                identity: start.identity.to_string(),
-                stage: held.declared(index).name.clone(),
-                program: start.program.clone(),
-                settings: AgentSettings {
-                    settings: start.settings.clone(),
-                    env: start
-                        .from
-                        .keys()
-                        .filter_map(|key| key.strip_prefix("env."))
-                        .map(|name| (name.to_string(), flume_seams::SET.to_string()))
+                let own = start.own.as_ref().map(|own| OwnStatus {
+                    passed: own.passed.clone(),
+                    read_back: false,
+                    files: own
+                        .files
+                        .iter()
+                        .map(|file| OwnFileStatus {
+                            layer: file.layer,
+                            written: file.written.clone(),
+                            read: file.read.clone(),
+                            left_out: file
+                                .left_out
+                                .iter()
+                                .map(|key| Reserved {
+                                    key: key.clone(),
+                                    owner: reserved
+                                        .iter()
+                                        .find(|reserved| &reserved.key == key)
+                                        .map_or_else(
+                                            || "a setting its profile no longer names".to_string(),
+                                            |reserved| reserved.owner.clone(),
+                                        ),
+                                })
+                                .collect(),
+                        })
                         .collect(),
-                    from: flume_seams::unvalued_from(&start.from),
-                },
-                account: start.account.clone(),
-                state: reading.state,
-                started: reading.started,
-                asking: reading.asking,
-                own_work: reading.own_work,
-                past_limit: start.past_limit,
-                screen: starting.then(|| self.agent_on(start).screen()).flatten(),
-                dialog: start.dialog.as_ref().map(|dialog| dialog.words.clone()),
-                printed: start.printed.clone(),
-                last_words,
-                notes,
-                mode,
-                conversation: start.conversation.clone(),
-                session: start.session.clone(),
-                terminal: start.terminal.clone(),
-                left_in_pane: held.stages[index]
-                    .end
-                    .as_ref()
-                    .is_some_and(|end| end.left_in_pane),
-                own,
-                effort,
-            }
-        });
+                });
+                let mode = start.start_record.mode.clone().map(|passed| ModeStatus {
+                    passed,
+                    entry: matches!(start.settings.mode, Some(ModeSetting::Programs(_)))
+                        .then(|| program_name(&start.program).to_string()),
+                    read_back,
+                });
+                let effort = effort_status(start, effort_variable);
+                let starting = held.stages[index].state == StageState::Starting;
+                AgentStatus {
+                    identity: start.identity.to_string(),
+                    stage: held.declared(index).name.clone(),
+                    program: start.program.clone(),
+                    settings: AgentSettings {
+                        settings: start.settings.clone(),
+                        env: start
+                            .from
+                            .keys()
+                            .filter_map(|key| key.strip_prefix("env."))
+                            .map(|name| (name.to_string(), flume_seams::SET.to_string()))
+                            .collect(),
+                        from: flume_seams::unvalued_from(&start.from),
+                    },
+                    account: start.account.clone(),
+                    state: reading.state,
+                    started: reading.started,
+                    asking: reading.asking,
+                    own_work: reading.own_work,
+                    past_limit: start.past_limit,
+                    screen: starting.then(|| self.agent_on(start).screen()).flatten(),
+                    dialog: start.dialog.as_ref().map(|dialog| dialog.words.clone()),
+                    printed: start.printed.clone(),
+                    last_words,
+                    notes,
+                    mode,
+                    conversation: start.conversation.clone(),
+                    session: start.session.clone(),
+                    terminal: start.terminal.clone(),
+                    left_in_pane: held.stages[index]
+                        .end
+                        .as_ref()
+                        .is_some_and(|end| end.left_in_pane),
+                    own,
+                    effort,
+                }
+            })
+            .collect();
+        let agent = agents.first().cloned();
+        let agents = if held.chart.is_some() { agents } else { vec![] };
+        let statechart = self.chart_status(held, &mut cannot_read);
         let agent_state = agent.as_ref().map(|agent| agent.state);
         let asking = agent
             .as_ref()
@@ -464,6 +475,8 @@ impl Engine {
             forecast: held.forecast.clone(),
             fixes: held.fixes.clone(),
             fix_of: place.fix_of.clone(),
+            statechart,
+            agents,
         }
     }
 }
@@ -762,6 +775,108 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
         }
         _ => stage_waits(held, index),
     }
+}
+
+impl Engine {
+    /// A statechart place's run as status gives it, read from its held
+    /// state, whether each region's state is final read from its statechart
+    /// through the kinds seam, named among what status could not read where
+    /// it cannot be; none for a simple kind's place (56, 175, 176).
+    fn chart_status(&self, held: &HeldState, cannot_read: &mut Vec<String>) -> Option<ChartStatus> {
+        let chart = held.chart.as_ref()?;
+        let statechart = held.place.kind.statechart.as_ref()?;
+        let charts = match self
+            .resolver
+            .kinds()
+            .read_statechart(statechart, &chart.template)
+        {
+            Ok(charts) => Some(charts),
+            Err(reason) => {
+                cannot_read.push(format!("the statechart: {reason}"));
+                None
+            }
+        };
+        let state = chart.state.state();
+        let regions = chart
+            .state
+            .regions
+            .iter()
+            .filter(|(path, _)| state.is_live(path))
+            .map(|(path, held_state)| RegionStatus {
+                region: path.clone(),
+                state: held_state.clone(),
+                since: chart.state.entered_at.get(path).copied(),
+                is_final: charts
+                    .as_ref()
+                    .and_then(|charts| region_def(charts, path))
+                    .and_then(|region| region.states.get(held_state))
+                    .is_some_and(|state| state.is_final),
+            })
+            .collect();
+        let answers = chart
+            .answers
+            .iter()
+            .map(|given| AnswerStatus {
+                given: given.clone(),
+                applied: chart.state.applied.contains(&given.id),
+            })
+            .collect();
+        let stages = chart
+            .stages
+            .iter()
+            .map(|(path, recorded)| ChartStageStatus {
+                stage: path.clone(),
+                entry: recorded.entry,
+                join: statechart
+                    .stages
+                    .get(path)
+                    .map(|stage| stage.join)
+                    .unwrap_or_default(),
+                send_backs: recorded.send_backs,
+                sessions: held
+                    .stages
+                    .iter()
+                    .filter(|stage| {
+                        stage
+                            .session
+                            .as_ref()
+                            .is_some_and(|session| session.stage == *path)
+                    })
+                    .map(|stage| stage.name.clone())
+                    .collect(),
+            })
+            .collect();
+        Some(ChartStatus {
+            regions,
+            counters: chart.state.counters.clone(),
+            over: chart.over,
+            decisions: chart.decisions.clone(),
+            answers,
+            stages,
+        })
+    }
+}
+
+/// The region at `path` of a statechart read back, through its states'
+/// own regions and the templates they run (176).
+fn region_def<'a>(charts: &'a Charts, path: &str) -> Option<&'a weir_engine::Region> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut region = charts.chart.regions.get(*parts.first()?)?;
+    for pair in parts[1..].chunks(2) {
+        let [state, name] = pair else {
+            return None;
+        };
+        let state = region.states.get(*state)?;
+        region = match state.regions.get(*name) {
+            Some(own) => own,
+            None => charts
+                .templates
+                .get(state.machine.as_deref()?)?
+                .regions
+                .get(*name)?,
+        };
+    }
+    Some(region)
 }
 
 /// The move a statechart place waits on its caller for (42, 45, 47, 130,

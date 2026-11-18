@@ -464,7 +464,8 @@ fn a_landing_fix_named(_: &()) -> Outcome {
 }
 
 /// One region `stages` whose `test` runs a session per persona, each
-/// delivering its own result, then final at `passed`.
+/// delivering its own result, then final at `passed`, or, stopped, at a
+/// decision answered `retry` or `drop`.
 const PERSONAS: &str = r#"[kinds.persona]
 title = "Persona test"
 
@@ -473,9 +474,22 @@ initial = "test"
 
 [kinds.persona.regions.stages.states.test]
 machine = "stage"
-transitions = [{ when = { final = "passed" }, to = "passed" }]
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
 
 [kinds.persona.regions.stages.states.passed]
+final = true
+
+[kinds.persona.regions.stages.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "test" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.persona.regions.stages.states.dropped]
 final = true
 "#;
 

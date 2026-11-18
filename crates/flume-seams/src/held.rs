@@ -145,8 +145,8 @@ pub struct ChartHeld {
 }
 
 /// A decision standing: the live region whose state carries it, that
-/// state, its kind, the answers it takes as written, and when the region
-/// entered the state (130, 176; weir 97).
+/// state, its kind, the answers it takes and what it shows as written, and
+/// when the region entered the state (130, 176; weir 97).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionHeld {
     pub region: String,
@@ -154,6 +154,9 @@ pub struct DecisionHeld {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers: Vec<String>,
+    /// What it shows a person, as written (weir C.4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shows: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<Seconds>,
 }
@@ -168,6 +171,7 @@ impl DecisionHeld {
                 state: standing.state.clone(),
                 kind: standing.decision.kind.clone(),
                 answers: standing.decision.answers.clone(),
+                shows: standing.decision.shows.clone(),
                 since: standing.since.map(seconds_of),
             })
             .collect()
