@@ -3519,6 +3519,7 @@ mod tests {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         };
         let lines = host_lines(&HostStatus {
             addresses: vec![
@@ -3576,6 +3577,7 @@ mod tests {
                     PlaceId::new("/places/fix--two"),
                 ],
                 stalled: None,
+                standing_role: None,
             }],
             ..HostStatus::default()
         });
@@ -3612,6 +3614,7 @@ mod tests {
                     key: "stall/420".parse().unwrap(),
                     what: "stalled: a retry of plan".into(),
                 }),
+                standing_role: None,
             }],
             ..HostStatus::default()
         });
@@ -3861,6 +3864,7 @@ mod tests {
                 messages: vec![],
                 reporting: vec![],
                 stalled: None,
+                standing_role: None,
             }],
             ..HostStatus::default()
         });
@@ -4137,6 +4141,7 @@ mod tests {
             forecast: None,
             fixes: vec![],
             fix_of: None,
+            checkouts: vec![],
         }
     }
 

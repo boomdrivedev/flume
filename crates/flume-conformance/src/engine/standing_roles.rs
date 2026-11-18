@@ -546,7 +546,7 @@ pub const IN_THE_WAY: &str = "your local changes to design.md would be overwritt
 /// east/ops hibernated, `/blueprints`' `main` moved on, and the fake
 /// place told the blueprints checkout holds a change that move would
 /// overwrite, then the talk resumed: the place and the tip (193, 213).
-fn resumed_over_a_change(world: &World) -> Result<(PlaceId, Revision), String> {
+pub fn resumed_over_a_change(world: &World) -> Result<(PlaceId, Revision), String> {
     let id = ops_hibernated(world)?;
     world.host.advance(3600);
     let tip = world.git.commit(BLUEPRINTS, "main", &["design.md"]);

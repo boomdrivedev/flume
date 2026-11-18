@@ -668,6 +668,7 @@ fn place_status() -> PlaceStatus {
                 submission: "40".into(),
             },
         }),
+        checkouts: vec![],
     }
 }
 
@@ -846,6 +847,7 @@ fn host_status() -> HostStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "madswan/ops".into(),
             role: None,
@@ -862,6 +864,7 @@ fn host_status() -> HostStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "north/planner".into(),
             role: None,
@@ -877,6 +880,7 @@ fn host_status() -> HostStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "east/planner".into(),
             role: None,
@@ -889,6 +893,7 @@ fn host_status() -> HostStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }, AddressStatus {
             address: "east/operator".into(),
             role: None,
@@ -905,6 +910,7 @@ fn host_status() -> HostStatus {
                 key: "stall/420".parse().unwrap(),
                 what: "stalled: a retry of plan".into(),
             }),
+            standing_role: None,
         }],
         watch: Watch::Bound { seconds: 30 },
         watch_settled: Some(47_400),

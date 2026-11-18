@@ -44,7 +44,8 @@ use crate::message::{is_message_key, sent};
 use crate::standing::Standing;
 use crate::start::Starts;
 use crate::{
-    what_ended, AddressStatus, Answer, Engine, PendingEnd, PendingMessage, RoleStatus, Step, Woke,
+    what_ended, AddressStatus, Answer, Engine, PendingEnd, PendingMessage, RoleStatus,
+    StandingRoleStatus, Step, Woke,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -286,6 +287,29 @@ impl Engine {
             by.entry(address.clone())
                 .or_insert_with(|| AddressStatus::of(address));
         }
+        // Each address whose standing role's place stands, with since when
+        // its stage hibernates (56, 193, 212).
+        for held in every
+            .iter()
+            .filter(|held| !matches!(held.phase, Phase::Tidied { .. }))
+            .filter(|held| held.place.standing_role())
+        {
+            let Some(address) = held.role.clone() else {
+                continue;
+            };
+            let hibernating_since = held
+                .current
+                .filter(|index| held.stages[*index].state == StageState::Hibernating)
+                .and_then(|index| held.stages[index].start.as_ref())
+                .and_then(|start| start.hibernated.as_ref())
+                .map(|hibernated| hibernated.since);
+            by.entry(address.clone())
+                .or_insert_with(|| AddressStatus::of(address))
+                .standing_role = Some(StandingRoleStatus {
+                place: held.place.id.clone(),
+                hibernating_since,
+            });
+        }
         for status in by.values_mut() {
             status.standing = self
                 .reach(&mut standing, &status.address)
@@ -437,6 +461,7 @@ impl AddressStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }
     }
 }
