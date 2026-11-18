@@ -97,14 +97,19 @@ if sluice refused the submission.
 A submitted place has no agent left in it, so no agent's quiet runs
 those settles. A caller keeping watch over the host runs them: `flume
 settle --every <time>`, run on that bound from a timer of the host's or
-whatever else keeps time there, settles every place, an agent in it or
-none. So every submitted place has its outcome read, and its base's
-queue run one round, within the bound
+whatever else keeps time there, settles the places where something is
+pending, an agent in them or none, a place whose submission is in flight
+among them. So every submitted place has its outcome read, and its
+base's queue run one round, within the bound
 ([keeping watch over the host](/flume/guides/places-and-herdr/#keeping-watch-over-the-host)).
-While no caller keeps watch, flume runs attended: every command of
-flume's that acts settles every place first, so a submitted place
-moves at your next such command. Status says which of the two holds,
-under the host's part.
+A place that waits only on its caller is not read by the watch: a
+branch landed by hand while its place held its submission is read at
+`flume settle` naming no place and stating no bound, or at your next
+command on that place. While no caller keeps watch, flume runs
+attended: every command of flume's that acts settles the places where
+something is pending first, so a submitted place moves at your next
+such command. Status says which of the two holds, under the host's
+part.
 
 ## A base that takes pull requests
 
