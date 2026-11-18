@@ -813,6 +813,7 @@ impl Engine {
                 counts,
                 span: None,
                 asking_since: None,
+                waiting: None,
             });
             if !held
                 .terminals

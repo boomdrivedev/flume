@@ -143,15 +143,16 @@ The terminal seam gains:
 /// send, watching the turn: `text` delivered as `send` delivers it, its
 /// held input cleared first, with the terminal's word whether it saw the
 /// turn the sending began, the agent working or asking, within `within`.
-fn send_watching(&self, agent: &Identity, text: &str, within: Duration) -> Watched {
-    Watched::Refused { reason: NO_TURN.into() }
+fn send_watching(&self, agent: &Identity, text: &str, within: Duration) -> SentWatching {
+    SentWatching::Refused { reason: NO_TURN.into() }
 }
 
-pub enum Watched { Began, NotSeen { why: String }, Refused { reason: String } }
+pub enum SentWatching { Began, NotSeen { why: String }, Refused { reason: String } }
 pub const NO_TURN: &str = "the terminal reads no turn a sending began";
 ```
 
-serialized in snake case. The default refuses, so a terminal that reads
+serialized in snake case, and named as `Sent` answers `send`, since
+the store's `Watched` is the host's watch. The default refuses, so a terminal that reads
 no turn types nothing; under it a stage of such a program is reported
 never begun, its failure naming why. Rex opens no program but `claude`,
 and the printed command sends nothing, so neither needs it.
@@ -239,7 +240,7 @@ answers the lesser way where asked, so a scenario reads one part from
 the terminal while the fake still builds the others; the conformance
 suite's harness `reading_from_its_terminal` degrades all five. The fake terminal's `send_watching` delivers as its `send`
 does, refuses as it does, and answers `Began` unless a test scripted
-`watch_as(agent, Watched)`, each asking logged `send-watching
+`watch_as(agent, SentWatching)`, each asking logged `send-watching
 <identity>`.
 
 ### 8. The clause list

@@ -116,7 +116,7 @@ of it changes here.
 - `docs/adr`: record 0026 amended with this change's choices, which are
   the construct's; rules core.2, core.39 and core.52 hold the outcome,
   and no rule changes.
-- `crates/flume-seams`: `Part`'s five new parts; `Watched`, `NO_TURN`
+- `crates/flume-seams`: `Part`'s five new parts; `SentWatching`, `NO_TURN`
   and `Terminal::send_watching` with its default; `WaitingRead` and
   `StartHeld::waiting`, only added.
 - `crates/flume-core`: the readings of a degraded part from the

@@ -439,6 +439,7 @@ fn held() -> HeldState {
                 }),
                 span: None,
                 asking_since: None,
+                waiting: None,
             }),
             since: Some(120),
         }],
@@ -2427,6 +2428,34 @@ fn the_processs_answers_round_trip() {
     assert_eq!(
         serde_json::to_value(ProgramProcess::Nothing).unwrap(),
         serde_json::json!("nothing")
+    );
+}
+
+/// The seam-contracts spec's scenario "A watched send's answers in JSON"
+/// (95, 171, C.5).
+#[test]
+fn a_watched_sends_answers_round_trip() {
+    for watched in [
+        SentWatching::Began,
+        SentWatching::NotSeen {
+            why: "agent_prompt_stalled: no turn began within 5000 ms".into(),
+        },
+        SentWatching::Refused {
+            reason: "the pane is gone".into(),
+        },
+    ] {
+        round_trips(watched);
+    }
+    assert_eq!(
+        serde_json::to_value(SentWatching::Began).unwrap(),
+        serde_json::json!("began")
+    );
+    assert_eq!(
+        serde_json::to_value(SentWatching::NotSeen {
+            why: "timeout".into()
+        })
+        .unwrap(),
+        serde_json::json!({ "not_seen": { "why": "timeout" } })
     );
 }
 
@@ -5827,6 +5856,52 @@ fn a_held_state_with_its_trace_and_waits() {
             serde_json::json!(party.word())
         );
     }
+}
+
+/// The seam-contracts spec's scenario "A start read waiting" (171).
+#[test]
+fn a_start_read_waiting() {
+    let mut held = held();
+    let start = held.stages[0].start.as_mut().expect("a start");
+    start.waiting = Some(WaitingRead {
+        since: 100,
+        at: 160,
+    });
+    round_trips(held.clone());
+    let json = serde_json::to_value(&held).expect("as JSON");
+    assert_eq!(
+        json["stages"][0]["start"]["waiting"],
+        serde_json::json!({ "since": 100, "at": 160 })
+    );
+    let read: HeldState = serde_json::from_value(json).expect("read back");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        Some(WaitingRead {
+            since: 100,
+            at: 160
+        })
+    );
+}
+
+/// The seam-contracts spec's scenario "A start written before" (171;
+/// core.16).
+#[test]
+fn a_start_written_before_reads_no_waiting() {
+    let before = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(
+        before["stages"][0]["start"].get("waiting").is_none(),
+        "waiting written while none"
+    );
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        None
+    );
+    assert_eq!(
+        serde_json::to_value(&read).expect("written again"),
+        before,
+        "no waiting written where none is held"
+    );
 }
 
 #[test]
