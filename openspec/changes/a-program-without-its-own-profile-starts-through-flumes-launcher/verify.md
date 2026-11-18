@@ -1,11 +1,10 @@
 # Verify: a-program-without-its-own-profile-starts-through-flumes-launcher
 
 Verified on `change/a-program-without-its-own-profile-starts-through-flumes-launcher`
-at `ba2d7169`, cut from `bolt/flume-runs-every-agent-its-terminal-can-start`.
+at `3c08cd47`, cut from `bolt/flume-runs-every-agent-its-terminal-can-start`.
 
-**Outcome: not archived.** The whole checks fail on core.1; every task is
-ticked and every scenario has its test, but the change goes back to its
-code stage to fix the failure below.
+**Outcome: archived.** The whole checks pass, every task is ticked, and
+every scenario of the change's specs has its test.
 
 ## The whole checks
 
@@ -14,24 +13,18 @@ run once against the base at `85c601e`: the base is a bolt, so it ran the
 `check-fast` layer, and `check-tools`, the herdr profile's tests among it,
 is left to the bolt's merge onto main.
 
-**Failed: 22 tasks passed, 1 failed, exit 1.**
+**Passed: 22 tasks, exit 0**, their results recorded under their keys for
+`3c08cd4`: the format, lint and tests of `seams`, `core`, `fakes`,
+`conformance` (its `coverage` among them) and `flume`; `plugin-claude:test`;
+`site:build`; `nix:typecheck` and `nix:test`; `root:format` and
+`root:changes`.
 
-- `conformance:test` failed: `crates/flume-conformance/tests/no_tool.rs`
-  `no_tool_is_named_outside_a_profile` (core.1):
-
-  ```
-  a tool is named outside a profile (core.1):
-  crates/flume-seams/src/round_trip.rs:2375: herdr
-  ```
-
-  The seams crate's `the_processs_answers_round_trip`, added by task 1.2
-  (`ee719241`), gives `ProgramProcess::Unknown` the words `"herdr did not
-  answer within 5 seconds"`. Code outside a profile names no terminal
-  (core.1); the words need to name none, as the seam's own
-  `NO_PROCESS` does.
-- Every other task passed: the format, lint and tests of `seams`, `core`,
-  `fakes`, `conformance` (its `coverage` among them) and `flume`;
-  `site:build`; `nix:typecheck`; `root:format` and `root:changes`.
+`conformance:coverage` reads every clause of Parts A and B, I1 to I8 and
+S1 to S131 at `48a94da` cited by the suite's 1047 scenarios, S74 among
+them, with 171, 173 and S71 to S73 left to record 0026's changes still to
+build. The seams' round trip of a process's answers names no terminal in
+its words (task 1.4; core.1), so `no_tool_is_named_outside_a_profile`
+passes.
 
 The scenarios of `terminal_herdr.rs` (tasks 4.1 and 4.2) are under the
 `tools` feature, which `check-fast` does not run; this stage ran them no
@@ -40,8 +33,9 @@ other way.
 ## Tasks
 
 Every task of `tasks.md`, 1.1 to 5.1, is ticked done, each by its own
-commit on the branch, `6897fd8a` to `1a6c5c02`, with record 0026's
-amendment for the code stage's choices in `ba2d7169`.
+commit on the branch, `6897fd8a` to `1a6c5c02` and task 1.4 in
+`3c08cd47`, with record 0026's amendment for the code stage's choices in
+`ba2d7169`.
 
 ## Requirements and scenarios
 
@@ -91,7 +85,7 @@ invariants and section 11's scenarios (`dc31f458`).
 | The agent seam says whether a start runs through the launcher | A profile that keeps the seam's defaults names no launcher | `crates/flume-seams/src/round_trip.rs` `a_profile_that_keeps_the_seams_defaults_names_no_launcher` |
 | An agent's command carries the launcher's words | A command with the launcher's words and one without | `round_trip.rs` `a_command_with_the_launchers_words_and_one_without` |
 | The terminal seam reads the process an agent's program runs in | A terminal that keeps the seam's default reads no process | `crates/flume-seams/src/terminal.rs` `a_terminal_that_keeps_the_seams_default_reads_no_process` |
-| | The process's answers in JSON | `round_trip.rs` `the_processs_answers_round_trip` |
+| | The process's answers in JSON | `round_trip.rs` `the_processs_answers_round_trip`, its unknown words naming no terminal |
 | A start begun in another process says so | Begun in another process | `round_trip.rs` `a_start_begun_in_another_process` |
 | | A word written before | `round_trip.rs` `a_word_written_before_has_no_process` |
 
