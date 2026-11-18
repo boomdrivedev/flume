@@ -3,8 +3,10 @@
 Verified at `16a6796` on `change/a-settle-runs-no-round-of-the-merge-queue`,
 cut from `bolt/flume-leaves-the-merge-queue-to-sluice`, whose tip,
 `8cafda3`, the branch holds (`4ae34f7`). The whole checks pass, every
-task is done, and every requirement and scenario of the delta is met, so
-the change is archived.
+task is done, and every scenario of the delta is met. The change is not
+archived: archiving it writes a merge-queue-profile spec that the gate's
+`root:specs` fails, two of the requirements the delta modifies running
+past 500 characters (see "The archive").
 
 ## The whole checks
 
@@ -102,3 +104,36 @@ settles". Each scenario is met by a check that passed:
 | A base place's branch over a scratch repository | `a_base_places_branch_over_a_scratch_repository` |
 | Settled by a watch, no agent | `s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone` |
 | A host process started again by a settle's read | `s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_read` |
+
+## The archive
+
+`openspec validate a-settle-runs-no-round-of-the-merge-queue --strict`
+passes, but it does not catch what the archive writes. `openspec archive
+a-settle-runs-no-round-of-the-merge-queue --yes` applied the delta to
+`openspec/specs/merge-queue-profile/spec.md`: 1 added, 3 modified and 1
+removed. `openspec validate --specs --strict` then failed on
+merge-queue-profile, 50 passed and 1 failed, with these warnings:
+
+```text
+⚠ [WARNING] requirements[5]: Requirement text is very long (>500 characters). …
+⚠ [WARNING] requirements[6]: Requirement text is very long (>500 characters). …
+```
+
+`--strict` fails a warning, so this is `root:specs`, a `check-fast` task.
+The two requirements are the ones the delta modifies:
+
+| Requirement | Before | After |
+|---|---|---|
+| sluice takes a base place's submission by name from the repository | 473 | 609 |
+| A submitted place with no agent lands by a watch's settles | 361 | 508 |
+
+The archive was undone in the working tree, and the change stands open.
+
+## What the code stage must do
+
+Bring each of the two requirements' text in the delta,
+`specs/merge-queue-profile/spec.md`, to 500 characters or fewer. Move
+detail into the scenarios, or state the host process's part in a
+requirement of its own, as openspec's warning says. Then check that
+`openspec archive` would leave `openspec validate --specs --strict`
+passing.
