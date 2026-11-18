@@ -135,6 +135,77 @@ that reads it declares the run done, with no caller's word, and tidies
 it. The next end pending for the address wakes another run, which
 collects what came since.
 
+## A standing role
+
+A role whose kind has one stage, a conversation its kind hibernates,
+is a **standing role**: one conversation that stays with the role
+across many deliveries, sleeping between them. Its entry names the
+repositories it reads in `repositories`, in place of `repository`, and
+may name in `kinds` the kinds it launches its projects as, each with
+the words of when it serves:
+
+```toml
+[roles."east/ops"]
+kind = "desk"
+repositories = ["~/src/acme-records", "~/src/acme-site"]
+answers = "A live system: what is deployed, a credential, a deploy, a landing that failed."
+
+[roles."east/ops".kinds]
+fix = "A failing landing or check."
+change = "A change a design asks for."
+```
+
+Its place is one folder under flume's own data directory, at the
+location a place of its first repository named `desk--east-ops` would
+have. The folder holds a checkout of each repository, named for the
+repository's folder less a trailing `.git`, detached at its default
+branch's tip on no branch. The place has no branch, runs no readiness
+step, commits nothing and lands nothing. flume makes it whole or not at
+all: where one checkout cannot be made, flume removes the ones it
+made, and the wake is refused naming the repository and why.
+
+Each start of its stage moves each checkout to its base's tip, read
+where the repository's merge queue says the base lives, before its
+agent opens. This holds for a resume and a retry as for the first
+start. git's own checkout moves it, never forced: a change in the
+checkout that the move would overwrite keeps the checkout where it
+stood, and status names the move not made, with the tip and git's
+words, until a later start moves it. flume discards no change.
+
+Its prompt gives, after the roles a stop-short may name, the kinds its
+entry names, each with its words, and says to launch work that must be
+committed or runs past one turn as a place of one of them, by `flume
+launch` in the repository the work is in, naming no recipient. Such a
+place reports to the role's address, so its ends come back to the role.
+flume refuses no launch for its kind missing from `kinds`: the list is
+the role's guide, not a bound.
+
+A wake refuses a standing role's entry, naming the address and why,
+where its kind lands, where its stage's prompt asks for `{{branch}}`,
+`{{base}}`, `{{change}}` or `{{report}}`, which nothing fills for a
+place with no branch, where an entry gives `repositories` for a kind
+whose stage is no hibernating conversation, or where it gives
+`repository` for a kind whose stage is one.
+
+### A delivery resumes it
+
+While the role's conversation hibernates, an end or a message pending
+at its address resumes it: one fresh agent carries its own session, and
+its prompt is every delivery pending at the address as one batch, then
+the way to stop short. This holds for any role whose run's stage
+hibernates. A settle that reads the delivery resumes it, and so does
+`flume wake` and a message to the address. Each delivery counts handed
+once the resumed agent reads its prompt. A run that hibernated waiting
+on its answer takes no delivery until the answer resumes it. A role's
+conversation with a delivery waiting for it never hibernates on its
+idling: its quiet starts again once it has taken the delivery.
+
+The role ends only at its caller's word, `flume finish`, `stop`, `drop`
+or `done`. Its finish declares it done and tidies its place, checkout by
+checkout, keeping the whole place while any checkout holds a change
+or a file neither committed nor ignored. The next end for the address
+wakes a new place, its checkouts at each base's tip then.
+
 ## When a role wakes
 
 A role wakes in two ways:
@@ -150,7 +221,9 @@ A role wakes in two ways:
   and wants the role to look.
 
 A wake of an address whose run is live or waiting makes nothing, and
-the answer says the run is live or waits. An address an agent already
+the answer says the run is live or waits. A wake of an address whose
+run hibernates resumes that run where a delivery waits at the address,
+and launches nothing ([a delivery resumes it](#a-delivery-resumes-it)). An address an agent already
 holds wakes no run either way. Nothing wakes an address that no source
 declares, two declare, or whose entry is at fault: its wake is refused
 saying why, and status lists it under the host's `addresses`, with its
@@ -355,7 +428,7 @@ the address's ends.
 A command the agent runs in its own pane that names no recipient acts
 as its address. `flume confirm <key>`, `flume inbox` and `flume wait`
 confirm, collect and wait as `east/planner`, so the agent confirms a
-notice by the key at its end with no flag, and a retry or a tell that
+notice by the key at its end with no flag, and a retry or a message that
 answers a question records `east/planner` as its giver. `flume launch`
 naming no `--recipient` takes `east/planner` as the place's recipient,
 and status says where it came from:

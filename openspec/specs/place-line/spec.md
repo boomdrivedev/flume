@@ -32,7 +32,7 @@ The core SHALL give every place one line: `<kind>--<name>`, `<kind>@<version>`, 
 
 ### Requirement: A place's state in one word
 
-The line's state SHALL be the first that holds of: being made; landed, dropped or done; stalled; held; waiting on an answer; asking; lost; never begun; not ready; refused; stopped; past its bound; submission refused; landing refused; waiting on done; waiting for room; starting; asking, where the live agent's profile reads it asking; stuck; in conversation; working; submitted; else the current stage's state in words (12, 27, 34, 38, 42, 45, 47, 48, 51, 63, 70, 90, 112, 114, 118, 130).
+The line's state SHALL be the first of: being made; landed, dropped or done; stalled; hibernating; held; waiting on an answer; asking; lost; never begun; not ready; refused; stopped; past its bound; submission refused; landing refused; waiting on done; waiting for room; starting; asking, where the live agent's profile reads it asking; stuck; in conversation; working; submitted; else the current stage's state in words (12, 27, 34, 38, 42, 45, 47, 48, 51, 63, 70, 90, 112, 114, 118, 130, 212).
 
 #### Scenario: A hold, then a stall
 
@@ -63,6 +63,16 @@ The line's state SHALL be the first that holds of: being made; landed, dropped o
 
 - **WHEN** a place's submission is read held, the forge having refused its landing, and five minutes pass under no hold's words
 - **THEN** its line's state is `landing refused`, and then `stalled` (112, 130)
+
+#### Scenario: Hibernating, then resumed
+
+- **WHEN** a place's talk conversation hibernates, and its caller resumes it on a host with room
+- **THEN** its line's state is `hibernating`, and once the resumed agent has its prompt, `in conversation` (109, 212, 213)
+
+#### Scenario: Hibernated waiting on its answer
+
+- **WHEN** a place's code agent, kept open for its answer, hibernated at the end of its time
+- **THEN** its line's state is `waiting on an answer` (42, 212)
 
 ### Requirement: A line asked alone reads only what it holds
 

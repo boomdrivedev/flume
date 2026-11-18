@@ -1,6 +1,6 @@
 //! A caller's hold and keyed answers through the command line over the
 //! fakes (command-line spec, "needs --to, hold --waiting, retry --answers
-//! and tell --answers"): each command's words parsed as flume's binary
+//! and message --answers"): each command's words parsed as flume's binary
 //! parses them and asked of one core built over the conformance world,
 //! whose change `plan` in `east` waits on construct's stop-short naming
 //! `ops`. The fakes keep construct's agent open for its answer, which the
@@ -8,7 +8,8 @@
 
 use flume::commands;
 use flume_conformance::engine::caller_acts::asks_ops;
-use flume_conformance::engine::world::World;
+use flume_conformance::engine::role_waking::{configure_at, planner_run};
+use flume_conformance::engine::world::{launch, World};
 use flume_core::{Answer, PlaceStatus};
 use flume_seams::*;
 use serde_json::Value;
@@ -148,17 +149,16 @@ fn a_hold_on_the_waiting_move_then_a_retry_naming_its_key() {
     );
 }
 
-#[test]
-fn a_tell_naming_its_key() {
-    // The spec's "A tell's key" (42, 53, 198): construct's agent kept open
-    // takes the tell as its answer, recorded with the key; a second naming
-    // the key is refused, naming the answer taken.
+/// A keyed answer by `verb`, `message` or its alias `tell`: construct's
+/// agent kept open takes it as its answer, recorded by a message with the
+/// key; a second naming the key is refused, naming the answer taken.
+fn answers_naming_its_key(verb: &str) {
     let world = World::new();
     let (id, _) = asks_ops(&world, Some("1h")).expect("construct asks ops");
     let place = &id.to_string();
     let told = acted(
-        answered(&world, &["tell", place, "--answers", KEY, "yes", "--json"]),
-        Act::Tell,
+        answered(&world, &[verb, place, "--answers", KEY, "yes", "--json"]),
+        Act::Message,
     );
     let answer = answer_on(&told).expect("no answer recorded on the stop-short");
     assert_eq!(
@@ -168,13 +168,60 @@ fn a_tell_naming_its_key() {
             answer.key.map(|key| key.to_string()),
             answer.session.is_some()
         ),
-        ("yes", Act::Tell, Some(KEY.to_string()), true)
+        ("yes", Act::Message, Some(KEY.to_string()), true)
     );
-    let again = refused(&world, &["tell", place, "--answers", KEY, "no", "--json"]);
+    let again = refused(&world, &[verb, place, "--answers", KEY, "no", "--json"]);
     assert!(
         again.contains(KEY) && again.contains("yes") && again.contains("taken once"),
         "{again}"
     );
+}
+
+#[test]
+fn a_tell_naming_its_key() {
+    // The spec's "A tell's key" (42, 53, 198): `tell`, message's alias,
+    // answers as `flume message` does, its act `message`.
+    answers_naming_its_key("tell");
+}
+
+#[test]
+fn a_message_naming_its_key() {
+    // The spec's "A message's key" (42, 53, 198): its act `message`, the
+    // message delivered as the answer to that stop-short.
+    answers_naming_its_key("message");
+}
+
+#[test]
+fn tell_runs_as_message() {
+    // The spec's "A caller not yet moved" (53; record 0069): `flume tell`
+    // runs as `flume message`, the agent receives the words, the answer
+    // is the one `flume message` gives, its act `message`, and the help
+    // lists `message` alone.
+    let world = World::new();
+    let id = world
+        .begun("build", Some(Deliverable::Commits), "one")
+        .expect("build begun");
+    let work = World::identity("build", "one", "work", 1);
+    let place = &id.to_string();
+    let told = answered(&world, &["tell", place, "go on", "--json"]);
+    assert_eq!(
+        world.terminal.sent_to(&work).last().map(String::as_str),
+        Some("go on")
+    );
+    let messaged = answered(&world, &["message", place, "go on", "--json"]);
+    assert_eq!(
+        serde_json::to_value(&told).expect("tell's answer"),
+        serde_json::to_value(&messaged).expect("message's answer")
+    );
+    acted(told, Act::Message);
+    let (help, code) = run(&world, &["--help"]);
+    assert_eq!(code, 0, "{help}");
+    let commands: Vec<&str> = help
+        .lines()
+        .filter_map(|line| line.strip_prefix("  ")?.split_whitespace().next())
+        .collect();
+    assert!(commands.contains(&"message"), "{help}");
+    assert!(!commands.contains(&"tell"), "{help}");
 }
 
 #[test]
@@ -242,6 +289,162 @@ fn a_bound_on_a_stage_hold() {
     );
     assert!(reason.contains("a bound is given only"), "{reason}");
     assert!(world.held(&id).expect("the place").holds.is_empty());
+}
+
+#[test]
+fn settle_on_quiet_starts_a_conversations_quiet_again() {
+    // 121, 212: a research place's talk, read quiet at t, takes a turn no
+    // settle reads and is quiet again at t plus 50 minutes, when its own
+    // quiet runs `flume settle <place> --on-quiet`; a settle at t plus 70
+    // minutes does not hibernate it, its quiet running from the on-quiet
+    // settle.
+    let world = World::new();
+    let id = world
+        .researching(launch("research", "one", Some("weigh it")))
+        .expect("talk begun");
+    let talk = World::identity("research", "one", "talk", 1);
+    world.settle(&id);
+    let t = world.host.now();
+    world.terminal.set_state(&talk, AgentState::Working);
+    world.host.advance(50 * 60);
+    world.terminal.set_state(&talk, AgentState::Waiting);
+    let place = &id.to_string();
+    match answered(&world, &["settle", place, "--on-quiet", "--json"]) {
+        Answer::Settled { .. } => {}
+        other => panic!("the settle answered {other:?}"),
+    }
+    let first_quiet = |world: &World| {
+        world.held(&id).expect("held").stages[0]
+            .start
+            .as_ref()
+            .and_then(|start| start.first_quiet)
+    };
+    assert_eq!(first_quiet(&world), Some(t + 50 * 60));
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    assert_eq!(world.stage_state(&id, "talk"), Some(StageState::Begun));
+    assert_eq!(
+        world
+            .terminal
+            .log
+            .calls()
+            .into_iter()
+            .filter(|call| call.starts_with("close"))
+            .count(),
+        0,
+        "talk's agent closed"
+    );
+    world.host.advance(40 * 60);
+    world.settle(&id);
+    assert_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Hibernating)
+    );
+}
+
+/// The planner's address, which acme declares with a run.
+const PLANNER: &str = "east/planner";
+
+/// The deliveries the host's deliveries hold keyed as a message's.
+fn message_keys(world: &World) -> Vec<String> {
+    let (_, records) = flume_core::deliveries::read(&*world.store).expect("the host's deliveries");
+    flume_core::deliveries::owing(&records, world.host.now())
+        .deliveries
+        .into_keys()
+        .filter(|key| key.starts_with("message/"))
+        .collect()
+}
+
+#[test]
+fn a_message_to_an_address_answers_with_its_key() {
+    // The command-line spec's "Through the binary" (53, 61, 214): the
+    // address's run live and working, the JSON gives the key
+    // `message/east/planner/<token>`, the address and its run live, and
+    // the exit is 0; the person's form gives the key under the address.
+    let world = World::new();
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    assert!(world.engine.wake(PLANNER).refusal().is_none());
+    let planner = World::id("turn", "east-planner");
+    world.settle(&planner);
+    let agent = World::identity("turn", "east-planner", "plan", 1);
+    world.terminal.set_state(&agent, AgentState::Working);
+    let (text, code) = run(
+        &world,
+        &["message", PLANNER, "look at the nightly job", "--json"],
+    );
+    assert_eq!(code, 0, "{text}");
+    let answer: Value = serde_json::from_str(text.trim()).expect("the answer's JSON");
+    let messaged = &answer["messaged"];
+    let key = messaged["key"].as_str().expect("a key");
+    let token = key
+        .strip_prefix("message/east/planner/")
+        .unwrap_or_else(|| panic!("the key {key}"));
+    assert!(
+        token.len() == 8 && token.chars().all(|c| c.is_ascii_hexdigit()),
+        "{key}"
+    );
+    assert_eq!(
+        (&messaged["address"], &messaged["found"], &messaged["run"]),
+        (
+            &Value::from(PLANNER),
+            &Value::from("live"),
+            &Value::from(planner.0.as_str())
+        ),
+        "{answer}"
+    );
+    let (text, code) = run(&world, &["message", PLANNER, "and the weekly one"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        text.starts_with("messaged east/planner: message/east/planner/")
+            && text.contains("is live, and takes it at its next wait"),
+        "{text}"
+    );
+    assert_eq!(message_keys(&world).len(), 2);
+}
+
+#[test]
+fn a_target_names_an_address_or_a_place() {
+    // The caller-acts spec's "An address and a place" (53, 132): an
+    // address is a delivery at it; a place, named here by the location
+    // the fakes' world holds it at, is messaged its agent; and
+    // `./east/planner` is a place's location, never the address.
+    let world = World::new();
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    answered(&world, &["message", PLANNER, "words", "--json"]);
+    assert_eq!(message_keys(&world).len(), 1, "the delivery at the address");
+    let id = world
+        .begun("fix", Some(Deliverable::Commits), "one")
+        .expect("fix begun");
+    let work = World::identity("fix", "one", "work", 1);
+    let place = &id.to_string();
+    acted(
+        answered(&world, &["message", place, "words", "--json"]),
+        Act::Message,
+    );
+    assert_eq!(
+        world.terminal.sent_to(&work).last().map(String::as_str),
+        Some("words")
+    );
+    let refusal = refused(&world, &["message", "./east/planner", "words", "--json"]);
+    assert!(
+        refusal.contains("no place") && refusal.contains("/east/planner"),
+        "{refusal}"
+    );
+    assert_eq!(
+        message_keys(&world).len(),
+        1,
+        "a delivery at ./east/planner"
+    );
 }
 
 /// What `flume relay` wrote, line by line as JSON, serving the place
