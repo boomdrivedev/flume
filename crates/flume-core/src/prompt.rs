@@ -5,7 +5,7 @@
 //! the stage's repetitions share. The parts are flume's own prompt
 //! vocabulary (design 6), not fields of the kind format (core.4).
 
-use flume_seams::{Agent, AnsweringRole, GroupHeld, Identity, PromptPart};
+use flume_seams::{Agent, AnsweringRole, ChartSession, GroupHeld, Identity, PromptPart};
 
 const OPEN: &str = "{{#words}}";
 const CLOSE: &str = "{{/words}}";
@@ -143,6 +143,20 @@ pub(crate) fn notes_path(folder: &str, stage: &str) -> String {
     format!("{folder}/notes/{stage}.md")
 }
 
+/// What `{{session}}` and `{{file}}` render for a session of a statechart
+/// kind's stage: its number within its entry, and the file its rule gave
+/// it; nothing for a simple kind's stage, or for a session given no file,
+/// so a prompt or a path naming either there is refused as asking for a
+/// part with nothing to fill it (27, 175, C.2).
+pub(crate) fn session_part(part: PromptPart, session: Option<&ChartSession>) -> Option<String> {
+    let session = session?;
+    match part {
+        PromptPart::Session => Some(session.n.to_string()),
+        PromptPart::File => session.file.clone(),
+        _ => None,
+    }
+}
+
 /// Whether `template` asks for `part` bare.
 pub(crate) fn asks(template: &str, part: PromptPart) -> bool {
     template.contains(&format!("{{{{{}}}}}", part.name()))
@@ -204,6 +218,54 @@ mod tests {
             PromptPart::Needs => Some("stop short so".into()),
             _ => None,
         }
+    }
+
+    #[test]
+    fn a_sessions_parts() {
+        // A session's number and its rule's file fill a prompt that names
+        // both; a simple kind's stage, which has no session, refuses it as
+        // asking for a part with nothing to fill it (27, 175, C.2).
+        let session = ChartSession {
+            stage: "stages.test".into(),
+            entry: 2,
+            n: 3,
+            file: Some("personas/c.md".into()),
+            declared: flume_seams::Stage {
+                name: "stages.test#2/3".into(),
+                prompt: String::new(),
+                conversation: false,
+                deliverables: vec![],
+                agents: vec![],
+                waits: false,
+                quiet_limit: None,
+                send_back_to: None,
+                send_back_limit: None,
+                makes: vec![],
+                repeats: false,
+            },
+        };
+        let template = "Session {{session}} tests {{file}}.";
+        assert_eq!(
+            render(template, |part| session_part(part, Some(&session))),
+            Ok("Session 3 tests personas/c.md.".into())
+        );
+        assert_eq!(
+            render(template, |part| session_part(part, None)),
+            Err(PromptPart::Session)
+        );
+        assert_eq!(
+            render("{{file}}", |part| session_part(
+                part,
+                Some(&ChartSession {
+                    file: None,
+                    ..session.clone()
+                })
+            )),
+            Err(PromptPart::File),
+            "a session its stage's entries gave no file"
+        );
+        assert_eq!(PromptPart::named("session"), Some(PromptPart::Session));
+        assert_eq!(PromptPart::named("file"), Some(PromptPart::File));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::accounts::Choice;
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
-    asks, group_text, may_name, notes_path, render, roles_text, way_to_stop_short,
+    asks, group_text, may_name, notes_path, render, roles_text, session_part, way_to_stop_short,
 };
 use crate::room::Admit;
 use crate::start_record::start_record;
@@ -316,6 +316,9 @@ impl Engine {
                 PromptPart::Notes => stage
                     .repeats
                     .then(|| notes_path(&self.store.folder(&place.id), &stage.name)),
+                PromptPart::Session | PromptPart::File => {
+                    session_part(part, held.stages[index].session.as_ref())
+                }
             }
         };
         let mut text = render(&stage.prompt, fill)?;
