@@ -3522,3 +3522,183 @@ fn a_packages_settings_file_is_read_within_it_and_never_outside() {
         "{reason}"
     );
 }
+
+/// weir C.4's persona, its test stage's rule flume's `every-file`, with a
+/// prompt beside each stage's parameters under `prompts/` (175, S76; weir
+/// C.4).
+const PERSONA: &str = r#"[kinds.persona]
+version = 1
+title = "Persona test"
+branch = "persona"
+lands = true
+
+[kinds.persona.regions.stages]
+initial = "build"
+
+[kinds.persona.regions.stages.states.build]
+machine = "stage"
+params = { agents = [{ model = "opus" }], join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["commits"], prompt = "prompts/build.md" }
+transitions = [
+  { when = { final = "passed" }, to = "test" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.test]
+machine = "stage"
+params = { agents = { rule = "every-file", pattern = "personas/*.md" }, join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["committed:tests/personas.md"], prompt = "prompts/test.md" }
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "sent-back" }, to = "build" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.passed]
+final = true
+
+[kinds.persona.regions.stages.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "build" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.persona.regions.stages.states.dropped]
+final = true
+"#;
+
+/// A scratch repository declaring persona beside a simple kind, `bump`,
+/// with each prompt beside the declaration (175, 177).
+fn declaring_persona(name: &str) -> (Repository, Revision) {
+    let repository = Repository::new(name);
+    repository.write(
+        DECLARATION,
+        &format!(
+            "{PERSONA}\n[kinds.bump]\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/build.md\"\ndeliverables = [\"commits\"]\nagents = [{{}}]\n"
+        ),
+    );
+    repository.write(".config/prompts/build.md", "Build the personas. {{brief}}");
+    repository.write(".config/prompts/test.md", "Test {{file}}.");
+    let revision = Revision::new(repository.commit("persona beside bump"));
+    (repository, revision)
+}
+
+#[test]
+fn a_statechart_kind_is_read_through_weirs_crate() {
+    // The kinds-profile spec's "Persona read" and "A simple kind and a
+    // statechart kind side by side": weir's crate reads persona beside a
+    // simple kind, each in its format, its statechart's text the kind's
+    // table alone, and refuses a table holding both `stages` and
+    // `regions`, naming the field (84, 85, 175, 177; weir 95; core.4).
+    let (repository, revision) = declaring_persona("persona");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("persona did not read");
+    };
+    assert_eq!(
+        kinds
+            .iter()
+            .map(|kind| (kind.name.as_str(), kind.is_statechart()))
+            .collect::<Vec<_>>(),
+        vec![("bump", false), ("persona", true)],
+        "each kind in its format"
+    );
+    let persona = &kinds[1];
+    assert_eq!(
+        (
+            persona.branch_prefix.as_str(),
+            persona.lands,
+            persona.version
+        ),
+        ("persona", true, 1)
+    );
+    assert!(persona.stages.is_empty(), "{:?}", persona.stages);
+    let chart = persona.statechart.as_ref().expect("persona's statechart");
+    assert_eq!(chart.title, "Persona test");
+    assert!(
+        chart.text.contains("[kinds.persona]") && !chart.text.contains("[kinds.bump"),
+        "{}",
+        chart.text
+    );
+    assert_eq!(
+        chart.stages.keys().collect::<Vec<_>>(),
+        vec!["stages.build", "stages.test"]
+    );
+    let build = &chart.stages["stages.build"];
+    match &build.agents {
+        ChartAgents::Entries(entries) => {
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|agent| agent.model.as_deref())
+                    .collect::<Vec<_>>(),
+                vec![Some("opus")]
+            );
+        }
+        other => panic!("build's agents read as {other:?}"),
+    }
+    assert_eq!(build.deliverables, vec![Deliverable::Commits]);
+    assert_eq!(
+        (build.on_fail.as_deref(), build.send_back_limit),
+        (Some("build"), Some(2))
+    );
+    let test = &chart.stages["stages.test"];
+    assert_eq!(
+        test.agents,
+        ChartAgents::Rule {
+            rule: "every-file".into(),
+            pattern: Some("personas/*.md".into()),
+        }
+    );
+    assert_eq!(test.join, Join::All);
+    assert_eq!(
+        test.deliverables,
+        vec![Deliverable::CommittedReport {
+            path: "tests/personas.md".into()
+        }]
+    );
+    assert_eq!(test.prompt.as_deref(), Some("Test {{file}}."));
+    // A table holding both stages and regions.
+    repository.write(
+        DECLARATION,
+        "[kinds.both]\nstages = []\nlands = true\n\n[kinds.both.regions.r]\ninitial = \"s\"\n\n[kinds.both.regions.r.states.s]\nfinal = true\n",
+    );
+    let revision = Revision::new(repository.commit("stages and regions"));
+    match Weir.read_kinds(&repository.name(), &revision) {
+        KindsRead::CouldNotRead { reason } => {
+            assert!(reason.contains("kinds.both.regions"), "{reason}");
+        }
+        other => panic!("a table of stages and regions read as {other:?}"),
+    }
+}
+
+#[test]
+fn a_statechart_stages_prompt_the_revision_lacks_is_named() {
+    // The kinds-profile spec's "A prompt the revision lacks": a stage's
+    // `prompt` is read beside the declaration at the base's revision as a
+    // simple stage's is, and named by its path where it cannot be read;
+    // a key of `params` weir does not name is the template's, and ignored
+    // (20, 23, C.2).
+    let repository = Repository::new("persona-no-prompt");
+    repository.write(
+        DECLARATION,
+        &PERSONA.replace(
+            "prompt = \"prompts/build.md\"",
+            "prompt = \"prompts/build.md\", colour = \"blue\"",
+        ),
+    );
+    repository.write(".config/prompts/build.md", "Build.");
+    let revision = Revision::new(repository.commit("persona with no test prompt"));
+    match Weir.read_kinds(&repository.name(), &revision) {
+        KindsRead::CouldNotRead { reason } => {
+            assert!(
+                reason.contains("kinds.persona.regions.stages.states.test.params.prompt")
+                    && reason.contains(".config/prompts/test.md"),
+                "{reason}"
+            );
+            assert!(
+                !reason.contains("colour") && !reason.contains("states.build"),
+                "{reason}"
+            );
+        }
+        other => panic!("a missing prompt read as {other:?}"),
+    }
+}
