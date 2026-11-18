@@ -1,19 +1,19 @@
 ---
 number: 80
 title: flume hands no work to a sluice too old to merge it by itself
-status: proposed
+status: accepted
 date: 2026-11-18
 decision-makers:
-- Chuck Swanberg
+- boomdrive-design
 - the construct stage of the change flume-says-when-sluice-is-too-old-to-merge-its-work
 ---
 
 # flume hands no work to a sluice too old to merge it by itself
 
-Status: proposed.
-sluice 0.97.0 and later merge your work on their own once flume hands it over; flume no longer pushes sluice along. An older sluice takes the work and then never merges it, and nothing says why. So before flume hands sluice any work, it asks sluice which version it is. If sluice is older than 0.97.0, or gives a version that is no release, flume keeps the work back. The work then waits for you with a message naming the sluice you have and saying flume needs 0.97.0 or later. Once sluice is updated, asking flume to try the work again sends it on. Say yes if this is what you meant.
+Status: accepted by boomdrive-design on 2026-11-18, as its ruling and the construct's choices.
+sluice 0.97.0 and later merge your work on their own once flume hands it over; flume no longer pushes sluice along. An older sluice takes the work and then never merges it, and nothing says why. So before flume hands sluice any work, it asks sluice which version it is. If sluice is older than 0.97.0, or gives a version that is no release, flume keeps the work back. The work then waits for you with a message naming the sluice you have and saying flume needs 0.97.0 or later. Once sluice is updated, asking flume to try the work again sends it on.
 
-Deciders: the launch's brief, in its words: "Flume never leaves work waiting on a sluice too old to merge it by itself: it refuses to hand that sluice the work and says which sluice version it needs." The construct stage of the change `flume-says-when-sluice-is-too-old-to-merge-its-work`, on the rest: where the check runs, how sluice's version is read, the release flume needs, and a sluice whose version names no release. Each is made on the rules written and is cheap to change.
+Deciders: boomdrive-design, by the launch's brief, its ruling, in its words: "Flume never leaves work waiting on a sluice too old to merge it by itself: it refuses to hand that sluice the work and says which sluice version it needs." The construct stage of the change `flume-says-when-sluice-is-too-old-to-merge-its-work`, on the rest: where the check runs, how sluice's version is read, the release flume needs, and a sluice whose version names no release. Each is made on the rules written and is cheap to change.
 
 Sources: `boomdrivedev/blueprints:design/flume/requirements.md` 111, 112, 124, 203 and C.6's submit and version rows, as `5efb363` amends them on the branch `design/flume-says-when-sluice-is-too-old-to-merge-its-work`, which waits on the orchestrator's push; sluice 135 and sluice record 0093, its host process; sluice record 0111, under which a build of sluice's main says 0.0.0, which no release has; sluice's tags `v0.96.2`, whose `submit --no-wait` returns with nothing started to move the queue, and `v0.97.0`, the first to hold `crates/sluice/src/host_process`, read on 2026-11-18; the change `a-settle-runs-no-round-of-the-merge-queue`; rules core.1, core.2 and core.6.
 
