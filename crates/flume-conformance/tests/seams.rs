@@ -149,6 +149,7 @@ fn an_open_agent(harness: &FakeTerminalHarness) -> flume_seams::Identity {
         place: "fix--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let opened = harness.terminal.open(
         &harness.place(),

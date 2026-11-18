@@ -712,6 +712,7 @@ fn bump(version: u32, stages: &[&str]) -> Kind {
                 send_back_limit: None,
                 makes: vec![],
                 repeats: false,
+                hibernates: false,
             })
             .collect(),
         fix: None,
@@ -1714,6 +1715,113 @@ fn a_repositorys_keep_open_refuses_the_launch_naming_the_field() {
             "{given}: {reason}"
         );
         launch_refused_naming(&repository, kind, &[field]);
+    }
+}
+
+/// The words a declaration's `hibernate_after` is refused in (212).
+const HIBERNATE_AFTER_REFUSED: &str =
+    "how long a conversation may idle before it hibernates is the host's or the launch's to give";
+
+#[test]
+fn a_repositorys_hibernate_after_refuses_the_launch_naming_the_field() {
+    // 4, 158, 212, C.2: the kinds-profile spec's "A repository's hibernate
+    // time": `hibernate_after` in a declared kind's own agents table fails
+    // the read naming the field and that the host or the launch gives it,
+    // and a launch of that kind is refused with nothing made; so does one
+    // in a stage's table of a kind it declares, in a repository's table
+    // for a kind it does not declare, and in its table for every kind.
+    let research = "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\n";
+    for (given, kind, field) in [
+        (
+            format!("[kinds.research.agents]\nhibernate_after = \"2h\"\n\n{research}"),
+            "research",
+            "kinds.research.agents.hibernate_after",
+        ),
+        (
+            format!("[kinds.research.agents.stages.talk]\nhibernate_after = \"2h\"\n\n{research}"),
+            "research",
+            "kinds.research.agents.stages.talk.hibernate_after",
+        ),
+        (
+            "[kinds.fix.agents]\nhibernate_after = \"2h\"\n".to_string(),
+            "fix",
+            "kinds.fix.agents.hibernate_after",
+        ),
+        (
+            "[agents]\nhibernate_after = \"2h\"\n".to_string(),
+            "fix",
+            "agents.hibernate_after",
+        ),
+    ] {
+        let repository = Repository::new("declared-hibernate-after");
+        repository.write(DECLARATION, &given);
+        repository.write(".config/prompts/talk.md", "{{brief}}");
+        repository.commit("a hibernate_after in the declaration");
+        let reason = could_not_read(&repository);
+        assert!(
+            reason.contains(&format!("{field}: {HIBERNATE_AFTER_REFUSED}")),
+            "{given}: {reason}"
+        );
+        launch_refused_naming(&repository, kind, &[field]);
+    }
+}
+
+#[test]
+fn hibernate_through_weir_a_conversation_read() {
+    // 23, 212, C.2; weir 53, 58; core.4: the kinds-profile spec's "A
+    // hibernating conversation read": a declaration whose conversation
+    // stage gives `hibernate = true` is read, through weir's `Stage`, with
+    // that stage hibernating, and the stage that writes `false` and the
+    // one that leaves it out not.
+    let repository = Repository::new("declared-hibernate");
+    repository.write(
+        DECLARATION,
+        "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\nhibernate = true\n\n\
+         [[kinds.research.stages]]\nname = \"code\"\n\
+         prompt = \"prompts/code.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\nhibernate = false\n\n\
+         [[kinds.research.stages]]\nname = \"review\"\n\
+         prompt = \"prompts/review.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\n",
+    );
+    for stage in ["talk", "code", "review"] {
+        repository.write(&format!(".config/prompts/{stage}.md"), "{{brief}}");
+    }
+    let head = repository.commit("a conversation that hibernates");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &Revision::new(head))
+    else {
+        panic!("the declaration did not read");
+    };
+    let research = kinds
+        .iter()
+        .find(|kind| kind.name == "research")
+        .expect("research declared");
+    let hibernates: Vec<(&str, bool)> = research
+        .stages
+        .iter()
+        .map(|stage| (stage.name.as_str(), stage.hibernates))
+        .collect();
+    assert_eq!(
+        hibernates,
+        vec![("talk", true), ("code", false), ("review", false)],
+        "the conversation that writes hibernate hibernates, and every other stage not"
+    );
+}
+
+#[test]
+fn hibernate_through_weir_flumes_own_kinds_declare_none() {
+    // 22, 212, C.2: the kinds-profile spec's "flume's own kinds": no stage
+    // of any of flume's own kinds, at any version, hibernates.
+    for kind in own_kinds() {
+        for stage in &kind.stages {
+            assert!(
+                !stage.hibernates,
+                "{}@{}'s {} hibernates",
+                kind.name, kind.version, stage.name
+            );
+        }
     }
 }
 

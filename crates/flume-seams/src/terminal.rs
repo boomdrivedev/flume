@@ -810,6 +810,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         };
         match NoRelay.relay(&agent) {
             Err(refused) => assert_eq!(refused, "the terminal offers no relay"),
@@ -838,6 +839,7 @@ mod tests {
             place: "fix--one".into(),
             stage: "code".into(),
             start: 1,
+            resume: 0,
         };
         assert_eq!(
             NoRelay.program_process(&agent),

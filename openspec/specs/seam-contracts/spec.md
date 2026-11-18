@@ -190,13 +190,19 @@ configuration states, and a host-wide lock over the room (70).
 The terminal seam SHALL send a text to, and read the state of, a
 recipient's session named as the terminal names sessions, the same
 guarantee as a send to an agent: delivered as input or refused, never
-left typed; and a recipient the terminal cannot find SHALL be answered
-as not found, never guessed (43, 95, 96, 98).
+left typed; a session that reads working SHALL be refused with nothing
+typed; and a recipient the terminal cannot find SHALL be answered as
+not found, never guessed (43, 54, 95, 96, 98, 214).
 
 #### Scenario: A session by its name
 
 - **WHEN** the terminal scenarios send a notice to a recipient's session by its name, then to a name no session holds
 - **THEN** the first is sent and the session's state is read, and the second is answered not found with nothing sent
+
+#### Scenario: A session at work
+
+- **WHEN** the terminal scenarios send a notice to a recipient's session that reads working
+- **THEN** it is refused naming that the session works, and nothing is typed into it (54, 214)
 
 ### Requirement: An agent opened under a session name
 
@@ -795,18 +801,24 @@ came by, when it was taken and, where it was handed to a session, when
 it was sent and received; each start's count of the answers it took in
 its session; and an end's count of the answers its start took before
 it, each read with a default so state written before reads with none.
-An end's key SHALL count the answers only where there are some (42, 43,
+An end's key SHALL count the answers only where there are some. An
+answer's act written `tell` before SHALL read as `message` (42, 43, 53,
 75).
 
 #### Scenario: Two answers
 
-- **WHEN** held state with a start whose two ended-short ends each hold an answer, one by `retry` and one by `tell`, is written and read back
+- **WHEN** held state with a start whose two ended-short ends each hold an answer, one by `retry` and one by `message`, is written and read back
 - **THEN** it reads back equal, each field as written, and the two ends key apart (43, 75)
 
 #### Scenario: State written before
 
 - **WHEN** held state written before this change is read
 - **THEN** it reads with no agent kept open, no close, no answers and no `keep_open`, and each of its ends keys as it did (75)
+
+#### Scenario: An answer by tell
+
+- **WHEN** held state whose end holds an answer by `tell` is read
+- **THEN** the answer reads by `message`, and is written back as `message` (53)
 
 ### Requirement: The merge queue's open and close
 
@@ -1030,6 +1042,124 @@ written before, which has none, reads answered (43, 61, 75).
 
 - **WHEN** `round_trip.rs` writes an end with a notice claimed answered and one claimed sending, and reads each back
 - **THEN** each reads as written, and the answered claim is written with no `sending`, as a claim written before
+
+### Requirement: The agent seam's deliver part
+
+The agent seam SHALL say whether the program takes words as one prompt
+the next time its agent waits by its own channel, leaving its input as
+a person left it, not offered where its profile says nothing; and a
+start's held state SHALL hold the messages waiting for that start's
+take, each with its words, when, who sent it and when it was taken,
+read with none in state written before (54, 214, 215).
+
+#### Scenario: The fake agent's deliver
+
+- **WHEN** the fake agent is set to offer deliver, and held state with a start holding one message taken and one waiting is written and read back
+- **THEN** `deliver` answers offered, and the state reads back equal; a start written before reads with no message waiting (75, 215)
+
+#### Scenario: A profile that names no deliver
+
+- **WHEN** `deliver` is asked of an agent profile that says nothing of it, as the common profile will not
+- **THEN** it answers not offered (171, 215)
+
+### Requirement: An identity names its resume
+
+An agent's identity SHALL name, beside its repository, place, stage and
+start, the resume it is of that start, none for a start; it SHALL be
+written `flume:<repository>:<place>:<stage>:<start>` for a start and
+`flume:<repository>:<place>:<stage>:<start>.<resume>` for a resume, and
+an identity written before SHALL read as a start's (30, 33, 213;
+core.10).
+
+#### Scenario: A resume's identity round-trips
+
+- **WHEN** the identity of the second resume of talk's first start is written, as JSON and as flume spells it, and read back
+- **THEN** each equals the identity written, and its spelling ends `:talk:1.2` (33, 213)
+
+#### Scenario: An identity written before
+
+- **WHEN** an identity's JSON written before holds no resume
+- **THEN** it reads as a start's, spelled as before (33, 74)
+
+### Requirement: The types of a hibernation
+
+The seams SHALL pass a kind's stage saying whether it hibernates; a
+stage state `hibernating`; a start's hibernation, since when and why;
+and each resume of a start, when, by what, its identity and its
+conversation. Each SHALL serialize to JSON and back unchanged, and a
+held state written before SHALL read with none of them (56, 61, 74,
+212, 213).
+
+#### Scenario: A hibernated start round-trips
+
+- **WHEN** a held state whose talk start hibernated idle, was resumed once by a message and carried its conversation, is written to JSON and read back
+- **THEN** it equals the value written, and its JSON gives the stage's state `hibernating`, the hibernation's `why` `idle` and the resume's `by` `message` (61)
+
+### Requirement: The types around a hibernation
+
+The seams SHALL pass a conversation carried from a hibernated start, an
+agent kept open closed by its hibernation, the acts `hibernate` and
+`resume`, a start's mark that a message is being handed to it, and the
+setting `hibernate_after`, each serialized to JSON and back unchanged
+(54, 56, 61, 198, 212, 213).
+
+#### Scenario: Each round-trips
+
+- **WHEN** a conversation whose cause is `hibernated`, a close by `hibernated`, the acts `hibernate` and `resume`, a start marked handing, and settings giving `hibernate_after` `20m` are each written to JSON and read back
+- **THEN** each equals the value written (61)
+
+#### Scenario: A held state written before
+
+- **WHEN** a held state written before this change is read
+- **THEN** its stages hibernate none and its starts hold no hibernation and no resume (74)
+
+### Requirement: The place seam makes, moves and removes a standing role's checkouts
+
+The place seam SHALL make a standing role's checkouts under a location,
+each detached at its revision, refusing where anything stands there and
+undoing every one made where one is refused; move a checkout to a
+revision, keeping it where it stands with the profile's words where the
+move would overwrite a change; and remove the checkouts and what stands
+at the location, running no teardown (78, 80, 81, 83, 193, C.1).
+
+#### Scenario: Made under the location
+
+- **WHEN** the place seam is asked to make two checkouts of two repositories at their revisions under a free location
+- **THEN** each stands at `<location>/<folder>`, its head the revision, on no branch, and read gives what it holds
+
+#### Scenario: Something stands at the location
+
+- **WHEN** something already stands at the location
+- **THEN** make is refused as an existing location, and no checkout is made
+
+#### Scenario: A move kept over a change
+
+- **WHEN** a checkout holds an uncommitted change to a file the revision it is moved to changes
+- **THEN** the move answers kept with the profile's words, and the checkout's head and its change are as they were
+
+#### Scenario: Removed with no teardown
+
+- **WHEN** the checkouts are removed
+- **THEN** no checkout and nothing at the location stands, no teardown step ran, and no branch was removed
+
+### Requirement: The types of a checkout
+
+The seams SHALL pass a checkout to make as its repository, its folder
+and its revision; a move's outcome as moved, kept with its words, or
+gone; a standing role's place's held checkouts with its repository, its
+address, its folder, its base, its binding, its revision, where its base
+was read, when it was moved and its last move not made; and a resume by
+`delivery` (56, 193, 213, 214).
+
+#### Scenario: Round-trip
+
+- **WHEN** a held state with two checkouts, one with a move not made, and a start with a resume by `delivery`, is written and read again
+- **THEN** each reads as written
+
+#### Scenario: A held state written before
+
+- **WHEN** a held state written before a place kept checkouts is read
+- **THEN** it reads with no checkouts, and its place is no standing role's
 
 ### Requirement: The agent seam reads the windows its program reported
 

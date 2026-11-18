@@ -28,7 +28,22 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
-            name: "status: asked three times of one place, it answers the same and starts or tells nothing",
+            name: "status: A hibernating conversation: status of a place whose talk hibernated idle under the host's hibernate_after 30m gives talk hibernating since then, why idle, its hibernate_after from host and no live agent",
+            cites: &["56", "212", "S124"],
+            run: a_hibernating_conversations_status,
+        },
+        Scenario {
+            name: "status: A resumed stage: status of a place whose talk was resumed by a message, carrying its conversation, gives talk's one resume, by message, its agent's identity ending talk:1.1, carried",
+            cites: &["56", "213"],
+            run: a_resumed_stages_status,
+        },
+        Scenario {
+            name: "status: A resume not carried: status of a place whose talk's resume found its transcript gone gives the resume not carried with the profile's words why, naming no path, and talk's second start fresh",
+            cites: &["56", "213", "S127"],
+            run: a_resume_not_carried_in_status,
+        },
+        Scenario {
+            name: "status: asked three times of one place, it answers the same and starts or messages nothing",
             cites: &["S14", "57", "60", "69", "72"],
             run: s14_asked_three_times,
         },
@@ -83,7 +98,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: its_agent_let_go,
         },
         Scenario {
-            name: "status: a fix whose code took one answer by a retry and one by a tell in its first start's session gives both under code in order, each with its question, its answer, retry or tell, and when it was sent and received, in the JSON form",
+            name: "status: a fix whose code took one answer by a retry and one by a message in its first start's session gives both under code in order, each with its question, its answer, retry or message, and when it was sent and received, in the JSON form",
             cites: &["42", "56", "198"],
             run: two_answers_in_one_session,
         },
@@ -361,6 +376,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a base place whose forecast could not be read gives it unread with the merge queue's words",
             cites: &["56", "203", "210"],
             run: a_forecast_unread_in_status,
+        },
+        Scenario {
+            name: "status: A hibernating standing role with nothing pending: status gives east/ops among the host's addresses with standing_role naming its place and since when it hibernates",
+            cites: &["56", "193", "212"],
+            run: a_hibernating_standing_role_with_nothing_pending,
+        },
+        Scenario {
+            name: "status: Its checkouts: status of east/ops' place, its blueprints checkout holding an untracked file and its last move not made, gives two checkouts, blueprints' holding the file and its move not made with when, the tip and the words, and an empty branch",
+            cites: &["56", "80", "193"],
+            run: a_standing_roles_checkouts,
+        },
+        Scenario {
+            name: "status: A place of a run: status of a fix's place gives no checkouts, its JSON holding no checkouts and no other field changed",
+            cites: &["56", "61"],
+            run: a_place_of_a_run_gives_no_checkouts,
         },
     ]
 }
@@ -1130,7 +1160,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
     world.settle(&id);
     world.host.advance(60);
     let second = world.host.now();
-    taken(&world.engine.tell(&id, "the first line", None))?;
+    taken(&world.engine.message(&id, "the first line", None))?;
     let handed = |at| {
         Some(Handed {
             sent_at: at,
@@ -1156,7 +1186,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
                 question: Some(again.into()),
                 answer: AnswerHeld {
                     words: "the first line".into(),
-                    act: Act::Tell,
+                    act: Act::Message,
                     at: second,
                     session: handed(second),
                     by: None,
@@ -1180,7 +1210,7 @@ fn two_answers_in_one_session(_: &()) -> Outcome {
             {
                 "question": again,
                 "words": "the first line",
-                "act": "tell",
+                "act": "message",
                 "at": second,
                 "session": { "sent_at": second, "received_at": second },
             },
@@ -1242,7 +1272,7 @@ fn places(answer: Answer) -> Result<Vec<PlaceStatus>, String> {
     }
 }
 
-/// The calls that would start, tell or write.
+/// The calls that would start, message or write.
 fn acting_calls(world: &World) -> (usize, usize, usize, usize) {
     (
         world.terminal.log.count("open"),
@@ -1265,7 +1295,7 @@ fn s14_asked_three_times(_: &()) -> Outcome {
     ensure_eq!(
         acting_calls(&world),
         before,
-        "calls that start, tell or write"
+        "calls that start, message or write"
     );
     Ok(())
 }
@@ -1295,7 +1325,7 @@ fn a_change_ticked_between_asks(_: &()) -> Outcome {
     ensure_eq!(
         acting_calls(&world),
         before,
-        "calls that start, tell or write"
+        "calls that start, message or write"
     );
     Ok(())
 }
@@ -1518,7 +1548,7 @@ fn a_place_gone(_: &()) -> Outcome {
 
 fn a_stalled_place_with_a_pending_end(_: &()) -> Outcome {
     let world = World::new();
-    world.terminal.add_session("ops", AgentState::Working);
+    world.terminal.add_session("ops", AgentState::Waiting);
     super::role_waking::answerer_behind(&world, DEFAULT_STREAM);
     let (id, asked) =
         super::caller_waits::construct_asks(&world, "plan", &["ops", "madswan/planner"], None)?;
@@ -3104,4 +3134,247 @@ fn drop_field(value: &mut serde_json::Value, path: &[&str]) -> bool {
     } else {
         drop_field(inner, rest)
     }
+}
+
+/// The stage `name` of a place's status.
+fn stage_status(status: &PlaceStatus, name: &str) -> Result<flume_core::StageStatus, String> {
+    status
+        .stages
+        .iter()
+        .find(|stage| stage.name == name)
+        .cloned()
+        .ok_or_else(|| format!("status gives no stage {name}"))
+}
+
+fn a_hibernating_conversations_status(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .host
+        .set_every_agent(super::agent_settings::hibernates_after("30m"));
+    let id = super::hibernation::research(&world, "one")?;
+    world.settle(&id);
+    world.host.advance(30 * 60);
+    let at = world.host.now();
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    ensure_eq!(
+        (
+            talk.state,
+            talk.hibernates,
+            talk.hibernated.map(|held| (held.since, held.why)),
+            talk.hibernate_after,
+            status.agent.is_none()
+        ),
+        (
+            StageState::Hibernating,
+            true,
+            Some((at, HibernatedBy::Idle)),
+            Some(Given {
+                layer: Layer::Host,
+                value: "30m".into(),
+                file: None,
+            }),
+            true
+        ),
+        "talk's state, whether it hibernates, its hibernation, its hibernate_after and whether status gives an agent"
+    );
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    let stage = &json["stages"][0];
+    ensure_eq!(
+        (
+            stage["state"].clone(),
+            stage["hibernated"]["why"].clone(),
+            stage["hibernate_after"]["layer"].clone(),
+            stage["hibernate_after"]["value"].clone()
+        ),
+        (
+            serde_json::json!("hibernating"),
+            serde_json::json!("idle"),
+            serde_json::json!("host"),
+            serde_json::json!("30m")
+        ),
+        "talk's state, why it hibernated and its hibernate_after in the JSON"
+    );
+    Ok(())
+}
+
+fn a_resumed_stages_status(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    taken(&world.engine().message(&id, "where were we?", None))?;
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    ensure_eq!(talk.resumes.len(), 1, "talk's resumes");
+    let resume = &talk.resumes[0];
+    ensure_eq!(
+        (
+            resume.by,
+            resume.conversation.carried,
+            resume.conversation.cause
+        ),
+        (ResumedBy::Message, true, CarryCause::Hibernated),
+        "talk's resume"
+    );
+    ensure!(
+        resume.identity.to_string().ends_with("talk:1.1"),
+        "the resume's agent's identity: {}",
+        resume.identity
+    );
+    let agent = status.agent.ok_or("status gives no agent")?;
+    ensure!(
+        agent.identity.ends_with("talk:1.1"),
+        "the agent status gives: {}",
+        agent.identity
+    );
+    Ok(())
+}
+
+fn a_resume_not_carried_in_status(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    let gone = "its transcript is gone, cleaned after thirty days";
+    world.agent.carry_to(
+        flume_fakes::FakeAgent::LOGIN,
+        Carry::No { why: gone.into() },
+    );
+    taken(&world.engine().message(&id, "carry on", None))?;
+    let status = world.status(&id)?;
+    let talk = stage_status(&status, "talk")?;
+    let agent = status.agent.clone().ok_or("status gives no agent")?;
+    ensure_eq!(
+        (talk.starts, talk.resumes.is_empty(), agent.conversation),
+        (
+            2,
+            true,
+            Some(Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: false,
+                why: Some(gone.into()),
+            })
+        ),
+        "talk's starts, its resumes and its agent's conversation"
+    );
+    let json = serde_json::to_string(&status).map_err(|error| error.to_string())?;
+    ensure!(
+        !json.contains("/homes/") && !json.contains("CLAUDE_CONFIG_DIR="),
+        "status names a path: {json}"
+    );
+    Ok(())
+}
+
+fn a_hibernating_standing_role_with_nothing_pending(_: &()) -> Outcome {
+    use super::standing_roles::{ops_hibernated, OPS};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    // The talk confirms the end its first prompt carried, as a role that
+    // acted on it does (43; weir 102).
+    world.confirm_every(OPS);
+    let since = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .and_then(|start| start.hibernated)
+        .map(|hibernated| hibernated.since)
+        .ok_or("talk records no hibernation")?;
+    let addresses = super::role_waking::addresses(&world)?;
+    let ops = addresses
+        .iter()
+        .find(|status| status.address == OPS)
+        .ok_or("status gives no east/ops")?;
+    ensure_eq!(
+        ops.standing_role.clone(),
+        Some(flume_core::StandingRoleStatus {
+            place: id.clone(),
+            hibernating_since: Some(since),
+        }),
+        "east/ops' standing role"
+    );
+    ensure_eq!(
+        (ops.pending.len(), ops.messages.len(), ops.run.clone()),
+        (0, 0, Some(id)),
+        "what is pending at east/ops, and its run"
+    );
+    Ok(())
+}
+
+fn a_standing_roles_checkouts(_: &()) -> Outcome {
+    use super::standing_roles::{checkout_at, resumed_over_a_change, IN_THE_WAY};
+    let world = World::new();
+    let before = world.blueprints();
+    let (id, tip) = resumed_over_a_change(&world)?;
+    let (blueprints, _) = checkout_at(&world, &id, "blueprints");
+    world.place.set_holds(
+        &blueprints,
+        Holds {
+            untracked: vec!["notes.md".into()],
+            ..Holds::default()
+        },
+    );
+    let status = world.status(&id)?;
+    ensure_eq!(status.branch, "", "the place's branch");
+    let folders: Vec<&str> = status
+        .checkouts
+        .iter()
+        .map(|checkout| checkout.folder.as_str())
+        .collect();
+    ensure_eq!(folders, vec!["repository", "blueprints"], "the checkouts");
+    let checkout = &status.checkouts[1];
+    ensure_eq!(
+        (
+            checkout.repository.as_str(),
+            checkout.base.as_str(),
+            &checkout.revision
+        ),
+        (BLUEPRINTS, "main", &before),
+        "blueprints' repository, base and revision"
+    );
+    ensure_eq!(
+        checkout.unmoved.clone(),
+        Some(Unmoved {
+            at: world.host.now(),
+            tip: Some(tip),
+            reason: IN_THE_WAY.into(),
+        }),
+        "blueprints' move not made"
+    );
+    match &checkout.read {
+        PlaceRead::Live { head, holds, .. } => {
+            ensure_eq!(head, &before, "blueprints' head as read");
+            ensure_eq!(
+                holds.untracked.clone(),
+                vec!["notes.md".to_string()],
+                "what blueprints holds"
+            );
+        }
+        other => return Err(format!("blueprints read {other:?}")),
+    }
+    let first = &status.checkouts[0];
+    ensure!(
+        first.moved_at == Some(world.host.now()) && first.unmoved.is_none(),
+        "the first checkout's move: {first:?}"
+    );
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure_eq!(
+        json["checkouts"][1]["unmoved"]["reason"].as_str(),
+        Some(IN_THE_WAY),
+        "the JSON form's move not made"
+    );
+    Ok(())
+}
+
+fn a_place_of_a_run_gives_no_checkouts(_: &()) -> Outcome {
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("mend it"))))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    let status = world.status(&id)?;
+    ensure!(status.checkouts.is_empty(), "a fix's checkouts");
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure!(
+        json.get("checkouts").is_none(),
+        "a fix's JSON holds checkouts"
+    );
+    ensure_eq!(json["branch"], "fix/one", "a fix's branch");
+    Ok(())
 }

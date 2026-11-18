@@ -16,9 +16,9 @@ use crate::reading::{find_group, reads_change};
 use crate::settings::program_name;
 use crate::start::Starts;
 use crate::{
-    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, DegradedPart, EffortStatus,
-    EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, ModelStatus, MoveStatus, OwnFileStatus,
-    OwnStatus, PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus,
+    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, CheckoutStatus, DegradedPart,
+    EffortStatus, EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, ModelStatus, MoveStatus,
+    OwnFileStatus, OwnStatus, PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus,
     SubmissionStatus, WaitingOn, Waits,
 };
 use flume_seams::*;
@@ -439,6 +439,21 @@ impl Engine {
                 conversation: declared.conversation,
                 group: change.and_then(|change| group_status(held, index, change)),
                 answers: session_answers(held, index),
+                hibernates: declared.hibernates,
+                hibernate_after: stage
+                    .start
+                    .as_ref()
+                    .filter(|_| declared.hibernates)
+                    .and_then(|start| start.from.get("hibernate_after").cloned()),
+                hibernated: stage
+                    .start
+                    .as_ref()
+                    .and_then(|start| start.hibernated.clone()),
+                resumes: stage
+                    .start
+                    .as_ref()
+                    .map(|start| start.resumes.clone())
+                    .unwrap_or_default(),
             })
             .collect();
         let group = current.and_then(|index| stages[index].group.clone());
@@ -505,7 +520,37 @@ impl Engine {
             forecast: held.forecast.clone(),
             fixes: held.fixes.clone(),
             fix_of: place.fix_of.clone(),
+            checkouts: self.checkouts_status(place, bound.as_ref()),
         }
+    }
+
+    /// Each checkout of a standing role's place as its held state keeps
+    /// it, read through the place seam `bound` gives at the ask, or why it
+    /// could not be; none for any other place (56, 80, 193; core.15).
+    fn checkouts_status(&self, place: &PlaceRecord, bound: Option<&Bound>) -> Vec<CheckoutStatus> {
+        place
+            .checkouts
+            .iter()
+            .map(|checkout| CheckoutStatus {
+                repository: checkout.repository.clone(),
+                address: checkout.address.clone(),
+                folder: checkout.folder.clone(),
+                base: checkout.base.clone(),
+                revision: checkout.revision.clone(),
+                moved_at: checkout.moved_at,
+                base_from: checkout.base_from,
+                unmoved: checkout.unmoved.clone(),
+                read: match bound {
+                    Some(bound) => bound.place.read(&checkout.place_ref(&place.location)),
+                    None => PlaceRead::CouldNotRead {
+                        reason: format!(
+                            "{} binds no place seam flume could read",
+                            place.repository
+                        ),
+                    },
+                },
+            })
+            .collect()
     }
 }
 
@@ -622,7 +667,8 @@ pub(crate) fn group_status(
         | StageState::Lost
         | StageState::NeverBegun
         | StageState::Stopped
-        | StageState::EndedShort => {
+        | StageState::EndedShort
+        | StageState::Hibernating => {
             let given = stage.start.as_ref()?.group.as_ref()?;
             find_group(facts, given)?
         }
@@ -818,6 +864,10 @@ pub(crate) fn waiting_on(held: &HeldState, on_branch: Option<usize>) -> Option<W
                 .or_else(|| stage.refused_setting.clone()),
         ),
         StageState::Stopped => retry(Waits::Stopped, None),
+        // A hibernating stage waits on no move of its caller's, and is
+        // never stalled: a resume, a message or its answer wakes it
+        // (130, 212, 213).
+        StageState::Hibernating => None,
         StageState::Delivered | StageState::Finished if index == last => {
             if !place.kind.lands {
                 waits(Act::Done, None, Waits::Delivered, stage.since, None)

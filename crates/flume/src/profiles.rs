@@ -9,8 +9,9 @@ use crate::host::history::GitHistory;
 use crate::host::{self, RealHost};
 use flume_core::{Defaults, Engine};
 use flume_seams::{
-    Agent, Binding, BranchRemoved, Change, Kinds, MakeOutcome, MergeQueue, Place, PlaceRead,
-    PlaceRef, Readiness, ReadyStep, Removed, Resolver, Revision, Settings, Terminal, Window,
+    Agent, Binding, BranchRemoved, Change, Checkout, Kinds, MakeOutcome, MergeQueue, Moved, Place,
+    PlaceRead, PlaceRef, Readiness, ReadyStep, Removed, Resolver, Revision, Settings, Terminal,
+    Window,
 };
 use place::git_worktree::{self, GitWorktree, Login, PlaceData, Step};
 use std::collections::BTreeMap;
@@ -420,6 +421,23 @@ impl Place for BoundPlace {
             Err(_) => BranchRemoved::Kept { commits: vec![] },
         }
     }
+
+    /// A standing role's checkouts take no readiness and no teardown, so
+    /// nothing of the merge queue's is read for them (193; core.47).
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.bound(PlaceData::default())
+            .make_checkouts(location, checkouts)
+    }
+
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.bound(PlaceData::default())
+            .move_checkout(checkout, revision)
+    }
+
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.bound(PlaceData::default())
+            .remove_checkouts(location, checkouts)
+    }
 }
 
 /// The terminal profiles built in, by the name `[host] terminal` gives
@@ -613,7 +631,7 @@ pub fn hook_events() -> Vec<&'static str> {
 /// hook of the agent program's does, and the usage windows' report, and
 /// the status line reads none (211; design 5).
 pub fn hook_reads_input(event: &str) -> bool {
-    event != agent::claude::status_line::EVENT
+    event != agent::claude::status_line::EVENT && event != agent::claude::hook::DELIVER
 }
 
 /// What the agent program's hook for `event` answers to `input`, in the
