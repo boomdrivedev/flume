@@ -1373,6 +1373,7 @@ pub(crate) mod tests {
                     stages: vec![code_stage()],
                     fix: None,
                     fix_limit: None,
+                    statechart: None,
                 }],
             );
             kinds.set_binding(

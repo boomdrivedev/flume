@@ -2381,6 +2381,7 @@ fn kind_at(name: &str, version: u32) -> Kind {
         label: None,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 
@@ -2711,6 +2712,7 @@ fn kind_named(name: &str) -> Kind {
         label: None,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 

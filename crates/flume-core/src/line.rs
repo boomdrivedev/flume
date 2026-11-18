@@ -318,6 +318,7 @@ mod tests {
                 label: None,
                 fix: None,
                 fix_limit: None,
+                statechart: None,
             },
             declared: Declared::Repository,
             kind_from: None,

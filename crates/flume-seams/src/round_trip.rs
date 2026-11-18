@@ -116,6 +116,57 @@ fn kind() -> Kind {
         label: Some("operation".into()),
         fix: None,
         fix_limit: None,
+        statechart: None,
+    }
+}
+
+/// A statechart kind: its stages empty, one stage listing its entries and
+/// one naming a rule, its text as the kinds profile spelled it (175).
+fn statechart_kind() -> Kind {
+    Kind {
+        name: "persona".into(),
+        version: 1,
+        branch_prefix: "persona".into(),
+        starts_unready: false,
+        lands: true,
+        agents: KindSettings::default(),
+        stages: vec![],
+        label: None,
+        fix: None,
+        fix_limit: None,
+        statechart: Some(KindStatechart {
+            title: "Persona test".into(),
+            text: "[kinds.persona]\ntitle = \"Persona test\"\n".into(),
+            stages: BTreeMap::from([
+                (
+                    "stages.build".into(),
+                    ChartStage {
+                        agents: ChartAgents::Entries(vec![settings(), Settings::default()]),
+                        join: Join::Count(2),
+                        deliverables: vec![Deliverable::Commits],
+                        prompt: Some("Build {{brief}}".into()),
+                        on_fail: Some("build".into()),
+                        send_back_limit: Some(2),
+                    },
+                ),
+                (
+                    "stages.test".into(),
+                    ChartStage {
+                        agents: ChartAgents::Rule {
+                            rule: "every-file".into(),
+                            pattern: Some("personas/*.md".into()),
+                        },
+                        join: Join::All,
+                        deliverables: vec![Deliverable::CommittedReport {
+                            path: "results/{{file}}".into(),
+                        }],
+                        prompt: Some("Test {{file}}".into()),
+                        on_fail: None,
+                        send_back_limit: None,
+                    },
+                ),
+            ]),
+        }),
     }
 }
 
@@ -708,6 +759,22 @@ fn a_launch() {
         stream: Some("work".into()),
         intent: Some("the-surfaces".into()),
     });
+}
+
+#[test]
+fn a_statechart_kind() {
+    // A statechart kind with a stage of entries and a stage of a rule reads
+    // back as written; a kind written before reads with no statechart, and
+    // writes none (21, 175, 177).
+    round_trips(statechart_kind());
+    assert!(statechart_kind().is_statechart());
+    let json = serde_json::to_value(kind()).expect("a kind as JSON");
+    assert!(json.get("statechart").is_none(), "{json}");
+    let read: Kind = serde_json::from_value(json).expect("a kind written before");
+    assert_eq!(read.statechart, None);
+    assert!(!read.is_statechart());
+    assert_eq!(Join::Any.to_string(), "any");
+    assert_eq!(Join::Count(3).to_string(), "count:3");
 }
 
 #[test]

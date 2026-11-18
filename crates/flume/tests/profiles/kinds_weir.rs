@@ -697,6 +697,7 @@ fn bump(version: u32, stages: &[&str]) -> Kind {
             .collect(),
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 

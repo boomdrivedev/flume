@@ -858,6 +858,7 @@ fn map_kind(kind: &weir_kinds::Kind, beside: Reader, problems: &mut Vec<String>)
                 0
             })
         }),
+        statechart: None,
     }
 }
 

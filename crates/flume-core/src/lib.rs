@@ -298,6 +298,7 @@ mod tests {
                 label: None,
                 fix: None,
                 fix_limit: None,
+                statechart: None,
             },
             declared: Declared::Flume,
             kind_from: None,

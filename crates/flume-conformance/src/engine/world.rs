@@ -315,6 +315,7 @@ pub fn kind(name: &str, lands: bool, stages: Vec<Stage>) -> Kind {
         stages,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 

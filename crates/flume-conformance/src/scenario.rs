@@ -107,6 +107,7 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
         }],
         fix: None,
         fix_limit: None,
+        statechart: None,
     };
     HeldState {
         place: PlaceRecord {
