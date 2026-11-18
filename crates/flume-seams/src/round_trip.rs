@@ -3520,25 +3520,69 @@ fn an_affinity_written_before() {
 #[test]
 fn the_hosts_watch() {
     // The seam-contracts spec's round trips: the host's watch, its key
-    // and its document read back as written, and a host's state written
-    // before, which holds no watch, reading unchanged (73, 153, 208).
+    // and its document read back as written, the command running its
+    // settle and when that settle ended among it, and a host's state
+    // written before, which holds no watch, reading unchanged (73, 153,
+    // 208).
     round_trips(HostKey::Watch);
     assert_eq!(
         serde_json::to_value(HostKey::Watch).unwrap(),
         serde_json::json!({"of": "watch"})
     );
-    let watched = Watched {
+    let running = Watched {
         began: 47_400,
         bound: 120,
+        by: Some("command-1".into()),
+        ended: None,
     };
-    round_trips(watched);
-    round_trips(HostVersioned {
-        version: 2,
-        document: HostDocument::Watch(watched),
-    });
-    assert!(watched.kept(47_400 + 239));
-    assert!(!watched.kept(47_400 + 240));
-    assert_eq!(watched.lapses(), 47_640);
+    let ended = Watched {
+        ended: Some(47_460),
+        ..running.clone()
+    };
+    for watched in [&running, &ended] {
+        round_trips(watched.clone());
+        round_trips(HostVersioned {
+            version: 2,
+            document: HostDocument::Watch(watched.clone()),
+        });
+    }
+    let lives = |by: &str| by == "command-1";
+    let died = |_: &str| false;
+    // A watch whose settle runs, its command living, is kept at any time
+    // after it began, and lapses at no time; once that command dies with
+    // no end, it lapses twice its bound after it began (208).
+    assert!(running.kept(47_400 + 240, lives));
+    assert!(running.kept(47_400 + 86_400, lives));
+    assert_eq!(running.lapses(lives), None);
+    assert!(running.kept(47_400 + 239, died));
+    assert!(!running.kept(47_400 + 240, died));
+    assert_eq!(running.lapses(died), Some(47_640));
+    // A watch whose settle ended is kept until twice its bound after the
+    // end, whether or not its command lives (208).
+    for alive in [lives, died] {
+        assert!(ended.kept(47_460 + 239, alive));
+        assert!(!ended.kept(47_460 + 240, alive));
+        assert_eq!(ended.lapses(alive), Some(47_700));
+    }
+    let written = serde_json::to_value(&ended).unwrap();
+    assert_eq!(written["by"], "command-1");
+    assert_eq!(written["ended"], 47_460);
+    // A watch written before names no command and no end: it reads as it
+    // did, kept until twice its bound after it began, and is written back
+    // with neither (208).
+    let before: Watched = serde_json::from_value(serde_json::json!({
+        "began": 47_400,
+        "bound": 120,
+    }))
+    .expect("a watch written before");
+    assert_eq!((before.by.as_deref(), before.ended), (None, None));
+    assert!(before.kept(47_400 + 239, lives));
+    assert!(!before.kept(47_400 + 240, lives));
+    assert_eq!(before.lapses(lives), Some(47_640));
+    assert_eq!(
+        serde_json::to_value(&before).unwrap(),
+        serde_json::json!({"began": 47_400, "bound": 120})
+    );
     // A host's state written before holds an account's and an intent's
     // documents alone, each reading as it did.
     let before: HostVersioned = serde_json::from_value(serde_json::json!({

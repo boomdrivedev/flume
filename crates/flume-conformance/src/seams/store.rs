@@ -311,7 +311,14 @@ fn two_watches_at_once<H: StoreHarness>(harness: &H) -> Outcome {
         harness.seam().read_host(&HostKey::Watch).is_none(),
         "a watch read on a host that holds none"
     );
-    let watch = |began| HostDocument::Watch(Watched { began, bound: 120 });
+    let watch = |began| {
+        HostDocument::Watch(Watched {
+            began,
+            bound: 120,
+            by: None,
+            ended: None,
+        })
+    };
     let at = written(
         harness
             .seam()

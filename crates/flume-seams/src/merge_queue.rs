@@ -1,4 +1,4 @@
-//! The merge queue seam's answers (99, 101, 117, 125, 126, 133, 225, 9), and
+//! The merge queue seam's answers (99, 101, 117, 125, 126, 133, 9), and
 //! the branches it opens and closes for base places (205, 206).
 
 use crate::Revision;
@@ -96,7 +96,7 @@ pub enum Submitted {
     /// The merge queue decided the submission as it took it in, and its
     /// answer gave the outcome, with the key the place confirms it by
     /// once it has acted on it, none where the merge queue keeps nothing
-    /// to confirm; until then an inbox may give it too (112, 133, 225).
+    /// to confirm; until then an inbox may give it too (112, 133).
     Decided {
         submission: Submission,
         outcome: SubmissionOutcome,
@@ -140,7 +140,7 @@ pub struct PassedOver {
 /// An outcome the inbox gives a place: the submission it decides, by the
 /// merge queue's id, the outcome, and the key the place confirms it by
 /// once it has acted on it, none where the merge queue keeps nothing to
-/// confirm and gives it once (133, 225).
+/// confirm and gives it once (133).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Owed {
     pub submission: String,
@@ -153,7 +153,7 @@ pub struct Owed {
 /// inbox until the place confirms it, from every branch the merge queue
 /// could read, and each branch it passed over, whose outcomes stay
 /// pending for a later inbox; or why the merge queue could not be read
-/// (133, 68, 225).
+/// (133, 68).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Inbox {
@@ -169,7 +169,7 @@ pub enum Inbox {
 
 /// confirm: the outcome under a key given no more, confirmed now or
 /// before; or why the merge queue could not be read, the outcome left
-/// pending for the next inbox (225).
+/// pending for the next inbox (133).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Confirmed {
@@ -310,12 +310,12 @@ pub trait MergeQueue: Send + Sync {
     fn submit(&self, place: &crate::PlaceRef, head: &SubmitHead) -> Submitted;
 
     /// The outcomes of the place's submissions pending for it, each
-    /// given again until the place confirms it (133, 225).
+    /// given again until the place confirms it (133).
     fn inbox(&self, place: &crate::PlaceRef) -> Inbox;
 
     /// The outcome the inbox or a decided submit gave the place under
     /// `key` confirmed, once the place has acted on it, so no inbox gives
-    /// it again (225).
+    /// it again (133).
     fn confirm(&self, place: &crate::PlaceRef, key: &str) -> Confirmed;
 
     /// The newest submission of each of `branches`, whoever made it, on

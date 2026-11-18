@@ -19,7 +19,7 @@ pub enum Plan {
     /// Submit finds it in conflict with its base as it takes it in, on
     /// the files named, and answers with the outcome and its key, which
     /// it keeps owed to the place, so an inbox gives it too until the
-    /// place confirms it (133, 225).
+    /// place confirms it (133).
     ConflictAtSubmit(Vec<String>, String),
     /// It is withdrawn, which no inbox gives (99).
     Withdraw,
@@ -142,7 +142,7 @@ impl FakeMergeQueue {
 
     /// Every confirm answers that the merge queue could not be read, with
     /// `words`, leaving its outcome pending; none takes confirms again
-    /// (225).
+    /// (133).
     pub fn refuse_confirms(&self, words: Option<&str>) {
         lock(&self.state).confirms_refused = words.map(str::to_string);
     }
@@ -288,7 +288,7 @@ impl FakeMergeQueue {
 
     /// `outcome` of `submission` left pending for the place at
     /// `location`, as a merge queue leaves one it could not deliver to
-    /// its request, or one a place never confirmed (133, 225).
+    /// its request, or one a place never confirmed (133).
     pub fn leave_pending(&self, location: &str, submission: &str, outcome: SubmissionOutcome) {
         lock(&self.state)
             .inboxes
@@ -507,7 +507,7 @@ impl MergeQueue for FakeMergeQueue {
             );
             let outcome = SubmissionOutcome::Conflict { files, base, words };
             // Owed to the place it came from until it confirms it; a
-            // submission by name has no place to owe it to (203, 225).
+            // submission by name has no place to owe it to (203, 133).
             let key = match location {
                 Some(location) => {
                     let handed = Self::handed(&submission.id, outcome.clone());
