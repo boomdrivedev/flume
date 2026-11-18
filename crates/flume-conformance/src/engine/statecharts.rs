@@ -15,6 +15,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_statechart_kind_launched,
         },
         Scenario {
+            name: "statechart: a place settled twice with nothing changed ticks once to start its stage's session, then fires nothing and performs no effect",
+            cites: &["74", "176"],
+            run: one_tick_over_one_head,
+        },
+        Scenario {
+            name: "statechart: a region reading a sibling's state moves at the settle after the one the sibling moved in",
+            cites: &["176"],
+            run: a_sibling_sees_a_move_at_the_next_settle,
+        },
+        Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
             cites: &["4", "175"],
             run: a_template_flume_does_not_bind,
@@ -137,6 +147,116 @@ fn a_statechart_kind_launched(_: &()) -> Outcome {
         "the stage template's region's state"
     );
     ensure!(!chart.over, "the run reads over at its launch");
+    ensure_eq!(
+        chart.stages.get("main.work").map(|stage| stage.entry),
+        Some(1),
+        "the stage's entry recorded"
+    );
+    let session = held
+        .stages
+        .iter()
+        .find(|stage| stage.name == "main.work#1/1")
+        .ok_or("the stage's one session was not recorded")?;
+    ensure_eq!(held.stages.len(), 1, "sessions recorded");
+    let start = session
+        .start
+        .as_ref()
+        .filter(|start| start.live)
+        .ok_or("the session's start is not live")?;
+    ensure_eq!(
+        start.identity.stage.as_str(),
+        "main.work#1/1",
+        "the identity's stage"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
+    Ok(())
+}
+
+fn one_tick_over_one_head(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![one(&one_stage(false, "stage", ON_PASSED), listed(1))],
+    );
+    launched(&world.engine.launch(&launch("one", "a", Some("the work"))))?;
+    let id = World::id("one", "a");
+    let first = world.held(&id).ok_or("the place holds no state")?;
+    ensure_eq!(first.stages.len(), 1, "sessions after the launch's tick");
+    for settle in 1..=2 {
+        world.settle(&id);
+        let held = world.held(&id).ok_or("the place holds no state")?;
+        ensure_eq!(
+            held.chart.as_ref().map(|chart| &chart.state),
+            first.chart.as_ref().map(|chart| &chart.state),
+            format!("the statechart's state after settle {settle}")
+        );
+        ensure_eq!(
+            held.stages.len(),
+            1,
+            format!("sessions after settle {settle}")
+        );
+        ensure_eq!(
+            held.stages[0].starts,
+            1,
+            format!("the session's starts after settle {settle}")
+        );
+        ensure_eq!(
+            world.terminal.log.count("open"),
+            1,
+            format!("agents opened after settle {settle}")
+        );
+    }
+    Ok(())
+}
+
+/// Two regions side by side: `a` moves on at once, and `b` moves once it
+/// reads `a` moved.
+const SIBLINGS: &str = r#"[kinds.pair]
+title = "Two regions"
+
+[kinds.pair.regions.a]
+initial = "x"
+
+[kinds.pair.regions.a.states.x]
+transitions = [{ when = { always = true }, to = "y" }]
+
+[kinds.pair.regions.a.states.y]
+final = true
+
+[kinds.pair.regions.b]
+initial = "w"
+
+[kinds.pair.regions.b.states.w]
+transitions = [{ when = { region = { name = "a", in = ["y"] } }, to = "z" }]
+
+[kinds.pair.regions.b.states.z]
+final = true
+"#;
+
+fn a_sibling_sees_a_move_at_the_next_settle(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![chart_kind("pair", SIBLINGS, vec![])]);
+    launched(&world.engine.launch(&launch("pair", "a", None)))?;
+    let id = World::id("pair", "a");
+    let regions = |world: &World| -> Result<(String, String), String> {
+        let held = world.held(&id).ok_or("the place holds no state")?;
+        let chart = held.chart.ok_or("the place holds no statechart")?;
+        let at = |region: &str| chart.state.regions.get(region).cloned().unwrap_or_default();
+        Ok((at("a"), at("b")))
+    };
+    ensure_eq!(
+        regions(&world)?,
+        ("y".to_string(), "w".to_string()),
+        "the regions after the launch's settle"
+    );
+    world.settle(&id);
+    ensure_eq!(
+        regions(&world)?,
+        ("y".to_string(), "z".to_string()),
+        "the regions after the next settle"
+    );
     Ok(())
 }
 

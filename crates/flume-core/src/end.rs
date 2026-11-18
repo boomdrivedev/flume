@@ -261,7 +261,9 @@ impl Engine {
             if matches!(state, StageState::Delivered | StageState::Finished) {
                 stage.counts = None;
             }
-            if index + 1 == held.stages.len() && held.place.kind.lands {
+            // A statechart place is submitted once its run is over, never
+            // at a session's delivery (111, 176).
+            if index + 1 == held.stages.len() && held.place.kind.lands && held.chart.is_none() {
                 held.submission.due = true;
             }
             Step::Write(true)

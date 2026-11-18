@@ -226,9 +226,12 @@ impl Engine {
     /// gives what its tidy did.
     pub(crate) fn settle_place(&self, id: &PlaceId) -> Tidied {
         let mut tidied = Tidied::default();
+        // A statechart place's statechart ticks at most once a settle
+        // (176).
+        let mut ticked = false;
         self.deliver_ends(id);
         for _ in 0..STEPS {
-            if !self.step(id, &mut tidied) {
+            if !self.step(id, &mut tidied, &mut ticked) {
                 break;
             }
         }
@@ -318,8 +321,11 @@ impl Engine {
         }
     }
 
-    /// One step the place allows; true when it changed something.
-    fn step(&self, id: &PlaceId, tidied: &mut Tidied) -> bool {
+    /// One step the place allows; true when it changed something. A
+    /// statechart place's sessions are stepped by their indices and its
+    /// statechart ticked once, where `ticked` says it has not yet been, in
+    /// place of a current stage's step (175, 176).
+    fn step(&self, id: &PlaceId, tidied: &mut Tidied, ticked: &mut bool) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
@@ -332,6 +338,9 @@ impl Engine {
         }
         if self.submission(&held) {
             return true;
+        }
+        if held.chart.is_some() {
+            return self.chart_step(id, &held, ticked);
         }
         let Some(index) = held.current else {
             return false;

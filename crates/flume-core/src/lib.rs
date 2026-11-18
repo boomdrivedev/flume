@@ -14,6 +14,7 @@ mod agent_acts;
 mod answer;
 pub mod atoms;
 mod base;
+mod chart;
 mod clues;
 mod deliver;
 pub mod deliveries;

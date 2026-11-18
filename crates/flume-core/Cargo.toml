@@ -14,6 +14,7 @@ hmac.workspace = true
 weir-delivery.workspace = true
 weir-engine.workspace = true
 time.workspace = true
+toml.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
