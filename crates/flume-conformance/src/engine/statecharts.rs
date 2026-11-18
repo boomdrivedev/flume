@@ -118,6 +118,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: an_answer_refused,
         },
         Scenario {
+            name: "statechart: a place whose readiness failed holds its first stage's sessions waiting on readiness, the place waiting on a retry naming one, which runs readiness again and, once it passes, starts every session",
+            cites: &["12", "49", "175"],
+            run: sessions_waiting_on_readiness,
+        },
+        Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
             cites: &["4", "175"],
             run: a_template_flume_does_not_bind,
@@ -1591,5 +1596,51 @@ fn an_answer_refused(_: &()) -> Outcome {
         Some(1),
         "the answers given"
     );
+    Ok(())
+}
+
+fn sessions_waiting_on_readiness(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .place
+        .set_readiness(REPOSITORY, &[("toolchain", false, "offline")]);
+    world.kinds.set_kinds(REPOSITORY, vec![listed_sessions(2)]);
+    launched(&world.engine.launch(&launch("one", "a", None)))?;
+    let id = World::id("one", "a");
+    for n in 1..=2 {
+        ensure_eq!(
+            session(&world, &id, &format!("main.work#1/{n}")),
+            Some((StageState::WaitingOnReadiness, false)),
+            format!("session {n}")
+        );
+    }
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    let waiting = world
+        .status(&id)?
+        .waiting_on
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage.as_deref(), waiting.why),
+        (Act::Retry, Some("main.work#1/1"), Waits::Unready),
+        "the move the place waits on"
+    );
+    world
+        .place
+        .set_readiness(REPOSITORY, &[("toolchain", true, "installed")]);
+    let answer = world
+        .engine
+        .retry(&id, Retry::Stage("main.work#1/1".into()), None, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the retry was refused: {answer:?}"
+    );
+    world.settle(&id);
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    for n in 1..=2 {
+        ensure!(
+            session(&world, &id, &format!("main.work#1/{n}")).is_some_and(|(_, live)| live),
+            "session {n} did not start once readiness passed"
+        );
+    }
     Ok(())
 }

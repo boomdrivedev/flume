@@ -10,6 +10,7 @@
 //! decides every transition, and an effect whose proof the evidence
 //! holds is planned no more, so a settle repeated performs nothing twice.
 
+use crate::start::Start;
 use crate::{atoms, Act, Answer, Engine, Step};
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -41,6 +42,11 @@ impl Engine {
         }
         let at = Some(index);
         match held.stages[index].state {
+            // A session waiting on readiness a retry has since passed starts
+            // (12, 49).
+            StageState::WaitingOnReadiness if held.readiness.failed().is_none() => {
+                !matches!(self.start_stage(id, index, None), Start::NoPlace)
+            }
             StageState::Starting | StageState::Started => self.deliver(id, at),
             StageState::NeverBegun => self.begun_after(id, at),
             StageState::Begun | StageState::Stuck | StageState::Lost => self.read_end(id, at),
@@ -292,13 +298,19 @@ impl Engine {
                     let on_hold = held.holds.iter().any(|hold| {
                         matches!(&hold.on, HoldOn::Stage { stage } if *stage == *path || *stage == name)
                     });
-                    if !on_hold {
+                    // A place whose readiness failed starts no session, as a
+                    // simple kind's first stage waits on it (12, 175).
+                    let unready =
+                        held.readiness.failed().is_some() && !held.place.kind.starts_unready;
+                    if !on_hold && !unready {
                         started.push((held.stages.len(), words.clone()));
                     }
                     held.stages.push(StageHeld {
                         name,
                         state: if on_hold {
                             StageState::OnHold
+                        } else if unready {
+                            StageState::WaitingOnReadiness
                         } else {
                             StageState::NotReached
                         },

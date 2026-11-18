@@ -172,7 +172,10 @@ on, cannot read it.
 the template's text and `weir_engine::start`'s state at the host's
 clock (`ChartHeld`, decision 6), and settles the place once in place of
 `start_stage(0)`. A launch's holds name a stage by its state's path,
-checked against the chart's stage paths.
+checked against the chart's stage paths. A place whose readiness failed
+records its sessions waiting on readiness, as a simple kind's first
+stage waits (12); a retry naming one runs readiness again, and once it
+passes every such session starts.
 
 ### 6. The held state: sessions are stages of the place
 
@@ -272,12 +275,21 @@ for twenty lines.
 where one ended short having found work and `send_backs` is under
 `send_back_limit`, flume's `defaults.send_backs` where it gives none;
 else `stopped` where one found work, or where its rule gave no session,
-or where too few sessions are left that have not ended for its join;
+or where too few sessions are left that were not stopped for its join;
 else `passed` where its join is met by sessions delivered; else none.
-A session's found words are the stage's `words`. A session that stops
-short needing an answer, is lost, stuck or never begun keeps the stage
-working while the place waits on its caller for it, as today (42 to
-45).
+A session's found words are the stage's `words`, and its found work
+asks no answer: its agent is not kept open, and it is ended once quiet
+with its stage. A session that stops short needing an answer, is lost,
+stuck or never begun keeps the stage working while the place waits on
+its caller for it, as today (42 to 45). A session ended because its
+stage no longer works, or never started before it, reads `stopped`.
+
+A hold or a retry names a session by its name, or a stage by its path:
+a hold on a path holds each of its sessions not yet started, those of
+its later entries among them, and a retry naming the path ends that
+hold and starts each session it held. A retry naming a session starts
+it again alone, ending only its own agent, and runs no other session or
+stage again.
 
 ### 11. The run's end and the submission
 
@@ -288,7 +300,9 @@ land waits on its caller, or ends done for a role's run (114, core.28).
 `verdict_at` for a statechart place records the outcome and starts no
 fix round. `place.submission` is `open` while a submission is in
 flight, else its outcome's word (`landed`, `failed`, `conflict`,
-`withdrawn`, `refused`), none before the first; `place.submissions` is
+`withdrawn`, `refused`), none before the first, and `open` while a
+submission is due, so a failure taken back to a stage is not read again
+once the run is over anew; `place.submissions` is
 `submission.submits`. The merge queue's words go to `words`. A tick
 that leaves the run over after a failure leaves the place waiting on
 its caller with them, and a retry with no stage sets `due` again

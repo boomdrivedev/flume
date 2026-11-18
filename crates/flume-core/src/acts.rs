@@ -327,7 +327,14 @@ impl Engine {
             self.settle_place(place);
             return self.acted(Act::Retry, place);
         };
-        if index == 0 && held.readiness.failed().is_some() {
+        // A simple kind's first stage, or a statechart place's session,
+        // waiting on readiness runs it again (12, 49, 175).
+        let unready = if held.chart.is_some() {
+            held.stages[index].state == StageState::WaitingOnReadiness
+        } else {
+            index == 0
+        };
+        if unready && held.readiness.failed().is_some() {
             let Ok(bound) = self.bound(&held.place) else {
                 return Answer::refused(format!("the place {place}'s seams are not bound"));
             };
@@ -339,7 +346,7 @@ impl Engine {
             self.update(place, |held| {
                 held.readiness = readiness.clone();
                 if waits {
-                    held.stages[0].state = StageState::WaitingOnReadiness;
+                    held.stages[index].state = StageState::WaitingOnReadiness;
                 }
                 Step::Write(())
             });
