@@ -33,21 +33,24 @@ let
   '';
   lockOf = packages: builtins.fromTOML (lib.concatStringsSep "\n" ([ "version = 4" ] ++ packages));
 
-  # A lock that moves weir-kinds alone, and one with a git package of no
-  # entry beside weir's.
-  movedLock = lockOf [
-    (package "weir-capture" (weirAt weir))
-    (package "weir-delivery" (weirAt weir))
-    (package "weir-kinds" (weirAt moved))
-    (package "weir-pack" (weirAt weir))
+  # weir's git packages as Cargo.lock holds them; a lock that moves
+  # weir-kinds alone, and one with a git package of no entry beside weir's.
+  weirs = [
+    "weir-cadence"
+    "weir-capture"
+    "weir-delivery"
+    "weir-engine"
+    "weir-kinds"
+    "weir-pack"
+    "weir-policy"
   ];
-  extraLock = lockOf [
-    (package "weir-capture" (weirAt weir))
-    (package "weir-delivery" (weirAt weir))
-    (package "weir-kinds" (weirAt weir))
-    (package "weir-pack" (weirAt weir))
-    (package "another" (source "https://example.com/another" moved))
-  ];
+  movedLock = lockOf (
+    map (name: package name (weirAt (if name == "weir-kinds" then moved else weir))) weirs
+  );
+  extraLock = lockOf (
+    map (name: package name (weirAt weir)) weirs
+    ++ [ (package "another" (source "https://example.com/another" moved)) ]
+  );
   movedFound = gitCrates file movedLock crates;
   extraFound = gitCrates file extraLock crates;
 

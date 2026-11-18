@@ -71,6 +71,11 @@ pub enum Answer {
         ends: Vec<Collected>,
         #[serde(default)]
         waiting: Vec<WaitingPlace>,
+        /// Every message pending at the recipient, in the order recorded,
+        /// each handed to it by the inbox; none where the inbox names a
+        /// place (43, 214).
+        #[serde(default)]
+        messages: Vec<CollectedMessage>,
     },
     /// Each delivery key a recipient confirmed, with when, and whether it
     /// had confirmed it before (43; weir 102).
@@ -92,6 +97,25 @@ pub enum Answer {
         address: String,
         standing: StandingStatus,
         pending: Vec<PendingEnd>,
+    },
+    /// A message to a role's address: its delivery's key, the address,
+    /// what the act found of it, the run that stands for it where one
+    /// does, and why its run was not woken where it was not (53, 132,
+    /// 214, C.7).
+    Messaged {
+        key: String,
+        address: String,
+        found: Found,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run: Option<PlaceId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        why: Option<String>,
+    },
+    /// The deliver part's take: the words its agent takes as one prompt,
+    /// none where nothing waits for it (215).
+    Taken {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        words: Option<String>,
     },
     /// `flume kinds lock`'s act: the lock it wrote, each kind it recorded
     /// at its content's hash, and each it removed (155).
@@ -279,6 +303,23 @@ pub enum Woke {
     Launched,
     Live,
     Waiting,
+}
+
+/// What a message to a role's address found of it (53, 132, 214): its
+/// run launched by the message, its run's agent live, its run waiting,
+/// for room, on its caller or for its launch, its run not woken, with
+/// why, a standing agent of its source's, the address carried to another
+/// host, or the address's batch handed into its session by the act.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Found {
+    Woken,
+    Live,
+    Waiting,
+    Unwoken,
+    Standing,
+    Carried,
+    Handed,
 }
 
 impl Answer {
@@ -488,6 +529,34 @@ pub struct PlaceStatus {
     /// the fix's number and its cause (56, 203).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_of: Option<FixOf>,
+    /// For a standing role's place, which has no branch, each of its
+    /// checkouts, as its held state keeps it and as the place seam reads
+    /// it at the ask; none for any other place (56, 80, 193; core.15).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkouts: Vec<CheckoutStatus>,
+}
+
+/// A checkout of a standing role's place as status gives it: its
+/// repository, its address where its clone has one, its folder under
+/// the place's location, its base, the revision it stands at, when it
+/// was last moved and where its base was read then, its last move not
+/// made with when, the tip and why, and what the place seam reads of it
+/// at the ask, its head and what it holds (56, 80, 193, 213; core.15).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckoutStatus {
+    pub repository: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    pub folder: String,
+    pub base: String,
+    pub revision: Revision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<Seconds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_from: Option<BaseFrom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unmoved: Option<Unmoved>,
+    pub read: PlaceRead,
 }
 
 /// A stage waiting for room while a process runs the conversation its
@@ -711,6 +780,24 @@ pub struct Collected {
     pub expired: bool,
 }
 
+/// A message the inbox collected: its delivery's key, the address it
+/// waits at, who sent it where its first line names one, when it was
+/// recorded, its words, and whether this inbox confirmed it and it is
+/// expired for the recipient (43, 214; weir 103, 104).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectedMessage {
+    pub key: String,
+    pub address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    pub at: Seconds,
+    pub words: String,
+    #[serde(default)]
+    pub confirmed: bool,
+    #[serde(default)]
+    pub expired: bool,
+}
+
 /// An end expired for a recipient on the host, as status gives it: its
 /// place, as `flume status` names it, the end's key, its delivery's key,
 /// the recipient, whether anything was ever confirmed under its name, and
@@ -923,8 +1010,10 @@ pub struct PlaceClues {
 /// it, why, so it wakes nothing; and, where its run stalled and its
 /// stall reached no one, its run being its own stream's answerer or no
 /// role standing behind its stream, that stall, so status names what no
-/// one was told: each read at the ask, and none in a status written
-/// before (56, 130, 190, 191, 193; core.14, core.15).
+/// one was told; each message pending at it, and each place whose work is
+/// not over that reports to it: each read at the ask, and none in a
+/// status written before (56, 130, 190, 191, 193, 214; core.14,
+/// core.15).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddressStatus {
     pub address: String,
@@ -940,6 +1029,43 @@ pub struct AddressStatus {
     pub wakes_nothing: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stalled: Option<PendingEnd>,
+    /// Each message pending at the address, in the order recorded (214).
+    #[serde(default)]
+    pub messages: Vec<PendingMessage>,
+    /// Each place whose work is not over that names the address among
+    /// its recipients (7, 214).
+    #[serde(default)]
+    pub reporting: Vec<PlaceId>,
+    /// The address's standing role's place where one stands, and since
+    /// when its stage hibernates where it does (56, 193, 212, 214).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standing_role: Option<StandingRoleStatus>,
+}
+
+/// A standing role's place as status gives it under its address: the
+/// place, and since when its stage hibernates, none where it does not
+/// (56, 193, 212).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StandingRoleStatus {
+    pub place: PlaceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernating_since: Option<Seconds>,
+}
+
+/// A message pending at a role's address, as status gives it: its
+/// delivery's key, who sent it where its first line names one, when it
+/// was recorded, its words' first line, each hand-over with its way and
+/// when, and whether it is expired for the address (43, 56, 214; weir
+/// 104).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingMessage {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    pub at: Seconds,
+    pub line: String,
+    pub handovers: Vec<Delivery>,
+    pub expired: bool,
 }
 
 /// A role's run as status gives it under its address: what its source's
@@ -1326,6 +1452,27 @@ pub struct StageStatus {
     /// 198).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers: Vec<SessionAnswer>,
+    /// Whether its kind hibernates the stage; false, written by no field,
+    /// where it does not (56, 212).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hibernates: bool,
+    /// For a stage whose kind hibernates it, its current start's
+    /// `hibernate_after` as written, with the layer it came from, flume's
+    /// own hour named `default`; none before its first start (32, 56,
+    /// 212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernate_after: Option<Given>,
+    /// Its current start's hibernation: since when, why, `idle`, `caller`
+    /// or `kept_open`, and the account it ran under; none where it has not
+    /// hibernated (56, 212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernated: Option<HibernationHeld>,
+    /// Each resume of its current start, in order: when, by what,
+    /// `caller`, `message` or `answer`, its agent's identity, the words
+    /// it was given and whether it carried its conversation or why not (56,
+    /// 213).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resumes: Vec<ResumeHeld>,
 }
 
 /// An answer a stage's start took in its session: the stop-short's words

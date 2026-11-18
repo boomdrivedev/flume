@@ -775,6 +775,7 @@ pub(crate) mod tests {
             send_back_limit: None,
             makes: vec![],
             repeats: false,
+            hibernates: false,
         }
     }
 
@@ -792,6 +793,7 @@ pub(crate) mod tests {
                 place: "fix--one".into(),
                 stage: "code".into(),
                 start: n,
+                resume: 0,
             },
             secret: Secret(format!("secret-{n}")),
             program: "agent".into(),
@@ -825,6 +827,10 @@ pub(crate) mod tests {
             terminal: None,
             own: None,
             answered: 0,
+            hibernated: None,
+            resumes: vec![],
+            handing: None,
+            messages: vec![],
             counts: None,
             span: None,
             asking_since: None,

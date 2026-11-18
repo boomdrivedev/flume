@@ -42,6 +42,19 @@ pub trait PlaceHarness {
 
     /// The base takes `commit`'s change by a commit of its own.
     fn apply_to_base(&self, repository: &str, base: &str, commit: &Revision);
+
+    /// A second repository, beside [`PlaceHarness::repository`], with its
+    /// base branch and the base's head, for a standing role's checkouts
+    /// (193).
+    fn second_repository(&self) -> (String, String, Revision);
+
+    /// The checkout `checkout` holds an uncommitted change to a file its
+    /// repository's base then changes by a commit of its own: the base's
+    /// new head, which a move there would overwrite the change by (193).
+    fn in_the_way(&self, checkout: &PlaceRef) -> Revision;
+
+    /// Whether anything stands at `location`.
+    fn stands(&self, location: &str) -> bool;
 }
 
 /// A readiness over tools a repository pins that nothing installed.
@@ -131,7 +144,193 @@ pub fn scenarios<H: PlaceHarness>() -> Vec<Scenario<H>> {
             cites: &["82", "67", "I4"],
             run: remove_branch_judges_by_change::<H>,
         },
+        Scenario {
+            name: "place: a standing role's checkouts are made under the location, each detached at its revision on no branch",
+            cites: &["78", "80", "193"],
+            run: checkouts_made_under_the_location::<H>,
+        },
+        Scenario {
+            name: "place: make of checkouts refuses where something stands at the location, and makes none",
+            cites: &["78", "83", "193"],
+            run: checkouts_refused_where_something_stands::<H>,
+        },
+        Scenario {
+            name: "place: a checkout's move over a change is kept with the profile's words, its head and its change as they were",
+            cites: &["80", "83", "193"],
+            run: a_move_kept_over_a_change::<H>,
+        },
+        Scenario {
+            name: "place: a standing role's checkouts are removed with what stands at the location, no teardown run and no branch removed",
+            cites: &["81", "83", "193"],
+            run: checkouts_removed_with_no_teardown::<H>,
+        },
     ]
+}
+
+/// The location of the standing role's place `desk--<name>` of
+/// `repository`, and the checkouts of the harness's two repositories at
+/// their bases' heads under it, named `one` and `two`.
+fn checkouts<H: PlaceHarness>(harness: &H, name: &str) -> Result<(String, Vec<Checkout>), String> {
+    let (one, _, at_one) = harness.repository();
+    let (two, _, at_two) = harness.second_repository();
+    let location = harness
+        .seam()
+        .location(&one, &format!("desk--{name}"))
+        .map_err(|reason| format!("no location for desk--{name}: {reason}"))?;
+    Ok((
+        location,
+        vec![
+            Checkout {
+                repository: one,
+                folder: "one".into(),
+                revision: at_one,
+            },
+            Checkout {
+                repository: two,
+                folder: "two".into(),
+                revision: at_two,
+            },
+        ],
+    ))
+}
+
+/// The checkout `checkout` under `location` as the seam reads it.
+fn checkout_at(location: &str, checkout: &Checkout) -> PlaceRef {
+    PlaceRef {
+        repository: checkout.repository.clone(),
+        location: format!("{location}/{}", checkout.folder),
+        branch: String::new(),
+        base: "main".into(),
+    }
+}
+
+/// The checkouts made under their location.
+fn checkouts_made<H: PlaceHarness>(
+    harness: &H,
+    name: &str,
+) -> Result<(String, Vec<Checkout>), String> {
+    let (location, checkouts) = checkouts(harness, name)?;
+    ensure_eq!(
+        harness.seam().make_checkouts(&location, &checkouts),
+        MakeOutcome::Made,
+        "make the checkouts"
+    );
+    Ok((location, checkouts))
+}
+
+fn checkouts_made_under_the_location<H: PlaceHarness>(harness: &H) -> Outcome {
+    let (location, checkouts) = checkouts_made(harness, "made")?;
+    for checkout in &checkouts {
+        let place = checkout_at(&location, checkout);
+        match harness.seam().read(&place) {
+            PlaceRead::Live {
+                branch,
+                head,
+                holds,
+            } => {
+                ensure_eq!(
+                    head,
+                    checkout.revision,
+                    format!("{}'s head", checkout.folder)
+                );
+                ensure!(
+                    harness.head(&checkout.repository, &branch).is_none(),
+                    "{} is on the branch {branch}",
+                    checkout.folder
+                );
+                ensure!(!holds.any(), "a made checkout holds {holds:?}");
+            }
+            other => return Err(format!("read {} as {other:?}", checkout.folder)),
+        }
+    }
+    let held = checkout_at(&location, &checkouts[1]);
+    harness.untracked(&held, "notes.txt");
+    match harness.seam().read(&held) {
+        PlaceRead::Live { holds, .. } => ensure!(
+            holds
+                .untracked
+                .iter()
+                .any(|file| file.ends_with("notes.txt")),
+            "read names no untracked file: {holds:?}"
+        ),
+        other => return Err(format!("read a held checkout as {other:?}")),
+    }
+    Ok(())
+}
+
+fn checkouts_refused_where_something_stands<H: PlaceHarness>(harness: &H) -> Outcome {
+    let (location, checkouts) = checkouts(harness, "occupied")?;
+    harness.occupy(&location);
+    ensure_eq!(
+        harness.seam().make_checkouts(&location, &checkouts),
+        MakeOutcome::LocationExists,
+        "make over a location"
+    );
+    for checkout in &checkouts {
+        ensure_eq!(
+            harness.seam().read(&checkout_at(&location, checkout)),
+            PlaceRead::Gone,
+            format!("{} after a refused make", checkout.folder)
+        );
+    }
+    Ok(())
+}
+
+fn a_move_kept_over_a_change<H: PlaceHarness>(harness: &H) -> Outcome {
+    let (location, checkouts) = checkouts_made(harness, "kept")?;
+    let place = checkout_at(&location, &checkouts[0]);
+    let tip = harness.in_the_way(&place);
+    match harness.seam().move_checkout(&place, &tip) {
+        Moved::Kept { reason } => ensure!(!reason.is_empty(), "kept with no words"),
+        other => return Err(format!("a move over a change was {other:?}")),
+    }
+    match harness.seam().read(&place) {
+        PlaceRead::Live { head, holds, .. } => {
+            ensure_eq!(head, checkouts[0].revision, "the kept checkout's head");
+            ensure!(!holds.uncommitted.is_empty(), "the change went: {holds:?}");
+        }
+        other => return Err(format!("read a kept checkout as {other:?}")),
+    }
+    let elsewhere = PlaceRef {
+        location: format!("{location}/elsewhere"),
+        ..place
+    };
+    ensure_eq!(
+        harness.seam().move_checkout(&elsewhere, &tip),
+        Moved::Gone,
+        "a move where no checkout stands"
+    );
+    Ok(())
+}
+
+fn checkouts_removed_with_no_teardown<H: PlaceHarness>(harness: &H) -> Outcome {
+    let (location, checkouts) = checkouts_made(harness, "removed")?;
+    let (repository, base, _) = harness.repository();
+    let kept = harness.branch(&repository, "fix/kept");
+    let head = harness.head(&repository, &base);
+    for checkout in &checkouts {
+        harness.fail_teardown(&checkout_at(&location, checkout), "pre-remove");
+    }
+    ensure_eq!(
+        harness.seam().remove_checkouts(&location, &checkouts),
+        Removed::Removed,
+        "remove the checkouts"
+    );
+    for checkout in &checkouts {
+        ensure_eq!(
+            harness.seam().read(&checkout_at(&location, checkout)),
+            PlaceRead::Gone,
+            format!("{} once removed", checkout.folder)
+        );
+    }
+    ensure!(!harness.stands(&location), "something stands at {location}");
+    ensure_eq!(
+        harness.head(&repository, "fix/kept"),
+        Some(kept),
+        "a branch by hand"
+    );
+    ensure_eq!(harness.head(&repository, &base), head, "the base");
+    Ok(())
 }
 
 fn a_location_is_the_places_own<H: PlaceHarness>(harness: &H) -> Outcome {

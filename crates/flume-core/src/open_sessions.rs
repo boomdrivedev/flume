@@ -17,10 +17,14 @@
 //! agent ended or brought back bare, and a spent account each say more
 //! than the time, and are what a later answer's retry acts on (49, 77),
 //! so a settle that finds the time passed and the agent ended as well
-//! records the agent ended.
+//! records the agent ended. Where the stage's kind hibernates it, its
+//! time passing hibernates the agent in place of letting it go: its close
+//! reads hibernated, and the write that records the agent ended records
+//! the start's hibernation, why `kept_open`, its session kept for its
+//! answer to resume (198, 212, 213).
 //!
 //! While the agent is kept open, an answer, a retry with words naming its
-//! stage or a tell to its place, is handed to its session as a tell is,
+//! stage or a message to its place, is handed to its session as a message is,
 //! the question then the answer, and recorded on the stop-short it
 //! answers in the one write that carries the stage on there under the
 //! same start, begun again, starting and ending no agent; one the agent
@@ -30,7 +34,7 @@
 use crate::acts::{asked, Answering};
 use crate::reading::AgentReading;
 use crate::start::Starts;
-use crate::{Answer, Engine, Step, TELL_BOUND};
+use crate::{Answer, Engine, Step, MESSAGE_BOUND};
 use flume_seams::*;
 
 impl Engine {
@@ -50,7 +54,7 @@ impl Engine {
     }
 
     /// Hands `words`, the answer to the question the agent `kept` holds
-    /// open stopped short with, to its session as a tell is handed, within
+    /// open stopped short with, to its session as a message is handed, within
     /// `bound`, the question then the answer; once received, in one write,
     /// records it on the stop-short's end with `act`, when it was sent and
     /// received, and who gave it and the key it named as `answering` names
@@ -58,7 +62,7 @@ impl Engine {
     /// on begun under the same start, its quiet and its limit read afresh,
     /// and ends each hold on the stage, then settles the place, which reads
     /// the agent's end where a settle read its session ended once it took
-    /// the answer. Refused with the tell's words, nothing recorded, where
+    /// the answer. Refused with the message's words, nothing recorded, where
     /// the agent does not take it, or where it was let go otherwise before
     /// the write (42, 47 to 50, 53 to 55, 96, 198; core.11).
     pub(crate) fn answer(
@@ -82,11 +86,18 @@ impl Engine {
             state: StageState::EndedShort,
             answered: kept.start.answered,
         };
-        let _claimed = match self.claim_answer(id, &key, answering, bound.unwrap_or(TELL_BOUND)) {
+        let _claimed = match self.claim_answer(id, &key, answering, bound.unwrap_or(MESSAGE_BOUND))
+        {
             Ok(claimed) => claimed,
             Err(reason) => return Answer::refused(reason),
         };
-        let handed = match self.hand(id, &kept.start, &asked(&question, words), bound) {
+        let handed = match self.hand(
+            id,
+            &kept.start,
+            &asked(&question, words),
+            bound,
+            answering.by.as_deref(),
+        ) {
             Ok(handed) => handed,
             Err(reason) => return Answer::refused(reason),
         };
@@ -176,7 +187,8 @@ impl Engine {
     fn let_go(&self, id: &PlaceId, held: &HeldState, kept: &Kept) -> bool {
         let start = &kept.start;
         let reading = start.live.then(|| self.read_agent(id, start));
-        let Some(by) = self.let_go_by(id, kept, reading.as_ref()) else {
+        let hibernates = held.place.kind.stages[kept.index].hibernates;
+        let Some(by) = self.let_go_by(id, kept, reading.as_ref(), hibernates) else {
             return false;
         };
         let conversation = held.place.kind.stages[kept.index].conversation;
@@ -206,12 +218,14 @@ impl Engine {
     /// start's, one the terminal brought back bare (77, 96, 134); its
     /// account spent, by its own record or the host's documents (146,
     /// core.32), an account past its pool's threshold not among them
-    /// (185); or its time passed. None while it is still kept open.
+    /// (185); or its time passed, which hibernates it where its stage's
+    /// kind `hibernates` it (212). None while it is still kept open.
     fn let_go_by(
         &self,
         id: &PlaceId,
         kept: &Kept,
         reading: Option<&AgentReading>,
+        hibernates: bool,
     ) -> Option<ClosedBy> {
         let Some(reading) = reading else {
             return Some(ClosedBy::Stopped);
@@ -223,7 +237,11 @@ impl Engine {
             return Some(ClosedBy::AccountSpent);
         }
         let open_until = kept.end.open_until?;
-        (self.host.now() >= open_until).then_some(ClosedBy::Time)
+        let by = match hibernates {
+            true => ClosedBy::Hibernated,
+            false => ClosedBy::Time,
+        };
+        (self.host.now() >= open_until).then_some(by)
     }
 
     /// Whether the start's account is spent: its agent's own record shows
@@ -285,8 +303,10 @@ impl Engine {
     }
 
     /// The agent `kept` holds let go, ended now: its start no longer live
-    /// where `live` says it was, and its close recording when; true when
-    /// this write took it (31, 70).
+    /// where `live` says it was, and its close recording when; one whose
+    /// close reads hibernated records, in the same write, its start's
+    /// hibernation since now, why `kept_open`, where none is recorded; true
+    /// when this write took it (31, 70, 212).
     fn ended_let_go(&self, id: &PlaceId, kept: &Kept, live: bool) -> bool {
         let now = self.host.now();
         self.update(id, |held| {
@@ -308,10 +328,18 @@ impl Engine {
                 return Step::Keep(false);
             };
             closed.ended_at = Some(now);
+            let hibernated = closed.by == ClosedBy::Hibernated;
             if let Some(start) = held.stages[index].start.as_mut() {
                 start.live = false;
                 start.first_quiet = None;
                 start.past_limit = false;
+                if hibernated && start.hibernated.is_none() {
+                    start.hibernated = Some(HibernationHeld {
+                        since: now,
+                        why: HibernatedBy::KeptOpen,
+                        account: start.account.as_ref().map(|account| account.name.clone()),
+                    });
+                }
             }
             Step::Write(true)
         })
@@ -371,11 +399,11 @@ pub(crate) fn last_answer(held: &HeldState, index: usize, start: &StartHeld) -> 
         .max()
 }
 
-/// The words the start `start` of the place's stage was given and each
+/// The words the start `start` of the place's stage was given, each
 /// answer it took in its session, the question then the answer, in order,
-/// as a fresh start flume makes on its own after it carries them after
-/// flume's own words; none where it was given none and took none (42, 146,
-/// 161).
+/// and each resume's words after them, as a fresh start flume makes on its
+/// own after it carries them after flume's own words; none where it was
+/// given none, took none and was resumed with none (42, 146, 161, 213).
 pub(crate) fn told(held: &HeldState, start: &StartHeld) -> Option<String> {
     let Some(index) = held.index_of(&start.identity) else {
         return start.words.clone();
@@ -399,7 +427,17 @@ pub(crate) fn told(held: &HeldState, start: &StartHeld) -> Option<String> {
         }
         _ => None,
     });
-    let parts: Vec<String> = start.words.clone().into_iter().chain(answers).collect();
+    let resumed = start
+        .resumes
+        .iter()
+        .filter_map(|resume| resume.words.clone());
+    let parts: Vec<String> = start
+        .words
+        .clone()
+        .into_iter()
+        .chain(answers)
+        .chain(resumed)
+        .collect();
     (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
