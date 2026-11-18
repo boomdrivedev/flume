@@ -135,7 +135,8 @@ Once a settle lets the agent go, the end records `closed`:
 
 flume records the answer to a stop-short on its end in the place's
 `ends`, as `answer`. It holds `words`, the answer; `act`, `retry` or
-`tell`; `at`, when the act began; `by`, who gave it, as the answering
+`message`, an answer an earlier flume recorded by `tell` read as
+`message`; `at`, when the act began; `by`, who gave it, as the answering
 command's recipient named it, left out where it named none; `key`, the
 key the answer named, left out where it named none; and `session`,
 where the agent kept open took it. That holds `sent_at`, when flume
@@ -155,6 +156,28 @@ each stop-short of one start is an end of its own. The start's
 
 A held state an earlier release wrote reads with no agent kept open, no
 answers and no close.
+
+### A start hibernated and its resumes
+
+A start whose agent hibernated records `hibernated`: `since`, when;
+`why`, `idle`, its conversation idled past its `hibernate_after`,
+`caller`, at `flume hibernate`, or `kept_open`, its time kept open for
+an answer passed; and `account`, the account it ran under, left out
+where it ran under none. Its stage reads `hibernating`, its `end` none,
+or, where it waits on its answer, stays `ended_short` with its end's
+`closed` `by` `hibernated`. A start's `resumes` lists each resume of
+it, in order: `at`; `by`, `caller`, `message`, `answer` or `delivery`,
+a batch pending at its role's address; `identity`,
+the resumed agent's, its start's number with the resume's after it;
+`words`, the words it was given, left out at a bare resume and a
+resume by `delivery`, whose prompt is its batch; and
+`conversation`, as a carried start's. A resume's start keeps its
+start's number, head and answers, and its `conversation` `cause` is
+`hibernated`. While a message is being handed to its agent, a start
+holds `handing`, until when at the latest. A stage waiting to resume
+keeps in its `room` `carry` with `cause` `hibernated` and `resumed_by`.
+The start's `settings` keep `hibernate_after` as its layer wrote it. A
+held state an earlier release wrote reads with none of them.
 
 ### The question, the hold and the stall
 
@@ -214,6 +237,20 @@ launch's `reason`. A fix's
 own record keeps `fix_of`: the base place's `place`, the fix's `number`
 and its `cause`. Each is left out where it does not apply, and a place
 an earlier release launched keeps none of them.
+
+### A standing role's checkouts
+
+A standing role's place keeps `checkouts`, one for each repository its
+entry names, in its order, the first the place's own `repository`. Each
+holds the repository's location, its `address` where its clone has
+one, its `folder` under the place's location, its `base`, its
+`binding` as the wake read it, the `revision` it stands at on no
+branch, `base_from`, where its base was read, `moved_at`, when a start
+last moved it, and `unmoved`, its last move not made: `at`, `tip`, the
+base's tip it was not moved to, and `reason`, git's words or why its
+base could not be read. The place's `branch` is empty. Every other
+place keeps no `checkouts`, and a place an earlier release launched
+reads with none.
 
 ### The kind a place keeps
 
@@ -300,7 +337,7 @@ Each place:
 | `lands` | whether the kind lands |
 | `phase` | `live`, or `tidied` with when and why: `landed` with its commit, `dropped` or `done`, and `pending_for`, the recipients an end of it is pending for. A place whose work is over that still stands is `over`, with why and `kept`, what keeps it: among them `session_runs`, kept while its session runs, each process that runs its conversation in `processes`, by its `pid` and `started`, or `unread`, what flume could not read |
 | `readiness` | each readiness step, whether it passed and what it printed |
-| `stages` | each stage: `name`, `state`, `starts`, `end`, `conversation`, and the part or setting it was refused for. A lost conversation's `end` holds `left_in_pane`, `true` where flume left the agent the terminal brought back in its pane, left out otherwise. A stop-short's `end` holds `open_until` and `closed` ([an agent kept open and its answers](#an-agent-kept-open-and-its-answers)). `answers`, each answer the stage's current start took in its session, in order: `question`, the question it answered, `words`, `act`, `at` and `session`, with `sent_at` and `received_at`; left out where there are none |
+| `stages` | each stage: `name`, `state`, `starts`, `end`, `conversation`, and the part or setting it was refused for. A lost conversation's `end` holds `left_in_pane`, `true` where flume left the agent the terminal brought back in its pane, left out otherwise. A stop-short's `end` holds `open_until` and `closed` ([an agent kept open and its answers](#an-agent-kept-open-and-its-answers)). For a stage whose kind hibernates it, `hibernates`, `true`, and `hibernate_after`, its current start's, with its `layer` and `value`; `hibernated`, where its agent hibernated, with `since`, `why` and `account`; and `resumes`, each resume of its current start ([a start hibernated and its resumes](#a-start-hibernated-and-its-resumes)); each left out where it has none. `answers`, each answer the stage's current start took in its session, in order: `question`, the question it answered, `words`, `act`, `at` and `session`, with `sent_at` and `received_at`; left out where there are none |
 | `current` | the current stage's name |
 | `agent` | the current agent: `identity`, `stage`, `program`, `settings` with `from`, the layer of each, each variable `env.<NAME>` from `account` as `<set>`; in `settings`, `programs` with the agent's program's entry alone, and `keep_open` as its layer wrote it, its layer in `from` as every setting's; in `from` each of its own settings, `programs.<program>.settings.<key>`, with its `layer`, its `value` as written and its `file` where it came from one; `own`, where a layer gave its program own settings, with `passed`, the arguments that named the file its start wrote, `read_back`, `false`, and `files`, each file a layer named with its `layer`, `written`, `read` and `left_out`, each key left out with its `key` and its `owner`; `account`, its `pool`, `name` and `from`, `affinity`, the intent's affinity for the agent's `program`, `strategy`, or `conversation`, the account a lost conversation's start ran under, which holds it; `mode`, where a layer gave one, with `passed`, the value its program was given, `entry`, the program whose entry of a table it took, and `read_back`, whether its program's word reads the mode back; `effort`, where a layer gave one, with `word`, as its layer wrote it, `layer`, `passed`, the value its program was given, `read_back`, `false`, since no program reads its effort back, and `outranked_by`, the variable its program reads over the effort, by its name, where the agent's account's `env` names it, left out otherwise; `state`, `started`, `asking`, `own_work`, `past_limit`, `screen`, `dialog`, the words of a dialog it shows before it takes its prompt, `printed`, `last_words` and `notes`; `session`, the herdr session it opened in, `name`, `null` for the terminal's own, and `from`: `launch`, `stream-stage`, the session its stream names for its kind's stage, `stream-kind`, the one its stream names for its kind, `stream`, `stream-name` or `own`, none where it opened beside a pane; `terminal`, the multiplexer it opened in, `profile` and `from`: `stream`, `host` or `neither`, `null` for a start an earlier release wrote, whose agent is in the host's; `left_in_pane`, `true` for an agent the terminal brought back in a lost conversation's pane, which flume left there and sends nothing, left out otherwise; and, for the agent of a start after a spent agent or a lost conversation's retry, `conversation`: `from`, the start whose conversation it carries, `cause`, `lost` where that start's conversation was reported lost and left out where its agent was spent, `carried`, and `why` where it was not carried, naming a variable and never a path |
 | `head` | the place's branch head; a base place's as the merge queue reads its branch, nothing read at its location |
@@ -319,6 +356,7 @@ Each place:
 | `forecast` | for such a base place, the newest forecast a settle read of its branch, as its held state keeps it ([a base place's fixes](#a-base-places-fixes)); status forms no forecast of its own; left out where no settle read one |
 | `fixes` | for a base place, each fix flume launched for it, with its `number`, `name`, `place`, `cause`, `launched` and `ended`, as its held state keeps them; left out where it has none |
 | `fix_of` | for a place flume launched as a base place's fix, the base place's `place`, the fix's `number` and its `cause`; left out for every other place |
+| `checkouts` | for a standing role's place, whose `branch` is empty, each checkout: `repository`, `address`, `folder`, `base`, `revision`, `moved_at`, when a start last moved it, `base_from`, where its base was read then, `unmoved`, its last move not made with `at`, `tip` and `reason`, and `read`, what flume reads of it when asked, its head and what it holds; left out for every other place |
 | `waits_on_session` | the stage waiting on its session, as its line says `waiting on its session`: `stage`; `processes`, each process that runs the conversation its start would carry, by its `pid` and `started`; or `unread`, what flume could not read, naming a variable or the host's processes and never a path; and `since`, when it began waiting. It is never stalled. Left out where no stage waits so |
 | `holds`, `hold_words` | each hold and its words: `on`, `stage` with its `stage`, `submission`, or `waiting`, the move the place waits on; `words`; `since`; and for a hold on the waiting move, `bound`, in seconds, and `lapsed`, when it lapsed, each left out where it has none |
 | `priority` | the place's priority |
@@ -334,8 +372,8 @@ Each place:
 
 A stage's `state` is one of `not_reached`, `waiting_on_readiness`,
 `on_hold`, `waiting_for_room`, `starting`, `started`, `begun`, `delivered`,
-`ended_short`, `finished`, `never_begun`, `lost`, `stuck`, `stopped`
-and `refused`. An agent's `started`, `asking` and `own_work` are `yes`,
+`ended_short`, `finished`, `never_begun`, `lost`, `stuck`, `stopped`,
+`hibernating` and `refused`. An agent's `started`, `asking` and `own_work` are `yes`,
 `no` or `unknown`.
 
 The host:
@@ -353,7 +391,7 @@ The host:
 | `watch_lapsed` | when the watch lapsed, twice its bound after its newest settle ended, or after it began where its command died before it ended, given while flume runs attended after one; left out while a caller keeps watch or where none ever has |
 | `terminals` | each multiplexer the host binds, the host's own first, then each stream's by the stream's name, each once: `profile`, `kept`, what a tidy kept there, and `watch`, `none` for every one, since no multiplexer keeps watch or settles |
 | `bases` | for each repository and base, its places running, asking, waiting on their caller and stalled, and the line shown in herdr |
-| `addresses` | each role's address with ends pending, every address a source gives an agent that already runs, pending or not, and the answerer's run whose stall reached no one: `address`; `role`, the run's entry as its source declares it, with `stream`, the address's stream it runs in, `null` for any other address; `run`, the place of its run that stands; `pending`, each end with its `place`, `key` and `what`; `unwoken`, why its run was not woken, `null` for an agent's address; `carried`, its source and `answers`, where its source declares it carried to another host; `wakes_nothing`, why nothing is declared for it, as no source declares it or its entry is at fault; `stalled`, the newest stall of its run that reached no one, since the run is its own stream's answerer, with its `place`, `key` and `what`; and `standing`, `null` for a run's address, else `agent`, the name the multiplexer knows it by, `stream`, `session`, its `name`, left out for the multiplexer's own, and `from`: `role`, the entry's own, `stream`, `stream-name` or `own`, `terminal`, the profile the stream's multiplexer names, `null` where the host declares no such stream, and `found`, what the multiplexer found when asked: `{"one":{"at":…,"state":…}}`, the agent at the session name a notice reaches it by with its state, `working`, `waiting`, `asking`, `stopped` or `unknown`; `"none"`; `{"several":{"count":…}}`; or `{"unread":{"reason":…}}`, in the multiplexer's words or flume's |
+| `addresses` | each role's address with ends pending, every address a source gives an agent that already runs, pending or not, every address whose standing role's place stands, and the answerer's run whose stall reached no one: `address`; `role`, the run's entry as its source declares it, with `stream`, the address's stream it runs in, `null` for any other address; `run`, the place of its run that stands; `pending`, each end with its `place`, `key` and `what`; `unwoken`, why its run was not woken, `null` for an agent's address; `carried`, its source and `answers`, where its source declares it carried to another host; `wakes_nothing`, why nothing is declared for it, as no source declares it or its entry is at fault; `stalled`, the newest stall of its run that reached no one, since the run is its own stream's answerer, with its `place`, `key` and `what`; `standing_role`, where the address's standing role's place stands, its `place` and `hibernating_since`, left out while it does not hibernate; and `standing`, `null` for a run's address, else `agent`, the name the multiplexer knows it by, `stream`, `session`, its `name`, left out for the multiplexer's own, and `from`: `role`, the entry's own, `stream`, `stream-name` or `own`, `terminal`, the profile the stream's multiplexer names, `null` where the host declares no such stream, and `found`, what the multiplexer found when asked: `{"one":{"at":…,"state":…}}`, the agent at the session name a notice reaches it by with its state, `working`, `waiting`, `asking`, `stopped` or `unknown`; `"none"`; `{"several":{"count":…}}`; or `{"unread":{"reason":…}}`, in the multiplexer's words or flume's |
 | `expired` | each end expired for a recipient on the host, of every place and every tidied record, read from one read of the host's deliveries: its `place`, `key`, `delivery`, the `recipient`, `known`, `false` for a name never confirmed under, and `expires_at`. An expired end is never dropped: it stays pending until its recipient confirms it |
 | `terminal_kept` | what a tidy kept in the host's own multiplexer because something flume did not make holds it |
 | `terminal_setup` | what the host's own multiplexer's configuration lacks for flume's plugin there, each in words a person acts on, naming the file read: under herdr, the popup's `[[keys.command]]` entry or the sidebar rows' `$flume`, as the plugin's startup read herdr's configuration for each server still running; empty where nothing is missing, no server's startup wrote any or the terminal reads none |

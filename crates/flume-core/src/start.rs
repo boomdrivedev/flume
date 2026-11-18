@@ -11,7 +11,7 @@ use crate::accounts::Choice;
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
-    asks, group_text, may_name, notes_path, render, roles_text, way_to_stop_short,
+    after_roles, asks, group_text, may_name, notes_path, render, way_to_stop_short,
 };
 use crate::room::Admit;
 use crate::start_record::start_record;
@@ -111,6 +111,14 @@ pub(crate) enum StartReason {
     /// retried it, and its conversation could not be carried: these words
     /// stand before the retry's in the stage's prompt (27, 49, 179).
     Lost,
+    /// The stage's agent hibernated and a resume could not carry its
+    /// conversation: these words stand before the resume's in the stage's
+    /// prompt (27, 213, S127).
+    Hibernated,
+    /// The stage's agent hibernated and its caller resumed it with no
+    /// words: these are the resume's words, before the way to stop short
+    /// (28, 213).
+    Woken,
 }
 
 impl StartReason {
@@ -122,6 +130,8 @@ impl StartReason {
             StartReason::Carried => "Your last turn stopped at your account's usage limit. This session now goes on under an account of the pool, with its conversation as it stood: carry on from where you stopped.".into(),
             StartReason::Resumed => "Your session was lost and goes on here, with its conversation as it stood. Anything you had running then has stopped: read the place again before you carry on.".into(),
             StartReason::Lost => "The stage's earlier agent was lost, and its conversation could not be carried, so this agent starts the stage afresh. What it committed is on the place's branch and what it left is in the place: read them and carry the stage on from there.".into(),
+            StartReason::Hibernated => "The stage's earlier agent hibernated, and its conversation could not be carried, so this agent starts the stage afresh. What it committed is on the place's branch and what it left is in the place: read them and carry the stage on from there.".into(),
+            StartReason::Woken => "Your session hibernated and resumes here, with its conversation as it stood. Anything you had running in it then has stopped: read the place again before you carry on.".into(),
         }
     }
 }
@@ -252,6 +262,7 @@ impl Engine {
             place: held.place.short(),
             stage: held.place.kind.stages[index].name.clone(),
             start: held.stages[index].starts + 1,
+            resume: 0,
         }
     }
 
@@ -267,6 +278,20 @@ impl Engine {
         )
     }
 
+    /// The kinds a role's place's entry names its projects' kinds by,
+    /// each with its words, as the host's sources' roles give them now,
+    /// as `may_name` reads the roles; none for a place of no role's, or
+    /// whose address no source gives a run (28, 193).
+    pub(crate) fn kinds_named(&self, held: &HeldState) -> BTreeMap<String, String> {
+        let Some(address) = held.role.as_deref() else {
+            return BTreeMap::new();
+        };
+        match self.host.roles().declared(address) {
+            Ok(RoleEntry::Run(run)) => run.kinds,
+            _ => BTreeMap::new(),
+        }
+    }
+
     /// The stage's prompt filled for `identity`'s start, or the first
     /// part it asks for with nothing to fill it (27). The way to stop
     /// short is in every prompt (28), as `agent`, the profile of the
@@ -277,7 +302,11 @@ impl Engine {
     /// change could not be read, and `{{notes}}` with its notes' path; a
     /// stage that does not repeat fills neither (27, 141). The roles in
     /// `listed`, which a stop-short may name, come last, after every part
-    /// the stage's repetitions share (28, 41; core.31).
+    /// the stage's repetitions share, and after them the kinds `kinds` a
+    /// role's entry names (28, 41, 193; core.31). A role's run's
+    /// start's `batch`, every delivery pending at its address, comes after
+    /// the kind's template and before the way to stop short (214; design
+    /// 9).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn fill(
         &self,
@@ -288,6 +317,8 @@ impl Engine {
         agent: Option<&dyn Agent>,
         group: Option<Option<&GroupHeld>>,
         listed: &[AnsweringRole],
+        kinds: &BTreeMap<String, String>,
+        batch: Option<&str>,
     ) -> Result<String, PromptPart> {
         let place = &held.place;
         let stage = &place.kind.stages[index];
@@ -319,6 +350,10 @@ impl Engine {
             }
         };
         let mut text = render(&stage.prompt, fill)?;
+        if let Some(batch) = batch {
+            text.push_str("\n\n");
+            text.push_str(batch);
+        }
         if !asks(&stage.prompt, PromptPart::Needs) {
             text.push_str("\n\n");
             text.push_str(&stop_short.clone().ok_or(PromptPart::Needs)?);
@@ -330,9 +365,11 @@ impl Engine {
             text.push_str("\n\n");
             text.push_str(&unready(&held.readiness));
         }
-        if let Some(roles) = agent.and_then(|agent| roles_text(listed, &place.stream.name, agent)) {
+        if let Some(after) =
+            agent.and_then(|agent| after_roles(listed, kinds, &place.stream.name, agent))
+        {
             text.push_str("\n\n");
-            text.push_str(&roles);
+            text.push_str(&after);
         }
         Ok(text)
     }
@@ -401,7 +438,17 @@ impl Engine {
     /// fresh start, waits for room while the profile's live reads a
     /// process running the conversation, or cannot read whether one does,
     /// or while the agent the terminal brought back in the lost start's
-    /// pane stands (28, 30, 49, 146, 179, 207).
+    /// pane stands (28, 30, 49, 146, 179, 207). A resume of a hibernated
+    /// start is read as a lost conversation's retry is: the account its
+    /// agent ran under first while it is usable, the profile asked, the
+    /// wait held while a process runs the conversation; where it carries,
+    /// the start is that start's resume, its identity the start's number
+    /// with the next resume's, the stage's starts kept, and what the start
+    /// was given and took over taken over with the resume appended, its
+    /// prompt the resume's words then the way to stop short; where it does
+    /// not, the next start, the stage's prompt with flume's words before
+    /// the resume's (28, 30, 49, 70, 145, 179, 207, 213; core.10,
+    /// core.32).
     pub(crate) fn claim(
         &self,
         id: &PlaceId,
@@ -461,15 +508,21 @@ impl Engine {
         let lost = after
             .as_ref()
             .is_some_and(|after| after.cause == CarryCause::Lost);
-        // The lost start, while it is the stage's last: the account it ran
-        // under holds its conversation (145, 179).
+        // A resume of a hibernated start, read as a lost conversation's
+        // retry is (213; core.10).
+        let hibernated = after
+            .as_ref()
+            .is_some_and(|after| after.cause == CarryCause::Hibernated);
+        // The lost or hibernated start, while it is the stage's last: the
+        // account it ran under holds its conversation (145, 179, 213).
         let lost_start = read.state.stages[index]
             .start
             .as_ref()
             .filter(|start| {
-                lost && after
-                    .as_ref()
-                    .is_some_and(|after| after.start == start.identity)
+                (lost || hibernated)
+                    && after
+                        .as_ref()
+                        .is_some_and(|after| after.start == start.identity)
             })
             .cloned();
         let (chosen, intent_moved) = match &resolution {
@@ -504,11 +557,15 @@ impl Engine {
                     .agent
                     .carry(&self.store.folder(id), &after.start, &env),
             ),
-            (Some(after), Choice::NoPool, Ok((resolution, _, _))) if after.carry && lost => Some(
-                resolution
-                    .agent
-                    .carry(&self.store.folder(id), &after.start, &BTreeMap::new()),
-            ),
+            (Some(after), Choice::NoPool, Ok((resolution, _, _)))
+                if after.carry && (lost || hibernated) =>
+            {
+                Some(
+                    resolution
+                        .agent
+                        .carry(&self.store.folder(id), &after.start, &BTreeMap::new()),
+                )
+            }
             _ => None,
         };
         let conversation = after
@@ -527,7 +584,7 @@ impl Engine {
         let ask = matches!(
             (&after, &chosen, &resolution),
             (Some(_), Choice::Chose { .. } | Choice::NoPool, Ok(_))
-        ) && (resume.is_some() || lost);
+        ) && (resume.is_some() || lost || hibernated);
         let (session, standing) = match &after {
             Some(after) => self.session_holds(
                 id,
@@ -542,15 +599,52 @@ impl Engine {
         let lost_identity = lost_start.as_ref().map(|start| start.identity.clone());
         let fresh = if lost {
             Some(then_words(StartReason::Lost.words(), words.as_deref()))
+        } else if hibernated {
+            Some(then_words(
+                StartReason::Hibernated.words(),
+                words.as_deref(),
+            ))
         } else {
             words.clone()
         };
+        // The hibernated start a carried resume resumes: its identity's
+        // next resume, and what it was given and took over (213).
+        let resumes = lost_start
+            .as_ref()
+            .filter(|_| hibernated && resume.is_some())
+            .cloned();
+        let resumed_by = after
+            .as_ref()
+            .and_then(|after| after.resumed_by)
+            .unwrap_or(ResumedBy::Caller);
         let made_from = self.store.made(id).len();
         let label = self.label_of(place);
         // The roles a stop-short may name, read once for the start before
         // its claim, so a claim written again reads no file again (28, 41,
         // 193).
         let listed = self.may_name(&read.state);
+        let kinds = self.kinds_named(&read.state);
+        // A role's run's start whose prompt is filled carries its
+        // address's batch, claimed under the start's identity before the
+        // start is written, and let go of where the start is not made
+        // with it (214; design 9).
+        // A resume by a delivery claims the batch under the resume's own
+        // identity, its prompt the batch's words (213, 214; design 7).
+        let batched = match (&read.state.role, &resume, &resolution, &resumes) {
+            (Some(address), None, Ok(_), _) => {
+                self.claim_for_start(address, &self.next_identity(&read.state, index))
+            }
+            (Some(address), Some(_), Ok(_), Some(from)) if resumed_by == ResumedBy::Delivery => {
+                self.claim_for_start(
+                    address,
+                    &Identity {
+                        resume: from.identity.resume + 1,
+                        ..from.identity.clone()
+                    },
+                )
+            }
+            _ => None,
+        };
         let claimed = self.update(id, |held| {
             if let Admit::Waiting(_) = admit {
                 if held.phase != Phase::Live
@@ -620,7 +714,13 @@ impl Engine {
                 .head(&held.place.repository, &held.place.branch)
                 .unwrap_or_else(|| held.place.base_revision.clone());
             let group = self.group_at(held, index, &head);
-            let identity = self.next_identity(held, index);
+            let identity = match &resumes {
+                Some(from) => Identity {
+                    resume: from.identity.resume + 1,
+                    ..from.identity.clone()
+                },
+                None => self.next_identity(held, index),
+            };
             let agent = resolution.agent.as_ref();
             // A start that carries its conversation is sent flume's words,
             // a lost conversation's retry's words after them, and the way
@@ -632,8 +732,8 @@ impl Engine {
             let stream = &held.place.stream.name;
             let way = |first: String| {
                 let way = format!("{first}\n\n{}", way_to_stop_short(agent, &identity));
-                match roles_text(&listed, stream, agent) {
-                    Some(roles) => format!("{way}\n\n{roles}"),
+                match after_roles(&listed, &kinds, stream, agent) {
+                    Some(after) => format!("{way}\n\n{after}"),
                     None => way,
                 }
             };
@@ -641,6 +741,20 @@ impl Engine {
                 Some(_) if lost => {
                     let resumed = then_words(StartReason::Resumed.words(), words.as_deref());
                     (way(resumed), words.clone())
+                }
+                // A resume of a hibernated start is sent the resume's words,
+                // a resume by a delivery its batch's, else flume's for a
+                // bare resume, and the way to stop short, and keeps the
+                // words its start was given (28, 213, 214).
+                Some(_) if hibernated => {
+                    let resumed = batched
+                        .as_ref()
+                        .filter(|batched| batched.identity == identity)
+                        .map(|batched| batched.words.clone())
+                        .or_else(|| words.clone())
+                        .unwrap_or_else(|| StartReason::Woken.words());
+                    let given = resumes.as_ref().and_then(|from| from.words.clone());
+                    (way(resumed), given)
                 }
                 Some(_) => {
                     let words = StartReason::Carried.words();
@@ -654,6 +768,11 @@ impl Engine {
                     Some(agent),
                     group.as_ref().map(Option::as_ref),
                     &listed,
+                    &kinds,
+                    batched
+                        .as_ref()
+                        .filter(|batched| batched.identity == identity)
+                        .map(|batched| batched.words.as_str()),
                 ) {
                     Err(part) => {
                         let stage = &mut held.stages[index];
@@ -744,27 +863,71 @@ impl Engine {
                     &secret,
                 )
             };
-            let stage = &mut held.stages[index];
-            let counts = carried_count(
-                stage,
-                group.as_ref().and_then(Option::as_ref),
-                Counted {
-                    start: identity.start,
-                    at: now,
-                    head: head.clone(),
+            // A resume takes over its start's number, its head and lines,
+            // its group and its answers, and appends itself to its resumes
+            // (48, 129, 140, 213).
+            let (n, start_head, made_from, answered, group, resumed) = match &resumes {
+                Some(from) => {
+                    let mut resumed = from.resumes.clone();
+                    // A bare resume's words are flume's own, and none are
+                    // kept of it, so no fresh start after it repeats them
+                    // (213).
+                    resumed.push(ResumeHeld {
+                        at: now,
+                        by: resumed_by,
+                        identity: identity.clone(),
+                        words: words.clone().filter(|_| resumed_by != ResumedBy::Caller),
+                        conversation: conversation.clone().unwrap_or(Conversation {
+                            from: from.n,
+                            cause: CarryCause::Hibernated,
+                            carried: true,
+                            why: None,
+                        }),
+                    });
+                    (
+                        from.n,
+                        from.start_head.clone(),
+                        from.made_from,
+                        from.answered,
+                        from.group.clone(),
+                        resumed,
+                    )
+                }
+                None => (
+                    identity.start,
+                    head.clone(),
                     made_from,
-                },
-            );
+                    0,
+                    group.clone().flatten(),
+                    vec![],
+                ),
+            };
+            let stage = &mut held.stages[index];
+            // A resume goes on with its start, so its deliverable counts
+            // from where that start's counted (25, 129, 213).
+            let counts = match &resumes {
+                Some(from) => Some(from.counted()),
+                None => carried_count(
+                    stage,
+                    group.as_ref(),
+                    Counted {
+                        start: identity.start,
+                        at: now,
+                        head: head.clone(),
+                        made_from,
+                    },
+                ),
+            };
             stage.state = StageState::Starting;
-            stage.starts = identity.start;
+            stage.starts = stage.starts.max(n);
             stage.refused_part = None;
             stage.refused_setting = None;
             stage.room = None;
             stage.end = None;
             stage.start = Some(StartHeld {
-                n: identity.start,
+                n,
                 started_at: now,
-                start_head: head.clone(),
+                start_head,
                 made_from,
                 words: started_with,
                 identity: identity.clone(),
@@ -788,7 +951,7 @@ impl Engine {
                 last_head_move: now,
                 past_limit: false,
                 printed: None,
-                group: group.clone().flatten(),
+                group,
                 may_name: listed.iter().map(|role| role.address.clone()).collect(),
                 opening: Some(self.host.command()),
                 dialog: None,
@@ -800,7 +963,11 @@ impl Engine {
                     files: own.files.clone(),
                     passed: None,
                 }),
-                answered: 0,
+                answered,
+                hibernated: None,
+                resumes: resumed,
+                handing: None,
+                messages: vec![],
                 counts,
                 span: None,
                 asking_since: None,
@@ -831,6 +998,11 @@ impl Engine {
             }))
         });
         let claimed = claimed.unwrap_or(Err(Start::NoPlace));
+        if let Some(batched) = &batched {
+            if !matches!(&claimed, Ok(claim) if claim.identity == batched.identity) {
+                self.release_start(&batched.identity);
+            }
+        }
         if let (Ok(claim), Some(place), Some(program)) = (&claimed, self.store.read(id), &program) {
             if let Some(account) = &claim.account {
                 self.affinity_after(&place.state.place, program, account, intent_moved.as_ref());
@@ -839,8 +1011,10 @@ impl Engine {
         claimed
     }
 
-    /// Opens the agent of a claimed start, out of the room lock; an open
-    /// the terminal refuses ends the start, freeing its room (70). Once
+    /// Opens the agent of a claimed start, out of the room lock, a
+    /// standing role's checkouts first moved to their bases' tips (193,
+    /// 213); an open the terminal refuses ends the start, freeing its room
+    /// (70). Once
     /// the open answers, the start is no longer opening, and an agent that
     /// came up is sent its prompt at once where it said it started and
     /// waits, its receipt read by the settles that follow, so the command
@@ -865,6 +1039,7 @@ impl Engine {
             resume,
             own,
         } = claim;
+        self.move_checkouts(id);
         let folder = self.store.folder(id);
         let mut command = agent.command(
             &folder,

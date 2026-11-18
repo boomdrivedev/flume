@@ -7,20 +7,32 @@
 # `fetchgit { url; rev; sha256 = lib.fakeHash; }` and reading the hash nix
 # got.
 {
+  "weir-cadence-0.0.0" = {
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
+  };
   "weir-capture-0.0.0" = {
-    rev = "52b95528a495100e34fca39109d563d8bf75673a";
-    hash = "sha256-29h7paqrZ2AONJ/Xs2KBTF+9qYJWJMoJBZDE+OIxqoc=";
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
   };
   "weir-delivery-0.0.0" = {
-    rev = "52b95528a495100e34fca39109d563d8bf75673a";
-    hash = "sha256-29h7paqrZ2AONJ/Xs2KBTF+9qYJWJMoJBZDE+OIxqoc=";
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
+  };
+  "weir-engine-0.0.0" = {
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
   };
   "weir-kinds-0.0.0" = {
-    rev = "52b95528a495100e34fca39109d563d8bf75673a";
-    hash = "sha256-29h7paqrZ2AONJ/Xs2KBTF+9qYJWJMoJBZDE+OIxqoc=";
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
   };
   "weir-pack-0.0.0" = {
-    rev = "52b95528a495100e34fca39109d563d8bf75673a";
-    hash = "sha256-29h7paqrZ2AONJ/Xs2KBTF+9qYJWJMoJBZDE+OIxqoc=";
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
+  };
+  "weir-policy-0.0.0" = {
+    rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785";
+    hash = "sha256-KcK3LDwTs8gd72uK4lVNNyQyoVjdDM0lErVNMDY75Vk=";
   };
 }

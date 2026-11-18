@@ -1,5 +1,5 @@
 //! The caller's acts (47 to 55, 109, 114): retry, stop, drop, done,
-//! finish and tell, none ending an agent that is not quiet unless forced.
+//! finish and message, none ending an agent that is not quiet unless forced.
 
 use super::carried_conversations::{by_hand, retry_talk, talk, talking};
 use super::world::*;
@@ -10,6 +10,31 @@ use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
+        Scenario {
+            name: "retry: A retry with words answers a hibernated agent: code of a kind that hibernates it ended short and hibernated at the end of its keep-open time, and its caller's retry with \"notes.md\" resumes its session, its starts unchanged, its prompt the question then \"notes.md\"",
+            cites: &["42", "49", "213"],
+            run: a_retry_with_words_answers_a_hibernated_agent,
+        },
+        Scenario {
+            name: "message: A message to a hibernating stage: a message \"go on\" to a place whose talk hibernates is taken at once, and talk resumes with \"go on\" as its prompt",
+            cites: &["53", "213"],
+            run: a_message_to_a_hibernating_stage,
+        },
+        Scenario {
+            name: "retry: A retry of a hibernating conversation: a caller's retry with no words of a place whose talk hibernates starts a fresh talk:2 resuming no conversation, its hibernation over",
+            cites: &["49", "212"],
+            run: a_retry_of_a_hibernating_conversation,
+        },
+        Scenario {
+            name: "stop: A hibernating conversation stopped: a stop of a place whose talk hibernates is taken and talk reads stopped, and a message after it is refused naming the place's want of a live agent, nothing typed and nothing started",
+            cites: &["51", "53", "212"],
+            run: a_hibernating_conversation_stopped,
+        },
+        Scenario {
+            name: "finish: A hibernating conversation finished: a finish of a place whose talk hibernates counts talk delivered, no agent closed through the terminal",
+            cites: &["40", "109", "212"],
+            run: a_hibernating_conversation_finished,
+        },
         Scenario {
             name: "retry: a construct that ended short, its agent let go and ended, retried with words, starts afresh with the question and the answer",
             cites: &["S4", "49", "50", "42"],
@@ -41,14 +66,14 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s9_a_drop_that_keeps_the_branch,
         },
         Scenario {
-            name: "tell: refused into a question with nothing typed; given once the agent waits",
+            name: "message: refused into a question with nothing typed; given once the agent waits",
             cites: &["S6", "53", "54", "55", "I5"],
-            run: s6_a_tell_into_a_question_then_into_work,
+            run: s6_a_message_into_a_question_then_into_work,
         },
         Scenario {
-            name: "tell: one not delivered within its bound is refused",
+            name: "message: one not delivered within its bound is refused",
             cites: &["54", "53"],
-            run: a_tell_past_its_bound,
+            run: a_message_past_its_bound,
         },
         Scenario {
             name: "retry: naming the submission submits the head and starts no agent",
@@ -121,9 +146,9 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_second_answer_to_the_same_question,
         },
         Scenario {
-            name: "answer: a tell from the pane ops naming the same key while the agent is still kept open is refused naming east/ops, its words and when, and nothing is typed",
+            name: "answer: a message from the pane ops naming the same key while the agent is still kept open is refused naming east/ops, its words and when, and nothing is typed",
             cites: &["42", "53", "54"],
-            run: a_tell_naming_an_answered_key,
+            run: a_message_naming_an_answered_key,
         },
         Scenario {
             name: "answer: a second retry naming the same key, checked while the first answer is being handed to the agent kept open, is refused naming the answer being taken by east/ops, nothing of it typed, and the first is recorded with no claim left",
@@ -348,12 +373,12 @@ fn s9_a_drop_that_keeps_the_branch(_: &()) -> Outcome {
     Ok(())
 }
 
-fn s6_a_tell_into_a_question_then_into_work(_: &()) -> Outcome {
+fn s6_a_message_into_a_question_then_into_work(_: &()) -> Outcome {
     let world = World::new();
     let id = world.begun("build", Some(Deliverable::Commits), "one")?;
     let work = World::identity("build", "one", "work", 1);
     world.agent.set_asking(&work, Reading::Yes);
-    refused(&world.engine.tell(&id, "use the second", None))?;
+    refused(&world.engine.message(&id, "use the second", None))?;
     ensure!(
         world
             .terminal
@@ -371,7 +396,7 @@ fn s6_a_tell_into_a_question_then_into_work(_: &()) -> Outcome {
     // wait on a person (90, 217), before the tell, which changes no stage.
     world.settle(&id);
     let before = world.held(&id).ok_or("no place")?.stages;
-    taken(&world.engine.tell(&id, "use the second", None))?;
+    taken(&world.engine.message(&id, "use the second", None))?;
     ensure_eq!(
         world.terminal.sent_to(&work).last().cloned(),
         Some("use the second".to_string()),
@@ -380,23 +405,23 @@ fn s6_a_tell_into_a_question_then_into_work(_: &()) -> Outcome {
     ensure_eq!(
         world.held(&id).ok_or("no place")?.stages,
         before,
-        "the stages after a tell"
+        "the stages after a message"
     );
     Ok(())
 }
 
-fn a_tell_past_its_bound(_: &()) -> Outcome {
+fn a_message_past_its_bound(_: &()) -> Outcome {
     let world = World::new();
     let id = world.begun("build", Some(Deliverable::Commits), "one")?;
     let work = World::identity("build", "one", "work", 1);
     world.terminal.set_state(&work, AgentState::Working);
     let at = world.host.now();
-    refused(&world.engine.tell(&id, "later", None))?;
+    refused(&world.engine.message(&id, "later", None))?;
     ensure!(
         world.host.now() - at >= 600,
-        "the tell gave up before ten minutes"
+        "the message gave up before ten minutes"
     );
-    refused(&world.engine.tell(&id, "sooner", Some(60)))?;
+    refused(&world.engine.message(&id, "sooner", Some(60)))?;
     ensure!(
         world
             .terminal
@@ -410,7 +435,7 @@ fn a_tell_past_its_bound(_: &()) -> Outcome {
     none.terminal
         .kill(&World::identity("build", "two", "work", 1));
     none.settle(&other);
-    refused(&none.engine.tell(&other, "anyone?", None))?;
+    refused(&none.engine.message(&other, "anyone?", None))?;
     Ok(())
 }
 
@@ -1005,12 +1030,12 @@ fn a_second_answer_to_the_same_question(_: &()) -> Outcome {
     Ok(())
 }
 
-fn a_tell_naming_an_answered_key(_: &()) -> Outcome {
+fn a_message_naming_an_answered_key(_: &()) -> Outcome {
     let world = World::new();
     let (id, at) = answered_by_ops(&world)?;
     world.host.advance(60);
     let sent = world.terminal.sent_to(&construct(1)).len();
-    let reason = refused(&world.engine.tell_answering(
+    let reason = refused(&world.engine.message_answering(
         &id,
         "2.3",
         None,
@@ -1368,6 +1393,124 @@ fn s93_a_question_for_ops_answered_once(_: &()) -> Outcome {
     ensure!(
         world.held(&World::id("turn", "east-operator")).is_none(),
         "a run of east/operator was woken"
+    );
+    Ok(())
+}
+
+fn a_retry_with_words_answers_a_hibernated_agent(_: &()) -> Outcome {
+    use super::hibernation::{code_resumed, patch_hibernated};
+    let world = World::new();
+    let (id, _) = patch_hibernated(&world, "one")?;
+    world.host.advance(30 * 60);
+    taken(&world.engine().retry(
+        &id,
+        Retry::Stage("code".into()),
+        Some("notes.md".into()),
+        false,
+    ))?;
+    code_resumed(&world, &id, 1, "notes.md")
+}
+
+fn a_message_to_a_hibernating_stage(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, resumed_as, talk_resumed};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    match world.engine().message(&id, "go on", None) {
+        Answer::Acted {
+            act: Act::Message,
+            status: Some(_),
+            ..
+        } => {}
+        other => return Err(format!("the message answered {other:?}")),
+    }
+    resumed_as(
+        &world,
+        &id,
+        &talk_resumed("one", 1, 1),
+        ResumedBy::Message,
+        "go on",
+        1,
+    )
+}
+
+fn a_retry_of_a_hibernating_conversation(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, start_now, talk_of};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let carries = world.agent.log.count("carry");
+    taken(&world.engine().retry(&id, Retry::Current, None, false))?;
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            start.identity,
+            start.hibernated,
+            start.resumes.is_empty(),
+            start.conversation,
+            start.start_record.session,
+            world.agent.log.count("carry")
+        ),
+        (talk_of("one", 2), None, true, None, None, carries),
+        "talk's start after the retry, its hibernation, its resumes, its conversation, the session it resumes and the carries asked"
+    );
+    ensure!(
+        world
+            .stage_state(&id, "talk")
+            .is_some_and(StageState::running),
+        "talk after the retry: {:?}",
+        world.stage_state(&id, "talk")
+    );
+    Ok(())
+}
+
+fn a_hibernating_conversation_stopped(_: &()) -> Outcome {
+    use super::hibernation::{hibernated_talk, start_now, talk_of};
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let closes = world.terminal.log.count("close");
+    taken(&world.engine().stop(&id, false))?;
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            start_now(&world, &id, "talk")?.hibernated,
+            world.terminal.log.count("close")
+        ),
+        (Some(StageState::Stopped), None, closes),
+        "talk once stopped, its hibernation and the agents closed"
+    );
+    let (opens, sent) = (
+        world.terminal.log.count("open"),
+        world.terminal.sent_to(&talk_of("one", 1)).len(),
+    );
+    let reason = refused(&world.engine().message(&id, "go on", None))?;
+    ensure!(
+        reason.contains(&id.to_string()) && reason.contains("no live agent"),
+        "the message's refusal names not the place's want of a live agent: {reason}"
+    );
+    ensure_eq!(
+        (
+            world.terminal.log.count("open"),
+            world.terminal.sent_to(&talk_of("one", 1)).len(),
+            world.stage_state(&id, "talk")
+        ),
+        (opens, sent, Some(StageState::Stopped)),
+        "the agents opened, the words sent and talk after the message"
+    );
+    Ok(())
+}
+
+fn a_hibernating_conversation_finished(_: &()) -> Outcome {
+    use super::hibernation::hibernated_talk;
+    let world = World::new();
+    let (id, _) = hibernated_talk(&world, "one")?;
+    let closes = world.terminal.log.count("close");
+    taken(&world.engine().finish(&id, false))?;
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            world.terminal.log.count("close")
+        ),
+        (Some(StageState::Finished), closes),
+        "talk once finished, and the agents closed"
     );
     Ok(())
 }
