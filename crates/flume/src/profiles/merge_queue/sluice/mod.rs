@@ -1264,6 +1264,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(scratch);
     }
 
+    #[test]
+    fn a_sluice_that_names_no_release_is_handed_no_work() {
+        // C.6; sluice record 0111: a build of sluice's main says 0.0.0, and
+        // a pre-release, a version alone or nothing names no release.
+        let scratch = scratch("no-release");
+        let says = [
+            ("sluice 0.0.0", 0, "sluice 0.0.0"),
+            ("sluice 0.97.0-rc.1", 0, "sluice 0.97.0-rc.1"),
+            ("sluice", 0, "said \"sluice\""),
+            ("", 64, "it said nothing"),
+        ];
+        for (n, (line, code, named)) in says.into_iter().enumerate() {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, code);
+            let Submitted::Refused { reason } = seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} exiting {code} was handed the work");
+            };
+            assert!(
+                reason.contains(named) && reason.contains("0.97.0"),
+                "{line:?}: {reason}"
+            );
+            let ran_lines = ran_lines(&ran);
+            assert!(
+                !ran_lines.iter().any(|line| line.starts_with("submit")),
+                "{line:?} was handed the work: {ran_lines:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_sluice_with_its_host_process_is_handed_the_work() {
+        // 111, C.6: a release is compared part by part as numbers, so
+        // 0.100.0 and 1.0.0 are each later than 0.97.0.
+        let scratch = scratch("handed");
+        for (n, line) in ["sluice 0.97.0", "sluice 0.100.0", "sluice 1.0.0"]
+            .into_iter()
+            .enumerate()
+        {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, 0);
+            let Submitted::Submitted { submission } =
+                seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} was handed no work");
+            };
+            assert_eq!(submission.id, "7", "{line:?}");
+            assert_eq!(
+                ran_lines(&ran),
+                vec!["submit main --no-wait --json"],
+                "{line:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
     /// The steps a reading gave, each with whether it passed.
     fn outcomes(steps: &[ReadyStep]) -> Vec<(&str, bool)> {
         steps
