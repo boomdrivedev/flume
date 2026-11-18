@@ -68,16 +68,16 @@ flume.
 
 ## Reading the outcome
 
-Each settle after the submission:
+Each settle after the submission runs `sluice inbox --confirm --json`
+in the place, which gives each outcome sluice owes the place's worktree
+and confirms it, so no later inbox gives it again.
 
-1. runs `sluice inbox --confirm --json` in the place, which gives each
-   outcome sluice owes the place's worktree and confirms it, so no later
-   inbox gives it again;
-2. runs one round of the base's queue, `sluice step <base>`, which does
-   nothing where a `sluice run` on the host drives the queue.
-
-sluice keeps an outcome owed until its reader confirms it from release
-0.79.0 on, so flume needs sluice 0.79.0 or later.
+sluice's queue moves on its own once submitted, whichever way runs it:
+sluice's own host process, which the submit starts, a daemon on this
+machine or another, or a forge's jobs. flume runs no round of it. Each
+settle only reads the outcome, and that read starts sluice's host
+process again where work waits and none runs. So flume needs sluice
+0.97.0 or later, the first release whose own process moves its queues.
 
 sluice can decide a submission as it takes it in, as it can on a base
 that takes pull requests when the work conflicts with the base. Its
@@ -92,8 +92,7 @@ A submitted place has no agent left in it, so no agent's quiet runs
 those settles. A caller keeping watch over the host runs them: `flume
 settle --every <time>`, run on that bound from a timer of the host's or
 whatever else keeps time there, settles every place, an agent in it or
-none. So every submitted place has its outcome read, and its base's
-queue run one round, within the bound
+none. So every submitted place has its outcome read within the bound
 ([keeping watch over the host](/flume/guides/places-and-herdr/#keeping-watch-over-the-host)).
 While no caller keeps watch, flume runs attended: every command of
 flume's that acts settles every place first, so a submitted place
@@ -109,8 +108,7 @@ pull request and no entry. The request may wait for a review the base
 asks for, or for the host that takes the base's requests in. The
 submission is then open and waiting, never refused, and the place
 waits on nobody. Status names the pull request and says it is not yet
-taken in, and each settle runs one round of the base's queue, which
-takes the request in where this host takes them in.
+taken in, and sluice takes the request in wherever its queue runs.
 
 Once sluice takes the request in, flume follows the entry it made,
 which sluice records as submitted from `pull/<n>` and from the place's

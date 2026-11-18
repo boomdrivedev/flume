@@ -11,7 +11,7 @@ decision-makers:
 
 Status: accepted by the user on 2026-10-28, in their design session ("i agree with these changes"), on the recommendations drawn from reading crew records 0045 to 0048, sluice records 0056, 0065 and 0068, and flume records 0002 to 0011 together.
 
-Amended in part by sluice record 0093, accepted on 2026-11-06: a settle drives no round of the base's queue. sluice's host process moves it, and a settle's read of the submission starts that process where work waits and none runs (flume C.6's step row, boomdrivedev/blueprints 7c2fbf0).
+Amended in part by sluice record 0093, accepted on 2026-11-06: a settle drives no round of the base's queue. sluice's host process moves it, and a settle's read of the submission starts that process where work waits and none runs (flume C.6's step row, boomdrivedev/blueprints 7c2fbf0). So the seam keeps step for a merge queue that moves only while driven (125), and the sluice profile's step runs no command and answers that the queue moves on its own, whichever of sluice's four ways runs it (sluice record 0093 as amended 2026-11-08; the change a-settle-runs-no-round-of-the-merge-queue, built on sluice 0.97.0). That is the construction agent's choice. The path not taken was taking step out of the seam, which needs 46, 124, 125 and I8 out of the statement first.
 
 Amended 2026-10-28 by record 0014, accepted by the user: the settle's `untold` is `inbox`, collecting the place's pending outcomes by `sluice inbox`; and there is no worktrunk place profile.
 

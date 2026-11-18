@@ -57,18 +57,6 @@ at boomdrivedev/blueprints `8b73d11` and `fc4323b`; sluice 51; core.58).
 - **WHEN** a stand-in `sluice` answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome under `7:refused` beside a `landed` one under `6:landed`
 - **THEN** the inbox gives the landing and the outcome held with its `notice` whole, runs `sluice inbox --json` with no `--confirm`, and then one `sluice confirm` naming `6:landed` and `7:refused` (112, 133, C.6)
 
-### Requirement: One round at each undecided settle
-
-The profile SHALL drive one round by `sluice step <base>` at each settle
-that finds the submission undecided, with no read of whether a `sluice
-run` is live, since beside one the step finds the branch's lock held and
-does nothing (124, 125; sluice clause 135).
-
-#### Scenario: A step beside a live driver
-
-- **WHEN** a `sluice run` drives the base and a settle steps it
-- **THEN** the step does nothing and the settle goes on (124)
-
 ### Requirement: Read, base and the place's data
 
 The profile SHALL read the newest entry of a branch from `sluice status
@@ -81,8 +69,8 @@ key for a place (9, 11, 20, 126, C.1, C.6, core.3).
 
 #### Scenario: A queue nothing drives
 
-- **WHEN** a place's entry waits on a base no `sluice run` drives and a settle steps it
-- **THEN** one round runs and the entry is decided (124, 125)
+- **WHEN** a place's entry waits on `main` of a scratch repository with no `sluice run` or `sluice daemon` live, and read-submission reads it with no sluice command of the test's or flume's stepping `main`
+- **THEN** it reads the entry open until sluice's host process, which the submit started, decides it, and then reads the entry landed (99, 124, 125; sluice 135)
 
 #### Scenario: A fetch that fails
 
@@ -143,28 +131,34 @@ The sluice profile SHALL submit a branch by name by `sluice submit
 <base> --head <branch> --no-wait --json` run in the repository, read as
 any submit's answer, and SHALL run no `sluice inbox` for it, reading its
 outcome from read-submission's entry whose `from.head` is the branch,
-with its words, files and `tested.on`, against the pinned sluice that
-takes `--head` without `--check` and records no worktree as its
-submitter (99, 117, 124, 125, 133, 203, C.6; sluice 124).
+with its words, files and `tested.on`. Its queue SHALL move by
+sluice's host process, which the submit starts, with no round run by
+flume (99, 117, 124, 125, 133, 203, C.6; sluice 124, 135).
 
 #### Scenario: A base place's branch over a scratch repository
 
-- **WHEN** the pinned sluice lands `main` and `train/*` of a scratch repository with a stand-in origin, flume opens `train/a` from `main`, a fix cut from `train/a` is submitted to it and settles step it until it lands, and the base place's submission of `train/a` by name is stepped until it lands on `main`
-- **THEN** sluice made `train/a` at `main`'s revision on the stand-in origin, the fix landed on `train/a`, `train/a` landed on `main` with no worktree on it anywhere, flume read the landing from `sluice status` with no `sluice inbox` run for it, and closing it into `main` removed it there and on the host, no command of flume's pushing or moving a branch itself (14, 202 to 206, S110)
+- **WHEN** the pinned sluice, which takes `--head` without `--check` and records no worktree as the submitter of a branch submitted by name, lands `main` and `train/*` of a scratch repository with a stand-in origin, flume opens `train/a` from `main`, a fix cut from `train/a` is submitted to it and read until it is decided, and the base place's submission of `train/a` by name is read until it is decided, no sluice command of the test's or flume's stepping either queue
+- **THEN** sluice made `train/a` at `main`'s revision on the stand-in origin, sluice's host process landed the fix on `train/a` and `train/a` on `main` with no worktree on it anywhere, flume read the landing from `sluice status` with no `sluice inbox` run for it, and closing it into `main` removed it there and on the host, no command of flume's pushing or moving a branch itself (14, 202 to 206, S110)
 
 ### Requirement: A submitted place with no agent lands by a watch's settles
 
-Against the pinned sluice, with no `sluice run` live, a place submitted
-with no agent in it SHALL land by the steps of the settles a caller
-keeping watch runs, `flume settle --every`, with no other caller's act
-and no `sluice wait`; beside a live `sluice run`, those settles' steps
-SHALL do nothing and the driver SHALL land it (124, 125, 208, C.6;
-sluice 135).
+Against the pinned sluice, a place submitted with no agent in it SHALL
+land by sluice's host process and SHALL be read and tidied by the settles a caller keeping watch runs, `flume
+settle --every`, with no other caller's act, no `sluice wait` and no
+sluice command of any settle's that moves a queue. Where that host
+process ended before the submission was decided, a settle's read SHALL
+start it again, and the place SHALL land the same (46, 124, 125, 208,
+C.6, S109; sluice 135).
 
 #### Scenario: Settled by a watch, no agent
 
-- **WHEN** a chore in a scratch repository delivers, its agent ends and it is submitted to the pinned sluice, and the test then runs `flume settle --every 1m` until it lands
-- **THEN** each settle ran one `sluice step main`, the chore landed with no agent started after its code stage, and the settle after the landing tidied it (124, 208, S109)
+- **WHEN** a chore in a scratch repository delivers, its agent ends and it is submitted to the pinned sluice, whose host process the submit starts, its check held until the watch's first settle has read it open, and the test then runs `flume settle --every 1m` until it lands
+- **THEN** no settle ran a `sluice step`, `run`, `daemon` or `wait`, the chore landed with no agent started after its code stage, and the settle after the landing tidied it (124, 208, S109)
+
+#### Scenario: A host process started again by a settle's read
+
+- **WHEN** a chore is submitted to the pinned sluice with its check held, sluice's host process is ended while the check waits, and the test then releases the check and runs `flume settle --every 1m` until the chore lands
+- **THEN** a settle's read started a host process with another pid, the chore landed and was tidied, and no settle ran a `sluice step` (124, 208, S109; sluice 135)
 
 ### Requirement: sluice forecasts a base place's branch
 
@@ -238,3 +232,22 @@ read through a wait (99, C.6 at `04e5a1a`; core.6, core.13, core.58).
 
 - **WHEN** the stand-in answers with a `refused` record of the place's branch and one of the base place's branch `train/x` by `from.head`, each carrying no `refused`, as sluice `44e33d4`'s `status --all` prints them
 - **THEN** read-submission gives each held, with words saying sluice's record gives none of the forge's words, neither unread nor passed over, and the log holds no `wait` (99, 203, C.6; core.58)
+
+### Requirement: A settle runs no round of sluice's queue
+
+The sluice profile's step SHALL run no sluice command and SHALL answer
+that the base's queue moves on its own, whichever of sluice's ways runs
+it. The profile SHALL ask sluice of an open submission only its reads,
+the inbox and read-submission, which start sluice's host process where
+work waits and none runs (124, 125, C.6; sluice 135; sluice record 0093
+as amended; core.6).
+
+#### Scenario: A step over a stand-in sluice
+
+- **WHEN** the profile's step is asked of `main` with a stand-in `sluice` first on its `PATH` that leaves a mark whenever it runs
+- **THEN** it answers that `main`'s queue moves on its own, and the stand-in left no mark (125, C.6)
+
+#### Scenario: A queue the settles never step
+
+- **WHEN** a place's entry is submitted to `main` of a scratch repository through the pinned sluice, no `sluice run` or `sluice daemon` is live, and the profile's step, read-submission and inbox are asked as a settle asks them until the entry is decided
+- **THEN** sluice's host process, which the submit started, lands the entry, each step answers that the queue moves on its own, and every sluice command the profile ran after the submit was `inbox`, `confirm`, `overview` or `status` (124, 125, C.6; sluice 135)

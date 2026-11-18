@@ -3,10 +3,14 @@
 //! base lands on a remote, a local bare remote: nothing reaches a forge,
 //! a credential or the host's own sluice state, sluice's checkouts keep
 //! their scratch in the test's own folder, and no multiplexer's session
-//! reaches sluice. The merge-queue seam's scenarios run against
+//! reaches sluice. Each test's queues are moved by the host process of
+//! its own state folder, which its first submit starts, and no test or
+//! settle steps them; a check waits while the test holds it, so a test
+//! reads a submission open for as long as it needs (124, 125, C.6;
+//! sluice 135). The merge-queue seam's scenarios run against
 //! it; then a submission from a herdr pane's hook, a failed entry
-//! collected once, a queue nothing drives, a step beside a live driver, a
-//! conflict's base revision, a conflict sluice answers at the submit
+//! collected once, a queue the settles never step decided by sluice's
+//! host process, a conflict's base revision, a conflict sluice answers at the submit
 //! itself, through the stand-in for sluice, and a settle beside that
 //! submit, which the inbox gives nothing, a pull request answered with
 //! no entry and the entry taken in from it read to its landing, through
@@ -23,11 +27,14 @@
 //! place's branch is made there, a fix lands on it, it lands on main by
 //! name, its landing read from sluice's status with no inbox run, and it
 //! is closed on the origin and the host (203, S110). A chore submitted
-//! with no agent in it lands by the settles of a caller keeping watch
-//! alone, `flume settle --every 1m`, each stepping main once, with no
-//! `sluice run` live (124, 125, 208, S109).
+//! with no agent in it lands by sluice's host process and is read and
+//! tidied by the settles of a caller keeping watch alone, `flume settle
+//! --every 1m`, none of which runs a round of the queue, with no `sluice
+//! run` live; and where that host process ended with the chore's check
+//! waiting, a settle's read starts another, which lands it (124, 125,
+//! 208, S109; sluice 135).
 
-use super::walk::{stage, user_scratch, Walk, USER_SCRATCH};
+use super::walk::{stage, unlink_user_scratch, user_scratch, Walk, USER_SCRATCH};
 use crate::common::*;
 use flume::profiles::merge_queue::sluice::{for_place, Sluice, EQUIP};
 use flume::profiles::place::git_worktree::{GitWorktree, Login};
@@ -39,7 +46,6 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -59,13 +65,26 @@ const TRAINS: &str = "[tests]\nrunner = \"command\"\ncommand = \"sh check.sh\"\n
 /// The policy that lands `train/*` and main on the stand-in origin.
 const TRAINS_ON_ORIGIN: &str = "[tests]\nrunner = \"command\"\ncommand = \"sh check.sh\"\n\n[branches.\"train/*\"]\nremote = \"origin\"\n\n[branches.main]\nremote = \"origin\"\n";
 
+/// The file in a test's scratch that holds its check while it stands.
+const HOLD: &str = "hold";
+
+/// The gate's check: it waits while `hold` stands, looking every 100
+/// milliseconds for at most 120 seconds, and then passes, so a test reads
+/// a submission open for as long as it holds it.
+fn held_check(hold: &Path) -> String {
+    format!(
+        "i=0\nwhile [ -e '{}' ] && [ \"$i\" -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done\nexit 0\n",
+        hold.display()
+    )
+}
+
 /// A scratch repository gated by sluice, and the place it holds.
 struct Harness {
     repository: Repository,
     seam: Sluice,
     home: PathBuf,
     place: PlaceRef,
-    locked: RefCell<Option<PathBuf>>,
+    locked: RefCell<Vec<PathBuf>>,
 }
 
 impl Harness {
@@ -73,12 +92,17 @@ impl Harness {
         Harness::with_policy(POLICY)
     }
 
-    /// A scratch repository whose policy is `policy`.
+    /// A scratch repository whose policy is `policy`, its check held
+    /// from the start: written before the place is cut, so the place's
+    /// branch carries it, each run of it waits until the test asks a
+    /// submission decided, so sluice's host process decides nothing the
+    /// test reads open.
     fn with_policy(policy: &str) -> Harness {
         let repository = Repository::new("sluice");
         repository.write(".config/sluice.toml", policy);
-        repository.write("check.sh", "exit 0\n");
+        repository.write("check.sh", &held_check(&repository.scratch.path(HOLD)));
         repository.commit("the gate");
+        fs::write(repository.scratch.path(HOLD), "").expect("the hold");
         let home = repository.scratch.path("home");
         fs::create_dir_all(&home).expect("the scratch home");
         let mut seam = Sluice::new()
@@ -106,7 +130,7 @@ impl Harness {
             seam,
             home,
             place,
-            locked: RefCell::new(None),
+            locked: RefCell::new(vec![]),
         }
     }
 
@@ -177,6 +201,12 @@ impl Harness {
     /// sluice run by the test in `dir`, in the scratch home, with no
     /// multiplexer's session: its JSON answer.
     fn sluice(&self, dir: &Path, args: &[&str]) -> Value {
+        self.sluice_ran(dir, args).1
+    }
+
+    /// sluice run by the test in `dir`, in the scratch home, with no
+    /// multiplexer's session: whether it succeeded, and its JSON answer.
+    fn sluice_ran(&self, dir: &Path, args: &[&str]) -> (bool, Value) {
         let mut command = Command::new("sluice");
         command.args(args).current_dir(dir).stdin(Stdio::null());
         for (name, _) in std::env::vars() {
@@ -195,14 +225,15 @@ impl Harness {
             .env(USER_SCRATCH, user_scratch(&self.repository))
             .output()
             .expect("sluice runs");
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+        let answer = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
             panic!(
                 "sluice {}: {}{}",
                 args.join(" "),
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )
-        })
+        });
+        (output.status.success(), answer)
     }
 
     /// The newest record sluice holds of `branch`'s submissions to main.
@@ -216,8 +247,21 @@ impl Harness {
             .cloned()
     }
 
-    /// Steps main until `branch`'s newest submission is decided.
+    /// The check held: each run of it waits until [`Harness::release`].
+    fn hold(&self) {
+        fs::write(self.repository.scratch.path(HOLD), "").expect("the hold");
+    }
+
+    /// The check released, so a run of it waiting ends and passes.
+    fn release(&self) {
+        let _ = fs::remove_file(self.repository.scratch.path(HOLD));
+    }
+
+    /// The check released, and main's status read until `branch`'s
+    /// newest submission is decided by sluice's host process, which the
+    /// submit started; nothing steps main (124, 125, C.6; sluice 135).
     fn decide(&self, branch: &str) {
+        self.release();
         let deadline = Instant::now() + Duration::from_secs(90);
         loop {
             let state = self
@@ -228,11 +272,25 @@ impl Harness {
             }
             assert!(
                 Instant::now() < deadline,
-                "{branch}'s submission stayed {state:?}"
+                "{branch}'s submission stayed {state:?}; {}",
+                self.host_process()
             );
-            self.sluice(&self.repository.dir, &["step", "main", "--json"]);
             std::thread::sleep(Duration::from_millis(300));
         }
+    }
+
+    /// What the test's state folder says of sluice's host process: the
+    /// one it records, and the end of its log.
+    fn host_process(&self) -> String {
+        let host = self.home.join("state/sluice/host");
+        let read = |name: &str| fs::read_to_string(host.join(name)).unwrap_or_default();
+        let log = read("log");
+        let tail: Vec<&str> = log.lines().rev().take(20).collect::<Vec<_>>();
+        format!(
+            "the host process recorded {}, its log ending:\n{}",
+            read("version").trim(),
+            tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+        )
     }
 }
 
@@ -271,16 +329,18 @@ impl Harness {
     }
 }
 
-/// Steps `base` through `seam` until `branch`'s newest submission is
-/// decided, and gives it as read-submission reads it.
-fn stepped_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &str) -> Submission {
+/// `branch`'s newest submission to `base`, read through `seam` by
+/// read-submission alone until sluice's host process decides it, the
+/// profile's step answering once that `base`'s queue moves on its own
+/// (124, 125, C.6; sluice 135).
+fn read_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &str) -> Submission {
+    assert_eq!(
+        seam.step(repository, base),
+        Stepped::MovesOnItsOwn,
+        "a step of {base}"
+    );
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        assert_eq!(
-            seam.step(repository, base),
-            Stepped::Stepped,
-            "a step of {base}"
-        );
         match seam.read_submission(repository, branch).read {
             SubmissionRead::Found { submission } if !submission.state.open() => return submission,
             SubmissionRead::Found { .. } => {}
@@ -296,9 +356,13 @@ fn stepped_until_decided(seam: &Sluice, repository: &str, base: &str, branch: &s
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        if let Some(path) = self.locked.borrow_mut().take() {
+        // Released first, so every run ends and the host process of the
+        // test's state folder ends with nothing in play.
+        self.release();
+        for path in self.locked.borrow_mut().drain(..).rev() {
             let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
         }
+        unlink_user_scratch(&self.repository);
     }
 }
 
@@ -325,7 +389,9 @@ impl MergeQueueHarness for Harness {
         self.on_main(file, "the base's own\n");
     }
 
-    fn will_hold(&self) {}
+    fn will_hold(&self) {
+        self.hold();
+    }
 
     fn until_decided(&self, place: &PlaceRef) {
         self.decide(&place.branch);
@@ -334,6 +400,7 @@ impl MergeQueueHarness for Harness {
     fn withdraw(&self, place: &PlaceRef) {
         let id = self.record(&place.branch).expect("a submission")["id"].to_string();
         self.sluice(&self.repository.dir, &["withdraw", &id, "--json"]);
+        self.release();
     }
 
     fn land_elsewhere(&self, place: &PlaceRef) {
@@ -357,6 +424,7 @@ impl MergeQueueHarness for Harness {
     }
 
     fn open_submission(&self, place: &PlaceRef) -> Submission {
+        self.hold();
         let entry = self.sluice(
             Path::new(&place.location),
             &["submit", "main", "--no-wait", "--json"],
@@ -414,14 +482,17 @@ impl MergeQueueHarness for Harness {
         fs::create_dir_all(&records).expect("sluice's records");
         fs::set_permissions(&records, fs::Permissions::from_mode(0o000))
             .expect("the records locked");
-        *self.locked.borrow_mut() = Some(records);
+        self.locked.borrow_mut().push(records);
     }
 
     /// `bolt/x`, its policy naming it, given a submission from `unit/x`,
-    /// then a policy at its tip that declares `[[checkout.cache]]`, which
-    /// the pinned sluice refuses: no round of `bolt/x` has read its revision,
-    /// so `sluice status bolt/x` reads the policy at its tip and refuses
-    /// the branch, as it refused one on deneb on 2026-11-04.
+    /// whose records sluice then cannot read: `branch.json` locked in a
+    /// folder no process may write, so sluice's host process, which passes
+    /// the branch, cannot write it whole again. The branch is given once
+    /// `sluice status bolt/x` refuses it, read until it does within 30
+    /// seconds; it and the inbox refuse the branch from then on, as sluice
+    /// refused one whose policy it could no longer read on deneb on
+    /// 2026-11-04 (133).
     fn refuse_another(&self, _place: &PlaceRef) -> String {
         let other = "bolt/x";
         let at = self.repository.dir.join("places/bolt--x");
@@ -434,23 +505,23 @@ impl MergeQueueHarness for Harness {
             &at.to_string_lossy(),
             "main",
         ]);
-        let policy = format!("{POLICY}\n[branches.\"bolt/*\"]\n");
-        let commit = |text: &str| {
-            fs::write(at.join(".config/sluice.toml"), text).expect("bolt/x's policy");
-            git(&at, &["add", ".config/sluice.toml"]);
-            git(
-                &at,
-                &[
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                    "commit",
-                    "--quiet",
-                    "-m",
-                    "bolt/x's policy",
-                ],
-            );
-        };
-        commit(&policy);
+        fs::write(
+            at.join(".config/sluice.toml"),
+            format!("{POLICY}\n[branches.\"bolt/*\"]\n"),
+        )
+        .expect("bolt/x's policy");
+        git(&at, &["add", ".config/sluice.toml"]);
+        git(
+            &at,
+            &[
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "--quiet",
+                "-m",
+                "bolt/x's policy",
+            ],
+        );
         let unit = self.repository.dir.join("places/unit--x");
         self.repository.git(&[
             "worktree",
@@ -466,9 +537,24 @@ impl MergeQueueHarness for Harness {
         git(&unit, &["commit", "--quiet", "-m", "unit/x"]);
         let entry = self.sluice(&unit, &["submit", other, "--no-wait", "--json"]);
         assert!(entry["id"].is_u64(), "bolt/x's submission: {entry}");
-        commit(&format!(
-            "{policy}\n[[checkout.cache]]\nkey = [\"Cargo.lock\"]\npaths = [\"target\"]\n"
-        ));
+        let records = self.repository.dir.join(".git/sluice").join(other);
+        let file = records.join("branch.json");
+        assert!(file.exists(), "{other}'s records at {file:?}");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("the records locked");
+        fs::set_permissions(&records, fs::Permissions::from_mode(0o500))
+            .expect("the records' folder locked");
+        self.locked.borrow_mut().extend([file, records]);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self
+            .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
+            .0
+        {
+            assert!(
+                Instant::now() < deadline,
+                "sluice read {other}'s status for 30 seconds after its records were locked"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
         other.into()
     }
 
@@ -516,13 +602,16 @@ fn a_base_places_branch_over_a_scratch_repository() {
     // A base place's branch through the profile alone, on a scratch
     // repository whose policy lands `train/*` and main on a stand-in
     // origin: sluice makes `train/a` there, a fix cut from it lands on it
-    // by the settles' steps, the base place's submission of `train/a` by
-    // name from the repository lands on main by them, its landing read
-    // from sluice's status with no inbox run, and its close removes it on
-    // the origin and the host. The profile runs sluice and a fetch alone,
-    // so nothing of flume's pushes or moves a branch (14, 202 to 206,
-    // S110).
+    // by sluice's host process, which its submit started, the base
+    // place's submission of `train/a` by name from the repository lands
+    // on main the same way, no settle stepping either queue, its landing
+    // read from sluice's status with no inbox run, and its close removes
+    // it on the origin and the host. The profile runs sluice and a fetch
+    // alone, so nothing of flume's pushes or moves a branch (14, 124,
+    // 125, 202 to 206, S110).
     let harness = Harness::with_policy(TRAINS_ON_ORIGIN);
+    // Nothing here is read open, so every check passes as it runs.
+    harness.release();
     let repository = harness.repository.name();
     let remote = harness.repository.bare_remote();
     harness
@@ -578,7 +667,7 @@ fn a_base_places_branch_over_a_scratch_repository() {
     let Submitted::Submitted { .. } = harness.seam.submit(&fix_place, &from_worktree(&head)) else {
         panic!("the fix's submit to train/a was refused");
     };
-    let landed = stepped_until_decided(&harness.seam, &repository, "train/a", "fix/a");
+    let landed = read_until_decided(&harness.seam, &repository, "train/a", "fix/a");
     assert!(
         matches!(landed.state, SubmissionState::Landed { .. }),
         "the fix came to {landed:?}"
@@ -625,7 +714,7 @@ fn a_base_places_branch_over_a_scratch_repository() {
         ("train/a", "main"),
         "the submission by name"
     );
-    let landed = stepped_until_decided(&seam, &repository, "main", "train/a");
+    let landed = read_until_decided(&seam, &repository, "main", "train/a");
     assert_eq!(landed.id, submission.id, "the landing read by its branch");
     assert!(
         matches!(landed.state, SubmissionState::Landed { .. }),
@@ -688,9 +777,12 @@ fn a_base_places_branch_forecast_over_a_scratch_repository() {
     // it, and the forecast of `train/a` onto main is clear at main's
     // revision; a change to README.md lands on main, and the next is in
     // conflict on README.md at main's new revision, meeting main itself.
-    // Neither leaves an entry of `train/a` in main's records (203, 210;
-    // sluice 64).
+    // Neither leaves an entry of `train/a` in main's records. Each
+    // landing is sluice's host process's, which its submit started, no
+    // settle stepping its queue (124, 125, 203, 210; sluice 64, 135).
     let harness = Harness::with_policy(TRAINS_ON_ORIGIN);
+    // Nothing here is read open, so every check passes as it runs.
+    harness.release();
     let repository = harness.repository.name();
     let remote = harness.repository.bare_remote();
     harness
@@ -740,7 +832,7 @@ fn a_base_places_branch_forecast_over_a_scratch_repository() {
         let Submitted::Submitted { .. } = harness.seam.submit(&place, &from_worktree(&head)) else {
             panic!("{name}'s submit to {from} was refused");
         };
-        let landed = stepped_until_decided(&harness.seam, &repository, from, name);
+        let landed = read_until_decided(&harness.seam, &repository, from, name);
         assert!(
             matches!(landed.state, SubmissionState::Landed { .. }),
             "{name} came to {landed:?}"
@@ -841,12 +933,26 @@ fn a_close_sluice_refuses_keeps_the_branch_in_its_words() {
     git(&fix, &["commit", "--quiet", "-m", "fix/a"]);
     let entry = harness.sluice(&fix, &["submit", "train/a", "--no-wait", "--json"]);
     assert!(entry["id"].is_u64(), "the fix's submission: {entry}");
-    match harness.seam.close(&repository, "train/a", "main") {
-        BranchClosed::Kept { reason } => assert!(
-            reason.starts_with("sluice branch delete: ") && reason.contains("queued on train/a"),
-            "the refusal is not sluice's words: {reason}"
-        ),
-        other => panic!("a close with a submission queued answered {other:?}"),
+    // While sluice's host process passes train/a, sluice refuses a close
+    // as a step holding the branch and says to ask again, which the test
+    // does until it answers for the submission held open on it.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match harness.seam.close(&repository, "train/a", "main") {
+            BranchClosed::Kept { reason } if reason.contains("a step holds train/a") => {
+                assert!(Instant::now() < deadline, "a step held train/a: {reason}");
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            BranchClosed::Kept { reason } => {
+                assert!(
+                    reason.starts_with("sluice branch delete: ")
+                        && reason.contains("queued on train/a"),
+                    "the refusal is not sluice's words: {reason}"
+                );
+                break;
+            }
+            other => panic!("a close with a submission queued answered {other:?}"),
+        }
     }
     assert_eq!(
         harness.branch_head(&repository, "train/a"),
@@ -881,7 +987,10 @@ fn a_submission_from_a_herdr_panes_hook_names_the_place_and_no_session() {
         record["from"].get("session").is_none(),
         "the entry names a session: {record}"
     );
-    assert_eq!(record["state"], "queued", "the entry before any verdict");
+    assert!(
+        matches!(record["state"].as_str(), Some("queued" | "testing")),
+        "the entry before any verdict: {record}"
+    );
 }
 
 #[test]
@@ -919,7 +1028,10 @@ fn a_submission_from_a_rex_block_names_no_session() {
         record["from"].get("session").is_none(),
         "the entry names a session: {record}"
     );
-    assert_eq!(record["state"], "queued", "the entry before any verdict");
+    assert!(
+        matches!(record["state"].as_str(), Some("queued" | "testing")),
+        "the entry before any verdict: {record}"
+    );
 }
 
 #[test]
@@ -1023,87 +1135,75 @@ fn every_branch_asked_at_once_is_read_from_one_overview_and_one_status_of_each_b
 }
 
 #[test]
-fn a_queue_nothing_drives_is_decided_by_the_settles_steps() {
+fn a_queue_the_settles_never_step_is_decided_by_sluices_host_process() {
+    // The merge-queue-profile scenarios "A queue the settles never step"
+    // and "A queue nothing drives": with no `sluice run` or `sluice
+    // daemon` live, the place's entry, its check held, is read open; once
+    // the hold goes, the profile's step, read-submission and inbox, asked
+    // as a settle asks them, find it landed by sluice's host process,
+    // which the submit started, each step answering that main's queue
+    // moves on its own, and every sluice command the profile ran after
+    // the submit a read (124, 125, C.6; sluice 135).
     let harness = Harness::new();
     let (place, head) = harness.place();
-    harness.seam.submit(&place, &from_worktree(&head));
+    let (seam, asked) = harness.counting();
+    harness.hold();
+    let Submitted::Submitted { .. } = seam.submit(&place, &from_worktree(&head)) else {
+        panic!("the submit was refused");
+    };
+    match seam.read_submission(&place.repository, &place.branch).read {
+        SubmissionRead::Found { submission } => assert!(
+            submission.state.open(),
+            "the held entry read {submission:?}"
+        ),
+        other => panic!("read-submission of the held entry gave {other:?}"),
+    }
+    harness.release();
     let deadline = Instant::now() + Duration::from_secs(90);
-    loop {
+    let decided = loop {
         assert_eq!(
-            harness.seam.step(&place.repository, "main"),
-            Stepped::Stepped,
-            "a step"
+            seam.step(&place.repository, &place.base),
+            Stepped::MovesOnItsOwn,
+            "a settle's step"
         );
-        match harness
-            .seam
-            .read_submission(&place.repository, "fix/one")
-            .read
-        {
-            SubmissionRead::Found { submission } if !submission.state.open() => {
-                assert!(
-                    matches!(submission.state, SubmissionState::Landed { .. }),
-                    "the entry came to {submission:?}"
-                );
-                return;
-            }
+        let read = seam.read_submission(&place.repository, &place.branch).read;
+        assert!(
+            matches!(seam.inbox(&place), Inbox::Outcomes { .. }),
+            "the inbox could not be read"
+        );
+        match read {
+            SubmissionRead::Found { submission } if !submission.state.open() => break submission,
             SubmissionRead::Found { .. } => {}
             other => panic!("read-submission gave {other:?}"),
         }
-        assert!(Instant::now() < deadline, "the entry was never decided");
+        assert!(
+            Instant::now() < deadline,
+            "the entry was never decided; {}",
+            harness.host_process()
+        );
         std::thread::sleep(Duration::from_millis(300));
-    }
-}
-
-#[test]
-fn a_step_beside_a_live_driver_does_nothing_and_answers() {
-    let harness = Harness::new();
-    let (place, head) = harness.place();
-    let mut run = Command::new("sluice");
-    run.arg("run").current_dir(&harness.repository.dir);
-    for (name, _) in std::env::vars() {
-        if name.starts_with("SLUICE_")
-            || name.starts_with("HERDR_")
-            || name.starts_with("REX_")
-            || name.starts_with("TMUX")
-        {
-            run.env_remove(name);
-        }
-    }
-    let mut run = run
-        .env("HOME", &harness.home)
-        .env("XDG_STATE_HOME", harness.home.join("state"))
-        .env("XDG_CONFIG_HOME", harness.home.join("config"))
-        .env(USER_SCRATCH, user_scratch(&harness.repository))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .expect("sluice run starts");
-    harness.seam.submit(&place, &from_worktree(&head));
-    let began = Instant::now();
-    let stepped = harness.seam.step(&place.repository, "main");
-    let took = began.elapsed();
-    let deadline = Instant::now() + Duration::from_secs(90);
-    let landed = loop {
-        match harness
-            .record("fix/one")
-            .and_then(|record| record["state"].as_str().map(str::to_string))
-        {
-            Some(state) if !matches!(state.as_str(), "queued" | "testing" | "landing") => {
-                break state
-            }
-            _ if Instant::now() >= deadline => break "undecided".into(),
-            _ => std::thread::sleep(Duration::from_millis(300)),
-        }
     };
-    // SAFETY: a signal to the process group of the run this test started.
-    unsafe { libc::kill(-(run.id() as libc::pid_t), libc::SIGTERM) };
-    let _ = run.kill();
-    let _ = run.wait();
-    assert_eq!(stepped, Stepped::Stepped, "the step beside the driver");
-    assert!(took < Duration::from_secs(30), "the step waited {took:?}");
-    assert_eq!(landed, "landed", "the driver's landing");
+    assert!(
+        matches!(decided.state, SubmissionState::Landed { .. }),
+        "the entry came to {decided:?}"
+    );
+    let asked = fs::read_to_string(&asked).expect("sluice was asked");
+    let mut commands = asked.lines();
+    assert!(
+        commands
+            .next()
+            .is_some_and(|line| line.starts_with("submit main ")),
+        "the submit: {asked}"
+    );
+    for line in commands {
+        assert!(
+            matches!(
+                line.split_whitespace().next(),
+                Some("inbox" | "confirm" | "overview" | "status")
+            ),
+            "a sluice command after the submit: {line}"
+        );
+    }
 }
 
 #[test]
@@ -1177,13 +1277,11 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     let ahead = harness.record("other").expect("the entry ahead")["id"].to_string();
-    for named in [
-        "conflict on main: work.rs with ",
-        &format!("#{ahead} ("),
-        "other)",
-    ] {
-        assert!(words.contains(named), "{named} is not in {words}");
-    }
+    assert!(
+        words.starts_with("[sluice] ")
+            && words.contains(&format!("conflicts on main with #{ahead} in work.rs")),
+        "the words are not sluice's notice: {words}"
+    );
     let expected = record["tested"]["on"].as_str().map_or_else(
         || Revision::new(harness.repository.git(&["rev-parse", "main"])),
         Revision::new,
@@ -1201,9 +1299,10 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
 
 #[test]
 fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_gives() {
-    // While the stand-in's first submit waits on the rounds that decide
-    // it, a settle beside it steps main and collects the place's inbox,
-    // as the agent's Stop hook and a caller's settle do. The conflict
+    // While the stand-in's first submit waits on sluice's host process,
+    // which decides it, a settle beside it collects the place's inbox, as
+    // the agent's Stop hook and a caller's settle do, stepping nothing
+    // (124, 125). The conflict
     // reaches flume in the submit's answer with its own words. sluice
     // keeps it owed until the profile confirms it after the answer, so an
     // inbox in between may hand it over too, once, then confirming by key
@@ -1227,10 +1326,10 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
         let submit = scope.spawn(|| seam.submit(&place, &from_worktree(&head)));
         let mut collected = vec![];
         while !submit.is_finished() {
-            seam.step(&place.repository, "main");
             if let Inbox::Outcomes { outcomes, .. } = seam.inbox(&place) {
                 collected.extend(outcomes);
             }
+            std::thread::sleep(Duration::from_millis(100));
         }
         (submit.join().expect("the submit"), collected)
     });
@@ -1251,8 +1350,8 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
     );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     assert!(
-        words.starts_with("conflict on main: work.rs"),
-        "the record's own words: {words}"
+        words.starts_with("[sluice] ") && words.contains("conflicts on main in work.rs"),
+        "the record's own words, sluice's notice: {words}"
     );
     assert_eq!(
         harness.seam.inbox(&place),
@@ -1363,15 +1462,6 @@ fn a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_coll
     let (place, head) = harness.place();
     harness.seam.submit(&place, &from_worktree(&head));
     let other = harness.refuse_another(&place);
-    let records = harness
-        .repository
-        .dir
-        .join(".git/sluice")
-        .join(&other)
-        .join("branch.json");
-    assert!(records.exists(), "{other}'s records at {records:?}");
-    fs::set_permissions(&records, fs::Permissions::from_mode(0o000)).expect("the records locked");
-    *harness.locked.borrow_mut() = Some(records);
     harness.decide("fix/one");
     let landed = harness.record("fix/one").expect("the entry decided");
     assert_eq!(landed["state"], "landed", "{landed}");
@@ -1491,6 +1581,10 @@ fn what_the_policy_says_of_a_place() {
     );
     let data = place_data(&repository, Some("sluice"), "main", Some(&equipping))
         .expect("the place's data");
+    // The login environment gives the harness's state folder and user
+    // scratch, as a walk's login shell's sluice does, so the step's sluice
+    // reaches the harness's host process, its socket in the test's scratch
+    // (core.51).
     let path = std::env::var("PATH").unwrap_or_default();
     let profile = GitWorktree::with_login(
         data,
@@ -1498,6 +1592,14 @@ fn what_the_policy_says_of_a_place() {
             ("HOME", &harness.home.to_string_lossy()),
             ("PATH", &path),
             ("LANG", "C"),
+            (
+                "XDG_STATE_HOME",
+                &harness.home.join("state").to_string_lossy(),
+            ),
+            (
+                USER_SCRATCH,
+                &user_scratch(&harness.repository).to_string_lossy(),
+            ),
         ]),
     );
     let readiness = profile.ready(&harness.place, &equipping);
@@ -1584,12 +1686,16 @@ fn until_the_quiet_settle_ends(log: &Path) {
 fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     // S109: a chore's agent commits and ends, and the settle its quiet
     // starts submits it; from then on the test runs nothing but a
-    // caller's watch, `flume settle --every 1m`, and no `sluice run` is
-    // live. Each settle while the submission is open steps main once, it
-    // lands with no agent started after its code stage, and the settle
-    // that reads the landing tidies it (121, 124, 125, 208).
+    // caller's watch, `flume settle --every 1m`, and no `sluice run` or
+    // `sluice daemon` is live. The chore's check is held until the
+    // watch's first settle has read its submission open; sluice's host
+    // process, which the submit started, then lands it, no settle running
+    // a round of the queue, with no agent started after its code stage,
+    // and the settle that reads the landing tidies it (46, 121, 124, 125,
+    // 208, C.6; sluice 135).
     let walk = Walk::new("watch-chore");
     let log = counting_sluice(&walk);
+    walk.hold();
     let place = walk.launch("chore", "one", &["--brief", "tidy the parser"]);
     walk.agent(
         &place,
@@ -1601,29 +1707,30 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     until_the_quiet_settle_ends(&log);
     let submitted = walk.status(&place);
     assert_eq!(submitted["submission"]["submits"], 1, "{submitted}");
-    let entry = walk.submissions();
-    assert_eq!(entry.len(), 1, "{entry:?}");
-    assert!(
-        matches!(
-            entry[0]["state"].as_str(),
-            Some("queued" | "testing" | "landing")
-        ),
-        "the chore was decided before the watch: {entry:?}"
-    );
-    let watched = asked(&log).len();
-    let steps = |from: usize| {
-        asked(&log)[from..]
-            .iter()
-            .filter(|(_, command)| command.starts_with("step main"))
-            .count()
+    let open = |when: &str| {
+        let entry = walk.submissions();
+        assert_eq!(entry.len(), 1, "{entry:?}");
+        assert!(
+            matches!(
+                entry[0]["state"].as_str(),
+                Some("queued" | "testing" | "landing")
+            ),
+            "the chore was decided {when}: {entry:?}"
+        );
     };
+    open("before the watch");
+    let watched = asked(&log).len();
     let began = Instant::now();
-    let mut settles: Vec<usize> = vec![];
+    let mut settles = 0;
     loop {
-        let from = asked(&log).len();
         walk.flume(&["settle", "--every", "1m"]);
-        settles.push(steps(from));
+        settles += 1;
         let status = walk.status(&place);
+        if settles == 1 {
+            assert!(!status.is_null(), "the chore was tidied while held");
+            open("at the watch's first settle");
+            walk.release();
+        }
         if status.is_null() {
             break;
         }
@@ -1636,26 +1743,26 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
         );
         assert!(
             began.elapsed() < Duration::from_secs(120),
-            "the chore never landed: {settles:?} {status}"
+            "the chore never landed after {settles} settles: {status}"
         );
         std::thread::sleep(Duration::from_millis(300));
     }
 
-    // Each settle before the one that read the landing stepped main once,
-    // and that one at most once, the round it read having landed at its
-    // own step or at the step before it.
-    let last = settles.len() - 1;
-    assert!(
-        settles[..last].iter().all(|steps| *steps == 1) && settles[last] <= 1,
-        "the steps of each settle: {settles:?}"
-    );
-    assert!(settles.contains(&1), "no settle stepped main: {settles:?}");
+    // No settle, the quiet one or the watch's, ran a round of sluice's
+    // queue or waited on it, and the watch submitted nothing.
     let asked = asked(&log);
+    let moving: Vec<&(i32, String)> = asked
+        .iter()
+        .filter(|(_, command)| {
+            matches!(
+                command.split_whitespace().next(),
+                Some("step" | "run" | "daemon" | "wait")
+            )
+        })
+        .collect();
     assert!(
-        !asked
-            .iter()
-            .any(|(_, command)| command.starts_with("run") || command.starts_with("wait")),
-        "a sluice run or wait: {asked:?}"
+        moving.is_empty(),
+        "a sluice command that moves a queue: {moving:?}"
     );
     assert!(
         !asked[watched..]
@@ -1666,6 +1773,110 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
 
     // sluice landed flume's one submission of the chore on the remote, and
     // the settle that read it tidied the place and its branch.
+    let submissions = walk.submissions();
+    assert_eq!(submissions.len(), 1, "{submissions:?}");
+    assert_eq!(submissions[0]["state"], "landed", "{submissions:?}");
+    assert_eq!(
+        walk.on_remote("parser.rs").as_deref(),
+        Some("fn parse() {}\n")
+    );
+    assert!(!Path::new(&place).exists(), "the place is left");
+    assert!(!walk.has_branch("chore/one"), "the place's branch is left");
+}
+
+/// The pid of the host process the walk's state folder records, as the
+/// pinned sluice writes it in `host/version`.
+fn host_pid(walk: &Walk) -> Option<i32> {
+    let version = fs::read_to_string(walk.home().join("state/sluice/host/version")).ok()?;
+    let named: Value = serde_json::from_str(&version).ok()?;
+    i32::try_from(named["pid"].as_u64()?).ok()
+}
+
+#[test]
+fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_read() {
+    // S109 and sluice 135: the chore's check is held, and sluice's host
+    // process, which its submit started, is ended while the check waits,
+    // its run outliving it. The hold then goes, and the watch's first
+    // settle reads the submission, which starts a host process again;
+    // that one lands the chore, and a settle reads the landing and tidies
+    // it, no settle running a round of the queue (124, 208, S109).
+    let walk = Walk::new("watch-restart");
+    let log = counting_sluice(&walk);
+    walk.hold();
+    let place = walk.launch("chore", "one", &["--brief", "tidy the parser"]);
+    walk.agent(
+        &place,
+        json!([
+            { "write": { "path": "parser.rs", "text": "fn parse() {}\n" } },
+            { "bash": "git add -A && git commit --quiet -m 'tidy the parser'" },
+        ]),
+    );
+    until_the_quiet_settle_ends(&log);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let entry = walk.submissions();
+        assert_eq!(entry.len(), 1, "{entry:?}");
+        if entry[0]["state"] == "testing" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline && entry[0]["state"] == "queued",
+            "the chore's held check never ran: {entry:?}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    // Once its round has recorded the run started, as sluice's own test
+    // of a host process killed under a run waits.
+    std::thread::sleep(Duration::from_secs(1));
+    let ended = host_pid(&walk).expect("the host process the state folder records");
+    // SAFETY: a signal to the host process of the walk's own state folder.
+    unsafe { libc::kill(ended, libc::SIGKILL) };
+    let deadline = Instant::now() + Duration::from_secs(30);
+    // SAFETY: signal 0 only asks whether the process stands.
+    while unsafe { libc::kill(ended, 0) } == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the host process {ended} never ended"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    walk.release();
+
+    let watched = asked(&log).len();
+    walk.flume(&["settle", "--every", "1m"]);
+    let started = host_pid(&walk);
+    assert!(
+        started.is_some_and(|pid| pid != ended),
+        "the settle's read started no host process: {started:?} after {ended}"
+    );
+    let began = Instant::now();
+    loop {
+        let status = walk.status(&place);
+        if status.is_null() {
+            break;
+        }
+        assert_eq!(stage(&status, "code")["starts"], 1, "{status}");
+        assert!(
+            began.elapsed() < Duration::from_secs(120),
+            "the chore never landed: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        walk.flume(&["settle", "--every", "1m"]);
+    }
+
+    let asked = asked(&log);
+    assert!(
+        !asked
+            .iter()
+            .any(|(_, command)| command.split_whitespace().next() == Some("step")),
+        "a settle stepped the queue: {asked:?}"
+    );
+    assert!(
+        !asked[watched..]
+            .iter()
+            .any(|(_, command)| command.starts_with("submit")),
+        "a submit under the watch: {asked:?}"
+    );
     let submissions = walk.submissions();
     assert_eq!(submissions.len(), 1, "{submissions:?}");
     assert_eq!(submissions[0]["state"], "landed", "{submissions:?}");

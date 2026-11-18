@@ -514,10 +514,13 @@ fn unreadable_says_so<H: MergeQueueHarness>(harness: &H) -> Outcome {
         matches!(harness.seam().inbox(&place), Inbox::CouldNotRead { .. }),
         "an unreadable inbox was read"
     );
+    // A queue that moves only while driven says it could not read; one
+    // that moves on its own runs nothing at step, and so has nothing it
+    // could fail to read (125).
     ensure!(
-        matches!(
+        !matches!(
             harness.seam().step(&place.repository, &place.base),
-            Stepped::CouldNotRead { .. }
+            Stepped::Stepped
         ),
         "an unreadable queue was stepped"
     );
