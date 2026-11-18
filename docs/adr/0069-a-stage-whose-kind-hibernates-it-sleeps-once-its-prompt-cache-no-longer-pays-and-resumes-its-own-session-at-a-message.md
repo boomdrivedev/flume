@@ -141,8 +141,11 @@ for which an agent may pass on, which no host has yet.
   defined in a source's roles package or the host's configuration; the
   word for a standing role, which the operator wants to be "agent",
   where the statement gives that word to one process of one stage.
-- Elsewhere: the host's setup sets `cleanupPeriodDays` in every home
-  (boomdrivedev/boomdrive); crew's tells become deliveries, its roles move
+- Elsewhere: Boomdrive's set keeps every session's transcripts a year,
+  by `cleanupPeriodDays` in a document of its own in Claude Code's
+  managed settings, which every home reads, a new one among them
+  (boomdrivedev/boomdrive's the-set-keeps-claude-codes-transcripts-a-year,
+  as its record 0013 does telemetry); crew's tells become deliveries, its roles move
   into a roles package, each entry naming its related kinds, and their
   instructions launch their projects as places (boomdrivedev/crew); the
   control plane shows each role under its label's column with its live
@@ -329,3 +332,55 @@ C.1, C.2, C.7 and S128.
   moment the batch is handed, before its agent had read it; resuming
   only at the settle's wake step, which leaves a batch a settle reads
   first waiting a settle more.
+
+Dated 2026-11-18, the fix `flumes-roles-sleep-and-wake-1`'s, which takes
+main at e9b23ef into the bolt that builds this record: where main's
+work since the bolt was cut meets what this record builds. Each is the
+construction agent's, within what the operator ruled above and what
+records 0065 and 0078 rule, and the record stays accepted.
+Sources beside those above: `boomdrivedev/blueprints:design/flume/requirements.md`
+at main 48a94da, clauses 7, 25, 132, 211 to 215, 225 and C.4; core.62.
+
+- **A hibernating stage is nothing pending** (record 0078). A place
+  whose current stage hibernates, with no end to hand, no submission in
+  flight and no time come, is not read by a watch's settle or an
+  unwatched command's: its caller's resume, a message, its answer or a
+  delivery at its role's address wakes it, each by an act or the host's
+  own steps. Not taken: letting it fall to main's catch-all of a live
+  place that waits on no caller, which would settle every hibernating
+  place at every watch and read nothing new.
+- **The host's own steps run at every settle of the pending places**
+  (214, 225). A watch's settle and an unwatched command's let go of
+  each confirmed message, wake each address a message is pending for and
+  hand each recipient's batch at its wait, as a settle of every place
+  does, reading only the host's deliveries and the recipients a delivery
+  is pending for. Not taken: leaving them to a settle of every place,
+  which no watch runs, so a message at an address no place's settle
+  reaches would wait for a person's `flume settle`.
+- **A role's run's address comes before a standing agent's** (7, 132).
+  A launch naming no recipient takes `$FLUME_RECIPIENT`, then the
+  address of the role's run its `FLUME_PLACE` names, then the address a
+  source gives the standing agent it runs in, then the session, then the
+  answerer, as role-waking's "Elsewhere a command acts as before" orders
+  a command run in a role's run ahead of a standing agent's pane. Not
+  taken: the standing agent first, which reads the terminal for a launch
+  whose run flume's own held state already names.
+- **One hooks module still holds the line and the deliver part, and
+  registers the windows' module** (C.4). `hooks/flume.ts` keeps both
+  parts and registers `hooks/usage.ts`, whose one event,
+  `session.measure`, neither part hooks, so no event is registered twice
+  and `$` is followed into no imported function. Not taken: main's
+  `hooks/line.ts` beside a `hooks/deliver.ts`, each registered by
+  `flume.ts`, since both hook the session's start and each turn's end
+  and share whether a turn runs.
+- **A resume counts from where its start counted** (25, 213; record
+  0065). A resume takes its start's count of what was made, so a
+  stage's deliverable counts from the first of its starts since it last
+  delivered whatever resumes ran. Not taken: counting from the resume,
+  which would leave what its start committed before it hibernated
+  uncounted.
+- **The suite's list is main's at 48a94da** (section 13). 212, 213,
+  S124, S125 and S127 are built and cited; 214, 215, S126 and S128 are
+  named landed before the list held them, as S121 to S123 are, no
+  scenario citing them as data yet. Not taken: citing them in this fix,
+  which would widen a merge into new scenarios.

@@ -1,8 +1,8 @@
 use crate::{lock, FakeTerminal, Log};
 use flume_seams::{
     no_effort, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, LiveProcess, Mode,
-    ModeBegan, ModeEntry, Offered, PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent,
-    Unsettled, NO_OWN, READS_NO_SESSION,
+    ModeBegan, ModeEntry, Offered, PlaceRef, Reading, Received, Reserved, Seconds, Secret,
+    Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
 };
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -35,7 +35,11 @@ use std::sync::{Arc, Mutex};
 /// the effort its settings give as `--effort <word>`, and each effort
 /// asked of it is logged (197). An agent scripted to end its session
 /// after a stop-short reads stopped and ended once a test says it
-/// stopped short (96, 134).
+/// stopped short (96, 134). Its program reports the windows a test
+/// scripts for a start, read in the folder the start's record is kept in
+/// with the session its word names, the later of two reports standing,
+/// each read logged `windows`, until it is scripted to report none, after
+/// which its profile builds no windows (171, 211).
 pub struct FakeAgent {
     terminal: Arc<FakeTerminal>,
     /// The other terminals its agents may open in, a stream's (190).
@@ -84,6 +88,8 @@ struct AgentModel {
     efforts: Vec<String>,
     /// The variable the program reads over its effort, as scripted (197).
     effort_variable: Option<&'static str>,
+    /// The profile builds no windows, as scripted (171, 211).
+    no_windows: bool,
 }
 
 #[derive(Clone)]
@@ -110,6 +116,13 @@ struct Record {
     /// Each text its program's own channel submitted, as a deliver part
     /// submits what the take gave it, each counted as a sending (215).
     submitted: Vec<String>,
+    /// The windows its program last reported, with when they were taken,
+    /// as scripted (211).
+    windows: Option<(Seconds, Vec<UsageWindow>)>,
+    /// The conversation it runs, as the seam reads it for a start's span,
+    /// as scripted; else the session its word that it started names
+    /// (217).
+    conversation: Option<String>,
 }
 
 impl Default for Record {
@@ -131,6 +144,8 @@ impl Default for Record {
             session: None,
             ends_after_stop_short: false,
             submitted: vec![],
+            windows: None,
+            conversation: None,
         }
     }
 }
@@ -281,6 +296,39 @@ impl FakeAgent {
     pub fn set_session(&self, agent: &Identity, session: &str) {
         let session = session.to_string();
         self.with(agent, |record| record.session = Some(session));
+    }
+
+    /// The agent's program reported `windows` for its account, taken at
+    /// `taken_at`, kept with its record, in the folder its start recorded;
+    /// a report taken before the one kept leaves it standing. Logged
+    /// `reported windows <agent> at <taken_at>`, which no read of the
+    /// windows is (211).
+    pub fn report_windows(&self, agent: &Identity, taken_at: Seconds, windows: &[UsageWindow]) {
+        self.log
+            .push(format!("reported windows {agent} at {taken_at}"));
+        let windows = windows.to_vec();
+        self.with(agent, |record| {
+            if record
+                .windows
+                .as_ref()
+                .is_none_or(|(kept, _)| *kept <= taken_at)
+            {
+                record.windows = Some((taken_at, windows));
+            }
+        });
+    }
+
+    /// The program's profile builds no windows: `reports_windows` answers
+    /// not offered and `windows` unknown for every start (171, 174).
+    pub fn reports_no_windows(&self) {
+        lock(&self.state).no_windows = true;
+    }
+
+    /// The conversation the seam reads `agent` running, for its start's
+    /// span, none where `conversation` is none (217).
+    pub fn set_conversation(&self, agent: &Identity, conversation: Option<&str>) {
+        let conversation = conversation.map(str::to_string);
+        self.with(agent, |record| record.conversation = conversation);
     }
 
     /// The program carries a stopped or lost start's conversation to the
@@ -726,9 +774,52 @@ impl Agent for FakeAgent {
             .map_or(Spent::Unknown, |record| record.spent)
     }
 
+    /// The windows scripted for the start, with the session its word
+    /// names, read in the folder its record is kept in; none yet where none
+    /// is scripted, unknown in another folder or where its profile is
+    /// scripted to build none (171, 211).
+    fn windows(&self, folder: &str, agent: &Identity) -> Windows {
+        let record = self.read_in("windows", folder, agent);
+        if lock(&self.state).no_windows {
+            return Windows::Unknown;
+        }
+        match record {
+            None => Windows::Unknown,
+            Some(Record {
+                windows: Some((taken_at, windows)),
+                session,
+                ..
+            }) => Windows::Reported {
+                taken_at,
+                windows,
+                session,
+            },
+            Some(_) => Windows::NoneYet,
+        }
+    }
+
+    fn reports_windows(&self) -> Offered {
+        if lock(&self.state).no_windows {
+            Offered::NotOffered
+        } else {
+            Offered::Offered
+        }
+    }
+
     fn started_without(&self, folder: &str, agent: &Identity) -> Option<Unsettled> {
         self.read_in("started_without", folder, agent)
             .and_then(|record| self.unsettled(agent, &record))
+    }
+
+    /// The conversation scripted, else the session its word that it
+    /// started names; logged by no line, so a settle's calls read as
+    /// before (217).
+    fn conversation(&self, folder: &str, agent: &Identity) -> Option<String> {
+        let record = self.record(agent);
+        if record.folder.as_deref().is_some_and(|kept| kept != folder) {
+            return None;
+        }
+        record.conversation.or(record.session)
     }
 
     /// The answer scripted for the account by its [`FakeAgent::HOME`],

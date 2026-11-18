@@ -4,9 +4,10 @@
 //! the test scripts it. It opens no window of the host's display.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// The variables the stand-in's own shell sets for itself, left out of
@@ -34,7 +35,12 @@ pub struct StandIn {
 
 impl StandIn {
     /// The stand-in `name` in `folder`'s `bin`, which it makes; that `bin`
-    /// may be put first on a `PATH`.
+    /// may be put first on a `PATH`. Each run takes the first number no
+    /// other run took by the shell's own exclusive create, `set -C`, and
+    /// not by `mkdir`, which may not refuse a folder another run made at
+    /// the same moment: uutils' `mkdir`, the host's own on Ubuntu 26.04,
+    /// gives two runs one number, so one run's record overwrites the
+    /// other's.
     pub fn new(folder: &Path, name: &str) -> StandIn {
         let bin = folder.join("bin");
         let records = folder.join("runs").join(name);
@@ -55,9 +61,14 @@ if [ -f "$control/hang" ]; then
   rm -f "$control/hang"
   exec sleep 60
 fi
+if [ -f "$control/slow" ]; then
+  sleep "$(cat "$control/slow")"
+fi
 records='{records}'
 n=0
-while ! mkdir "$records/lock.$n" 2>/dev/null; do n=$((n + 1)); done
+set -C
+while ! true 2>/dev/null > "$records/lock.$n"; do n=$((n + 1)); done
+set +C
 mkdir "$records/new.$n"
 env > "$records/new.$n/environment"
 echo $$ > "$records/new.$n/pid"
@@ -75,7 +86,7 @@ fi
             control = control.display(),
             records = records.display(),
         );
-        std::fs::write(&program, script).expect("the stand-in");
+        written_apart(&program, &script);
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
             .expect("the stand-in made runnable");
         StandIn {
@@ -105,6 +116,13 @@ fi
         std::fs::write(self.control.join("hang"), "").expect("the hang scripted");
     }
 
+    /// Every run from now waits `seconds` before recording, as a run
+    /// started on a loaded host may.
+    pub fn slow(&self, seconds: f32) {
+        std::fs::write(self.control.join("slow"), seconds.to_string())
+            .expect("the slowness scripted");
+    }
+
     /// Every run from now waits after recording until [`StandIn::release`],
     /// or for thirty seconds.
     pub fn hold(&self) {
@@ -132,7 +150,10 @@ fi
     }
 
     /// The runs once no new one has come for half a second, within five,
-    /// for a program its caller does not wait on.
+    /// for a program its caller does not wait on: only to check that none
+    /// ran, since a run slower to come than that is missed. A check of the
+    /// runs that came waits for as many as it knows to have been started,
+    /// by [`StandIn::runs_at_least`].
     pub fn runs_settled(&self) -> Vec<Run> {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut seen = self.runs().len();
@@ -150,7 +171,8 @@ fi
         self.runs()
     }
 
-    /// The runs once `count` have come, within ten seconds.
+    /// The runs once `count` have come, within ten seconds, however slow
+    /// each is to come.
     pub fn runs_at_least(&self, count: usize) -> Vec<Run> {
         let deadline = Instant::now() + Duration::from_secs(10);
         while self.runs().len() < count && Instant::now() < deadline {
@@ -158,6 +180,28 @@ fi
         }
         self.runs()
     }
+}
+
+/// `text` written to `file` by a shell of its own, so this process never
+/// holds the file open for writing: a process another test starts while
+/// it did would hold it so until that process runs its program, and
+/// Linux refuses to run a file held so, a stand-in's run among them,
+/// "Text file busy".
+fn written_apart(file: &Path, text: &str) {
+    let mut writer = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"", "sh"])
+        .arg(file)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("a shell to write the stand-in");
+    writer
+        .stdin
+        .take()
+        .expect("the shell's input")
+        .write_all(text.as_bytes())
+        .expect("the stand-in's text handed to the shell");
+    let status = writer.wait().expect("the shell that writes the stand-in");
+    assert!(status.success(), "the stand-in written: {status}");
 }
 
 /// The run recorded in `dir`.

@@ -4,7 +4,10 @@
 // outside a session flume started, its environment naming FLUME_PLACE and
 // FLUME_AGENT, and registers no clock there. Its clocks run in the agent
 // program's own process and end with its session, each tick one command of
-// flume's that reads and ends (core.13). It has two parts.
+// flume's that reads and ends (core.13). It has two parts, and registers a
+// third, a file of its own whose one event neither part hooks: the
+// account's usage windows passed to `flume hook usage` (usage.ts; 184,
+// 211).
 //
 // The place's line under the prompt (design 4): the plugin pins the line
 // `flume hook status-line` prints as its own status line, at the session's
@@ -24,6 +27,7 @@
 // recorded handed when taken.
 
 import type { EngineInterface, Register } from "claude-code";
+import { register as usage } from "./usage";
 
 type $ = EngineInterface;
 
@@ -97,7 +101,7 @@ async function take($: $): Promise<void> {
   }
 }
 
-export const register: Register = (on) => {
+export const register: Register = async (on, options) => {
   on("session.start", async ($, e, next) => {
     const result = await next(e);
     if (await started($)) {
@@ -131,4 +135,6 @@ export const register: Register = (on) => {
     if (await delivering($)) void take($);
     return result;
   });
+
+  await usage(on, options);
 };

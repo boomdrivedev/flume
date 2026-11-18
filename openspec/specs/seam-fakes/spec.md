@@ -131,17 +131,6 @@ none SHALL read a configuration file of the host's (106).
 - **WHEN** a test scripts the fake kinds' `deploy` with the label `operation`
 - **THEN** a deploy place's label is `operation` from `kind` where the fake host gives none (180)
 
-### Requirement: The fake host scripts each account's reading
-
-The fake host SHALL hold a reading or a refusal for each path a test
-sets, answer that the file is missing for any other, and pass the
-host's reading scenario; no fake SHALL read a real file (106, 184).
-
-#### Scenario: A scripted reading
-
-- **WHEN** a test sets the fake host's reading for `work-1`, then sets it again with a later `read_at`
-- **THEN** the core reads the later reading at the next choice, and the fake's log shows each reading asked (184)
-
 ### Requirement: The fake terminal scripts attach by view
 
 The fake terminal SHALL answer attach with a command of its own for the
@@ -387,3 +376,88 @@ moved, writing nothing (75, 102, 103).
 
 - **WHEN** the next write of a place's kept document is refused and a tidy writes it
 - **THEN** the write is refused as moved, nothing is written, and the next write of it lands
+
+### Requirement: The fake agent scripts the windows its program reports
+
+The fake agent SHALL keep, for a start a test names, the windows its
+program reports with when they were taken, read by `windows` in the
+folder the start recorded with the session the test gave the start, the
+later of two reports standing, log each `windows` read, and report no
+windows where the test says its profile builds none; it SHALL pass the
+agent seam's windows scenarios both ways (106, 211).
+
+#### Scenario: A scripted report
+
+- **WHEN** a test scripts a start's program to report `five_hour` 42% used taken at 14:02, then 50% used taken at 14:05
+- **THEN** `windows` reads the 14:05 report with the start's session, and the fake's log shows each `windows` read (211)
+
+#### Scenario: A profile scripted to report none
+
+- **WHEN** a test scripts the fake agent's profile to build no windows
+- **THEN** `reports_windows` answers not offered, and `windows` reads unknown for every start (171, 174)
+
+### Requirement: The fake terminal relays an open agent
+
+The fake terminal SHALL relay an open agent every 250 milliseconds: its
+screen the one `set_screen` gives the agent followed by what the agent
+holds typed, text added to what it holds typed with nothing cleared,
+`enter` submitting what it holds typed, and a closed or killed agent
+read gone; and SHALL log each relay call, never what was typed (106,
+221, 222).
+
+#### Scenario: A relay of the fake
+
+- **WHEN** a test sets an open agent's screen to `ready`, relays it, reads, types the text `hi`, reads, types the key `enter` and reads
+- **THEN** the first read gives `ready`, the second holds `hi`, the agent's submitted inputs end with `hi`, and the fake's log names `relay`, each read and `relay text` and `relay keys enter` without `hi` (222)
+
+### Requirement: The fake terminal scripts its relay
+
+The fake terminal SHALL script a refusal of relay, a sequence of
+screens an agent's reads give, a read unread with words, and the next
+input refused with words (106, 222).
+
+#### Scenario: Scripted refusals
+
+- **WHEN** a test scripts the fake terminal to refuse relay with `no relay here`, then to answer it, its reads with the screens `one` and `two`, its next read unread with `slow` and its next input refused with `no such key`
+- **THEN** the first relay is refused with `no relay here`, the second's reads give `unread` with `slow`, `one` and `two` in turn, and its first input is refused with `no such key` and its second typed (222)
+
+### Requirement: The fake telemetry keeps every signal
+
+There SHALL be a fake of the telemetry the core hands its signals to: a
+test SHALL set which signals it sends, none by default, and SHALL read
+back every signal the core handed it, in order; and the fake host SHALL
+script the managed layer's `[telemetry]` (216, 217).
+
+#### Scenario: A fake that sends nothing
+
+- **WHEN** a place runs to its landing over fakes whose telemetry sends nothing
+- **THEN** the fake keeps the signals the core handed it, and the fake terminal's opens carry no `OTEL_RESOURCE_ATTRIBUTES` or `TRACEPARENT` of flume's (216, 219)
+
+#### Scenario: A fake that sends traces
+
+- **WHEN** a stage starts over fakes whose telemetry sends traces
+- **THEN** the fake terminal's open carries a `TRACEPARENT` naming the span the fake telemetry was later handed for that start (217, 219)
+
+### Requirement: The fake merge queue keeps an outcome until it is confirmed
+
+The fake merge queue SHALL give each outcome it holds for a place with
+the submission it decides under the key `<id>:<state>` at every inbox
+until a confirm of that key, logged as `confirm <key>`; SHALL keep a
+conflict it answers at submit owed to the place under its key; SHALL
+leave an outcome of a named submission pending when told; and SHALL
+answer every confirm unread while told to refuse confirms (133).
+
+#### Scenario: A landing given until it is confirmed
+
+- **WHEN** a submission lands and the inbox is read twice, the landing confirmed by its key, and the inbox read again
+- **THEN** both reads give the landing under `<id>:landed`, the confirm answers confirmed, and the last read gives nothing
+
+### Requirement: The fake store refuses every write of a place while told
+
+The fake store SHALL refuse every write of a place it is told to, as
+moved, writing nothing, until it is told to take them again (75, 102).
+
+#### Scenario: A place's writes refused
+
+- **WHEN** every write of a place is refused and a settle acts on a failed submission
+- **THEN** nothing of the place is written, and once its writes are taken again the next settle acts on it

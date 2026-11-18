@@ -1,5 +1,5 @@
 //! The merge-queue profile over sluice (C.6; design 13), every command
-//! and field it reads checked against the sluice the tree pins, 0.71.0.
+//! and field it reads checked against the sluice the tree pins, 0.93.2.
 //!
 //! submit is `sluice submit <base> --no-wait --json` in the place, with
 //! every multiplexer's session stripped from its environment, so sluice
@@ -7,9 +7,11 @@
 //! answers at once; never `--check` to a submit, never `wt submit` (111,
 //! 113, 117, core.6). Where sluice finds the submission decided as it takes it in,
 //! as on a base that takes pull requests, it answers with the entry's
-//! record, exiting as the outcome does, and records the outcome delivered
-//! to the place, so the outcome is read from that answer as the inbox
-//! reads one, never as a refusal (112, 133). On such a base sluice pushes
+//! record, exiting as the outcome does, so the outcome is read from that
+//! answer as the inbox reads one, never as a refusal, with the key of the
+//! answer's `delivery` where it is owed, for confirm once flume has acted
+//! on it (101, 112, 133; sluice 51; sluice record 0102). On such a
+//! base sluice pushes
 //! the place's branch and opens or updates its pull request, and where
 //! intake has not taken it in answers `{pull_request, branch, state}`
 //! with no entry: the request is held, open and undecided, and an intake
@@ -19,8 +21,11 @@
 //! and the branch the request was opened from as its `from.head`, and
 //! sluice delivers its outcome to the request, so read-submission reads
 //! it, and the inbox only where it is still pending for the place (133).
-//! inbox is `sluice inbox
-//! --json` in the place: each record landed with its commit, failed or in
+//! inbox is `sluice inbox --json` in the place, which hands over each
+//! outcome owed to it again until it is confirmed, never `--confirm`,
+//! which would confirm it before flume acted on it: each record with its
+//! entry's `id` and the key of its `delivery` where it is owed, landed
+//! with its commit, failed or in
 //! conflict with sluice's `notice` as its words, a conflict's files from
 //! the record's `conflict.paths` and its base revision from its
 //! `tested.on`, never parsed from the notice; a record with no notice
@@ -31,7 +36,12 @@
 //! its `unread`, exiting as a failure: the inbox passes that branch over
 //! with its words, whose outcomes sluice leaves pending, and a decided
 //! record the profile cannot read is passed over the same way, by its
-//! branch, rather than dropped unsaid (133). read-submission reads
+//! branch, rather than dropped unsaid (133). confirm is `sluice confirm
+//! <key> --json` in the place, run once flume has acted on the outcome;
+//! exit 0, confirmed now or before, and exit 1, nothing owed under the
+//! key, are each confirmed, since sluice hands nothing over under it
+//! again, and any other exit sluice unread in its words, the outcome
+//! left owed for the next inbox (101, 133; sluice 51). read-submission reads
 //! `sluice status <base> --all --json` for each branch `sluice overview
 //! --json` names, once for every branch of the repository asked at once,
 //! so a status of every place runs them once for each repository (58,
@@ -78,9 +88,9 @@
 use crate::git::Git;
 use crate::shell;
 use flume_seams::{
-    BaseRevision, BranchClosed, BranchOpened, Forecast, Inbox, MergeQueue, PassedOver, PlaceRef,
-    ReadAcross, ReadyStep, Revision, Stepped, Submission, SubmissionOutcome, SubmissionRead,
-    SubmissionState, SubmitHead, Submitted,
+    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, MergeQueue, Owed,
+    PassedOver, PlaceRef, ReadAcross, ReadyStep, Revision, Stepped, Submission, SubmissionOutcome,
+    SubmissionRead, SubmissionState, SubmitHead, Submitted,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -368,6 +378,18 @@ fn refusal(stdout: &str, stderr: &str) -> String {
 
 fn text(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// The key of a decided record's `delivery` while its reader has not
+/// confirmed it, `owed` or `expired`; none where sluice keeps no delivery
+/// for it, as for a submission by name, or it is done, as a pull
+/// request's post confirms it (sluice 51; sluice record 0102).
+fn owed(record: &Value) -> Option<String> {
+    let delivery = record.get("delivery")?;
+    match text(delivery, "state").as_deref() {
+        Some("owed" | "expired") => text(delivery, "key"),
+        _ => None,
+    }
 }
 
 /// A record's id as flume names a submission.
@@ -704,7 +726,8 @@ impl MergeQueue for Sluice {
             Err(reason) => return Submitted::Refused { reason },
         };
         // A submission sluice found decided as it took it in is answered
-        // with its record, exiting as the outcome does, and delivered.
+        // with its record, exiting as the outcome does, and confirmed for
+        // the place below.
         let entry = serde_json::from_str::<Value>(stdout.trim())
             .ok()
             .filter(|entry| entry.get("error").is_none())
@@ -754,16 +777,24 @@ impl MergeQueue for Sluice {
         ) {
             return Submitted::Submitted { submission };
         }
+        // sluice hands a decided answer over by the submit and keeps it
+        // owed until its reader confirms it, which flume does by its key
+        // once it has acted on it; until then an inbox may hand it over
+        // too (112, 133; sluice 51; sluice record 0102).
         match self.outcome(&entry, place) {
             Ok(outcome) => Submitted::Decided {
                 submission,
                 outcome,
+                key: owed(&entry),
             },
             Err(reason) => Submitted::Refused { reason },
         }
     }
 
     fn inbox(&self, place: &PlaceRef) -> Inbox {
+        // Each outcome owed is handed over again until flume confirms it
+        // once it has acted on it, so one a settle could not act on comes
+        // to the next (124, 133; sluice 51; sluice record 0102).
         let args = ["inbox", "--json"];
         let (success, stdout, stderr) = match self.run(Path::new(&place.location), &args) {
             Ok(output) => output,
@@ -775,7 +806,7 @@ impl MergeQueue for Sluice {
             .and_then(|answer| answer.get("outcomes").and_then(Value::as_array).cloned());
         let mut passed_over = answer.as_ref().map(unread).unwrap_or_default();
         // sluice exits as a failure where it passed a branch over, having
-        // answered every other branch's outcomes and marked them delivered.
+        // answered every other branch's outcomes.
         let Some(records) =
             records.filter(|records| success || !records.is_empty() || !passed_over.is_empty())
         else {
@@ -790,8 +821,16 @@ impl MergeQueue for Sluice {
                 Some("landed" | "failed" | "conflict")
             )
         }) {
-            match self.outcome(record, place) {
-                Ok(outcome) => outcomes.push(outcome),
+            let handed = match id(record) {
+                Some(submission) => self.outcome(record, place).map(|outcome| Owed {
+                    submission,
+                    outcome,
+                    key: owed(record),
+                }),
+                None => Err(format!("sluice gave an outcome with no id: {record}")),
+            };
+            match handed {
+                Ok(handed) => outcomes.push(handed),
                 Err(reason) => passed_over.push(PassedOver {
                     branch: text(record, "branch").unwrap_or_default(),
                     words: match id(record) {
@@ -804,6 +843,17 @@ impl MergeQueue for Sluice {
         Inbox::Outcomes {
             outcomes,
             passed_over,
+        }
+    }
+
+    fn confirm(&self, place: &PlaceRef, key: &str) -> Confirmed {
+        let args = ["confirm", key, "--json"];
+        match self.exited(Path::new(&place.location), &args) {
+            Ok((Some(0 | 1), _, _)) => Confirmed::Confirmed,
+            Ok((_, stdout, stderr)) => Confirmed::CouldNotRead {
+                reason: words(&args, &stdout, &stderr),
+            },
+            Err(reason) => Confirmed::CouldNotRead { reason },
         }
     }
 

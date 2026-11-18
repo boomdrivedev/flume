@@ -6,11 +6,13 @@
 # pace, which the module does not declare, and one key no declaration
 # names that flume's reader passes over. Every value is one flume reads
 # without a fault: `printed` where a multiplexer or a terminal app is
-# named, and a settings file, `people-settings.json`, the reader's test
-# makes beside the file.
+# named, a settings file, `people-settings.json`, the reader's test makes
+# beside the file, and `[telemetry]` sending to the host's loopback with
+# one attribute (216, C.7).
 {
   host = {
     agents = 8;
+    ends_expire = "48h";
     multiplexer = "printed";
     pool = "work";
     terminal_app = "printed";
@@ -30,10 +32,10 @@
       view = "app";
       labels = {
         operation = {
-          reserve = 2;
-          keep_free = 1;
+          owed = 2;
+          reserved = 1;
         };
-        construction.reserve = 2;
+        construction.owed = 2;
       };
       kinds.research = {
         session = "work-design";
@@ -53,7 +55,6 @@
         program = "scribe";
         env.SCRIBE_HOME = "$HOME/.scribe-work-1";
         agents = 4;
-        usage = "~/.local/state/usage/work-1.json";
       }
       {
         name = "work-2";
@@ -133,5 +134,15 @@
     keep_open = "1h";
     programs.scribe.settings.theme = "dark";
     streams.work.effort = "high";
+  };
+
+  telemetry = {
+    send = true;
+    collector = "http://localhost:4318";
+    service = "flume";
+    traces = true;
+    metrics = true;
+    logs = false;
+    attributes."deployment.environment" = "lab";
   };
 }

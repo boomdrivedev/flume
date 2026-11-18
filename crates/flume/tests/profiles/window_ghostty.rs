@@ -15,6 +15,7 @@ use flume_conformance::scenario::pass_all;
 use flume_conformance::seams::window::{self, WindowHarness};
 use flume_seams::*;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 /// The bound a test's profile states for `open`.
@@ -23,10 +24,29 @@ const BOUND: Duration = Duration::from_secs(2);
 /// The login environment a test's `ghostty` is started in.
 const LOGIN: [(&str, &str); 2] = [("HOME", "/home/person"), ("PATH", "/usr/bin:/bin")];
 
+/// The profile, counting the shows it answered opened: a `ghostty` it
+/// does not wait on records its window when it comes to, after the show
+/// answered, so the harness reads back as many windows as were opened
+/// rather than guessing from a quiet spell that none is still to come.
+struct Counted {
+    ghostty: Ghostty,
+    opened: AtomicUsize,
+}
+
+impl Window for Counted {
+    fn show(&self, command: &ViewCommand, title: &str) -> WindowShown {
+        let answer = self.ghostty.show(command, title);
+        if answer == WindowShown::Opened {
+            self.opened.fetch_add(1, Ordering::SeqCst);
+        }
+        answer
+    }
+}
+
 struct Harness {
     _scratch: Scratch,
     stand_in: StandIn,
-    seam: Ghostty,
+    seam: Counted,
     system: System,
 }
 
@@ -38,10 +58,14 @@ impl Harness {
             System::Other => "ghostty",
         };
         let stand_in = StandIn::new(&scratch.path("stand-in"), name);
-        let seam = Ghostty::for_system(system)
+        let ghostty = Ghostty::for_system(system)
             .with_programs(&stand_in.path(), &stand_in.path())
             .with_login(&LOGIN)
             .with_bound(BOUND);
+        let seam = Counted {
+            ghostty,
+            opened: AtomicUsize::new(0),
+        };
         Harness {
             _scratch: scratch,
             stand_in,
@@ -100,9 +124,9 @@ fn window_of(run: &Run, system: System) -> (ViewCommand, String) {
 }
 
 impl WindowHarness for Harness {
-    type Seam = Ghostty;
+    type Seam = Counted;
 
-    fn seam(&self) -> &Ghostty {
+    fn seam(&self) -> &Counted {
         &self.seam
     }
 
@@ -117,7 +141,9 @@ impl WindowHarness for Harness {
     fn opened(&self) -> Vec<(ViewCommand, String)> {
         let runs = match self.system {
             System::MacOs => self.stand_in.runs(),
-            System::Other => self.stand_in.runs_settled(),
+            System::Other => self
+                .stand_in
+                .runs_at_least(self.seam.opened.load(Ordering::SeqCst)),
         };
         runs.iter().map(|run| window_of(run, self.system)).collect()
     }
@@ -166,6 +192,17 @@ fn ghostty_on_macos_passes_the_window_scenarios() {
 fn ghostty_elsewhere_passes_the_window_scenarios() {
     pass_all("window", &window::scenarios(), || {
         Harness::new(System::Other)
+    });
+}
+
+#[test]
+fn ghostty_elsewhere_slow_to_start_passes_the_window_scenarios() {
+    // A ghostty not waited on records its window after its show answered,
+    // later still on a loaded host: each window is read whenever it comes.
+    pass_all("window", &window::scenarios(), || {
+        let harness = Harness::new(System::Other);
+        harness.stand_in.slow(1.0);
+        harness
     });
 }
 

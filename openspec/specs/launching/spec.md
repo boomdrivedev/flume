@@ -36,11 +36,12 @@ on readiness or waiting for room, never on an agent (2, 6, 8, 9, 70).
 ### Requirement: A launch's recipients
 
 A launch naming no recipient SHALL take `$FLUME_RECIPIENT`, or else the
+address a source gives the standing agent it runs in, or else the
 session that launched it as the terminal names it, or else the answerer
 behind the place's stream, the role a source of the host declares to
 stand behind it, and SHALL record the place with its priority, its
 recipients, where each came from, and its holds' words, which nothing
-after the launch changes (7, 8, 43, 70, 193).
+after the launch changes (7, 8, 43, 70, 132, 193; core.28).
 
 #### Scenario: Recipients at the launch
 
@@ -56,6 +57,11 @@ after the launch changes (7, 8, 43, 70, 193).
 
 - **WHEN** `acme` also declares `west/operator` standing behind the stream `west`, and a like launch names `west`
 - **THEN** the place's one recipient is `west/operator` (143, 193)
+
+#### Scenario: A launch from a standing agent's pane
+
+- **WHEN** `acme` gives `east/planner` the standing agent `east-planner` in the session `east`, the fake terminal holds it there, and a launch naming no recipient, with `FLUME_RECIPIENT` unset, runs in its pane
+- **THEN** the place's one recipient is `east/planner`, and status gives it as from the standing agent `east-planner`, declared by `acme` (7, 132)
 
 ### Requirement: Readiness that fails
 
@@ -242,6 +248,11 @@ held, and leave nothing made (4, 19, 22, 154).
 #### Scenario: No version named
 
 - **WHEN** a repository that declares no `change` and locks nothing launches `change`
+- **THEN** the place runs change@5, its code stage one agent for the whole change and its agents in `full` from its kind, and status names `flume/change@5` (22, 154, 162)
+
+#### Scenario: change@3 named
+
+- **WHEN** the same repository launches `change@3`
 - **THEN** the place runs change@3, its code stage one agent for the whole change, and status names `flume/change@3` (22, 154, S119)
 
 #### Scenario: change@2 named
@@ -256,8 +267,8 @@ held, and leave nothing made (4, 19, 22, 154).
 
 #### Scenario: A version flume does not hold
 
-- **WHEN** a launch names `change@4`
-- **THEN** it is refused naming change@4 and the versions held, 1, 2 and 3, and nothing is made (4)
+- **WHEN** a launch names `change@6`
+- **THEN** it is refused naming change@6 and the versions held, 1, 2, 3, 4 and 5, and nothing is made (4)
 
 #### Scenario: A version the repository's declaration does not hold
 
@@ -492,3 +503,15 @@ settings and a kind's declaration SHALL give none (32, 158, 198, 212).
 
 - **WHEN** the host's `[agents] hibernate_after` changes from `1h` to `15m` while talk hibernates, and the place is resumed
 - **THEN** the resumed agent starts with `15m` (32, 213)
+
+### Requirement: A launch from the pane of an agent standing for several addresses
+
+A launch naming no recipient, with `$FLUME_RECIPIENT` unset, from the pane
+of an agent its sources give more than one address SHALL be refused,
+naming the agent and each address and asking for `--recipient`, and
+SHALL make nothing (7, 132; core.8, core.28).
+
+#### Scenario: A launch from the pane of an agent standing for two addresses
+
+- **WHEN** `acme` gives `east/planner` and `east/ops` each the standing agent `east-planner` in `east`, and a launch naming no recipient, with `FLUME_RECIPIENT` unset, runs in its pane
+- **THEN** the launch is refused naming `east-planner`, `east/ops`, `east/planner` and `--recipient`, and no branch, worktree or held state is made (132; core.8)

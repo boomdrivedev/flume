@@ -392,6 +392,9 @@ fn s6_a_message_into_a_question_then_into_work(_: &()) -> Outcome {
     world
         .terminal
         .schedule(&work, world.host.now() + 120, AgentState::Waiting);
+    // A settle reads the agent no longer asking, which ends the place's
+    // wait on a person (90, 217), before the tell, which changes no stage.
+    world.settle(&id);
     let before = world.held(&id).ok_or("no place")?.stages;
     taken(&world.engine.message(&id, "use the second", None))?;
     ensure_eq!(
@@ -1345,7 +1348,7 @@ fn s93_a_question_for_ops_answered_once(_: &()) -> Outcome {
     world.host.advance(20 * 60);
     let by = world
         .engine
-        .recipient(Some(&ops))
+        .recipient(Some(&ops))?
         .ok_or("the run's command names no recipient")?;
     ensure_eq!(by.as_str(), "east/ops", "the run's command's recipient");
     let at = world.host.now();

@@ -212,7 +212,7 @@ impl Engine {
             (next.len() != claims.len()).then(|| (records.to_vec(), next))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
         }
     }
 
@@ -277,10 +277,10 @@ impl Engine {
             (next.len() != claims.len()).then_some((all, next))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
         }
         for why in refused {
-            self.host.log(&format!(
+            self.log(&format!(
                 "a delivery a run's prompt carried was not recorded: {why}"
             ));
         }
@@ -357,7 +357,7 @@ impl Engine {
         let whole = match read_whole(&*self.store) {
             Ok(whole) => whole,
             Err(why) => {
-                self.host.log(&why);
+                self.log(&why);
                 return false;
             }
         };
@@ -392,7 +392,7 @@ impl Engine {
         let whole = match read_whole(&*self.store) {
             Ok(whole) => whole,
             Err(why) => {
-                self.host.log(&why);
+                self.log(&why);
                 return;
             }
         };
@@ -448,7 +448,7 @@ impl Engine {
             ToSession::NotFound => format!("no session is named {at}"),
             ToSession::Refused { reason } => reason,
         };
-        self.host.log(&format!(
+        self.log(&format!(
             "the deliveries {} were not handed to {recipient}: {why}",
             items
                 .iter()
@@ -496,7 +496,7 @@ impl Engine {
             Some((records.to_vec(), next))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
             return None;
         }
         (!claimed.is_empty()).then_some(claimed)
@@ -514,7 +514,7 @@ impl Engine {
             (next.len() != claims.len()).then(|| (records.to_vec(), next))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
         }
     }
 
@@ -544,14 +544,14 @@ impl Engine {
             Some((all, next))
         });
         for why in refused {
-            self.host.log(&format!(
+            self.log(&format!(
                 "a delivery handed to {recipient} was not recorded: {why}"
             ));
         }
         let Err(why) = written else {
             return;
         };
-        self.host.log(&format!(
+        self.log(&format!(
             "the deliveries handed to {recipient} were not recorded: {why}"
         ));
         // The send was answered: its claims are marked so, and the next
@@ -570,7 +570,7 @@ impl Engine {
             changed.then(|| (records.to_vec(), next))
         });
         if let Err(why) = marked {
-            self.host.log(&format!(
+            self.log(&format!(
                 "the deliveries handed to {recipient} were not marked answered: {why}"
             ));
         }
@@ -616,7 +616,7 @@ impl Engine {
             Some((all, next))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
         }
         for why in refused {
             self.host
@@ -749,7 +749,7 @@ impl Engine {
             Some((all, kept))
         });
         if let Err(why) = written {
-            self.host.log(&why);
+            self.log(&why);
             return vec![];
         }
         taken

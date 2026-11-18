@@ -151,6 +151,14 @@ if [ -n "$STAND_IN_DIALOG" ]; then
 fi
 : > "$log/started"
 report idle
+if [ -n "$STAND_IN_CAT" ]; then
+  # Once the test says go, after open has read the program, a pane
+  # running `cat` in raw mode, so every key a relay types reaches it as
+  # bytes, a ctrl+c or a ctrl+d among them, and none ends it.
+  while [ ! -e "$log/go" ]; do sleep 0.1; done
+  stty raw -echo 2>/dev/null
+  exec cat > "$log/cat"
+fi
 ctrl_c=$(printf '\003')
 stty -isig 2>/dev/null
 while :; do
@@ -870,6 +878,12 @@ impl TerminalHarness for Harness {
     /// stands in its session (132, C.5).
     fn named_agent(&self, session: &str, name: &str) -> bool {
         standing(&self.server, &self.home, session, Some(name));
+        true
+    }
+
+    /// herdr relays a pane's screen and a person's keys (221, 222, C.5's
+    /// relay row).
+    fn relays(&self) -> bool {
         true
     }
 }
@@ -1817,6 +1831,62 @@ fn a_command_run_in_a_herdr_pane_names_its_pane() {
         fs::read_to_string(&out).unwrap(),
         format!("herdr:{pane}@{}", server.socket.display()),
         "the session a launch from the pane names as its recipient"
+    );
+}
+
+#[test]
+fn a_command_in_a_herdr_sessions_pane_is_named_as_its_agents_are_given() {
+    // The terminal-profiles spec's "A command in a herdr session's pane"
+    // (7, 132, C.5; core.29): the standing agent `w-planner` started in
+    // `w`, a workspace of the test's own made on `w`'s server, and a
+    // command run in its pane names `herdr:<that pane>@<socket>`, the
+    // socket the profile's `agents_in` of `w` gives `w-planner` at, so a
+    // command in a standing agent's pane names that agent's session.
+    let server = TestServer::start("herdr-caller-in-w");
+    let home = SessionHome::new(&["w"]);
+    let profile = server.profile().with_session_home(home.path());
+    let planner = standing(&server, &home, "w", Some("w-planner"));
+    let made = server.herdr_on(
+        &planner.socket,
+        &["workspace", "create", "--label", "caller", "--no-focus"],
+    );
+    let pane = made["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("herdr gave no pane in {made}"))
+        .to_string();
+    let out = server.scratch.path("session");
+    let line = format!(
+        "FLUME_HERDR_SESSION_OUT={} XDG_STATE_HOME={} {} --exact terminal_herdr::session_child --nocapture",
+        out.display(),
+        server.scratch.path("state").display(),
+        std::env::current_exe().unwrap().display()
+    );
+    server.herdr_on(&planner.socket, &["pane", "run", &pane, &line]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !out.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "the command in the pane wrote nothing"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    let at = match profile.agents_in(Some("w")) {
+        AgentsIn::Read { agents } => agents
+            .into_iter()
+            .find(|agent| agent.name == "w-planner")
+            .map(|agent| agent.at)
+            .expect("w-planner given"),
+        unread => panic!("w's agents were not read: {unread:?}"),
+    };
+    let socket = Pane::named(&at)
+        .unwrap_or_else(|| panic!("w-planner at no pane: {at}"))
+        .socket;
+    assert_eq!(at, planner.session(), "where w-planner is given");
+    assert_eq!(
+        fs::read_to_string(&out).unwrap(),
+        Pane { id: pane, socket }.session(),
+        "the session the command in w's pane names"
     );
 }
 
@@ -4243,5 +4313,81 @@ esac
     assert!(
         matches!(&listing, AgentsIn::Unread { reason } if reason.contains("did not answer within 1 seconds")),
         "the agents of a part whose listing does not answer gave {listing:?}"
+    );
+}
+
+#[test]
+fn relay_types_each_of_flumes_key_names_into_a_pane() {
+    // 222, C.5's relay row at blueprints b54a9b4, core.29: each of flume's
+    // key names, bare and led by ctrl+, alt+ and shift+, typed by the relay
+    // into a pane of the pinned herdr running `cat`, herdr taking every
+    // name but delete, insert, home, end, pageup and pagedown, which the
+    // relay refuses, named, and which the pinned herdr itself still
+    // refuses; and of `a`, `home` and `b` together, `cat` reads `a` and `b`.
+    let server = TestServer::start("herdr-keys");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened(
+        &server,
+        &profile,
+        &who,
+        &server.command(&[("STAND_IN_CAT", "1")]),
+    );
+    let log = server.scratch.path("log").join(&pane.id);
+    fs::write(log.join("go"), "").expect("the stand-in told to run cat");
+    server.within("the pane's cat did not run", || log.join("cat").exists());
+    let mut relay = profile.relay(&who).expect("the pane is relayed");
+    let six = ["delete", "insert", "home", "end", "pageup", "pagedown"];
+    let mut bare: Vec<String> = KeyName::named().iter().map(ToString::to_string).collect();
+    bare.extend(["a", "Z", "1", "+", "/", "é"].map(str::to_string));
+    let mut names = vec![];
+    for name in &bare {
+        for lead in ["", "ctrl+", "alt+", "shift+"] {
+            names.push(format!("{lead}{name}"));
+        }
+    }
+    names.extend(["ctrl+alt+x", "ctrl+shift+tab", "ctrl+alt+shift+delete"].map(str::to_string));
+    let mut refused = vec![];
+    for name in &names {
+        let key: Key = name.parse().unwrap_or_else(|refused| panic!("{refused}"));
+        let cannot = six.iter().any(|one| name.ends_with(one));
+        match relay.typed(&Typed::Keys(vec![key])) {
+            Ok(()) => assert!(!cannot, "{name} was typed"),
+            Err(words) if cannot => assert!(
+                words.starts_with(&format!("{name} is a key herdr 0.9.5 cannot type")),
+                "{name}: {words}"
+            ),
+            Err(words) => refused.push((name.clone(), words)),
+        }
+    }
+    assert!(refused.is_empty(), "herdr refused {refused:#?}");
+    for name in six {
+        let words = server
+            .try_herdr(&["pane", "send-keys", &pane.id, name])
+            .expect_err(name);
+        assert!(
+            words.contains("invalid_key") || words.contains("unsupported key"),
+            "the pinned herdr's refusal of {name}: {words}"
+        );
+    }
+    let cat = log.join("cat");
+    let before = fs::read(&cat).expect("what cat read").len();
+    let around = Typed::Keys(
+        ["a", "home", "b"]
+            .map(|name| name.parse().unwrap())
+            .to_vec(),
+    );
+    let words = relay.typed(&around).expect_err("home is refused");
+    assert!(
+        words.starts_with("home is a key herdr 0.9.5 cannot type"),
+        "{words}"
+    );
+    server.within("cat did not read a and b", || {
+        fs::read(&cat).is_ok_and(|read| read.len() >= before + 2)
+    });
+    assert_eq!(&fs::read(&cat).expect("what cat read")[before..], b"ab");
+    assert!(
+        matches!(relay.screen(), RelayScreen::Shows { .. }),
+        "the pane reads gone once every key was typed"
     );
 }

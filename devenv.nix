@@ -161,7 +161,8 @@ let
     '') hookTypes}
   '';
 
-  # Vale checks the site's prose (.vale.ini, styles/Flume). From its own
+  # Vale, for the pages' writers to run on their prose (.vale.ini,
+  # styles/Flume); no check runs it (core.21; record 0074). From its own
   # release: nixpkgs trails it. Bump the version and the four hashes from
   # the release's checksums file.
   valeVersion = "3.24.0";
@@ -344,16 +345,23 @@ let
   # (core.22, core.51).
   rex = inputs.rex.packages.${pkgs.stdenv.hostPlatform.system}.rex or null;
 
-  # sluice, which the merge-queue profile drives: its newest release. sluice
-  # publishes no x86_64-darwin build. Its builds are Nix's: on Linux the
-  # loader and libgcc_s, on macOS libiconv, are store paths of the machine
-  # that built them, set here to this tree's. Bump the version and the three
-  # checksums from the release's assets.
-  sluiceVersion = "0.71.0";
+  # sluice, which the merge-queue profile drives: a release that reads the
+  # host's configuration as the hosts' own sluice writes it; an older
+  # release refuses a key it does not know, and no place's checks run.
+  # sluice publishes no x86_64-darwin build. Its builds are Nix's: on
+  # Linux the loader and libgcc_s, on macOS libiconv, are store paths of the
+  # machine that built them, set here to this tree's. Bump the version and
+  # the three checksums from the release's assets. A walkthrough's place
+  # runs its equip and release in the login environment alone (29), with
+  # no SLUICE_USER_SCRATCH: 0.95.1's release makes /tmp/sluice-<uid>/<key>
+  # even with nothing to free, which the gate's sandbox refuses, where
+  # 0.93.2's makes nothing, so a pin to a release that makes it first gives
+  # those steps room in the gate's scratch (core.51).
+  sluiceVersion = "0.93.2";
   sluiceHashes = {
-    aarch64-darwin = "7991d1f8fc607edca5582eca5307f9ba029e01723c55b32de0c120fde65b8aa6";
-    aarch64-linux = "a1da7963e99171d2f2b9a64a79367d3344a8022828650e8f505aa349552c4d6a";
-    x86_64-linux = "2b3efa38fa5f78d0e0b3d65de3342b0ced04d39c211bd98c10ddb5ae0e9a6d2e";
+    aarch64-darwin = "708225703851a928f0921e8bb2f9bb7a0b8c78565558550ab829b0c23a1bd53f";
+    aarch64-linux = "f634c8c83f4ad962717f3adfe795ca6599ed98ff0a020b7e8a3fd8ff436af764";
+    x86_64-linux = "3ee2d64e09ee1cf74f7a4df61c489600b2382284a212e1497c08a618c81c0345";
   };
   sluiceSystem = pkgs.stdenv.hostPlatform.system;
   sluice = pkgs.stdenv.mkDerivation {
@@ -554,7 +562,7 @@ in
   };
 
   scripts.prose = {
-    description = "The site's prose, checked by Vale (.vale.ini)";
+    description = "Vale over the site's pages and the README, for their writers (.vale.ini)";
     exec = ''
       set -euo pipefail
       cd "$(git rev-parse --show-toplevel)"

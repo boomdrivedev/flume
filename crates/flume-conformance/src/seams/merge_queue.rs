@@ -96,6 +96,13 @@ fn outcomes<H: MergeQueueHarness>(
     harness: &H,
     place: &PlaceRef,
 ) -> Result<Vec<SubmissionOutcome>, String> {
+    Ok(owed(harness, place)?
+        .into_iter()
+        .map(|owed| owed.outcome)
+        .collect())
+}
+
+fn owed<H: MergeQueueHarness>(harness: &H, place: &PlaceRef) -> Result<Vec<Owed>, String> {
     match harness.seam().inbox(place) {
         Inbox::Outcomes { outcomes, .. } => Ok(outcomes),
         other => Err(format!("the inbox answered {other:?}")),
@@ -130,19 +137,43 @@ fn decided<H: MergeQueueHarness>(harness: &H, place: &PlaceRef) -> Outcome {
     Ok(())
 }
 
-/// The one outcome the inbox gives, and then nothing.
+/// The one outcome the inbox gives, of `submission`: given again by
+/// every inbox while it is unconfirmed where it has a key, and once
+/// confirmed by it, or given with none, nothing (133).
 fn the_one_outcome<H: MergeQueueHarness>(
     harness: &H,
     place: &PlaceRef,
+    submission: &Submission,
 ) -> Result<SubmissionOutcome, String> {
-    let mut first = outcomes(harness, place)?;
+    let mut first = owed(harness, place)?;
     ensure_eq!(first.len(), 1, "outcomes the inbox gave");
+    let given = first.remove(0);
+    ensure_eq!(given.submission, submission.id, "the submission it decides");
+    if let Some(key) = &given.key {
+        ensure_eq!(
+            owed(harness, place)?,
+            vec![given.clone()],
+            "an unconfirmed outcome an inbox gave again"
+        );
+        ensure_eq!(
+            harness.seam().confirm(place, key),
+            Confirmed::Confirmed,
+            "the outcome confirmed"
+        );
+    }
     ensure_eq!(
         outcomes(harness, place)?,
         vec![],
         "outcomes an inbox gave again"
     );
-    Ok(first.remove(0))
+    if let Some(key) = &given.key {
+        ensure_eq!(
+            harness.seam().confirm(place, key),
+            Confirmed::Confirmed,
+            "the outcome confirmed again"
+        );
+    }
+    Ok(given.outcome)
 }
 
 fn two_branches_at_once<H: MergeQueueHarness>(harness: &H) -> Outcome {
@@ -187,7 +218,7 @@ pub fn scenarios<H: MergeQueueHarness>() -> Vec<Scenario<H>> {
             run: submit_holds_no_wait::<H>,
         },
         Scenario {
-            name: "merge queue: the inbox gives a landing once, with the commit it landed as",
+            name: "merge queue: the inbox gives a landing, with the commit it landed as and the submission it decides, again until the place confirms it and never after",
             cites: &["133", "101", "113", "117"],
             run: inbox_gives_a_landing_once::<H>,
         },
@@ -275,9 +306,9 @@ fn submit_holds_no_wait<H: MergeQueueHarness>(harness: &H) -> Outcome {
 
 fn inbox_gives_a_landing_once<H: MergeQueueHarness>(harness: &H) -> Outcome {
     let (place, head) = harness.place();
-    submitted(harness, &place, &head)?;
+    let submission = submitted(harness, &place, &head)?;
     decided(harness, &place)?;
-    let commit = match the_one_outcome(harness, &place)? {
+    let commit = match the_one_outcome(harness, &place, &submission)? {
         SubmissionOutcome::Landed { commit } => commit,
         other => return Err(format!("a clean submission came to {other:?}")),
     };
@@ -297,9 +328,9 @@ fn inbox_gives_a_landing_once<H: MergeQueueHarness>(harness: &H) -> Outcome {
 fn a_failure_names_the_words<H: MergeQueueHarness>(harness: &H) -> Outcome {
     let (place, head) = harness.place();
     harness.will_fail("test x failed");
-    submitted(harness, &place, &head)?;
+    let submission = submitted(harness, &place, &head)?;
     decided(harness, &place)?;
-    match the_one_outcome(harness, &place)? {
+    match the_one_outcome(harness, &place, &submission)? {
         SubmissionOutcome::Failed { words } => {
             ensure!(words.contains("test x failed"), "the words {words}")
         }
@@ -320,9 +351,9 @@ fn a_failure_names_the_words<H: MergeQueueHarness>(harness: &H) -> Outcome {
 fn a_conflict_names_the_files<H: MergeQueueHarness>(harness: &H) -> Outcome {
     let (place, head) = harness.place();
     harness.will_conflict(&place, "work.rs");
-    submitted(harness, &place, &head)?;
+    let submission = submitted(harness, &place, &head)?;
     decided(harness, &place)?;
-    match the_one_outcome(harness, &place)? {
+    match the_one_outcome(harness, &place, &submission)? {
         SubmissionOutcome::Conflict { files, base, words } => {
             ensure!(
                 files.iter().any(|file| file == "work.rs"),
@@ -491,7 +522,7 @@ fn a_refused_branch_decides_itself_alone<H: MergeQueueHarness>(harness: &H) -> O
         other => return Err(format!("the inbox past {other:?}")),
     }
     decided(harness, &place)?;
-    let commit = match the_one_outcome(harness, &place)? {
+    let commit = match the_one_outcome(harness, &place, &ours)? {
         SubmissionOutcome::Landed { commit } => commit,
         other => return Err(format!("a clean submission came to {other:?}")),
     };

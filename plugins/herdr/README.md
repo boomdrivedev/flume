@@ -59,13 +59,16 @@ herdr.
 The plugin keeps no watch and decides nothing of how flume runs.
 Whatever keeps time on your host, a timer or a supervisor of your own,
 keeps watch over it by running `flume settle --every <time>` on that
-bound, which settles every place, an agent in it or none. While its
-newest settle began less than twice its bound ago, flume's commands
-leave the settling to it. While nothing does, flume runs attended: each
-command of flume's that acts settles every place first, and what no
+bound, which settles the places where something is pending, an agent in
+them or none; a place that waits only on an answer, its caller's word
+or a drop is not read. While that settle runs, and until twice its bound
+has passed since it ended, flume's commands leave the settling to it.
+While nothing does, flume runs attended: each command of flume's that
+acts settles the places where something is pending first, and what no
 agent's quiet reports, an agent killed with no word or a submission the
-merge queue decided, moves at the next such command. `flume status`
-says which.
+merge queue decided, moves at the next such command. `flume settle`
+naming no place and stating no bound still settles every place.
+`flume status` says which.
 
 ## Setting it up
 

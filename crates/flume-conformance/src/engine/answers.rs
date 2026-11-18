@@ -33,8 +33,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_refusal_is_an_answer,
         },
         Scenario {
-            name: "answers: status gives the host's watch, a caller's bound and when its newest settle began, and once it lapsed since when none is kept",
-            cites: &["56", "61", "119", "208", "S118"],
+            name: "answers: status gives the host's watch, a caller's bound and when its newest settle began and ended, and once it lapsed, twice its bound after that end, since when none is kept",
+            cites: &["56", "61", "119", "208", "225", "S118"],
             run: a_watched_host_and_an_unwatched_one,
         },
         Scenario {
@@ -743,13 +743,15 @@ fn host_status() -> HostStatus {
             queue: vec![queued()],
             labels: vec![LabelStatus {
                 name: "operation".into(),
+                owed: 2,
+                reserved: 1,
                 reserve: 2,
                 keep_free: 1,
                 running: 1,
                 waiting: 1,
             }],
             reserves: Reserves::Held,
-            refused: Some("the stream work's reserves, operation 3 and construction 3, 6 in all, pass its bound of 5".into()),
+            refused: Some("the stream work's labels are owed 6 in all, construction 3 and operation 3, past its bound of 5".into()),
             view_refused: None,
             answerer: Some(StreamAnswerer::Stands(DeclaredBy {
                 address: "work/operator".into(),
@@ -785,7 +787,7 @@ fn host_status() -> HostStatus {
                     spent_until: None,
                     spent_unread: None,
                     reading: Some(ReadingStatus::Unread {
-                        unread: "the file is missing".into(),
+                        unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
                 },
@@ -798,6 +800,8 @@ fn host_status() -> HostStatus {
                     spent_unread: Some("You've hit your limit".into()),
                     reading: Some(ReadingStatus::Read {
                         read_at: 53_880,
+                        agent: "flume:r:fix--one:code:1".into(),
+                        session: Some("s-1".into()),
                         fresh: true,
                         windows: vec![WindowStatus {
                             name: "5-hour".into(),
@@ -914,6 +918,7 @@ fn host_status() -> HostStatus {
         }],
         watch: Watch::Bound { seconds: 30 },
         watch_settled: Some(47_400),
+        watch_ended: Some(47_410),
         watch_lapsed: Some(47_460),
         terminals: vec![TerminalStatus {
             profile: Some("fake".into()),
@@ -1523,7 +1528,9 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.streams[].labels",
             "status.host.streams[].labels[].keep_free",
             "status.host.streams[].labels[].name",
+            "status.host.streams[].labels[].owed",
             "status.host.streams[].labels[].reserve",
+            "status.host.streams[].labels[].reserved",
             "status.host.streams[].labels[].running",
             "status.host.streams[].labels[].waiting",
             "status.host.streams[].name",
@@ -1568,6 +1575,8 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.pools[].accounts[].spent_unread",
             "status.host.pools[].accounts[].reading",
             "status.host.pools[].accounts[].reading.read_at",
+            "status.host.pools[].accounts[].reading.agent",
+            "status.host.pools[].accounts[].reading.session",
             "status.host.pools[].accounts[].reading.fresh",
             "status.host.pools[].accounts[].reading.windows",
             "status.host.pools[].accounts[].reading.windows[].name",
@@ -1585,6 +1594,7 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.watch",
             "status.host.watch.bound",
             "status.host.watch.bound.seconds",
+            "status.host.watch_ended",
             "status.host.watch_lapsed",
             "status.host.watch_settled",
             "status.host.terminals",
@@ -3136,41 +3146,66 @@ fn host_now(world: &super::world::World) -> Result<HostStatus, String> {
 }
 
 /// The place-status spec's "A watched host and an unwatched one": a
-/// caller's settle with a bound of two minutes, status asked a minute
-/// later, then five minutes on with no such settle (56, 119, 208).
+/// caller's settle with a bound of two minutes, which reads the host's
+/// places for half a minute, status asked a minute after it ended, then
+/// five minutes on with no such settle (56, 119, 208, 225).
 fn a_watched_host_and_an_unwatched_one(_: &()) -> Outcome {
     let world = super::world::World::new();
     let before = host_now(&world)?;
     ensure_eq!(
-        (before.watch, before.watch_settled, before.watch_lapsed),
-        (Watch::None, None, None),
+        (
+            before.watch,
+            before.watch_settled,
+            before.watch_ended,
+            before.watch_lapsed
+        ),
+        (Watch::None, None, None, None),
         "the watch on a host where none was kept"
     );
     let began = world.host.now();
+    let host = world.host.clone();
+    world.store.during_next_read_every(move || host.advance(30));
     world.engine.settle_every(120);
+    let ended = began + 30;
     world.host.advance(60);
     let watched = host_now(&world)?;
     ensure_eq!(
-        (watched.watch, watched.watch_settled, watched.watch_lapsed),
-        (Watch::Bound { seconds: 120 }, Some(began), None),
-        "the watch a minute after the caller's settle"
+        (
+            watched.watch,
+            watched.watch_settled,
+            watched.watch_ended,
+            watched.watch_lapsed
+        ),
+        (
+            Watch::Bound { seconds: 120 },
+            Some(began),
+            Some(ended),
+            None
+        ),
+        "the watch a minute after the caller's settle ended"
     );
     let json = serde_json::to_value(&watched).map_err(|error| error.to_string())?;
     ensure_eq!(
         (
             json["watch"]["bound"]["seconds"].as_u64(),
             json["watch_settled"].as_u64(),
+            json["watch_ended"].as_u64(),
             json.get("watch_lapsed").is_none()
         ),
-        (Some(120), Some(began), true),
+        (Some(120), Some(began), Some(ended), true),
         "the watch in the JSON form"
     );
     world.host.advance(5 * 60);
     let lapsed = host_now(&world)?;
     ensure_eq!(
-        (lapsed.watch, lapsed.watch_settled, lapsed.watch_lapsed),
-        (Watch::None, Some(began), Some(began + 4 * 60)),
-        "the watch five minutes on, lapsed four minutes after its settle began"
+        (
+            lapsed.watch,
+            lapsed.watch_settled,
+            lapsed.watch_ended,
+            lapsed.watch_lapsed
+        ),
+        (Watch::None, Some(began), Some(ended), Some(ended + 4 * 60)),
+        "the watch five minutes on, lapsed four minutes after its settle ended"
     );
     Ok(())
 }

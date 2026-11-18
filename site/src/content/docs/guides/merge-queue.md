@@ -71,29 +71,45 @@ flume.
 Each settle after the submission:
 
 1. runs `sluice inbox --json` in the place, which gives each outcome
-   sluice holds for the place's worktree once;
-2. runs one round of the base's queue, `sluice step <base>`, which does
+   sluice owes the place's worktree, and acts on each;
+2. once the place's state holds what an outcome decided, confirms it
+   with `sluice confirm <key>`, so no later inbox gives it again;
+3. runs one round of the base's queue, `sluice step <base>`, which does
    nothing where a `sluice run` on the host drives the queue.
+
+An outcome a settle could not act on stays unconfirmed, and the next
+settle is given it again. An outcome of an earlier submission of the
+place, given again after the place was submitted anew, decides nothing:
+flume confirms it and sends nothing back for it.
+
+sluice keeps an outcome owed until its reader confirms it from release
+0.79.0 on, so flume needs sluice 0.79.0 or later.
 
 sluice can decide a submission as it takes it in, as it can on a base
 that takes pull requests when the work conflicts with the base. Its
-answer to the submit is then the entry's record, and sluice counts the
-outcome delivered, so no inbox gives it. flume reads that outcome from
-the answer in the same settle, as it reads one from the inbox. A
+answer to the submit is then the entry's record. flume reads that
+outcome from the answer in the same settle, as it reads one from the
+inbox, and once it has acted on it confirms it with `sluice confirm` by
+the key the answer gives, so no later inbox gives it. A
 conflict there starts the fix round as any other does, never a wait as
 if sluice refused the submission.
 
 A submitted place has no agent left in it, so no agent's quiet runs
 those settles. A caller keeping watch over the host runs them: `flume
 settle --every <time>`, run on that bound from a timer of the host's or
-whatever else keeps time there, settles every place, an agent in it or
-none. So every submitted place has its outcome read, and its base's
-queue run one round, within the bound
+whatever else keeps time there, settles the places where something is
+pending, an agent in them or none, a place whose submission is in flight
+among them. So every submitted place has its outcome read, and its
+base's queue run one round, within the bound
 ([keeping watch over the host](/flume/guides/places-and-herdr/#keeping-watch-over-the-host)).
-While no caller keeps watch, flume runs attended: every command of
-flume's that acts settles every place first, so a submitted place
-moves at your next such command. Status says which of the two holds,
-under the host's part.
+A place that waits only on its caller is not read by the watch: a
+branch landed by hand while its place held its submission is read at
+`flume settle` naming no place and stating no bound, or at your next
+command on that place. While no caller keeps watch, flume runs
+attended: every command of flume's that acts settles the places where
+something is pending first, so a submitted place moves at your next
+such command. Status says which of the two holds, under the host's
+part.
 
 ## A base that takes pull requests
 

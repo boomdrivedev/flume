@@ -61,6 +61,39 @@
 //! characters, a block keeping its agent's Rex name; shown_at names them
 //! from the records alone (139).
 //!
+//! relay finds the agent's block from its record, making no call, and is
+//! refused with `no agent runs under <agent>` where no record names a
+//! block; the block keeps its id when it moves between windows, so the
+//! handle never finds it again (C.5's Rex relay row at blueprints bf9e16f).
+//! Its handle states 250 milliseconds and reads what a person's view of
+//! the block shows by `capture -s <session> -b <block> --format vt --trim`
+//! and `block call size`, giving the capture's last `rows` lines as Rex
+//! wrote them, their colours and `\r\n` kept and never read as JSON, the
+//! block's screen and never its scrollback. It types a person's input as
+//! typed, text by `send -s <session> -b <block> -- <text>` in pieces of at
+//! most 60,000 bytes, and keys by `send-key -s <session> -b <block>
+//! <key>…` by flume's names, which are Rex's own, one call for each run
+//! of them, clearing nothing, pressing no Enter of its own and reading no
+//! receipt. A key goes to `send-key` only where the pinned Rex was read to
+//! type it as the person typed it: Rex 0.1.0-preview.14's `send-key` names
+//! none of `!`, `"`, `#`, `$`, `%`, `&`, `(`, `)`, `*`, `:`, `<`, `?`, `@`,
+//! `^`, `_`, `{`, `|`, `}` and `~`, nor any character outside ASCII, and
+//! types each capital as its small letter; bare, such a character goes in
+//! as the text it is by `send`, each run of them one `send`; led, it is
+//! refused, named as a key Rex 0.1.0-preview.14 cannot type, nothing sent
+//! for it, and the keys around it are typed. So is every led key Rex was
+//! read to type otherwise than typed: `ctrl+shift+` with a character or
+//! `space`, which types nothing or drops its ctrl and its shift; `ctrl+`
+//! with one of `i`, `m`, `'`, `+`, `,`, `-`, `.`, `;`, `=`, `>`, `[` and
+//! the backtick, which types nothing, or drops its ctrl after `alt+`; and
+//! `alt+shift+` with a character its shift changes, which drops its shift.
+//! No escape sequence is built. A block
+//! Rex answers not found, or a server not running at its socket, reads
+//! gone. Each relay call is bounded at one second, a read past it unread
+//! and an input past it refused, naming the bound; the relay makes, keeps
+//! and closes nothing in Rex, and no words of its repeat what was typed,
+//! `send`'s text named `<typed>` (107, 221, 222, C.5's Rex relay row).
+//!
 //! Every call is `rex --autostart=false -S unix://<socket> <words>`, the
 //! calling process's `REX_*` stripped, under a bound, ten seconds where
 //! the call states none: one that does not answer within it is killed and
@@ -72,9 +105,9 @@ use super::common::{
 };
 use crate::host::process::{listed, program_path};
 use flume_seams::{
-    AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, FolderTrust, Identity, NamedAgent,
-    OpenIn, Opened, PlaceRef, Sent, SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession,
-    View,
+    AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, FolderTrust, Identity, Key,
+    KeyName, NamedAgent, OpenIn, Opened, PlaceRef, Relay, RelayScreen, Sent, SessionRuns, Shown,
+    ShownAt, Terminal, TerminalTidy, ToSession, Typed, View,
 };
 use serde_json::{json, Value};
 #[cfg(test)]
@@ -94,6 +127,43 @@ pub const NAME: &str = "rex";
 
 /// The bound on a Rex call that states none (98, C.5).
 pub const BOUND: Duration = Duration::from_secs(10);
+
+/// The bound within which a relay gives a change of what the block shows
+/// again, the least time between two of its reads (222, C.5's Rex relay
+/// row).
+pub const RELAY_EVERY: Duration = Duration::from_millis(250);
+
+/// The bound on each call of a relay, which Rex answers in milliseconds
+/// on the host: a read that waits holds the person's screen (98, 222;
+/// core.29).
+pub const RELAY_BOUND: Duration = Duration::from_secs(1);
+
+/// The printable characters of ASCII Rex 0.1.0-preview.14's `send-key`
+/// names none of, bare or led, as C.5's Rex relay row at blueprints
+/// bf9e16f lists them and the tools layer reads them from the pinned Rex;
+/// every character outside ASCII is refused there too, and each capital,
+/// which it takes, it types as its small letter. Bare, each of these goes
+/// in as the text it is by `send`; led, it is refused (222; core.29).
+pub const SEND_KEY_REFUSES: [char; 19] = [
+    '!', '"', '#', '$', '%', '&', '(', ')', '*', ':', '<', '?', '@', '^', '_', '{', '|', '}', '~',
+];
+
+/// The characters whose `ctrl+` the pinned Rex's `send-key` types as
+/// nothing, and whose `ctrl+alt+` it types as `alt+` alone, as the tools
+/// layer reads them; so each is refused led by `ctrl+` (222, C.5's Rex
+/// relay row at blueprints bf9e16f; core.29).
+pub const CTRL_TYPES_NOTHING: [char; 12] =
+    ['i', 'm', '\'', '+', ',', '-', '.', ';', '=', '>', '[', '`'];
+
+/// The characters `send-key` takes that a shift leaves as they are, which
+/// its `alt+shift+` types as their `alt+`, as a person's would; every
+/// other's shift the pinned Rex drops after `alt+` (222, C.5's Rex relay
+/// row at blueprints bf9e16f).
+const SHIFT_KEEPS: [char; 2] = ['+', '>'];
+
+/// The rows a block's screen is read as where Rex's `size` gives none, as
+/// C.5's screen row reads it (136).
+const ROWS: u64 = 24;
 
 /// The bound on each part's `server.status` that runs asks (201, C.5).
 pub const RUNS_BOUND: Duration = Duration::from_secs(1);
@@ -392,6 +462,21 @@ impl Rex {
     /// Rex run with `args` on the server at `socket`, under `bound`: its
     /// JSON answer, its refusal in its words, or no answer.
     pub fn call(&self, socket: &Path, args: &[&str], bound: Duration) -> Call {
+        let stdout = match self.printed(socket, args, bound) {
+            Ok(stdout) => stdout,
+            Err(call) => return call,
+        };
+        let parsed = match stdout.trim() {
+            "" => return Call::Answered(Value::Null),
+            text => serde_json::from_str::<Value>(text).ok(),
+        };
+        Call::Answered(parsed.unwrap_or(Value::String(stdout)))
+    }
+
+    /// Rex run with `args` on the server at `socket`, under `bound`: its
+    /// standard output as Rex wrote it, never read as JSON; or its refusal
+    /// in its words, or no answer (98, 222; core.29).
+    pub fn printed(&self, socket: &Path, args: &[&str], bound: Duration) -> Result<String, Call> {
         let mut command = Command::new(&self.program);
         command
             .arg("--autostart=false")
@@ -412,7 +497,7 @@ impl Rex {
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         let mut child = match command.spawn() {
             Ok(child) => child,
-            Err(error) => return Call::Unanswered(format!("rex could not be run: {error}")),
+            Err(error) => return Err(Call::Unanswered(format!("rex could not be run: {error}"))),
         };
         let read = |pipe: Option<Box<dyn Read + Send>>| {
             std::thread::spawn(move || {
@@ -439,14 +524,16 @@ impl Rex {
                         unsafe { libc::kill(-group, libc::SIGKILL) };
                     }
                     let _ = child.wait();
-                    return Call::Unanswered(format!(
+                    return Err(Call::Unanswered(format!(
                         "rex {} did not answer within {} seconds",
                         words(args),
                         bound.as_secs_f32()
-                    ));
+                    )));
                 }
                 Err(error) => {
-                    return Call::Unanswered(format!("rex could not be waited on: {error}"))
+                    return Err(Call::Unanswered(format!(
+                        "rex could not be waited on: {error}"
+                    )))
                 }
             }
         };
@@ -457,17 +544,13 @@ impl Rex {
         if !status.success() {
             let said = stderr.trim();
             let said = said.strip_prefix("Error: ").unwrap_or(said);
-            return Call::Refused(if said.is_empty() {
+            return Err(Call::Refused(if said.is_empty() {
                 format!("rex {} exited with {status}", words(args))
             } else {
                 said.to_string()
-            });
+            }));
         }
-        let parsed = match stdout.trim() {
-            "" => return Call::Answered(Value::Null),
-            text => serde_json::from_str::<Value>(text).ok(),
-        };
-        Call::Answered(parsed.unwrap_or(Value::String(stdout)))
+        Ok(stdout)
     }
 
     /// Rex's answer under the profile's bound.
@@ -698,7 +781,7 @@ impl Rex {
             .answer()?
             .get("rows")
             .and_then(Value::as_u64)
-            .unwrap_or(24);
+            .unwrap_or(ROWS);
         Ok(last_rows(&captured, rows as usize))
     }
 
@@ -1420,6 +1503,210 @@ pub fn last_rows(captured: &str, rows: usize) -> String {
     lines[lines.len().saturating_sub(rows)..].join("\n")
 }
 
+/// The last `rows` lines of `captured`, Rex's `capture --format vt
+/// --trim` of a block's scrollback and screen, each kept as Rex wrote it,
+/// its colours and its `\r\n` among it: the block's screen and never its
+/// scrollback (136, 222, C.5's Rex relay row).
+pub fn screen_rows(captured: &str, rows: usize) -> String {
+    let lines: Vec<&str> = captured.split_inclusive('\n').collect();
+    lines[lines.len().saturating_sub(rows)..].concat()
+}
+
+/// What Rex 0.1.0-preview.14 is given for a key flume names (222, C.5's
+/// Rex relay row at blueprints bf9e16f).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RexKey {
+    /// The key by `send-key`, by flume's name, which is Rex's own.
+    Key(String),
+    /// A character `send-key` does not type as itself, given bare: the
+    /// text it is, by `send`.
+    Text(char),
+    /// A key `send-key` does not type as the person typed it, led, which
+    /// nothing types: why, naming it.
+    Refused(String),
+}
+
+/// A key as Rex 0.1.0-preview.14 takes it, by `send-key` by flume's name
+/// only where the pinned Rex was read to type it as the person typed it
+/// (222, C.5's Rex relay row at blueprints bf9e16f; core.29):
+///
+/// - a character of [`SEND_KEY_REFUSES`], one outside ASCII, or a
+///   capital, which `send-key` types as its small letter: bare, the text
+///   it is, by `send`; led by `ctrl+`, `alt+` or `shift+`, refused, named;
+/// - `ctrl+shift+` with any other character or `space`, which `send-key`
+///   types as nothing, or, after `alt+`, as `alt+` alone: refused, named;
+/// - `ctrl+` with a character of [`CTRL_TYPES_NOTHING`], which it types
+///   as nothing, or, after `alt+`, as `alt+` alone: refused, named;
+/// - `alt+shift+` with a character its shift changes, which it types as
+///   `alt+` alone: refused, named;
+/// - every other key, by `send-key`.
+///
+/// No escape sequence is built for a key refused.
+pub fn rex_key(key: &Key) -> RexKey {
+    let refused = || RexKey::Refused(format!("{key} is a key Rex 0.1.0-preview.14 cannot type"));
+    let led = key.ctrl || key.alt || key.shift;
+    match key.name {
+        KeyName::Char(one)
+            if !one.is_ascii() || one.is_ascii_uppercase() || SEND_KEY_REFUSES.contains(&one) =>
+        {
+            if led {
+                refused()
+            } else {
+                RexKey::Text(one)
+            }
+        }
+        KeyName::Char(one)
+            if (key.ctrl && key.shift)
+                || (key.ctrl && CTRL_TYPES_NOTHING.contains(&one))
+                || (key.alt && key.shift && !SHIFT_KEEPS.contains(&one)) =>
+        {
+            refused()
+        }
+        KeyName::Space if key.ctrl && key.shift => refused(),
+        _ => RexKey::Key(key.to_string()),
+    }
+}
+
+/// A run of a relay's keys given to Rex by one call.
+enum Run {
+    /// Keys `send-key` takes, by one `send-key`.
+    Keys(Vec<String>),
+    /// Bare characters `send-key` does not type as themselves, by `send`
+    /// as text.
+    Text(String),
+}
+
+/// The relay of one agent's block: its block as its record named it at
+/// the ask, which keeps its id when it moves between windows, each call
+/// under the profile's environment to the block's own server and bounded
+/// at one second (222, C.5's Rex relay row; core.29).
+struct RexRelay<'a> {
+    rex: &'a Rex,
+    located: Located,
+}
+
+impl RexRelay<'_> {
+    /// `verb`, the block in its Rex session where its record names one,
+    /// then `rest`, asked of the block's server within the relay's bound:
+    /// Rex's standard output as written, or its refusal or silence.
+    fn printed(&self, verb: &[&str], rest: &[&str]) -> Result<String, Call> {
+        let mut args: Vec<&str> = verb.to_vec();
+        if let Some(session) = &self.located.session {
+            args.extend(["-s", session.as_str()]);
+        }
+        args.extend(["-b", self.located.block.id.as_str()]);
+        args.extend_from_slice(rest);
+        self.rex
+            .printed(&self.located.block.socket, &args, RELAY_BOUND)
+    }
+
+    /// The read Rex's refusal or silence `call` comes to: gone where Rex
+    /// holds no such block or no server runs at its socket, and unread in
+    /// Rex's words or naming the bound otherwise (96, 98, 222).
+    fn unread(&self, call: Call) -> RelayScreen {
+        if call.block_gone(&self.located.block.id) || call.no_server() {
+            return RelayScreen::Gone;
+        }
+        RelayScreen::Unread {
+            reason: call.answer().err().unwrap_or_default(),
+        }
+    }
+
+    /// `verb` on the block with `rest`; Rex's refusal in its words, or
+    /// the bound named, where it did not type.
+    fn input(&self, verb: &[&str], rest: &[&str]) -> Result<(), String> {
+        self.printed(verb, rest)
+            .map(|_| ())
+            .map_err(|call| call.answer().err().unwrap_or_default())
+    }
+
+    /// `text` by `send -- <piece>`, in pieces of at most [`PIECE`] bytes
+    /// cut between characters, in order; the pieces before a refused one
+    /// standing typed (95, 222).
+    fn text(&self, text: &str) -> Result<(), String> {
+        for piece in pieces(text, PIECE) {
+            self.input(&["send"], &["--", piece])?;
+        }
+        Ok(())
+    }
+}
+
+impl Relay for RexRelay<'_> {
+    fn every(&self) -> Duration {
+        RELAY_EVERY
+    }
+
+    /// `capture --format vt --trim`, then `block call size`, and the
+    /// capture's last `rows` lines as Rex wrote them, 24 where Rex gives
+    /// none; gone where Rex holds no such block or no server runs at its
+    /// socket (136, 222, C.5's Rex relay row).
+    fn screen(&mut self) -> RelayScreen {
+        let captured = match self.printed(&["capture"], &["--format", "vt", "--trim"]) {
+            Ok(captured) => captured,
+            Err(call) => return self.unread(call),
+        };
+        let rows = match self.printed(&["block", "call"], &["size"]) {
+            Ok(size) => serde_json::from_str::<Value>(size.trim())
+                .ok()
+                .and_then(|size| size.get("rows").and_then(Value::as_u64))
+                .unwrap_or(ROWS),
+            Err(call) => return self.unread(call),
+        };
+        RelayScreen::Shows {
+            screen: screen_rows(&captured, usize::try_from(rows).unwrap_or(usize::MAX)),
+        }
+    }
+
+    /// Text by `send -- <text>` in pieces; keys in order as runs, each run
+    /// of keys `send-key` types as typed by one `send-key <key>…`, each run
+    /// of bare characters it does not type as themselves by `send` as their
+    /// text, and each other key it does not type as typed refused, named,
+    /// nothing sent for it, ending the run before it, as [`rex_key`] says;
+    /// the input then refused naming each key not typed.
+    /// Nothing is cleared, no Enter of the profile's own is pressed and no
+    /// receipt is read (95, 107, 222, C.5's Rex relay row).
+    fn typed(&mut self, input: &Typed) -> Result<(), String> {
+        let keys = match input {
+            Typed::Text(text) => return self.text(text),
+            Typed::Keys(keys) => keys,
+        };
+        let mut runs: Vec<Run> = vec![];
+        let mut untyped = vec![];
+        let mut ended = false;
+        for key in keys {
+            match (rex_key(key), runs.last_mut()) {
+                (RexKey::Refused(why), _) => {
+                    untyped.push(why);
+                    ended = true;
+                    continue;
+                }
+                (RexKey::Key(name), Some(Run::Keys(run))) if !ended => run.push(name),
+                (RexKey::Key(name), _) => runs.push(Run::Keys(vec![name])),
+                (RexKey::Text(one), Some(Run::Text(run))) if !ended => run.push(one),
+                (RexKey::Text(one), _) => runs.push(Run::Text(one.to_string())),
+            }
+            ended = false;
+        }
+        for run in &runs {
+            match run {
+                Run::Keys(keys) => {
+                    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+                    self.input(&["send-key"], &keys)?;
+                }
+                Run::Text(text) => self.text(text)?,
+            }
+        }
+        if untyped.is_empty() {
+            return Ok(());
+        }
+        let them = if untyped.len() == 1 { "it" } else { "them" };
+        Err(format!(
+            "{}; nothing was sent for {them}, and the keys around {them} were typed",
+            untyped.join("; ")
+        ))
+    }
+}
+
 /// The records of `program_status` whose owner is the block's child
 /// `child`.
 fn owned_records(status: &Value, child: u64) -> impl Iterator<Item = &Value> {
@@ -1491,11 +1778,20 @@ fn view_blocks(view: &Value) -> Vec<(String, Option<String>)> {
         .collect()
 }
 
-/// `args` as words a refusal may carry: a JSON argument cut short.
+/// `args` as words a refusal may carry: a JSON argument cut short, and
+/// the text a `send` types, after its `--`, as `<typed>`, for every
+/// `send`, a prompt's pieces and a relay's alike, so no words of flume's
+/// repeat what was typed (221; core.57).
 fn words(args: &[&str]) -> String {
+    let typed = (args.first() == Some(&"send"))
+        .then(|| args.iter().position(|arg| *arg == "--"))
+        .flatten();
     args.iter()
-        .map(|arg| {
-            if arg.starts_with('{') || arg.len() > 80 {
+        .enumerate()
+        .map(|(at, arg)| {
+            if typed.is_some_and(|dashes| at > dashes) {
+                "<typed>".to_string()
+            } else if arg.starts_with('{') || arg.len() > 80 {
                 "…".to_string()
             } else {
                 (*arg).to_string()
@@ -2031,6 +2327,17 @@ impl Terminal for Rex {
                 .collect()
         })
     }
+
+    /// A relay of the agent's block, found from its record with no call,
+    /// refused with `no agent runs under <agent>` where no record names a
+    /// block; a block gone by the time of the ask reads gone at the
+    /// handle's first read (221, 222, C.5's Rex relay row).
+    fn relay(&self, agent: &Identity) -> Result<Box<dyn Relay + '_>, String> {
+        let Some(located) = self.located(agent) else {
+            return Err(format!("no agent runs under {agent}"));
+        };
+        Ok(Box::new(RexRelay { rex: self, located }))
+    }
 }
 
 impl Rex {
@@ -2387,6 +2694,451 @@ mod tests {
             kind: Some(kind.into()),
             files: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn relay_of_an_agent_no_record_names_is_refused_and_calls_nothing() {
+        // The terminal-profiles scenario "No record of the agent" (4,
+        // 222): no record, and a claim whose block is not yet recorded,
+        // each refused with send's words before any call of the stand-in
+        // rex, which logs each.
+        let (rex, scratch, ran) = over_records("norelay");
+        let refused = |rex: &Rex| match rex.relay(&identity()) {
+            Err(refused) => refused,
+            Ok(_) => panic!("the Rex profile relayed an agent no record names"),
+        };
+        assert_eq!(refused(&rex), format!("no agent runs under {}", identity()));
+        recorded(
+            &rex.agent_record(&identity()),
+            json!({"identity": identity(), "claimed_by": std::process::id()}),
+            1,
+        );
+        assert_eq!(refused(&rex), format!("no agent runs under {}", identity()));
+        assert!(
+            !ran.exists(),
+            "rex was called: {:?}",
+            fs::read_to_string(&ran)
+        );
+        let _ = fs::remove_dir_all(scratch);
+    }
+
+    /// The profile over records in a scratch folder of its own, its rex a
+    /// stand-in run by `/bin/sh` whose body is `body`, with `$MARK` a path
+    /// in the scratch the test may touch, each call logged first to `log`
+    /// as its words and the names of the `REX_` variables of its
+    /// environment to `log.env`; the agent `identity()` recorded in the
+    /// block `block:b1` of the Rex session `s1` on the server at the
+    /// socket `<scratch>/s.sock`. The profile, the scratch, the log and
+    /// the socket.
+    fn over_relay(name: &str, body: &str) -> (Rex, PathBuf, PathBuf, PathBuf) {
+        let (_, scratch, _) = over_records(name);
+        let program = scratch.join("rex");
+        let log = scratch.join("log");
+        fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nLOG='{log}'\nMARK='{mark}'\nprintf '%s\\n' \"$*\" >> \"$LOG\"\n\
+                 printf 'REX=%s\\n' \"$(env | sed -n 's/^\\(REX_[A-Za-z0-9_]*\\)=.*/\\1/p' | tr '\\n' ' ')\" >> \"$LOG.env\"\n\
+                 {body}\n",
+                log = log.display(),
+                mark = scratch.join("mark").display(),
+            ),
+        )
+        .expect("the stand-in rex");
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
+        let rex = Rex::new(scratch.join("terminal/rex")).with_program(&program);
+        let socket = scratch.join("s.sock");
+        recorded(
+            &rex.agent_record(&identity()),
+            json!({
+                "identity": identity(),
+                "name": rex_name(&identity()),
+                "place": place().location,
+                "block": "block:b1",
+                "socket": socket,
+                "session": "s1",
+            }),
+            1,
+        );
+        (rex, scratch, log, socket)
+    }
+
+    /// Each call the stand-in logged, its words after the server it was
+    /// led to, which is asserted to be `--autostart=false -S
+    /// unix://<socket>`.
+    fn relay_calls(log: &Path, socket: &Path) -> Vec<String> {
+        let led = format!("--autostart=false -S unix://{} ", socket.display());
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                line.strip_prefix(&led)
+                    .unwrap_or_else(|| panic!("a call not led to its server: {line}"))
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The stand-in's answer to a relay's reads: `size` with `rows` rows,
+    /// and `capture` with what `$MARK.capture` holds.
+    fn relay_reads(rows: u32) -> String {
+        format!(
+            "case \"$*\" in\n  *' capture '*) cat \"$MARK.capture\" ;;\n  \
+             *' size') printf '{{\"rows\":{rows},\"cols\":80}}\\n' ;;\nesac"
+        )
+    }
+
+    #[test]
+    fn relay_reads_the_blocks_last_rows_as_rex_writes_them() {
+        // The terminal-profiles scenarios "Reads over a stand-in rex" and
+        // "A screen that reads as JSON" (136, 222, C.5's Rex relay row).
+        let (rex, scratch, log, socket) = over_relay("reads", &relay_reads(3));
+        let line = |n: u32| format!("\x1b[0m\x1b[38;5;1mline {n}\x1b[0m\r\n");
+        let captured: String = (1..=5).map(line).collect();
+        fs::write(scratch.join("mark.capture"), &captured).expect("the capture");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        assert!(!log.exists(), "the ask called rex");
+        assert_eq!(relay.every(), Duration::from_millis(250));
+        let screen: String = (3..=5).map(line).collect();
+        for _ in 0..2 {
+            assert_eq!(
+                relay.screen(),
+                RelayScreen::Shows {
+                    screen: screen.clone()
+                }
+            );
+        }
+        let capture = "capture -s s1 -b block:b1 --format vt --trim".to_string();
+        let size = "block call -s s1 -b block:b1 size".to_string();
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec![capture.clone(), size.clone(), capture, size]
+        );
+        drop(relay);
+        assert_eq!(
+            relay_calls(&log, &socket).len(),
+            4,
+            "dropping the relay called rex"
+        );
+        fs::write(scratch.join("mark.capture"), "{\"a\": 1}\n").expect("the capture");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        assert_eq!(
+            relay.screen(),
+            RelayScreen::Shows {
+                screen: "{\"a\": 1}\n".into()
+            }
+        );
+        let _ = fs::remove_dir_all(scratch);
+        let (rex, scratch, _, _) = over_relay(
+            "rows",
+            "case \"$*\" in *' capture '*) cat \"$MARK.capture\" ;; esac",
+        );
+        let captured: String = (1..=30).map(line).collect();
+        fs::write(scratch.join("mark.capture"), &captured).expect("the capture");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        assert_eq!(
+            relay.screen(),
+            RelayScreen::Shows {
+                screen: (7..=30).map(line).collect()
+            },
+            "24 rows where Rex gives none"
+        );
+        let _ = fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn relay_types_by_send_in_pieces_and_keys_by_send_key() {
+        // The terminal-profiles scenarios "Types over a stand-in rex" and
+        // "A long text" (95, 222, C.5's Rex relay row).
+        let (rex, scratch, log, socket) = over_relay("types", ":");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        assert_eq!(relay.typed(&Typed::Text("yes".into())), Ok(()));
+        let keys = Typed::Keys(vec!["ctrl+c".parse().unwrap(), "enter".parse().unwrap()]);
+        assert_eq!(relay.typed(&keys), Ok(()));
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec![
+                "send -s s1 -b block:b1 -- yes".to_string(),
+                "send-key -s s1 -b block:b1 ctrl+c enter".into(),
+            ]
+        );
+        fs::remove_file(&log).expect("the log cleared");
+        let long = format!("a{}a", "\u{e9}".repeat(74_999));
+        assert_eq!(long.len(), 150_000);
+        assert_eq!(relay.typed(&Typed::Text(long.clone())), Ok(()));
+        let calls = relay_calls(&log, &socket);
+        assert_eq!(calls.len(), 3, "three sends");
+        let mut whole = String::new();
+        for call in &calls {
+            let piece = call
+                .strip_prefix("send -s s1 -b block:b1 -- ")
+                .unwrap_or_else(|| panic!("not a send: {}", &call[..40.min(call.len())]));
+            assert!(piece.len() <= 60_000, "a piece of {} bytes", piece.len());
+            whole.push_str(piece);
+        }
+        assert_eq!(whole, long, "the pieces together are not the text in order");
+        assert!(
+            calls[0].len() < "send -s s1 -b block:b1 -- ".len() + 60_000,
+            "cut between characters"
+        );
+        let _ = fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn relay_types_a_character_send_key_refuses_as_text_and_refuses_it_led() {
+        // The terminal-profiles scenario "Keys and characters among keys
+        // over a stand-in rex" and "Capitals and keys Rex types otherwise
+        // over a stand-in rex" (222, C.5's Rex relay row at blueprints
+        // bf9e16f).
+        let (rex, scratch, log, socket) = over_relay("chars", ":");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        let keys =
+            |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
+        let refused = relay
+            .typed(&keys(&["a", "!", "?", "b", "ctrl+\u{e9}", "enter"]))
+            .expect_err("ctrl+é is refused");
+        assert_eq!(
+            refused,
+            "ctrl+\u{e9} is a key Rex 0.1.0-preview.14 cannot type; nothing was sent for it, \
+             and the keys around it were typed"
+        );
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec![
+                "send-key -s s1 -b block:b1 a".to_string(),
+                "send -s s1 -b block:b1 -- !?".into(),
+                "send-key -s s1 -b block:b1 b".into(),
+                "send-key -s s1 -b block:b1 enter".into(),
+            ]
+        );
+        let cannot = |name: &str| {
+            assert_eq!(
+                rex_key(&name.parse().unwrap()),
+                RexKey::Refused(format!("{name} is a key Rex 0.1.0-preview.14 cannot type")),
+                "{name}"
+            );
+        };
+        let capitals = ('A'..='Z').collect::<Vec<_>>();
+        for one in SEND_KEY_REFUSES
+            .iter()
+            .copied()
+            .chain(['\u{e9}', '\u{1f600}'])
+            .chain(capitals)
+        {
+            let bare = Key::bare(KeyName::Char(one));
+            assert_eq!(rex_key(&bare), RexKey::Text(one), "{one}");
+            for lead in ["ctrl+", "alt+", "shift+", "ctrl+alt+shift+"] {
+                cannot(&format!("{lead}{one}"));
+            }
+        }
+        let taken: Vec<char> = ('a'..='z')
+            .chain('0'..='9')
+            .chain("'+,-./;=>[\\]`".chars())
+            .collect();
+        for one in &taken {
+            for lead in ["ctrl+shift+", "ctrl+alt+shift+"] {
+                cannot(&format!("{lead}{one}"));
+            }
+            let ctrl = format!("ctrl+{one}");
+            let ctrl_alt = format!("ctrl+alt+{one}");
+            if CTRL_TYPES_NOTHING.contains(one) {
+                cannot(&ctrl);
+                cannot(&ctrl_alt);
+            } else {
+                assert_eq!(rex_key(&ctrl.parse().unwrap()), RexKey::Key(ctrl.clone()));
+                assert_eq!(
+                    rex_key(&ctrl_alt.parse().unwrap()),
+                    RexKey::Key(ctrl_alt.clone())
+                );
+            }
+            let alt_shift = format!("alt+shift+{one}");
+            if ['+', '>'].contains(one) {
+                assert_eq!(
+                    rex_key(&alt_shift.parse().unwrap()),
+                    RexKey::Key(alt_shift.clone())
+                );
+            } else {
+                cannot(&alt_shift);
+            }
+            for lead in ["", "alt+", "shift+"] {
+                let name = format!("{lead}{one}");
+                assert_eq!(rex_key(&name.parse().unwrap()), RexKey::Key(name.clone()));
+            }
+        }
+        cannot("ctrl+shift+space");
+        cannot("ctrl+alt+shift+space");
+        for name in [
+            "enter",
+            "delete",
+            "home",
+            "pagedown",
+            "f12",
+            "space",
+            "ctrl+space",
+            "alt+shift+space",
+            "ctrl+c",
+            "ctrl+o",
+            "ctrl+v",
+            "ctrl+/",
+            "ctrl+0",
+            "shift+tab",
+            "ctrl+shift+tab",
+            "ctrl+alt+shift+delete",
+            "ctrl+shift+backspace",
+            "alt+>",
+        ] {
+            assert_eq!(
+                rex_key(&name.parse().unwrap()),
+                RexKey::Key(name.into()),
+                "{name}"
+            );
+        }
+        fs::remove_file(&log).expect("the log cleared");
+        let refused = relay
+            .typed(&keys(&[
+                "A",
+                "b",
+                "ctrl+shift+a",
+                "alt+shift+a",
+                "ctrl+i",
+                "shift+A",
+                "enter",
+            ]))
+            .expect_err("the four led ones");
+        for name in ["ctrl+shift+a", "alt+shift+a", "ctrl+i", "shift+A"] {
+            assert!(
+                refused.contains(&format!("{name} is a key Rex 0.1.0-preview.14 cannot type")),
+                "{refused}"
+            );
+        }
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec![
+                "send -s s1 -b block:b1 -- A".to_string(),
+                "send-key -s s1 -b block:b1 b".into(),
+                "send-key -s s1 -b block:b1 enter".into(),
+            ]
+        );
+        fs::remove_file(&log).expect("the log cleared");
+        let refused = relay
+            .typed(&keys(&["alt+!", "~", "shift+~"]))
+            .expect_err("each led one");
+        assert!(
+            refused.contains("alt+! is a key Rex 0.1.0-preview.14 cannot type")
+                && refused.contains("shift+~ is a key Rex 0.1.0-preview.14 cannot type")
+                && refused
+                    .ends_with("nothing was sent for them, and the keys around them were typed"),
+            "{refused}"
+        );
+        assert_eq!(
+            relay_calls(&log, &socket),
+            vec!["send -s s1 -b block:b1 -- ~".to_string()]
+        );
+        let _ = fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_relay_reads_a_gone_block_gone_and_another_refusal_unread() {
+        // The terminal-profiles scenarios "A block not found", "A server
+        // not running" and "Another refusal" (96, 98, 222).
+        let body = "if [ -f \"$MARK.said\" ]; then cat \"$MARK.said\" >&2; exit \"$(cat \"$MARK.exit\")\"; fi";
+        let (rex, scratch, _, socket) = over_relay("gone", body);
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        let refusing = |said: &str, exit: u8| {
+            fs::write(scratch.join("mark.said"), said).expect("the words");
+            fs::write(scratch.join("mark.exit"), exit.to_string()).expect("the exit");
+        };
+        refusing("Error: block target \"block:b1\" not found\n", 3);
+        assert_eq!(relay.screen(), RelayScreen::Gone);
+        refusing(
+            &format!("Error: no Rex server is running at {}\n", socket.display()),
+            1,
+        );
+        assert_eq!(relay.screen(), RelayScreen::Gone);
+        refusing("Error: busy\n", 1);
+        match relay.screen() {
+            RelayScreen::Unread { reason } => assert!(reason.contains("busy"), "{reason}"),
+            other => panic!("another refusal read {other:?}"),
+        }
+        refusing("Error: block target \"block:other\" not found\n", 3);
+        assert!(
+            matches!(relay.screen(), RelayScreen::Unread { .. }),
+            "another block's not found read gone"
+        );
+        let _ = fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_relay_call_names_its_server_and_past_one_second_nothing_typed() {
+        // The terminal-profiles scenarios "Each call names the block's
+        // server", "A read that does not answer" and "A text that does not
+        // answer" (98, 221; core.29, core.57).
+        let body = format!(
+            "if [ -e \"$MARK.slow\" ]; then exec sleep 5; fi\n{}",
+            relay_reads(24)
+        );
+        let (rex, scratch, log, socket) = over_relay("bound", &body);
+        fs::write(scratch.join("mark.capture"), "a screen\r\n").expect("the capture");
+        let mut relay = rex.relay(&identity()).expect("the block is recorded");
+        std::env::set_var("REX_BLOCK", "block:the-callers");
+        std::env::set_var("REX_SERVER", "unix:///tmp/the-callers.sock");
+        let read = relay.screen();
+        let typed = relay.typed(&Typed::Text("yes".into()));
+        std::env::remove_var("REX_BLOCK");
+        std::env::remove_var("REX_SERVER");
+        assert_eq!(
+            read,
+            RelayScreen::Shows {
+                screen: "a screen\r\n".into()
+            }
+        );
+        assert_eq!(typed, Ok(()));
+        assert_eq!(
+            relay_calls(&log, &socket).len(),
+            3,
+            "each call led to its server"
+        );
+        let env = fs::read_to_string(log.with_extension("env")).expect("the environments");
+        assert_eq!(env.lines().count(), 3, "{env}");
+        assert!(env.lines().all(|line| line.trim() == "REX="), "{env}");
+        fs::write(scratch.join("mark.slow"), "").expect("the mark");
+        let asked = Instant::now();
+        match relay.screen() {
+            RelayScreen::Unread { reason } => {
+                assert!(reason.contains("within 1 second"), "{reason}")
+            }
+            other => panic!("a read past its bound gave {other:?}"),
+        }
+        assert!(
+            asked.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            asked.elapsed()
+        );
+        let asked = Instant::now();
+        match relay.typed(&Typed::Text("secret-typed".into())) {
+            Err(reason) => {
+                assert!(
+                    reason.contains("within 1 second") && reason.contains("<typed>"),
+                    "{reason}"
+                );
+                assert!(!reason.contains("secret-typed"), "{reason}");
+            }
+            Ok(()) => panic!("an input past its bound was typed"),
+        }
+        assert!(
+            asked.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            asked.elapsed()
+        );
+        assert_eq!(
+            words(&["send", "-s", "s1", "-b", "block:b1", "--", "secret-typed"]),
+            "send -s s1 -b block:b1 -- <typed>"
+        );
+        assert_eq!(
+            words(&["send-key", "-b", "block:b1", "ctrl+c"]),
+            "send-key -b block:b1 ctrl+c"
+        );
+        let _ = fs::remove_dir_all(scratch);
     }
 
     #[test]

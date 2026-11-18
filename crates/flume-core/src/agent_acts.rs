@@ -24,7 +24,7 @@ pub const ANSWER_RECORDED_WITHIN: Seconds = 2 * POLL;
 impl Engine {
     /// The place and stage index whose live current start `identity`
     /// names.
-    fn current_start(&self, identity: &str) -> Option<(HeldState, usize)> {
+    pub(crate) fn current_start(&self, identity: &str) -> Option<(HeldState, usize)> {
         self.store.read_every().into_iter().find_map(|read| {
             let held = read.state;
             let (index, start) = held.live_start()?;
@@ -110,7 +110,7 @@ impl Engine {
             }
         }
         let id = held.place.id.clone();
-        let made = self.made_since(&id, &start);
+        let made = self.stage_made(&held, &start);
         let answers =
             kind == StopKind::NeedsAnswer || !crate::submit::found_goes_back(&held, index);
         let open_until = (answers && self.sends(&start))

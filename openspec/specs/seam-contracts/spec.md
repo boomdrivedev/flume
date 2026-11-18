@@ -31,12 +31,15 @@ and no interface SHALL name a tool (core.1, core.2).
 
 The merge queue's submit SHALL answer once the merge queue holds the
 submission, with no wait on its verdict, and its inbox SHALL give each
-pending outcome of the place once (117, 133).
+pending outcome of the place with the submission it decides, again at
+every inbox until the place confirms it by the key it gives, and never
+after; a merge queue that keeps nothing to confirm SHALL give no key and
+each outcome once (117, 133).
 
 #### Scenario: Submit holds no wait
 
 - **WHEN** the fake merge queue holds a submission undecided
-- **THEN** submit answers with the submission at once, and a later inbox gives its outcome once and then nothing (117, 133)
+- **THEN** submit answers with the submission at once, and once it is decided an inbox gives its outcome with that submission, again until the place confirms it by its key, and then nothing (117, 133)
 
 ### Requirement: What the agent and terminal seams read
 
@@ -240,9 +243,9 @@ process it starts, none by default (161).
 ### Requirement: The store keeps the host's own documents
 
 The store seam SHALL read and write the host's own documents, each
-account's spent time and each intent's affinity, by key, compare-and-set
-on a version as a place's held state is, and reached by every flume
-process on the host (102 to 104, 153).
+account's spent time and reading in one document and each intent's
+affinity, by key, compare-and-set on a version as a place's held state
+is, and reached by every flume process on the host (102 to 104, 153).
 
 #### Scenario: A host document written at a moved version
 
@@ -371,7 +374,7 @@ and its intent's moves with no program, and SHALL never be written so
 
 The host's facts SHALL give, as its configuration stands when asked,
 each stream's `session`, the sessions it names for its kinds and their
-stages, and its labels' shares with their `reserve` and `keep_free`,
+stages, and its labels' shares with their `owed` and `reserved`,
 each table with any other key it holds; the label the configuration
 gives a repository's kind or a kind, with where from; and every value
 of the configuration with its layer, whether its local layer was taken,
@@ -379,7 +382,7 @@ and each key passed over with its pin (143, 180, 181, 199, C.7).
 
 #### Scenario: The fake host's sessions, labels and layers
 
-- **WHEN** a test scripts the fake host's `work` with the session `office` and `operation`'s reserve of two keeping one free, `[kinds.research] label = "inception"`, and `streams.work.agents` from the local layer
+- **WHEN** a test scripts the fake host's `work` with the session `office` and `operation` owed two, one of them reserved, `[kinds.research] label = "inception"`, and `streams.work.agents` from the local layer
 - **THEN** the core reads `office` for `work`, `operation`'s share, `inception` from `host-kind` for research in any repository, and `streams.work.agents` from `local` (143, 180, 181, C.7)
 
 #### Scenario: The fake host's sessions for its kinds and stages
@@ -421,30 +424,26 @@ The terminal seam SHALL offer `setup`, what the terminal's own configuration lac
 - **WHEN** the fake terminal is scripted with one missing entry and status is asked
 - **THEN** status gives that entry, and the fake recorded no open, send or close (57)
 
-### Requirement: The host gives an account's reading
-
-The host's facts SHALL give the reading in the file at a path, or why
-there is none, and the core SHALL ask it with the account's `usage`
-expanded against the login environment, a `$VAR` that environment lacks
-being no reading whose words name the variable (29, 184).
-
-#### Scenario: The fake host's reading
-
-- **WHEN** a test sets the fake host's reading for `work-1` and a refusal for `work-2`
-- **THEN** the core reads the reading for `work-1`, the refusal's words for `work-2`, and that the file is missing for `work-3` (184)
-
 ### Requirement: The types of a reading and a move past a threshold
 
-The seams SHALL pass one type each for a reading and its windows, a
-pool's threshold, an account's `usage`, the strategy `most-left`, and a
-move whose `why` is `threshold` with its window and end; each SHALL
-serialize to JSON and back unchanged, and a move recorded before SHALL
-read with no window and no end (147, 184, 185; core.14).
+The seams SHALL pass one type each for a reading, with when flume took
+it, the agent and session it came from and its windows, for an
+account's document of its spent time and its reading, for a pool's
+threshold, the strategy `most-left`, and a move whose `why` is
+`threshold` with its window and end; each SHALL serialize to JSON in
+C.7's form and back unchanged, and a document or a move an earlier
+release wrote SHALL read as written (147, 153, 184, 185, C.7;
+core.14).
 
 #### Scenario: A pool and a reading
 
-- **WHEN** a most-left pool with a threshold of 85 and an account naming `usage`, and a reading of two windows, one with no reset, are written and read
-- **THEN** each reads back unchanged, the strategy spelled `most-left` (184, 185)
+- **WHEN** a most-left pool with a threshold of 85, and a reading taken from an agent's session of two windows, one 23.5% used with no reset, are written and read
+- **THEN** each reads back unchanged, the strategy spelled `most-left`, the reading's `taken_at` RFC 3339's with its offset and the window's `used` 23.5, a share from 0 to 100 (184, 185, C.7)
+
+#### Scenario: An account's document
+
+- **WHEN** an account's document holding a spent time and a reading is written and read, and then one an earlier release wrote, holding `until`, `words` and `recorded_at` alone
+- **THEN** the first reads back unchanged, and the second reads spent until its `until` with no reading (153, C.7)
 
 #### Scenario: A move past a threshold
 
@@ -1161,3 +1160,114 @@ was read, when it was moved and its last move not made; and a resume by
 
 - **WHEN** a held state written before a place kept checkouts is read
 - **THEN** it reads with no checkouts, and its place is no standing role's
+
+### Requirement: The agent seam reads the windows its program reported
+
+The agent seam SHALL give, for an agent read in the place's own folder,
+the usage windows its program last reported for the account it runs
+under, with when flume's own part of the program took them and the
+session they came from where its record names one, or none yet, or
+unknown; and SHALL say whether its profile builds that part. Both
+SHALL be unknown and not offered by default, so a program whose profile
+builds none is degraded there (171, 174, 211).
+
+#### Scenario: Windows over the seam's scenarios
+
+- **WHEN** the agent seam's scenarios run against a profile that reports windows, for an agent that has reported none, then a report taken at 14:02, then one taken at 14:05
+- **THEN** `reports_windows` answers offered, and `windows` reads none yet, then the 14:02 report, then the 14:05 one, each with the agent's session, and unknown read in another place's folder (211)
+
+#### Scenario: A profile that reports no windows
+
+- **WHEN** the seam's scenarios run against a profile that builds no windows
+- **THEN** `reports_windows` answers not offered, and `windows` reads unknown for any agent (171, 174)
+
+### Requirement: The type of a recipient a standing agent's launch gave
+
+`flume-seams` SHALL hold `RecipientsFrom::Standing`, with the standing
+agent's name, `agent`, and the source that declares it, `source`,
+serialized with `from` `standing`, written and read back by its round
+trip beside the variants before it, and a held state written before
+reading with the recipients' source it held (7, 61, 132; core.14).
+
+#### Scenario: Round trips
+
+- **WHEN** `round_trip.rs` writes a held state whose recipients came from the standing agent `east-planner`, declared by `acme`, and reads it back, beside each variant before it
+- **THEN** each reads as written, the standing one's JSON giving `from` `standing`, `agent` `east-planner` and `source` `acme`, and a held state written before reads with the source it held (61)
+
+### Requirement: The terminal seam's relay
+
+The terminal seam SHALL offer relay: given an agent, a handle, or a
+refusal in the terminal's words. The handle SHALL state the bound within
+which what the terminal shows is read again; read what the terminal
+shows of the agent as a person's view would, or that it holds the agent
+no more, or its words where it did not answer; and type a person's
+input with nothing cleared first and no wait for receipt. Dropping it
+SHALL end nothing in the terminal (107, 221, 222).
+
+#### Scenario: The relay among the terminal's scenarios
+
+- **WHEN** the terminal seam's scenarios run against a terminal that relays
+- **THEN** the relay of an open agent gives a screen; text typed onto what the agent holds typed is not cleared first and `enter` submits both together; typed text shows on a screen read within ten seconds; and once the agent is closed a read answers that the terminal holds it no more (107, 136, 221, 222)
+
+#### Scenario: The relay refused among the terminal's scenarios
+
+- **WHEN** the terminal seam's scenarios run against a terminal that offers no relay
+- **THEN** its relay of an open agent is refused with words (222)
+
+### Requirement: A relay refuses a key its terminal cannot type
+
+A relay's handle SHALL refuse a key its terminal cannot type, naming
+it, with nothing typed for it, and SHALL type the keys after it (222).
+
+#### Scenario: A key the terminal cannot type
+
+- **WHEN** a relay is given keys one of which its terminal cannot type
+- **THEN** the input is refused naming that key, nothing is typed for it, and the keys before and after it are typed in order (222)
+
+### Requirement: A terminal that builds no relay refuses it
+
+A terminal that builds no relay SHALL refuse every relay with `the
+terminal offers no relay`, the seam's default (222).
+
+#### Scenario: A terminal that builds no relay
+
+- **WHEN** a terminal implementing every other operation of the seam is asked to relay an agent
+- **THEN** it is refused with `the terminal offers no relay` (222)
+
+### Requirement: A person's input is text or keys
+
+The seams SHALL carry a person's input as `Typed`, text or keys, read
+from and written as `{"text": …}` and `{"keys": [ … ]}`, each key by
+flume's name (222).
+
+#### Scenario: Input read and written back
+
+- **WHEN** `{"text":"yes"}` and `{"keys":["ctrl+c","enter"]}` are read as `Typed` and written back
+- **THEN** each is written as it was read (222)
+
+### Requirement: flume names a person's keys
+
+The seams SHALL carry a key as `Key`, read from and written as flume's
+name for it: `enter`, `tab`, `esc`, `backspace`, `delete`, `insert`,
+`home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`,
+`space`, `f1` to `f12`, or one printable character, each led by any of
+`ctrl+`, `alt+` and `shift+` in that order, `escape` read as `esc`; any
+other name SHALL be refused, naming it and flume's names (222).
+
+#### Scenario: Key names
+
+- **WHEN** `ctrl+c`, `shift+tab`, `escape`, `f12`, `ctrl+alt+x`, `é` and `space` are read as keys, and then `alt+ctrl+x`, `f13` and `hyper+x`
+- **THEN** the first seven are read and written back as `ctrl+c`, `shift+tab`, `esc`, `f12`, `ctrl+alt+x`, `é` and `space`, and each of the last three is refused naming it and flume's names (222)
+
+### Requirement: The merge queue reads several branches at once
+
+The merge queue seam SHALL answer read-submission for several branches
+of one repository at once, each branch's newest submission in the
+order the branches were asked, from one read of the merge queue; and
+read-submission of one branch SHALL be that read of the one branch (99,
+C.6).
+
+#### Scenario: Two branches and one with nothing
+
+- **WHEN** the fake merge queue holds a submission of `fix/one` and none of `fix/two`, and both are asked at once
+- **THEN** the answer gives `fix/one` its submission and `fix/two` none, in that order, from one read (99)

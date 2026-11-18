@@ -6,9 +6,10 @@
 //! delivered as a read, delivering nothing again; and otherwise follows
 //! the host's state until such an end comes or its timeout passes. While
 //! a caller keeps watch over the host it reads the store alone, and the
-//! caller's settles move the place; while none does it settles every
-//! place before each reading after its first, whatever terminal the
-//! host binds, as every acting command does,
+//! caller's settles move the place; while none does it settles the
+//! places where something is pending before each reading after its
+//! first, whatever terminal the host binds, as every acting command does
+//! (225),
 //! the first reading answering at once an end that stands pending
 //! before a settle could deliver it by notice and tidy its place away. The inbox gives
 //! every end pending for a recipient, of every place on the host, a
@@ -18,8 +19,9 @@
 //! once deliver each end once (75). A recipient no pane holds collects its
 //! ends so, a drop's or a done's among them (43, 62). A recipient's
 //! default is the caller's
-//! environment's, else the role a role's run serves, else the calling
-//! session as the terminal names it, as a launch's (7, 132).
+//! environment's, else the role a role's run serves, else the address
+//! the standing agent the command runs in holds, else the calling
+//! session as the terminal names it, as a launch's (7, 132; core.28).
 
 use crate::held::stop_short_waited;
 use crate::{end_words, Answer, Collected, EndStatus, Engine, WaitingPlace};
@@ -37,25 +39,35 @@ pub enum WaitFor {
 
 impl Engine {
     /// The recipient a command that takes one acts as where it names
-    /// none: the caller's environment's, else the role of the place
-    /// `here` names where that place is a role's run, else the calling
-    /// session as the first terminal the host binds that names one names
-    /// it (7, 132, 190; design 7).
-    pub fn recipient(&self, here: Option<&PlaceId>) -> Option<String> {
+    /// none, in order: the caller's environment's; else the role of the
+    /// place `here` names where that place is a role's run; else the
+    /// address a source gives the standing agent the command runs in,
+    /// where the command's pane holds exactly one, and the refusal,
+    /// naming the agent, each address sorted, and `--recipient`, where it
+    /// holds several; else the calling session as the first terminal the
+    /// host binds that names one names it; else none (7, 132, 190;
+    /// core.28).
+    pub fn recipient(&self, here: Option<&PlaceId>) -> Result<Option<String>, String> {
         if let Some(recipient) = self.host.recipient() {
-            return Some(recipient);
+            return Ok(Some(recipient));
         }
         if let Some(role) = here
             .and_then(|place| self.store.read(place))
             .and_then(|read| read.state.role)
         {
-            return Some(role);
+            return Ok(Some(role));
         }
-        self.caller_session()
+        if let Some(address) = self.standing_here(self.standing()).address()? {
+            return Ok(Some(address));
+        }
+        Ok(self.caller_session())
     }
 
     /// Waits on the place's stage or submission as `recipient`, for up to
-    /// `timeout` where one is given (43; design 9).
+    /// `timeout` where one is given; where no caller keeps watch, each
+    /// reading after the first follows a settle of the places where
+    /// something is pending, which hands on no reading of the host (43,
+    /// 119, 208, 220, 225; design 9).
     pub fn wait(
         &self,
         place: &PlaceId,
@@ -73,7 +85,7 @@ impl Engine {
                 Ok(None) => {}
             }
             if !watched {
-                self.settle_all();
+                self.settle_pending();
                 match self.waited(place, of, recipient, confirms) {
                     Err(reason) => return Answer::refused(reason),
                     Ok(Some(answer)) => return answer,
@@ -257,7 +269,7 @@ impl Engine {
                 Ok(true) => {}
                 Ok(false) => continue,
                 Err(why) => {
-                    self.host.log(&format!(
+                    self.log(&format!(
                         "an end of {} was not handed to {recipient} by the inbox: {why}",
                         held.place.id
                     ));

@@ -19,6 +19,7 @@
 //! hibernates it (44, 90, 91, 212).
 
 use crate::open_sessions::last_answer;
+use crate::reading::lines_from;
 use crate::reading::{repeats_on, AgentReading, Facts};
 use crate::start::Starts;
 use crate::{Engine, Step, HIBERNATE_AFTER, QUIET_LIMIT};
@@ -103,7 +104,16 @@ impl Engine {
         let now = self.host.now();
         let limit = declared.quiet_limit.unwrap_or(QUIET_LIMIT);
         let answered = last_answer(&held, index, &start);
+        let asking = reading.asking == Reading::Yes;
         self.with_start(id, &identity, |start, state| {
+            // Since when a settle read the agent asking a person, so the
+            // place's wait on a person opens and ends at the settles that
+            // read it (90, 217).
+            match (asking, start.asking_since) {
+                (true, None) => start.asking_since = Some(now),
+                (false, Some(_)) => start.asking_since = None,
+                _ => {}
+            }
             if start.last_head != facts.head {
                 start.last_head = facts.head.clone();
                 start.last_head_move = now;
@@ -243,12 +253,13 @@ impl Engine {
     }
 
     /// The stage under `identity` ended as `state`, with what it
-    /// delivered and the lines its run wrote of what it made, its agent
-    /// ended or lost (40, 43, 45, 129); a repetition that delivered its
-    /// group with a task still unticked records no end, and its stage
-    /// repeats, keeping where its run's lines began so the stage's end
-    /// carries every repetition's lines in order (129, 140); false when
-    /// it had ended.
+    /// delivered and every line written of what it made since the stage
+    /// started, read from its count before a delivery lets the count go,
+    /// its agent ended or lost (25, 40, 43, 45, 129); a repetition that
+    /// delivered its group with a task still unticked records no end,
+    /// and its stage repeats, its count kept so the stage's end carries
+    /// every repetition's lines in order (129, 140); false when it had
+    /// ended.
     pub(crate) fn ended(
         &self,
         id: &PlaceId,
@@ -274,11 +285,14 @@ impl Engine {
             start.past_limit = false;
             stage.state = state;
             if state == StageState::Repeating {
-                stage.made_from.get_or_insert(start.made_from);
                 stage.end = None;
                 return Step::Write(true);
             }
-            let from = stage.made_from.take().unwrap_or(start.made_from);
+            let from = stage
+                .start
+                .as_ref()
+                .map_or(0, |start| lines_from(Some(&*stage), start));
+            stage.made_from = None;
             let made = lines
                 .iter()
                 .skip(from)
@@ -290,6 +304,12 @@ impl Engine {
                 made,
                 ..StageEnd::default()
             });
+            // The stage's delivery, or its caller's finish, lets go of
+            // its count, so its next start counts afresh; any other end
+            // keeps it (25).
+            if matches!(state, StageState::Delivered | StageState::Finished) {
+                stage.counts = None;
+            }
             if index + 1 == held.stages.len() && held.place.kind.lands {
                 held.submission.due = true;
             }

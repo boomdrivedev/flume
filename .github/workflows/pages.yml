@@ -10,13 +10,7 @@ on:
     branches: [main]
     paths:
       - site/**
-      - .vale.ini
-      - styles/**
       - .github/workflows/pages.yml
-      # The prose job runs in the devenv shell.
-      - devenv.nix
-      - devenv.yaml
-      - devenv.lock
   workflow_dispatch:
 
 permissions:
@@ -29,20 +23,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The prose, by Vale, before anything is built (.vale.ini).
-  prose:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: cachix/install-nix-action@v31
-      - uses: cachix/cachix-action@v16
-        with:
-          name: devenv
-      - run: nix profile add nixpkgs#devenv
-      - run: devenv shell -- prose
-
+  # The site built and published; nothing reads its pages for their
+  # words, which their writers keep (core.21; record 0074).
   build:
-    needs: prose
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -355,14 +355,18 @@ impl Engine {
                 for over in &across.passed_over {
                     cannot_read.push(format!("the merge queue's {}: {}", over.branch, over.words));
                 }
-                if let Some(reason) = &held.submission.unread {
-                    cannot_read.push(format!("the merge queue's inbox: {reason}"));
-                }
-                for over in &held.submission.passed_over {
-                    cannot_read.push(format!(
-                        "the merge queue's inbox, of {}: {}",
-                        over.branch, over.words
-                    ));
+                // The inbox is read only while the submission is open,
+                // so what it could not read is named only then (133).
+                if crate::base::submission_open(held) {
+                    if let Some(reason) = &held.submission.unread {
+                        cannot_read.push(format!("the merge queue's inbox: {reason}"));
+                    }
+                    for over in &held.submission.passed_over {
+                        cannot_read.push(format!(
+                            "the merge queue's inbox, of {}: {}",
+                            over.branch, over.words
+                        ));
+                    }
                 }
                 let read = crate::submit::own_read(held, across);
                 SubmissionStatus {

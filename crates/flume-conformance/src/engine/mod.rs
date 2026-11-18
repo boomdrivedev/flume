@@ -28,6 +28,7 @@ pub mod own_settings;
 pub mod place_line;
 pub mod place_status;
 pub mod places;
+pub mod relay;
 pub mod repeating_stages;
 pub mod restart;
 pub mod role_waking;
@@ -40,6 +41,7 @@ pub mod start_integrity;
 pub mod starts;
 pub mod stream_terminals;
 pub mod streams;
+pub mod telemetry;
 pub mod tidying;
 pub mod world;
 
@@ -88,5 +90,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(base_places::scenarios());
     every.extend(open_sessions::scenarios());
     every.extend(standing_roles::scenarios());
+    every.extend(relay::scenarios());
+    every.extend(telemetry::scenarios());
     every
 }

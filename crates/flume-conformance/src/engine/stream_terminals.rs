@@ -76,8 +76,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: one_stream_under_another_terminal,
         },
         Scenario {
-            name: "stream terminals: with no caller keeping watch, the host's terminal fake and a stream's other, a caller's act settles every place first under either, and a wait drives its settles",
-            cites: &["119", "122", "190", "208"],
+            name: "stream terminals: with no caller keeping watch, the host's terminal fake and a stream's other, a caller's act settles the places where something is pending first under either, and a wait drives its settles",
+            cites: &["119", "122", "190", "208", "225"],
             run: two_terminals_and_no_watch,
         },
         Scenario {
@@ -526,8 +526,8 @@ fn a_caller_under_a_streams_terminal(_: &()) -> Outcome {
 
 /// The stream-terminals spec's "Two terminals and no watch": no caller
 /// keeps watch, the host's terminal is `fake` and `trial`'s `other`; a
-/// caller's act settles every place first under either, and a wait drives
-/// its settles (119, 122, 190, 208).
+/// caller's act settles the places where something is pending first under
+/// either, and a wait drives its settles (119, 122, 190, 208, 225).
 fn two_terminals_and_no_watch(_: &()) -> Outcome {
     let world = World::new();
     let other = work_and_trial(&world);
@@ -573,7 +573,7 @@ fn two_terminals_and_no_watch(_: &()) -> Outcome {
     ensure_eq!(
         world.status(&two)?.stages[0].state,
         StageState::Lost,
-        "the trial stage, under other, once a command acted"
+        "the trial stage, under other, once a command acted, settling the places where something is pending first"
     );
     Ok(())
 }

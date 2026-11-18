@@ -5,9 +5,9 @@
 
 use flume_core::{
     group_name, percentage, AgentStatus, Answer, Found, HostStatus, OwnStatus, PlaceStatus,
-    PoolStatus, Queued, ReadingStatus, Reserves, SessionAnswer, SessionWait, SourceStatus,
-    StageStatus, StandingFound, StandingStatus, StreamOpened, StreamStatus, Tidied, TitleFrom,
-    WaitingPlace, WindowOutcome, Woke,
+    PoolStatus, Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer, SessionWait,
+    SourceStatus, StageStatus, StandingFound, StandingStatus, StreamOpened, StreamStatus, Tidied,
+    TitleFrom, WaitingPlace, WindowOutcome, Woke,
 };
 use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
@@ -74,6 +74,16 @@ pub fn person(answer: &Answer) -> String {
             None => "the agent may go quiet".to_string(),
         }),
         Answer::Refused { refusal } => lines.push(format!("refused: {}", refusal.reason)),
+        Answer::Relayed {
+            place,
+            agent,
+            ended,
+        } => lines.push(match ended {
+            RelayEnded::Caller => {
+                format!("relayed {place}'s agent {agent} until its caller closed it")
+            }
+            RelayEnded::Gone => format!("relayed {place}'s agent {agent} until its terminal went"),
+        }),
         Answer::Waited {
             place,
             recipient,
@@ -603,6 +613,9 @@ fn recipients_from_words(from: &RecipientsFrom) -> String {
         }
         RecipientsFrom::BasePlace => "from the base place it fixes".into(),
         RecipientsFrom::RoleRun => "from the role's run that launched it".into(),
+        RecipientsFrom::Standing { agent, source } => {
+            format!("from the standing agent {agent} that launched it, declared by {source}")
+        }
     }
 }
 
@@ -1486,14 +1499,16 @@ fn pool_lines(pool: &PoolStatus) -> Vec<String> {
 }
 
 /// An account's reading as a person reads it: each window's use and
-/// reset, then when the host read it, stale where it is not fresh; or why
-/// there is none (184).
+/// reset, then when flume took it and from which agent, stale where it is
+/// not fresh; or why there is none (56, 184, 185).
 fn reading_line(reading: &ReadingStatus) -> String {
     match reading {
         ReadingStatus::Read {
             read_at,
+            agent,
             fresh,
             windows,
+            ..
         } => {
             let mut parts: Vec<String> = windows
                 .iter()
@@ -1506,9 +1521,9 @@ fn reading_line(reading: &ReadingStatus) -> String {
                 })
                 .collect();
             parts.push(if *fresh {
-                format!("read at {read_at}")
+                format!("taken at {read_at} from {agent}")
             } else {
-                format!("stale, read at {read_at}")
+                format!("stale, taken at {read_at} from {agent}")
             });
             parts.join(" · ")
         }
@@ -1873,20 +1888,22 @@ fn confirm_words(end: &flume_core::EndStatus, recipient: &str) -> String {
 }
 
 /// Whether a caller keeps watch over the host, with its bound and when
-/// its newest settle began, or since when none has (56, 119, 208).
+/// its newest settle began, or since when none has, each saying which
+/// places settle: the places where something is pending (56, 119, 208,
+/// 225; core.35).
 fn watch_line(host: &HostStatus) -> String {
     match (host.watch, host.watch_lapsed) {
         (Watch::Bound { seconds }, _) => format!(
-            "  a caller keeps watch: every place settles every {}, last at {}",
+            "  a caller keeps watch: the places where something is pending settle every {}, last at {}",
             duration(seconds),
             host.watch_settled
                 .map_or_else(|| "an unknown time".to_string(), |at| at.to_string())
         ),
         (Watch::None, Some(lapsed)) => format!(
-            "  no caller keeps watch since {lapsed}: every place settles at each command of flume's that acts"
+            "  no caller keeps watch since {lapsed}: the places where something is pending settle at each command of flume's that acts"
         ),
         (Watch::None, None) => {
-            "  no caller keeps watch: every place settles at each command of flume's that acts"
+            "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
                 .into()
         }
     }
@@ -1971,22 +1988,23 @@ fn queued_line(queued: &Queued) -> String {
     )
 }
 
-/// A stream's labels, each with its reserve, what it keeps free, its
-/// agents running and its stages waiting; its reserves passed over where
-/// it states no bound; and what it refuses (56, 181, 182).
+/// A stream's labels, each as `label <name>: owed <n>, reserved <m>, <r>
+/// agents running, <w> waiting`; `what its labels are owed is passed
+/// over: it states no bound` where it states none; and what it refuses
+/// (56, 181, 182).
 fn label_lines(stream: &StreamStatus) -> Vec<String> {
     let mut lines: Vec<String> = stream
         .labels
         .iter()
         .map(|label| {
             format!(
-                "    label {}: a reserve of {}, keeping {} free, {} agents running, {} waiting",
-                label.name, label.reserve, label.keep_free, label.running, label.waiting
+                "    label {}: owed {}, reserved {}, {} agents running, {} waiting",
+                label.name, label.owed, label.reserved, label.running, label.waiting
             )
         })
         .collect();
     if stream.reserves == Reserves::PassedOver {
-        lines.push("    its labels' reserves are passed over: it states no bound".into());
+        lines.push("    what its labels are owed is passed over: it states no bound".into());
     }
     let view = stream.view_refused.as_deref();
     let stages = match (stream.refused.as_deref(), view) {
@@ -3173,7 +3191,7 @@ mod tests {
                     .to_string(),
                 "      spent an hour: no reset read in \"You've hit your weekly limit \u{b7} resets Nov 8, 12am (UTC)\""
                     .to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
@@ -3257,9 +3275,10 @@ mod tests {
 
     #[test]
     fn recipients_with_where_they_came_from() {
-        // 7, 56, 193: each place's recipients with where its launch took
-        // them, the answerer with its source; a place launched before
-        // flume kept it gives them alone.
+        // 7, 56, 132, 193: each place's recipients with where its launch
+        // took them, the answerer with its source and the standing agent
+        // with its name and source; a place launched before flume kept it
+        // gives them alone.
         let line = |recipients: &[&str], from: Option<RecipientsFrom>| {
             place_lines(&PlaceStatus {
                 recipients: recipients.iter().map(|name| name.to_string()).collect(),
@@ -3290,6 +3309,20 @@ mod tests {
         assert_eq!(
             line(&["pane-7"], Some(RecipientsFrom::Session)).as_deref(),
             Some("  recipients: pane-7, from the session that launched it")
+        );
+        assert_eq!(
+            line(
+                &["east/planner"],
+                Some(RecipientsFrom::Standing {
+                    agent: "east-planner".into(),
+                    source: "acme".into()
+                })
+            )
+            .as_deref(),
+            Some(
+                "  recipients: east/planner, from the standing agent east-planner \
+                 that launched it, declared by acme"
+            )
         );
         assert_eq!(line(&["ops"], None).as_deref(), Some("  recipients: ops"));
         assert_eq!(line(&[], None), None);
@@ -3842,7 +3875,7 @@ mod tests {
                 "  source bad (/c/flume/sources/bad.toml): cannot be read: gives no `kinds_dir`, the directory holding the source's packages".to_string(),
                 "  source beta (/c/flume/sources/beta.toml) at /k/beta: holds no kind".to_string(),
                 "  source gamma (/c/flume/sources/gamma.toml) at /k/gamma: cannot be read: /k/gamma, the directory of the source gamma, does not exist".to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
@@ -3862,6 +3895,9 @@ mod tests {
         }
     }
 
+    /// A pool's threshold and its accounts' readings, each taken from an
+    /// agent, stale where it is not fresh, and an account no session
+    /// reported for with why it has none (56, 184, 185).
     #[test]
     fn a_pools_threshold_and_its_accounts_readings() {
         let window = |name: &str, used, resets_at, past| WindowStatus {
@@ -3870,6 +3906,7 @@ mod tests {
             resets_at,
             past,
         };
+        let code = "flume:r:fix--one:code:1";
         let pool = PoolStatus {
             name: "work".into(),
             strategy: Strategy::MostLeft,
@@ -3879,10 +3916,12 @@ mod tests {
                     "work-1",
                     Some(ReadingStatus::Read {
                         read_at: 53_880,
+                        agent: code.into(),
+                        session: Some("s-1".into()),
                         fresh: true,
                         windows: vec![
-                            window("5-hour", 4_200, Some(61_200), false),
-                            window("7-day", 7_150, None, false),
+                            window("five_hour", 4_200, Some(61_200), false),
+                            window("seven_day", 7_150, None, false),
                         ],
                     }),
                     None,
@@ -3891,15 +3930,17 @@ mod tests {
                     "work-2",
                     Some(ReadingStatus::Read {
                         read_at: 52_800,
+                        agent: code.into(),
+                        session: None,
                         fresh: false,
-                        windows: vec![window("5-hour", 1_000, Some(61_200), false)],
+                        windows: vec![window("five_hour", 1_000, Some(61_200), false)],
                     }),
                     None,
                 ),
                 read(
                     "work-3",
                     Some(ReadingStatus::Unread {
-                        unread: "the file is missing".into(),
+                        unread: flume_core::NONE_REPORTED.into(),
                     }),
                     None,
                 ),
@@ -3907,11 +3948,13 @@ mod tests {
                     "work-4",
                     Some(ReadingStatus::Read {
                         read_at: 54_000,
+                        agent: code.into(),
+                        session: Some("s-4".into()),
                         fresh: true,
-                        windows: vec![window("7-day", 9_500, Some(313_200), true)],
+                        windows: vec![window("seven_day", 9_500, Some(313_200), true)],
                     }),
                     Some(Past {
-                        window: "7-day".into(),
+                        window: "seven_day".into(),
                         until: 313_200,
                     }),
                 ),
@@ -3923,14 +3966,14 @@ mod tests {
             vec![
                 "  pool work, most-left, threshold 80%:",
                 "    work-1 (agent): 0 agents running, no bound of its own",
-                "      5-hour 42% (resets 61200) · 7-day 71.5% · read at 53880",
+                "      five_hour 42% (resets 61200) · seven_day 71.5% · taken at 53880 from flume:r:fix--one:code:1",
                 "    work-2 (agent): 0 agents running, no bound of its own",
-                "      5-hour 10% (resets 61200) · stale, read at 52800",
+                "      five_hour 10% (resets 61200) · stale, taken at 52800 from flume:r:fix--one:code:1",
                 "    work-3 (agent): 0 agents running, no bound of its own",
-                "      no reading: the file is missing",
+                "      no reading: no session flume started has reported its windows",
                 "    work-4 (agent): 0 agents running, no bound of its own",
-                "      7-day 95% (resets 313200) · read at 54000",
-                "      past its threshold in 7-day until 313200",
+                "      seven_day 95% (resets 313200) · taken at 54000 from flume:r:fix--one:code:1",
+                "      past its threshold in seven_day until 313200",
                 "    work-5 (agent): 0 agents running, no bound of its own",
             ]
         );
@@ -3981,7 +4024,7 @@ mod tests {
         };
         assert_eq!(
             person(&status),
-            "no place stands on this host\nhost: 0 agents running, no bound\n  no caller keeps watch: every place settles at each command of flume's that acts"
+            "no place stands on this host\nhost: 0 agents running, no bound\n  no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
         );
     }
 
@@ -4161,30 +4204,35 @@ mod tests {
     #[test]
     fn a_host_under_a_watch() {
         // The place-status spec's watched host: a caller's bound and when
-        // its newest settle began (56, 208).
+        // its newest settle began, the places where something is pending
+        // settling (56, 208, 225).
         let host = HostStatus {
             watch: Watch::Bound { seconds: 120 },
             watch_settled: Some(47_400),
+            watch_ended: Some(47_460),
             ..HostStatus::default()
         };
         assert_eq!(
             host_lines(&host)[1],
-            "  a caller keeps watch: every place settles every 2m, last at 47400"
+            "  a caller keeps watch: the places where something is pending settle every 2m, last at 47400"
         );
     }
 
     #[test]
     fn a_host_whose_watch_lapsed() {
         // The place-status spec's unwatched host: since when no caller
-        // keeps watch, the watch's lapse (119, 208).
+        // keeps watch, the watch's lapse twice its bound after its settle
+        // ended, the places where something is pending settling at each
+        // command that acts (119, 208, 225).
         let host = HostStatus {
             watch_settled: Some(47_400),
-            watch_lapsed: Some(47_640),
+            watch_ended: Some(47_460),
+            watch_lapsed: Some(47_700),
             ..HostStatus::default()
         };
         assert_eq!(
             host_lines(&host)[1],
-            "  no caller keeps watch since 47640: every place settles at each command of flume's that acts"
+            "  no caller keeps watch since 47700: the places where something is pending settle at each command of flume's that acts"
         );
     }
 
@@ -4210,7 +4258,7 @@ mod tests {
         assert_eq!(
             lines[lines.len() - 2..],
             [
-                "  a caller keeps watch: every place settles every 30s, last at 100".to_string(),
+                "  a caller keeps watch: the places where something is pending settle every 30s, last at 100".to_string(),
                 format!("    {key}"),
             ]
         );
@@ -5463,7 +5511,7 @@ mod tests {
                 "  stream default, priority 0: 0 agents running, no bound of its own".to_string(),
                 "    its agents open in the terminal's own session".to_string(),
                 "    multiplexer printed (the host's), view terminal (the default), terminal app printed (the default), title \"default\" (the stream's name)".to_string(),
-                "  no caller keeps watch: every place settles at each command of flume's that acts".to_string(),
+                "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
             ]
         );
     }
@@ -5570,6 +5618,8 @@ mod tests {
             queue: vec![],
             labels: vec![flume_core::LabelStatus {
                 name: "operation".into(),
+                owed: 2,
+                reserved: 1,
                 reserve: 2,
                 keep_free: 1,
                 running: 1,
@@ -5591,13 +5641,12 @@ mod tests {
                     "nightly",
                     Some(1),
                     Reserves::Held,
-                    Some("the label operation of the stream nightly keeps 2 free of a reserve of 1, and a reserve is at least what it keeps free"),
+                    Some("the label operation of the stream nightly holds 2 reserved of the 1 it is owed, and a label holds reserved no more than it is owed"),
                 ),
             ],
             ..HostStatus::default()
         };
-        let operation =
-            "    label operation: a reserve of 2, keeping 1 free, 1 agents running, 1 waiting";
+        let operation = "    label operation: owed 2, reserved 1, 1 agents running, 1 waiting";
         assert_eq!(
             host_lines(&host)[1..host_lines(&host).len() - 1],
             [
@@ -5605,18 +5654,18 @@ mod tests {
                 "    its agents open in the session work, the stream's name".to_string(),
                 "    multiplexer printed (the host's), view terminal (the default), terminal app printed (the default), title \"work\" (the stream's name)".to_string(),
                 operation.to_string(),
-                "    waiting for room: /r/places/research--one's work in work, priority 0, short of the stream work's room, the rest kept free for operation".to_string(),
+                "    waiting for room: /r/places/research--one's work in work, priority 0, short of the stream work's room, the rest held reserved for operation".to_string(),
                 "    waiting for room: /r/places/deploy--two's work in work as operation, priority 0, short of the stream work's room, at its bound of 5".to_string(),
                 "  stream personal, priority 0: 5 agents running, no bound of its own".to_string(),
                 "    its agents open in the session personal, the stream's name".to_string(),
                 "    multiplexer printed (the host's), view terminal (the default), terminal app printed (the default), title \"personal\" (the stream's name)".to_string(),
                 operation.to_string(),
-                "    its labels' reserves are passed over: it states no bound".to_string(),
+                "    what its labels are owed is passed over: it states no bound".to_string(),
                 "  stream nightly, priority 0: 5 agents running of 1, room for 0".to_string(),
                 "    its agents open in the session nightly, the stream's name".to_string(),
                 "    multiplexer printed (the host's), view terminal (the default), terminal app printed (the default), title \"nightly\" (the stream's name)".to_string(),
                 operation.to_string(),
-                "    it starts no stage: the label operation of the stream nightly keeps 2 free of a reserve of 1, and a reserve is at least what it keeps free".to_string(),
+                "    it starts no stage: the label operation of the stream nightly holds 2 reserved of the 1 it is owed, and a label holds reserved no more than it is owed".to_string(),
             ]
         );
     }

@@ -445,18 +445,17 @@ impl Engine {
             added
         });
         for why in refused {
-            self.host
-                .log(&format!("an end's delivery was not recorded: {why}"));
+            self.log(&format!("an end's delivery was not recorded: {why}"));
         }
         let records = match written {
             Ok(records) => records,
             Err(why) => {
-                self.host.log(&why);
+                self.log(&why);
                 return false;
             }
         };
         for line in newly {
-            self.host.log(&line);
+            self.log(&line);
         }
         let recorded: Vec<&str> = records
             .iter()
@@ -527,7 +526,7 @@ impl Engine {
         match read(&*self.store) {
             Ok((_, records)) => owing(&records, self.host.now()),
             Err(why) => {
-                self.host.log(&why);
+                self.log(&why);
                 Owing::default()
             }
         }
@@ -584,10 +583,10 @@ impl Engine {
         match written {
             Ok(_) => {
                 for line in let_go {
-                    self.host.log(&line);
+                    self.log(&line);
                 }
             }
-            Err(why) => self.host.log(&why),
+            Err(why) => self.log(&why),
         }
     }
 

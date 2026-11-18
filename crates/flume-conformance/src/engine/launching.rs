@@ -3,6 +3,8 @@
 //! waiting, its kind named with its version or with none, or by its
 //! identity; or the launch refused whole, naming why.
 
+use super::agent_modes::mode_from;
+use super::agent_settings::{to_code, to_verify};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Retry, WaitingOn, Waits};
@@ -112,9 +114,19 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_change_name_taken,
         },
         Scenario {
-            name: "launch: a change launched naming no version runs change@3, the newest of flume's own, its code stage one agent for the whole change, and status names change@3",
-            cites: &["22", "154", "19", "S119"],
+            name: "launch: a change launched naming no version runs change@5, the newest of flume's own, its code stage one agent for the whole change and each stage's agent in full from the kind, and status names flume/change@5",
+            cites: &["22", "154", "19", "162", "S119"],
             run: no_version_named,
+        },
+        Scenario {
+            name: "launch: a change launched as change@4 runs change@4, its code stage one agent for the whole change and each stage's agent in full from the kind, and status names flume/change@4",
+            cites: &["22", "154", "19", "162"],
+            run: change_4_named,
+        },
+        Scenario {
+            name: "launch: a change launched as change@3 runs change@3, its code stage one agent for the whole change, and status names change@3",
+            cites: &["22", "154", "19", "S119"],
+            run: change_3_named,
         },
         Scenario {
             name: "launch: a change launched as change@2 runs change@2, its code stage repeating per task group, and status names change@2",
@@ -127,7 +139,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: change_1_named,
         },
         Scenario {
-            name: "launch: a launch naming change@4 is refused naming it and the versions flume holds, 1, 2 and 3, nothing made",
+            name: "launch: a launch naming change@6 is refused naming it and the versions flume holds, 1, 2, 3, 4 and 5, nothing made",
             cites: &["4", "22", "154"],
             run: a_version_flume_does_not_hold,
         },
@@ -137,7 +149,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_version_the_repository_does_not_hold,
         },
         Scenario {
-            name: "launch: a change named with no version, in a repository that locks nothing, is named flume/change@3 by status, one named change@2 flume/change@2, and one named change@1 flume/change@1",
+            name: "launch: a change named with no version, in a repository that locks nothing, is named flume/change@5 by status, one named change@3 flume/change@3, one named change@2 flume/change@2, and one named change@1 flume/change@1",
             cites: &["22", "154", "19"],
             run: the_identity_status_names,
         },
@@ -210,6 +222,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "launch: a launch naming a role's address and a name no pane holds keeps both as its recipients, from the launch, as they were after a hold and a retry",
             cites: &["7", "8"],
             run: a_role_and_a_reader_beside_it,
+        },
+        Scenario {
+            name: "launch: a launch naming no recipient, with $FLUME_RECIPIENT unset, in the pane of east-planner, which acme gives east/planner, takes east/planner, from the standing agent east-planner declared by acme",
+            cites: &["7", "132"],
+            run: a_launch_from_a_standing_agents_pane,
+        },
+        Scenario {
+            name: "launch: a launch naming no recipient, with $FLUME_RECIPIENT unset, in the pane of an agent acme gives east/planner and east/ops, is refused naming the agent, each address and --recipient, nothing made",
+            cites: &["7", "8", "132"],
+            run: a_launch_from_the_pane_of_two_addresses,
         },
     ]
 }
@@ -357,12 +379,18 @@ fn a_place_held_with_no_address(_: &()) -> Outcome {
 }
 
 fn the_identity_status_names(_: &()) -> Outcome {
-    let world = World::new();
-    let three = launched_as(&world, "change", "three")?;
+    let world = World::with_every_own_version();
+    let five = launched_as(&world, "change", "five")?;
+    ensure_eq!(
+        five.identity.as_deref(),
+        Some("flume/change@5"),
+        "the identity of a change named with no version"
+    );
+    let three = launched_as(&world, "change@3", "three")?;
     ensure_eq!(
         three.identity.as_deref(),
         Some("flume/change@3"),
-        "the identity of a change named with no version"
+        "the identity of change@3"
     );
     let two = launched_as(&world, "change@2", "two")?;
     ensure_eq!(
@@ -415,8 +443,69 @@ fn launched_as(world: &World, kind: &str, name: &str) -> Result<flume_core::Plac
 }
 
 fn no_version_named(_: &()) -> Outcome {
-    let world = World::new();
+    let world = World::with_every_own_version();
     let status = launched_as(&world, "change", "plan")?;
+    ensure_eq!(
+        (
+            status.kind.as_str(),
+            status.version,
+            status.identity.as_deref()
+        ),
+        ("change", 5, Some("flume/change@5")),
+        "the kind status names"
+    );
+    one_agent_in_full_from_the_kind(&world, 5)
+}
+
+fn change_4_named(_: &()) -> Outcome {
+    let world = World::with_every_own_version();
+    let status = launched_as(&world, "change@4", "plan")?;
+    ensure_eq!(
+        (
+            status.kind.as_str(),
+            status.version,
+            status.identity.as_deref()
+        ),
+        ("change", 4, Some("flume/change@4")),
+        "the kind status names"
+    );
+    one_agent_in_full_from_the_kind(&world, 4)
+}
+
+/// The change place `plan` launched in `world` at change@`version`: its
+/// code stage one agent for the whole change, started once, and each
+/// stage's agent given `full` by the kind through construct, code and
+/// verify (22, 162; records 0064, 0077).
+fn one_agent_in_full_from_the_kind(world: &World, version: u32) -> Outcome {
+    let id = World::id("change", "plan");
+    let held = world.held(&id).ok_or("no place")?;
+    let code = &held.place.kind.stages[1];
+    ensure!(
+        !code.repeats && code.agents.len() == 1,
+        "change@{version}'s code is not one agent for the whole change: {code:?}"
+    );
+    let full = Some(Given {
+        layer: Layer::Kind,
+        value: "full".into(),
+        file: None,
+    });
+    world.settle(&id);
+    ensure_eq!(mode_from(world, &id)?, full, "construct's mode");
+    to_code(world, &id, "plan")?;
+    ensure_eq!(mode_from(world, &id)?, full, "code's mode");
+    to_verify(world, &id, "plan")?;
+    ensure_eq!(mode_from(world, &id)?, full, "verify's mode");
+    ensure_eq!(
+        world.held(&id).ok_or("no place")?.stages[1].starts,
+        1,
+        "code's starts"
+    );
+    Ok(())
+}
+
+fn change_3_named(_: &()) -> Outcome {
+    let world = World::new();
+    let status = launched_as(&world, "change@3", "plan")?;
     ensure_eq!(
         (
             status.kind.as_str(),
@@ -427,6 +516,7 @@ fn no_version_named(_: &()) -> Outcome {
         "the kind status names"
     );
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
+    ensure_eq!(held.place.branch, "change/plan", "the place's branch");
     ensure!(
         !held.place.kind.stages[1].repeats,
         "change@3's code repeats"
@@ -473,10 +563,10 @@ fn change_1_named(_: &()) -> Outcome {
 }
 
 fn a_version_flume_does_not_hold(_: &()) -> Outcome {
-    let world = World::new();
-    let reason = refused(&world.engine.launch(&launch("change@4", "plan", Some("x"))))?;
+    let world = World::with_every_own_version();
+    let reason = refused(&world.engine.launch(&launch("change@6", "plan", Some("x"))))?;
     ensure!(
-        reason.contains("change@4") && reason.contains("versions 1, 2, 3"),
+        reason.contains("change@6") && reason.contains("versions 1, 2, 3, 4, 5"),
         "the refusal names not the version and the versions held: {reason}"
     );
     nothing_made(&world)
@@ -1441,6 +1531,87 @@ fn a_role_and_a_reader_beside_it(_: &()) -> Outcome {
         recipients_of(&world, "one")?,
         both,
         "the place's recipients after a hold and a retry"
+    );
+    Ok(())
+}
+
+/// acme gives each of `addresses` the standing agent `east-planner` in
+/// the session `east`, the fake terminal holds it there, and the
+/// launching command runs in its pane with no recipient in its
+/// environment (7, 132).
+fn in_east_planners_pane(world: &World, addresses: &[&str]) {
+    world.host.set_stream("east", Some(Stream::default()));
+    for address in addresses {
+        world.host.set_standing(
+            address,
+            Some(StandingAgent {
+                source: "acme".into(),
+                agent: "east-planner".into(),
+                session: Some("east".into()),
+                answers: None,
+                answerer: false,
+            }),
+        );
+    }
+    let at = world
+        .terminal
+        .add_agent(Some("east"), "east-planner", AgentState::Waiting);
+    world.terminal.set_session(Some(&at));
+    world.host.set_recipient(None);
+}
+
+/// The launching spec's "A launch from a standing agent's pane", status
+/// giving where its recipient came from as place-status' "A recipient
+/// from a standing agent's launch" gives it (7, 56, 132).
+fn a_launch_from_a_standing_agents_pane(_: &()) -> Outcome {
+    let world = World::new();
+    in_east_planners_pane(&world, &["east/planner"]);
+    launched(&world.engine.launch(&launch("fix", "one", Some("mend it"))))?;
+    ensure_eq!(
+        recipients_of(&world, "one")?,
+        (
+            vec!["east/planner".to_string()],
+            Some(RecipientsFrom::Standing {
+                agent: "east-planner".into(),
+                source: "acme".into(),
+            })
+        ),
+        "the place's recipients and where they came from"
+    );
+    let from = serde_json::to_value(world.status(&World::id("fix", "one"))?.recipients_from)
+        .map_err(|error| format!("recipients_from as JSON: {error}"))?;
+    ensure_eq!(
+        (
+            from["from"].as_str(),
+            from["agent"].as_str(),
+            from["source"].as_str()
+        ),
+        (Some("standing"), Some("east-planner"), Some("acme")),
+        "recipients_from in the JSON form"
+    );
+    Ok(())
+}
+
+/// The launching spec's "A launch from the pane of an agent standing for
+/// two addresses" (132; core.8).
+fn a_launch_from_the_pane_of_two_addresses(_: &()) -> Outcome {
+    let world = World::new();
+    in_east_planners_pane(&world, &["east/planner", "east/ops"]);
+    let reason = refused(&world.engine.launch(&launch("fix", "one", Some("mend it"))))?;
+    ensure_eq!(
+        reason.as_str(),
+        "the agent east-planner this command runs in stands for east/ops and east/planner: \
+         name which with --recipient",
+        "the refusal"
+    );
+    nothing_made(&world)?;
+    ensure!(
+        world.git.branch_head(REPOSITORY, "fix/one").is_none(),
+        "the branch was made"
+    );
+    ensure!(
+        world.queue.submissions(REPOSITORY, "fix/one").is_empty(),
+        "the merge queue holds a submission of it"
     );
     Ok(())
 }

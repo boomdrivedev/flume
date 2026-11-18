@@ -93,13 +93,13 @@ pub struct HostVersioned {
     pub document: HostDocument,
 }
 
-/// A host's own document: an account's spent time, an intent's
-/// affinity, the host's watch, or the host's deliveries (43, 146, 147,
-/// 153, 208, C.7).
+/// A host's own document: an account's spent time and reading, an
+/// intent's affinity, the host's watch, or the host's deliveries (43,
+/// 146, 147, 153, 184, 208, C.7).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "of", rename_all = "snake_case")]
 pub enum HostDocument {
-    Account(AccountSpent),
+    Account(AccountDocument),
     Intent(Affinity),
     Watch(Watched),
     Deliveries(Deliveries),
@@ -172,28 +172,59 @@ impl<'de> Deserialize<'de> for DeliveryRecord {
     }
 }
 
-/// The newest settle of every place a caller asked as its watch: when it
-/// began by the host's clock, and the bound it stated. A caller keeps
-/// watch while it began less than twice its bound ago; a host that holds
-/// none has no watch (119, 208).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The newest settle a caller asked as its watch: when it began by the
+/// host's clock, the bound it stated, the command running it and when it
+/// ended. A caller keeps watch while that settle runs, and until twice
+/// its bound after it ended, or after it began where its command died
+/// with no end or a document written before names no command; a host that
+/// holds none has no watch (119, 208).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Watched {
     pub began: Seconds,
     pub bound: Seconds,
+    /// The command running the watch's settle, as held state names a
+    /// launch's making; none in a document written before (2, 76, 208).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    /// When the watch's settle ended, none while it runs and in a
+    /// document written before (208).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended: Option<Seconds>,
 }
 
 impl Watched {
-    /// Whether the watch is kept at `now`: its settle began less than
-    /// twice its bound ago (119, 208).
-    pub fn kept(&self, now: Seconds) -> bool {
-        now.saturating_sub(self.began) < self.bound.saturating_mul(2)
+    /// Whether the watch is kept at `now`: while its settle runs, its
+    /// command living by `alive` and no end held, and otherwise until
+    /// [`Watched::lapses`] (119, 208).
+    pub fn kept(&self, now: Seconds, alive: impl Fn(&str) -> bool) -> bool {
+        self.lapses(alive).is_none_or(|lapses| now < lapses)
     }
 
-    /// When the watch lapses: twice its bound after its settle began
-    /// (119, 208).
-    pub fn lapses(&self) -> Seconds {
-        self.began.saturating_add(self.bound.saturating_mul(2))
+    /// When the watch lapses: twice its bound after its settle ended, or
+    /// after it began where its command died with no end or none is
+    /// named; none while its settle runs (119, 208).
+    pub fn lapses(&self, alive: impl Fn(&str) -> bool) -> Option<Seconds> {
+        let twice = self.bound.saturating_mul(2);
+        match (self.ended, &self.by) {
+            (Some(ended), _) => Some(ended.saturating_add(twice)),
+            (None, Some(by)) if alive(by) => None,
+            (None, _) => Some(self.began.saturating_add(twice)),
+        }
     }
+}
+
+/// An account's own document: the time it is spent until, none where it
+/// is not spent, its keys at the document's top as an earlier release
+/// wrote them, and its reading, none where no session flume started has
+/// reported its windows, under `reading` (146, 153, 184, C.7). A document
+/// an earlier release wrote reads as spent with no reading; one with a
+/// reading and no spent time reads with none.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountDocument {
+    #[serde(flatten)]
+    pub spent: Option<AccountSpent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading: Option<crate::AccountReading>,
 }
 
 /// An account spent until a time by the host's clock, with the words its

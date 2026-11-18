@@ -923,29 +923,56 @@ fn a_submission_from_a_rex_block_names_no_session() {
 }
 
 #[test]
-fn a_failed_entry_is_collected_once_with_sluices_notice() {
+fn a_failed_entry_is_given_with_sluices_notice_until_it_is_confirmed() {
+    // sluice hands an outcome over at every inbox until its reader
+    // confirms it, which flume does by its key once it has acted on it;
+    // a second confirm of the key is taken as the first (133; sluice 51;
+    // sluice record 0102).
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.will_fail("test x failed");
     harness.seam.submit(&place, &from_worktree(&head));
     harness.decide("fix/one");
+    let record = harness.record("fix/one").expect("sluice's entry");
     let Inbox::Outcomes { outcomes, .. } = harness.seam.inbox(&place) else {
         panic!("the inbox could not be read");
     };
-    match outcomes.as_slice() {
-        [SubmissionOutcome::Failed { words }] => assert!(
-            words.starts_with("[sluice] ") && words.contains("test x failed"),
-            "the words are not sluice's notice: {words}"
-        ),
+    let key = match outcomes.as_slice() {
+        [Owed {
+            submission,
+            outcome: SubmissionOutcome::Failed { words },
+            key: Some(key),
+        }] => {
+            assert!(
+                words.starts_with("[sluice] ") && words.contains("test x failed"),
+                "the words are not sluice's notice: {words}"
+            );
+            assert_eq!(*submission, record["id"].to_string(), "the entry");
+            assert_eq!(*key, format!("{}:failed", record["id"]), "the key");
+            key.clone()
+        }
         other => panic!("the first collect gave {other:?}"),
-    }
+    };
+    let Inbox::Outcomes {
+        outcomes: again, ..
+    } = harness.seam.inbox(&place)
+    else {
+        panic!("the second inbox could not be read");
+    };
+    assert_eq!(again, outcomes, "the second collect, unconfirmed");
+    assert_eq!(harness.seam.confirm(&place, &key), Confirmed::Confirmed);
     assert_eq!(
         harness.seam.inbox(&place),
         Inbox::Outcomes {
             outcomes: vec![],
             passed_over: vec![]
         },
-        "the second collect"
+        "the collect after the confirm"
+    );
+    assert_eq!(
+        harness.seam.confirm(&place, &key),
+        Confirmed::Confirmed,
+        "a second confirm"
     );
 }
 
@@ -1113,10 +1140,14 @@ fn a_conflicts_base_revision_and_words_are_sluices() {
         panic!("the inbox could not be read");
     };
     match outcomes.as_slice() {
-        [SubmissionOutcome::Conflict {
-            files,
-            base: tested,
-            words,
+        [Owed {
+            outcome:
+                SubmissionOutcome::Conflict {
+                    files,
+                    base: tested,
+                    words,
+                },
+            ..
         }] => {
             let expected = record["tested"]["on"]
                 .as_str()
@@ -1135,8 +1166,10 @@ fn a_conflicts_base_revision_and_words_are_sluices() {
 #[test]
 fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     // sluice answers the submit with the entry's record, in conflict with
-    // the one queued ahead of it, exiting as a conflict does, and records
-    // it delivered: submit answers the outcome, and no inbox gives it.
+    // the one queued ahead of it, exiting as a conflict does: submit
+    // answers the outcome with its delivery's key, the inbox gives it
+    // too until flume confirms it by that key, and nothing after (133;
+    // sluice 51; sluice record 0102).
     let harness = Harness::new();
     let (place, head) = harness.place();
     let other = Harness::worktree(&harness.repository, "other", "other", "work.rs");
@@ -1160,10 +1193,12 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     let Submitted::Decided {
         submission,
         outcome: SubmissionOutcome::Conflict { files, base, words },
+        key: Some(key),
     } = answer
     else {
         panic!("a conflict at the submit was answered {answer:?}");
     };
+    assert_eq!(key, format!("{}:conflict", record["id"]), "the key");
     assert_eq!(submission.id, record["id"].to_string(), "the entry");
     assert!(
         matches!(submission.state, SubmissionState::Conflict { .. }),
@@ -1183,24 +1218,39 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
         Revision::new,
     );
     assert_eq!(base, expected, "the base revision");
+    let Inbox::Outcomes { outcomes, .. } = harness.seam.inbox(&place) else {
+        panic!("the inbox could not be read");
+    };
+    assert_eq!(
+        outcomes
+            .iter()
+            .map(|owed| (owed.submission.as_str(), owed.key.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![(submission.id.as_str(), Some(key.as_str()))],
+        "the inbox, before the outcome is confirmed"
+    );
+    assert_eq!(harness.seam.confirm(&place, &key), Confirmed::Confirmed);
     assert_eq!(
         harness.seam.inbox(&place),
         Inbox::Outcomes {
             outcomes: vec![],
             passed_over: vec![]
         },
-        "the inbox, once the answer delivered the outcome"
+        "the inbox, once the outcome is confirmed"
     );
 }
 
 #[test]
-fn a_settle_beside_the_stand_ins_submit_collects_nothing_its_answer_delivers() {
+fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_gives() {
     // While the stand-in's first submit waits on the rounds that decide
     // it, a settle beside it steps main and collects the place's inbox,
-    // as the agent's Stop hook and a caller's settle do: the inbox gives
-    // nothing, and the conflict reaches flume once, in the submit's
-    // answer with its own words, as a pull request's entry sluice decides
-    // as it takes it in reaches the place only by that answer (112, 133).
+    // as the agent's Stop hook and a caller's settle do. The conflict
+    // reaches flume in the submit's answer with its own words. sluice
+    // keeps it owed until flume confirms it once it has acted on it, so
+    // an inbox in between may hand it over too, as the same entry's
+    // conflict under the same key; the core acts on it once whichever
+    // gives it first (112, 133; sluice 51; sluice record 0102).
+    // Once it is confirmed, the inbox gives nothing.
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.on_main("work.rs", "the base's own\n");
@@ -1225,26 +1275,36 @@ fn a_settle_beside_the_stand_ins_submit_collects_nothing_its_answer_delivers() {
         }
         (submit.join().expect("the submit"), collected)
     });
-    assert_eq!(collected, vec![], "the inbox beside the submit");
     let Submitted::Decided {
+        submission,
         outcome: SubmissionOutcome::Conflict { files, words, .. },
-        ..
+        key: Some(key),
     } = answer
     else {
         panic!("the submit was answered {answer:?}");
     };
+    assert!(
+        collected.iter().all(|owed| owed.submission == submission.id
+            && owed.key.as_deref() == Some(key.as_str())
+            && matches!(
+                &owed.outcome,
+                SubmissionOutcome::Conflict { files: beside, .. } if beside == &files
+            )),
+        "the inbox beside the submit gave other than the answer's outcome: {collected:?}"
+    );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     assert!(
         words.starts_with("conflict on main: work.rs"),
         "the record's own words: {words}"
     );
+    assert_eq!(harness.seam.confirm(&place, &key), Confirmed::Confirmed);
     assert_eq!(
         harness.seam.inbox(&place),
         Inbox::Outcomes {
             outcomes: vec![],
             passed_over: vec![]
         },
-        "the inbox, once the answer delivered the outcome"
+        "the inbox, once the outcome is confirmed"
     );
 }
 
@@ -1342,7 +1402,7 @@ fn a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_coll
     // sluice answers the inbox with every other branch's outcomes and the
     // branch it could not read in its `unread`, exiting as a failure:
     // the inbox passes that branch over with sluice's words, and the
-    // place's landing on main is collected once (133).
+    // place's landing on main is collected until it is confirmed (133).
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.seam.submit(&place, &from_worktree(&head));
@@ -1368,12 +1428,17 @@ fn a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_coll
         panic!("the inbox past {other} could not be read");
     };
     assert_eq!(
-        outcomes,
+        outcomes
+            .iter()
+            .map(|owed| owed.outcome.clone())
+            .collect::<Vec<_>>(),
         vec![SubmissionOutcome::Landed {
             commit: commit.clone()
         }],
         "the landing collected past {other}"
     );
+    let key = outcomes[0].key.clone().expect("the landing's key");
+    assert_eq!(harness.seam.confirm(&place, &key), Confirmed::Confirmed);
     let branches: Vec<&str> = passed_over
         .iter()
         .map(|over| over.branch.as_str())

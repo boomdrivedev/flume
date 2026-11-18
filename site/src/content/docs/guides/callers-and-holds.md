@@ -177,8 +177,8 @@ It exits `0` for a stage delivered or finished or a submission landed,
 passes. flume keys a wait by the place, never by a process or a pane, so
 a caller whose session restarted waits again and loses nothing. While
 a caller keeps watch over the host, `flume settle --every`, the wait
-only reads; while none does, it settles every place before each
-reading after its first.
+only reads; while none does, it settles the places where something is
+pending before each reading after its first.
 
 ## flume inbox
 

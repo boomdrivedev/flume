@@ -10,10 +10,14 @@
 //! walkthrough asks, the stand-in for sluice is first on `PATH` too, the
 //! pinned sluice answering its first submit decided, or each submit a
 //! pull request that waits for the walkthrough to take it in. With the
-//! stand-in, the host user's login shell is the walk's own, which gives
-//! the walk's `PATH`, so a place's steps, sluice's equip and release, run
-//! the sluice the tree pins; and every sluice keeps its scratch in the
-//! walk's home, which the gate's sandbox lets it write. Every process
+//! stand-in, and on a tools walk whose test writes its own agent program,
+//! the host user's login shell is the walk's own, which gives the walk's
+//! `PATH`, so a place's steps, sluice's equip and release, run the sluice
+//! the tree pins and never the host's (core.22); every sluice the test
+//! starts keeps its scratch in the walk's own folder, which the gate's
+//! sandbox lets it write, and a place's steps, which run in the login
+//! environment alone (29), keep none, the pinned sluice's equip and
+//! release making no scratch where they have nothing to free. Every process
 //! the walkthrough starts, flume, sluice, git and the stand-in, runs in the
 //! scratch home with no multiplexer's session, no flume, sluice or Claude
 //! Code session of the caller's, no credential and no forge (core.6,
@@ -98,9 +102,9 @@ pub struct Walk {
     pub remote: PathBuf,
     home: PathBuf,
     path: String,
-    /// The host user's login shell, the walk's own, with the stand-in;
-    /// none for the check-live layer, whose host's own shell starts its
-    /// terminal's panes.
+    /// The host user's login shell, the walk's own, with the stand-in or
+    /// the test's own agent program; none for the check-live layer, whose
+    /// host's own shell starts its terminal's panes.
     shell: Option<PathBuf>,
     runs: std::cell::Cell<u32>,
     /// The stand-in's account's `CLAUDE_CONFIG_DIR`, none for the
@@ -125,6 +129,22 @@ impl Walk {
     #[allow(dead_code)]
     pub fn without_stand_in(label: &str) -> Walk {
         Walk::made(label, false)
+    }
+
+    /// The walkthrough's repository and host with no stand-in on `PATH`,
+    /// its test writing its own agent program into the walk's `bin`, and
+    /// the host user's login shell the walk's own: a place's steps run the
+    /// sluice the tree pins, as a walk with the stand-in's do, and never
+    /// the one the host's own login shell finds (core.22).
+    // The tools layer's, which the check-live layer does not use.
+    #[allow(dead_code)]
+    pub fn with_its_own_agent(label: &str) -> Walk {
+        let mut walk = Walk::made(label, false);
+        walk.shell = Some(login_shell(
+            &walk.repository.scratch.path("login"),
+            &walk.path,
+        ));
+        walk
     }
 
     fn made(label: &str, stand_in: bool) -> Walk {
@@ -210,7 +230,7 @@ impl Walk {
     pub fn login_shell(&self) -> &Path {
         self.shell
             .as_deref()
-            .expect("a walkthrough with the stand-in")
+            .expect("a walkthrough with a login shell of its own")
     }
 
     /// The stand-in for sluice first on `PATH` as `sluice`, so the
@@ -494,8 +514,9 @@ impl Walk {
     }
 
     /// The prompt the printed command carries, its last word, which
-    /// follows the plugin's folder, the own settings' file and the session
-    /// it resumes, if any, unquoted.
+    /// follows the plugin's folder, the own settings' file, the session it
+    /// resumes, the model, the effort and the mode, if any, in the order
+    /// Claude Code's profile passes them, unquoted.
     pub fn prompt(&self, place: &str) -> String {
         let printed = self.printed(place);
         let (_, after) = printed
@@ -504,7 +525,13 @@ impl Walk {
         let (_, mut quoted) = after
             .split_once(' ')
             .unwrap_or_else(|| panic!("no prompt in {printed}"));
-        for flag in ["--settings ", "--resume "] {
+        for flag in [
+            "--settings ",
+            "--resume ",
+            "--model ",
+            "--effort ",
+            "--permission-mode ",
+        ] {
             if let Some(given) = quoted.strip_prefix(flag) {
                 quoted = given.split_once(' ').map_or(given, |(_, quoted)| quoted);
             }
@@ -629,21 +656,42 @@ impl Walk {
             .cloned()
             .unwrap_or_default()
     }
+
+    /// Where sluice holds submission `id`'s delivery: its `delivery` as
+    /// `sluice status <id> --json` gives it (sluice 51; sluice record
+    /// 0102).
+    pub fn delivery(&self, id: &Value) -> Value {
+        let id = id.to_string();
+        let output = self
+            .command("sluice", &self.repository.dir)
+            .args(["status", id.as_str(), "--json"])
+            .output()
+            .expect("sluice runs");
+        let status: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+            panic!(
+                "sluice status {id}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+        status["delivery"].clone()
+    }
 }
 
 /// The stand-in for sluice written into `bin` as `sluice`: the pinned
 /// sluice, as the test's own `PATH` finds it, with its first submit's
 /// `--no-wait` dropped, so it answers as the pinned sluice answers a
 /// no-wait submit on a base that takes pull requests where it finds the
-/// submission decided as it takes it in: with the entry's record,
-/// exiting as the outcome does, the outcome recorded delivered to the
-/// worktree, so no inbox gives it (sluice's `report_delivering`; 112,
-/// 133). While that submit waits on the rounds that decide it, its inbox
-/// gives no outcome, as the pinned sluice's place inbox gives none of a
-/// submission it decided as it took it in, whose record names the pull
-/// request: a settle beside the submit, the Stop hook's or a caller's,
-/// collects nothing the answer delivers. Every other command, and every
-/// later submit, is the pinned sluice's own.
+/// submission decided as it takes it in: with the entry's record and
+/// its `delivery`, owed to the worktree, exiting as the outcome does; flume
+/// confirms it by its key once it has acted on it, so no later inbox gives
+/// it (112, 133; sluice 51; sluice record 0102). While that submit waits on the rounds
+/// that decide it, its inbox gives no outcome, as the pinned sluice's
+/// place inbox gives none of a submission it decided as it took it in,
+/// whose record names the pull request: a settle beside the submit, the
+/// Stop hook's or a caller's, collects nothing until the answer comes.
+/// Every other command, and every later submit, is the pinned sluice's
+/// own.
 pub fn stand_in_sluice(bin: &Path) {
     let pinned = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
         .map(|dir| dir.join("sluice"))

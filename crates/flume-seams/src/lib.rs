@@ -1,8 +1,9 @@
 //! The eight seams of Part B of flume's statement, one trait each, the
-//! types they pass, and git's history and the host's facts beside them
-//! (section 9). A profile depends on this crate alone, so it implements
-//! its interface and nothing of the core (core.2), and no type or trait
-//! here names a tool (core.1).
+//! types they pass, and git's history, the host's facts and the
+//! telemetry the core hands its signals to beside them (section 9, 216).
+//! A profile depends on this crate alone, so it implements its interface
+//! and nothing of the core (core.2), and no type or trait here names a
+//! tool (core.1).
 
 mod agent;
 mod change;
@@ -16,6 +17,7 @@ mod place;
 mod prompt;
 mod resolver;
 mod store;
+pub mod telemetry;
 mod terminal;
 mod window;
 
@@ -31,6 +33,9 @@ pub use place::*;
 pub use prompt::*;
 pub use resolver::*;
 pub use store::*;
+pub use telemetry::{
+    Attributes, HostReading, PlacesStanding, Sends, Signal, StreamAgents, Telemetry,
+};
 pub use terminal::*;
 pub use window::*;
 
@@ -121,5 +126,65 @@ mod tests {
             );
         }
         assert!(read_span(&format!("{}h", u64::MAX)).is_err(), "past a u64");
+    }
+
+    /// A stage and its start held before stages kept their count read as
+    /// counting nothing earlier: the stage has no count, so its next start
+    /// begins one, and the start counts from its own point (25, 129).
+    #[test]
+    fn a_start_written_before_counts_from_itself() {
+        let stage: StageHeld = serde_json::from_value(serde_json::json!({
+            "name": "code",
+            "state": "ended_short",
+            "starts": 2,
+            "refused_part": null,
+            "end": null,
+            "start": {
+                "n": 2,
+                "started_at": 40,
+                "start_head": "c2",
+                "made_from": 3,
+                "words": "the answer",
+                "identity": {
+                    "repository": "r1",
+                    "place": "fix--one",
+                    "stage": "code",
+                    "start": 2
+                },
+                "secret": "s3cret",
+                "program": "agent",
+                "settings": {
+                    "program": "agent",
+                    "model": null,
+                    "instructions": null,
+                    "beside": null
+                },
+                "start_record": { "program": "agent", "account": null, "env": {} },
+                "record": null,
+                "prompt": { "text": "fix it", "carried": false, "sendings": [], "received_at": null },
+                "live": false,
+                "begun_at": 45,
+                "first_quiet": null,
+                "last_head": "c3",
+                "last_head_move": 50,
+                "past_limit": false
+            }
+        }))
+        .expect("a stage written before reads");
+        assert_eq!(stage.counts, None, "the stage counts from its next start");
+        let start = stage.start.expect("its start");
+        assert_eq!(start.counts, None, "the start began no count earlier");
+        assert_eq!(
+            start.counted(),
+            Counted {
+                start: 2,
+                at: 40,
+                head: Revision::new("c2"),
+                made_from: 3,
+            },
+            "the start's own point"
+        );
+        let written = serde_json::to_value(&start).unwrap();
+        assert!(written.get("counts").is_none(), "no count written");
     }
 }
