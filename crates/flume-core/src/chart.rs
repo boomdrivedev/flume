@@ -175,21 +175,40 @@ impl Engine {
     }
 
     /// The sessions of the stage at `path` for its entry `entry`: one for
-    /// each agent it lists, with that agent's settings as its own, each
-    /// numbered from 1 in the order listed (175, C.2).
+    /// each agent it lists, with that agent's settings as its own, or, for
+    /// `every-file`, one for each file of the place's branch at `head` its
+    /// pattern matches, in path order, with the file held and no settings
+    /// of its own; each numbered from 1 in that order (175, 178, C.2).
     fn sessions_of(
         &self,
-        _held: &HeldState,
+        held: &HeldState,
         path: &str,
         entry: u32,
         stage: &ChartStage,
-        _head: &Revision,
+        head: &Revision,
     ) -> Vec<ChartSession> {
         let given: Vec<(Settings, Option<String>)> = match &stage.agents {
             ChartAgents::Entries(entries) => entries
                 .iter()
                 .map(|settings| (settings.clone(), None))
                 .collect(),
+            ChartAgents::Rule {
+                rule,
+                pattern: Some(pattern),
+            } if rule == atoms::EVERY_FILE => {
+                let mut files: Vec<String> = self
+                    .history
+                    .files(&held.place.repository, head)
+                    .into_iter()
+                    .filter(|file| crate::glob::matches(pattern, file))
+                    .collect();
+                files.sort();
+                files.dedup();
+                files
+                    .into_iter()
+                    .map(|file| (Settings::default(), Some(file)))
+                    .collect()
+            }
             ChartAgents::Rule { .. } => vec![],
         };
         given

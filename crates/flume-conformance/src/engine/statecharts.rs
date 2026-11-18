@@ -25,6 +25,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_sibling_sees_a_move_at_the_next_settle,
         },
         Scenario {
+            name: "statechart: a stage of every-file records one session per file its glob matches at the head, in path order, each starting one fresh agent whose identity names its session",
+            cites: &["30", "33", "175"],
+            run: one_session_per_persona,
+        },
+        Scenario {
+            name: "statechart: a stage entered again records its sessions afresh under entry 2, and those of entry 1 stay as they stood",
+            cites: &["175", "176"],
+            run: a_stage_entered_again,
+        },
+        Scenario {
             name: "statechart: a state running a template flume does not bind refuses the launch, nothing made",
             cites: &["4", "175"],
             run: a_template_flume_does_not_bind,
@@ -366,6 +376,194 @@ fn a_landing_fix_named(_: &()) -> Outcome {
     ensure!(
         reason.contains("landing_fix") && reason.contains("flume/fix@1"),
         "the refusal names not the field: {reason}"
+    );
+    Ok(())
+}
+
+/// One region `stages` whose `test` runs a session per persona, each
+/// delivering its own result, then final at `passed`.
+const PERSONAS: &str = r#"[kinds.persona]
+title = "Persona test"
+
+[kinds.persona.regions.stages]
+initial = "test"
+
+[kinds.persona.regions.stages.states.test]
+machine = "stage"
+transitions = [{ when = { final = "passed" }, to = "passed" }]
+
+[kinds.persona.regions.stages.states.passed]
+final = true
+"#;
+
+/// `persona`, its `stages.test` a stage of `every-file` over
+/// `personas/*.md`, each session committing `results/{{file}}` (175).
+pub fn persona() -> Kind {
+    chart_kind(
+        "persona",
+        PERSONAS,
+        vec![(
+            "stages.test",
+            chart_stage(
+                ChartAgents::Rule {
+                    rule: "every-file".into(),
+                    pattern: Some("personas/*.md".into()),
+                },
+                Deliverable::CommittedReport {
+                    path: "results/{{file}}".into(),
+                },
+                "Test {{file}} as session {{session}}.",
+            ),
+        )],
+    )
+}
+
+fn one_session_per_persona(_: &()) -> Outcome {
+    let world = World::new();
+    world.commit("main", &["personas/a.md", "personas/b.md", "notes/c.md"]);
+    world.kinds.set_kinds(REPOSITORY, vec![persona()]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    let id = World::id("persona", "a");
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let sessions: Vec<(String, Option<String>, Option<String>)> = held
+        .stages
+        .iter()
+        .map(|stage| {
+            (
+                stage.name.clone(),
+                stage
+                    .session
+                    .as_ref()
+                    .and_then(|session| session.file.clone()),
+                stage
+                    .start
+                    .as_ref()
+                    .filter(|start| start.live)
+                    .map(|start| start.identity.stage.clone()),
+            )
+        })
+        .collect();
+    ensure_eq!(
+        sessions,
+        vec![
+            (
+                "stages.test#1/1".to_string(),
+                Some("personas/a.md".to_string()),
+                Some("stages.test#1/1".to_string())
+            ),
+            (
+                "stages.test#1/2".to_string(),
+                Some("personas/b.md".to_string()),
+                Some("stages.test#1/2".to_string())
+            ),
+        ],
+        "the sessions, their files and their starts' identities"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    ensure_eq!(
+        held.declared(1).deliverables.clone(),
+        vec![Deliverable::CommittedReport {
+            path: "results/personas/b.md".into()
+        }],
+        "the second session's deliverable"
+    );
+    let identity = World::identity("persona", "a", "stages.test#1/2", 1);
+    let prompt = world
+        .prompt(&id, &identity)
+        .ok_or("the second session was given no prompt")?;
+    ensure!(
+        prompt.contains("Test personas/b.md as session 2."),
+        "the second session's prompt fills not its file and number: {prompt}"
+    );
+    Ok(())
+}
+
+/// A stage `main.work` left and entered again as a sibling region `clock`
+/// ticks over: left once the clock reads `tock`, entered again once it
+/// reads `tick`.
+const AGAIN: &str = r#"[kinds.again]
+title = "Entered again"
+
+[kinds.again.regions.main]
+initial = "work"
+
+[kinds.again.regions.main.states.work]
+machine = "stage"
+transitions = [{ when = { region = { name = "clock", in = ["tock"] } }, to = "rest" }]
+
+[kinds.again.regions.main.states.rest]
+transitions = [{ when = { region = { name = "clock", in = ["tick"] } }, to = "work" }]
+
+[kinds.again.regions.clock]
+initial = "tick"
+
+[kinds.again.regions.clock.states.tick]
+transitions = [{ when = { always = true }, to = "tock" }]
+
+[kinds.again.regions.clock.states.tock]
+transitions = [{ when = { always = true }, to = "tick" }]
+"#;
+
+fn a_stage_entered_again(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![chart_kind(
+            "again",
+            AGAIN,
+            vec![(
+                "main.work",
+                chart_stage(listed(1), Deliverable::Commits, "Work."),
+            )],
+        )],
+    );
+    launched(&world.engine.launch(&launch("again", "a", None)))?;
+    let id = World::id("again", "a");
+    let names = |world: &World| -> Vec<String> {
+        world
+            .held(&id)
+            .map(|held| held.stages.iter().map(|stage| stage.name.clone()).collect())
+            .unwrap_or_default()
+    };
+    ensure_eq!(
+        names(&world),
+        vec!["main.work#1/1".to_string()],
+        "entry 1's sessions"
+    );
+    let first = world
+        .held(&id)
+        .and_then(|held| held.stages.first().cloned())
+        .ok_or("entry 1 recorded no session")?;
+    // Left at the first settle, entered again at the second and its
+    // sessions recorded at the third (176).
+    for _ in 0..3 {
+        world.settle(&id);
+    }
+    ensure_eq!(
+        names(&world),
+        vec!["main.work#1/1".to_string(), "main.work#2/1".to_string()],
+        "the sessions of both entries"
+    );
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    ensure_eq!(
+        held.chart
+            .as_ref()
+            .and_then(|chart| chart.stages.get("main.work"))
+            .map(|stage| stage.entry),
+        Some(2),
+        "the entry recorded"
+    );
+    ensure_eq!(
+        held.stages[0].start.as_ref().map(|start| &start.identity),
+        first.start.as_ref().map(|start| &start.identity),
+        "entry 1's session's start"
+    );
+    ensure!(
+        held.stages[1]
+            .start
+            .as_ref()
+            .is_some_and(|start| start.live),
+        "entry 2's session did not start"
     );
     Ok(())
 }
