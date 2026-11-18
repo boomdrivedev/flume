@@ -163,14 +163,8 @@ impl Agent for StandInAgent {
     fn effort(&self, _word: &str) -> Result<(), String> {
         Ok(())
     }
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 

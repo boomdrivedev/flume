@@ -96,3 +96,20 @@ Programs option 2, declaration option 1, start option 2, model option 1, program
 - The herdr profile's `send` waits on `agent prompt` for the turn where the agent's profile reads no received ack, and its `open` accepts every kind in `KINDS`, as it already does.
 - A host with a pool of several programs gains nothing until it writes accounts of them (144); a host that writes none sees no change.
 - Public docs say "every agent program herdr starts", and name the programs as products.
+
+## Amendment, 2026-11-18: how a profile says which parts it builds
+
+Status: accepted, the direction unchanged. The choices below are the construct stage's of the change `each-agent-profile-says-which-parts-it-builds`, made on the rules written and cheap to change, each written with the path not taken.
+
+Deciders: the change's construct stage.
+
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da, clauses 93, 170, 171 and 174, C.4's parts row and S73; `crates/flume-seams/src/agent.rs` (`send_back`, `on_quiet`, `reports_windows`, `mode_read_back`, and the defaults of `spent`, `windows`, `carry` and `own`); `crates/flume-core/src/status.rs` and `accounts.rs`; `crates/flume-conformance/src/clauses.rs` (`PROFILES`); the change's design, `openspec/changes/each-agent-profile-says-which-parts-it-builds/design.md`.
+
+### Decision outcome
+
+- **The parts a profile may degrade are the eight flume reads a lesser way today**: spent, windows, send-back, guard, on-quiet, the mode, carry and own settings, in 171's order. Command, started and stop-short are never degraded (C.4). Received, asking, own work, ended and last words join with the common profile's change, which has flume read them from the terminal (171); usage and plan join with the changes that add them to the seam (152, 164). Not taken: every part 171 lists at once, which would have status say flume reads a part from the terminal before it does.
+- **A profile names the parts it builds, and how a degraded part is read is flume's**, one sentence per part on the seam's type, from 171. Not taken: each profile's own words for a degraded part, which 93 and 171 leave to no profile.
+- **A profile that declares nothing builds none**, so no degraded part is read as a built one (170); Claude Code's profile names each of its eight in turn, so a part added later is built for it only by the change that builds it. Not taken: a method every profile must write, or every part built by default.
+- **Whether send-back and on-quiet are offered, windows reported and the mode read back is read from the parts**, no profile answering them itself; the answers that read a record, `spent`, `windows`, `guard`, `carry`, `own` and `reserved`, answer the lesser way for a part not built, which the agent seam's scenarios hold every profile to. Not taken: each profile's own four answers beside its parts.
+- **Status gives the degraded parts alone**, as the agent's `degraded`, each with its part and how it is read, left out where none is (core.14). Not taken: every part, built or degraded.
+- **The clause list builds 174**; 170 to 173 and S71 to S75 stay the common profile's. The statement holds as written: C.4's Claude Code rows each answer from its record, so its table takes no parts row. Not taken: that row on a blueprints branch.

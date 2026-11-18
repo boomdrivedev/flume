@@ -88,6 +88,14 @@ it wraps, with the variables the wrapper sets, so herdr recognises the
 agent as Claude Code. Any other program refuses the launch, since
 Claude Code is the one agent program flume runs.
 
+Claude Code's profile builds every part of what flume reads of an
+agent from Claude Code's own record and the plugin's hooks: whether its
+account reached a usage limit, its usage windows, the Stop hook's
+send-back and on-quiet, the guard, the mode it began in, the carry of
+its conversation to another account, and its own settings. So status
+names no part of a Claude Code agent degraded, and its JSON holds no
+`degraded` ([state](/flume/reference/state/)).
+
 flume checks the plugin's hooks against the Claude Code release its
 repository pins, 2.1.296. It checks there too the `--settings` option,
 the order Claude Code reads its settings in, each key flume reserves

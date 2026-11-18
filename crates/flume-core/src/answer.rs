@@ -1451,6 +1451,19 @@ pub struct AgentStatus {
     /// whose table entry it took; none where no layer gave one (56, 172).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelStatus>,
+    /// Each part of the agent seam its program's profile does not build,
+    /// in 171's order, with how flume reads it; none where its profile
+    /// builds every part or no profile binds its program (56, 170, 174).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<DegradedPart>,
+}
+
+/// A part of the agent seam an agent's profile does not build: the part,
+/// by its word, and how flume reads it (171, 174).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DegradedPart {
+    pub part: Part,
+    pub read: String,
 }
 
 /// An agent's model at its start: `name`, as its layer wrote it, a table

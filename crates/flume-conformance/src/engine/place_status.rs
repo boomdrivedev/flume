@@ -19,9 +19,9 @@ use super::open_sessions::{asking, code, stops_short, taken, QUESTION};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{
-    AccountStatus, Act, AddressStatus, AgentStatus, Answer, Cache, EffortStatus, ModeStatus,
-    ModelStatus, MoveStatus, PlaceStatus, PoolStatus, ReadingStatus, Retry, SessionAnswer,
-    StandingFound, WaitingOn, Waits, KEEP_OPEN,
+    AccountStatus, Act, AddressStatus, AgentStatus, Answer, Cache, DegradedPart, EffortStatus,
+    ModeStatus, ModelStatus, MoveStatus, PlaceStatus, PoolStatus, ReadingStatus, Retry,
+    SessionAnswer, StandingFound, WaitingOn, Waits, KEEP_OPEN,
 };
 use flume_seams::*;
 
@@ -196,6 +196,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a code start begun in ask-each where its record named all is named with the mode asked and the mode begun, and no variable, in the JSON form",
             cites: &["56", "161", "162", "S67"],
             run: a_start_in_another_mode,
+        },
+        Scenario {
+            name: "status: an agent whose profile offers no send-back, guard or on-quiet and builds every other part gives those three degraded in that order, each with how flume reads it, in the JSON form",
+            cites: &["56", "174"],
+            run: a_profile_that_offers_no_hooks,
+        },
+        Scenario {
+            name: "status: an agent whose profile builds every part names none degraded, its JSON holding no degraded",
+            cites: &["56", "174"],
+            run: a_profile_that_builds_every_part,
         },
         Scenario {
             name: "status: an agent's own settings give each key with its layer and its file, how its profile passed them and that they were not read back, in the JSON form",
@@ -816,6 +826,75 @@ fn a_mode_not_read_back(_: &()) -> Outcome {
         json["mode"]["read_back"].clone(),
         serde_json::json!(false),
         "read_back in the JSON form"
+    );
+    Ok(())
+}
+
+/// The fake scripted to build every part: reading its mode back, carrying
+/// a conversation and taking own settings beside the parts a new fake
+/// builds (174).
+fn building_every_part(world: &World) {
+    world.agent.read_mode_back();
+    world.agent.carry_to(
+        flume_fakes::FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.take_own();
+}
+
+/// The place-status spec's scenario "A profile that offers no hooks" (56,
+/// 174).
+fn a_profile_that_offers_no_hooks(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    world.agent.no_send_back();
+    world.agent.no_guard();
+    world.agent.no_on_quiet();
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    ensure_eq!(
+        agent.degraded,
+        [Part::SendBack, Part::Guard, Part::OnQuiet]
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
+        "the agent's degraded parts"
+    );
+    ensure_eq!(
+        json["degraded"].clone(),
+        serde_json::json!([
+            {
+                "part": "send_back",
+                "read": "not offered, so it may go quiet with its deliverable missing"
+            },
+            {
+                "part": "guard",
+                "read": "not offered, so nothing refuses its submitting, merging or pushing its place's branch"
+            },
+            {
+                "part": "on_quiet",
+                "read": "not offered, so the host's watch, or a command where none keeps watch, settles its place"
+            }
+        ]),
+        "degraded in the JSON form"
+    );
+    Ok(())
+}
+
+/// The place-status spec's scenario "A profile that builds every part"
+/// (56, 174; core.14).
+fn a_profile_that_builds_every_part(_: &()) -> Outcome {
+    let world = World::new();
+    building_every_part(&world);
+    let (agent, json) = fix_with_a_mode(&world, &launch("fix", "one", Some("mend it")))?;
+    ensure_eq!(agent.degraded, vec![], "the agent's degraded parts");
+    ensure!(
+        json.get("degraded").is_none(),
+        "the JSON form holds degraded: {}",
+        json["degraded"]
     );
     Ok(())
 }

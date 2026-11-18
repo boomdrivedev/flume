@@ -991,8 +991,9 @@ fn intent_words(intent: &IntentKey) -> String {
 
 /// The current agent of a place of `kind` in `stream`: its line, where
 /// it opened, its terminal, each setting with its layer, its own
-/// settings' files and how they were passed, and what its record says
-/// (56, 190, 195, 199).
+/// settings' files and how they were passed, what its record says, and
+/// each part its profile does not build with how flume reads it (56,
+/// 174, 190, 195, 199).
 fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     let mut lines = vec![agent_line(agent)];
     lines.extend(where_line(agent, stream, kind));
@@ -1017,6 +1018,13 @@ fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     }
     for note in &agent.notes {
         lines.push(format!("    note: {note}"));
+    }
+    for degraded in &agent.degraded {
+        lines.push(format!(
+            "    {} degraded: {}",
+            degraded.part.name(),
+            degraded.read
+        ));
     }
     lines
 }
@@ -1892,18 +1900,18 @@ fn tidy_lines(tidy: &Tidied) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flume_core::EndStatus;
     use flume_core::{
         AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, ModelStatus,
         MoveStatus, OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted,
         StreamListed, StreamStatus, TitleFrom, TitleHeld, WindowStatus,
     };
+    use flume_core::{DegradedPart, EndStatus};
     use flume_seams::{
         AccountFrom, AccountHeld, AccountMove, AgentState, AnswerHeld, BaseFix, Declared, EndHeld,
         EndOf, FixCause, FixKind, FixOf, ForecastHeld, Given, Handed, Layer, ModeBegan, MoveOn,
-        MoveWhy, NamedBy, Phase, PlaceId, ProfileHeld, Reading, ReadyStep, Reserved, SessionClosed,
-        SessionRuns, StageEnd, StageState, StopShortWaited, Strategy, StreamFrom, StreamHeld,
-        Unsettled, View, ViewHeld,
+        MoveWhy, NamedBy, Part, Phase, PlaceId, ProfileHeld, Reading, ReadyStep, Reserved,
+        SessionClosed, SessionRuns, StageEnd, StageState, StopShortWaited, Strategy, StreamFrom,
+        StreamHeld, Unsettled, View, ViewHeld,
     };
     use std::collections::BTreeMap;
 
@@ -1937,6 +1945,7 @@ mod tests {
             own: None,
             effort: None,
             model: None,
+            degraded: vec![],
         };
         assert_eq!(
             agent_line(&agent),
@@ -2427,6 +2436,7 @@ mod tests {
             own: None,
             effort: None,
             model: None,
+            degraded: vec![],
         }
     }
 
@@ -4064,6 +4074,48 @@ mod tests {
             conversation_line(&lost(false, Some("its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"))),
             "    starts afresh after start 1, lost: its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"
         );
+    }
+
+    #[test]
+    fn an_agents_degraded_parts() {
+        // 56, 174: each part its profile does not build on a line of its
+        // own after the agent's notes, with how flume reads it, and none
+        // for an agent whose profile builds every part.
+        let none = in_mode(
+            "edits",
+            Layer::Kind,
+            ModeStatus {
+                passed: "edit-files".into(),
+                entry: None,
+                read_back: true,
+            },
+        );
+        let agent = AgentStatus {
+            notes: vec!["the agent runs flume's plugin version 0.1".into()],
+            degraded: [Part::SendBack, Part::Guard, Part::OnQuiet]
+                .map(|part| DegradedPart {
+                    part,
+                    read: part.read().into(),
+                })
+                .to_vec(),
+            ..none.clone()
+        };
+        let lines = agent_lines(&agent, "work", "fix");
+        let note = lines
+            .iter()
+            .position(|line| line.starts_with("    note: "))
+            .expect("the agent's note");
+        assert_eq!(
+            lines[note + 1..],
+            [
+                "    send-back degraded: not offered, so it may go quiet with its deliverable missing",
+                "    guard degraded: not offered, so nothing refuses its submitting, merging or pushing its place's branch",
+                "    on-quiet degraded: not offered, so the host's watch, or a command where none keeps watch, settles its place",
+            ]
+        );
+        assert!(!agent_lines(&none, "work", "fix")
+            .iter()
+            .any(|line| line.contains(" degraded: ")));
     }
 
     #[test]

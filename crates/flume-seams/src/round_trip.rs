@@ -2090,17 +2090,120 @@ impl Agent for Bare {
         String::new()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
-
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
     }
+}
 
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
+/// The seam-contracts spec's scenario "Each part written and read" (174).
+#[test]
+fn each_part_written_and_read() {
+    let words = [
+        "spent",
+        "windows",
+        "send_back",
+        "guard",
+        "on_quiet",
+        "mode",
+        "carry",
+        "own_settings",
+    ];
+    for (part, word) in Part::ALL.into_iter().zip(words) {
+        assert_eq!(serde_json::to_value(part).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<Part>(serde_json::json!(word)).unwrap(),
+            part
+        );
+        round_trips(part);
     }
+    let words = serde_json::from_value::<Part>(serde_json::json!("colour"))
+        .expect_err("`colour` was read as a part")
+        .to_string();
+    assert!(words.contains("`colour`"), "{words}");
+}
+
+/// The seam-contracts spec's scenario "A part's name and its lesser
+/// reading" (171, 174).
+#[test]
+fn a_parts_name_and_its_lesser_reading() {
+    assert_eq!(Part::SendBack.name(), "send-back");
+    assert_eq!(Part::OwnSettings.name(), "own settings");
+    assert_eq!(
+        Part::Carry.read(),
+        "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
+    );
+    let names: Vec<&str> = Part::ALL.into_iter().map(Part::name).collect();
+    assert_eq!(
+        names,
+        [
+            "spent",
+            "windows",
+            "send-back",
+            "guard",
+            "on-quiet",
+            "mode",
+            "carry",
+            "own settings"
+        ]
+    );
+}
+
+/// The seam-contracts spec's scenario "A profile that builds no part"
+/// (174).
+#[test]
+fn a_profile_that_builds_no_part() {
+    assert_eq!(Bare.parts(), Parts::none());
+    assert_eq!(Bare.parts().degraded(), Part::ALL.to_vec());
+    let reads: Vec<&str> = Bare
+        .parts()
+        .degraded()
+        .into_iter()
+        .map(Part::read)
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            "unknown, so the account it runs under is never recorded spent",
+            "unknown, so the account it runs under has no reading",
+            "not offered, so it may go quiet with its deliverable missing",
+            "not offered, so nothing refuses its submitting, merging or pushing its place's branch",
+            "not offered, so the host's watch, or a command where none keeps watch, settles its place",
+            "recorded and not compared with the mode it began in",
+            "not offered, so a stage whose agent stopped at its account's usage limit starts afresh",
+            "none reserved and none taken, so own settings given for its program are refused",
+        ]
+    );
+    assert_eq!(Bare.send_back(), Offered::NotOffered);
+    assert_eq!(Bare.on_quiet(), Offered::NotOffered);
+    assert_eq!(Bare.reports_windows(), Offered::NotOffered);
+    assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+    assert_eq!(Bare.spent("/folder", &identity()), Spent::Unknown);
+    assert_eq!(Bare.windows("/folder", &identity()), Windows::Unknown);
+    assert_eq!(Bare.guard("/folder", &identity()), Guarded::NotOffered);
+    assert_eq!(
+        Bare.carry("/folder", &identity(), &BTreeMap::new()),
+        Carry::NotOffered
+    );
+    assert_eq!(Bare.reserved(), vec![]);
+    let given = BTreeMap::from([("line".to_string(), serde_json::json!("a"))]);
+    assert!(Bare.own(&given).is_err());
+
+    // A profile naming some parts builds those alone, each named once
+    // however often it is given.
+    let parts = Parts::of(&[Part::OnQuiet, Part::SendBack, Part::SendBack]);
+    assert!(parts.builds(Part::SendBack) && parts.builds(Part::OnQuiet));
+    assert_eq!(
+        parts.degraded(),
+        [
+            Part::Spent,
+            Part::Windows,
+            Part::Guard,
+            Part::Mode,
+            Part::Carry,
+            Part::OwnSettings
+        ]
+    );
+    assert_eq!(Parts::of(&Part::ALL).degraded(), vec![]);
 }
 
 #[test]

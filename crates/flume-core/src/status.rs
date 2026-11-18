@@ -16,10 +16,10 @@ use crate::reading::{find_group, reads_change};
 use crate::settings::program_name;
 use crate::start::Starts;
 use crate::{
-    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, EffortStatus, EndStatus, Engine,
-    ExpiredEnd, GroupStatus, ModeStatus, ModelStatus, MoveStatus, OwnFileStatus, OwnStatus,
-    PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus, SubmissionStatus,
-    WaitingOn, Waits,
+    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, DegradedPart, EffortStatus,
+    EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, ModelStatus, MoveStatus, OwnFileStatus,
+    OwnStatus, PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus,
+    SubmissionStatus, WaitingOn, Waits,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -284,6 +284,7 @@ impl Engine {
             let mut read_back = false;
             let mut reserved = vec![];
             let mut effort_variable = None;
+            let mut degraded = vec![];
             if let Some(agent) = self.agent(&start.program) {
                 if let Guarded::Refused { acts } = agent.guard(&folder, &start.identity) {
                     refused_acts.extend(acts);
@@ -293,6 +294,15 @@ impl Engine {
                 read_back = agent.mode_read_back() == Offered::Offered;
                 reserved = agent.reserved();
                 effort_variable = agent.effort_variable();
+                degraded = agent
+                    .parts()
+                    .degraded()
+                    .into_iter()
+                    .map(|part| DegradedPart {
+                        part,
+                        read: part.read().to_string(),
+                    })
+                    .collect();
             }
             let own = start.own.as_ref().map(|own| OwnStatus {
                 passed: own.passed.clone(),
@@ -365,6 +375,7 @@ impl Engine {
                 own,
                 effort,
                 model: model_status(start),
+                degraded,
             }
         });
         let agent_state = agent.as_ref().map(|agent| agent.state);

@@ -32,7 +32,7 @@ pub mod withheld;
 pub mod wrapper;
 
 use flume_seams::{
-    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Offered,
+    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Part, Parts,
     PerProgram, PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
 };
 use record::Record;
@@ -525,6 +525,26 @@ impl Agent for Claude {
         }
     }
 
+    /// Every part, each named in turn, so a part added to the seam's list
+    /// is built here only by the change that builds it: spent from the
+    /// StopFailure hook's words, windows from the plugin's module,
+    /// send-back and on-quiet from the Stop hook, the guard from the
+    /// PreToolUse hook, the mode read back from UserPromptSubmit's input,
+    /// carry from the session's transcript and own settings by
+    /// `--settings` (171, 174, C.4).
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Spent,
+            Part::Windows,
+            Part::SendBack,
+            Part::Guard,
+            Part::OnQuiet,
+            Part::Mode,
+            Part::Carry,
+            Part::OwnSettings,
+        ])
+    }
+
     /// A usage limit, where the StopFailure hook recorded `rate_limit` with
     /// words that open as 2.1.296's usage-limit messages do, with the
     /// reset they name read from when the hook ran ([`limit`]); a failure
@@ -548,12 +568,6 @@ impl Agent for Claude {
     /// none; unknown where it cannot be read ([`windows`]; 171, 211, C.4).
     fn windows(&self, folder: &str, agent: &Identity) -> Windows {
         windows::windows(folder, agent)
-    }
-
-    /// The plugin's module passes each report of the windows to `flume
-    /// hook usage` (211, C.4).
-    fn reports_windows(&self) -> Offered {
-        Offered::Offered
     }
 
     /// Yes with the stopped start's session where the chosen account's
@@ -623,12 +637,6 @@ impl Agent for Claude {
         Some(KIND)
     }
 
-    /// The start's first prompt's UserPromptSubmit input names the mode
-    /// the session runs in (161).
-    fn mode_read_back(&self) -> Offered {
-        Offered::Offered
-    }
-
     /// 2.1.296's keys that another of flume's settings, the account or a
     /// person owns, each with its owner ([`settings::reserved`]; design 6).
     fn reserved(&self) -> Vec<Reserved> {
@@ -684,18 +692,10 @@ impl Agent for Claude {
         "name it with `--to`, as `flume needs --to <name> \"<words>\"` or `flume needs --found --to <name> \"<words>\"`, the name written as listed here".into()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::Offered
-    }
-
     /// Each act the PreToolUse hook refused (116, 108).
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded {
         Guarded::Refused {
             acts: Record::at(folder, agent).refused(),
         }
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::Offered
     }
 }

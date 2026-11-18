@@ -83,11 +83,12 @@ pub const PLAN: &str = "record 0024's plan stage's change, built after the mode"
 /// and its pace.
 pub const POINTS: &str = "record 0025's change, points, built after the mode";
 
-/// The changes of record 0026 that build what its first change, every
-/// program the terminal starts by its entry, leaves: the common profile's
-/// readings, the program a pool's account chooses and the parts each
-/// profile builds (171, 173, 174; design 9).
-pub const PROFILES: &str = "record 0026's changes still to build: the common profile's readings, a pool's program and each profile's parts";
+/// The changes of record 0026 that build what its first two changes,
+/// every program the terminal starts by its entry and the parts each
+/// profile builds, leave: the common profile's readings and the program a
+/// pool's account chooses (171, 173; design 9).
+pub const PROFILES: &str =
+    "record 0026's changes still to build: the common profile's readings and a pool's program";
 
 /// The change that builds records 0028 and 0029: statechart kinds, run
 /// on the family's engine moved into weir.
@@ -152,7 +153,7 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .map(|clause| clause.to_string())
         .chain((69..=70).map(|scenario| format!("S{scenario}")))
         .map(|clause| (clause, POINTS));
-    let profiles = [171, 173, 174]
+    let profiles = [171, 173]
         .map(|clause| clause.to_string())
         .into_iter()
         .chain((71..=74).map(|scenario| format!("S{scenario}")))
@@ -252,7 +253,7 @@ mod tests {
         let unbuilt = unbuilt();
         assert_eq!(
             unbuilt.len(),
-            3 + 2 + 3 + 6 + 7 + 6 + 1 + 1 + 9 + 2 + 3 + 1 + 3
+            3 + 2 + 3 + 6 + 6 + 6 + 1 + 1 + 9 + 2 + 3 + 1 + 3
         );
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
@@ -265,14 +266,14 @@ mod tests {
             "207", "S113", "S114", "S115", "S116", "S117", "195", "196", "S100", "S101", "S102",
             "197", "S103", "198", "S104", "S105", "202", "203", "204", "205", "206", "208", "S109",
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
-            "S119", "211", "216", "217", "218", "219", "220", "S129", "170", "172", "S75",
+            "S119", "211", "216", "217", "218", "219", "220", "S129", "170", "172", "S75", "174",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),
                 "{built} is named unbuilt"
             );
         }
-        for still in ["171", "173", "174", "S71", "S72", "S73", "S74"] {
+        for still in ["171", "173", "S71", "S72", "S73", "S74"] {
             assert!(
                 unbuilt
                     .iter()
