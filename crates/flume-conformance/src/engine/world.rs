@@ -439,6 +439,8 @@ impl World {
         let watched = Watched {
             began: self.host.now(),
             bound: 7 * 24 * 60 * 60,
+            by: None,
+            ended: None,
         };
         let at = self
             .store

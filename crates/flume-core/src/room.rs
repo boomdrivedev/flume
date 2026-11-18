@@ -1175,7 +1175,7 @@ impl Engine {
                     .collect(),
             })
             .collect();
-        let (watch, watch_settled, watch_lapsed) = self.watch_status();
+        let (watch, watch_settled, watch_ended, watch_lapsed) = self.watch_status();
         HostStatus {
             running: queue.running,
             bound: queue.bound,
@@ -1187,6 +1187,7 @@ impl Engine {
             addresses: self.addresses(&roles, owing),
             watch,
             watch_settled,
+            watch_ended,
             watch_lapsed,
             terminals: self.terminals_status(),
             bases: self.bases(agents),

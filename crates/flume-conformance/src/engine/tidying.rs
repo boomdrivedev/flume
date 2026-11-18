@@ -8,6 +8,7 @@ use super::carried_conversations::{by_hand, talk, talking};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Answer, Retry, Tidied};
+use flume_fakes::Plan;
 use flume_seams::*;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
@@ -62,7 +63,57 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["S117", "64", "207"],
             run: a_dropped_place_whose_session_a_person_runs,
         },
+        Scenario {
+            name: "tidy: a landed fix's document kept for its recipient's pending end stands through the watch's settles while that end is pending, and the watch's settle after the recipient confirms it removes it",
+            cites: &["62", "225"],
+            run: a_kept_document_let_go,
+        },
     ]
+}
+
+/// The documents kept for their ends once their places were tidied.
+fn kept_documents(world: &World) -> Vec<HeldState> {
+    world
+        .store
+        .read_every()
+        .into_iter()
+        .map(|read| read.state)
+        .filter(|held| matches!(held.phase, Phase::Tidied { .. }))
+        .collect()
+}
+
+/// The settling spec's "A kept document let go": a fix landed and was
+/// tidied, its document kept for its recipient's pending end, and the
+/// recipient then confirms that end; the watch's next settle removes the
+/// kept document (62, 225).
+fn a_kept_document_let_go(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session("ops", AgentState::Waiting);
+    world.queue.plan_submits(vec![Plan::Land]);
+    let mut fix = launch("fix", "one", Some("mend it"));
+    fix.recipients = vec!["ops".into()];
+    launched(&world.engine.launch(&fix))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    world.commit("fix/one", &["fix.rs"]);
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed place's own document");
+    ensure_eq!(kept_documents(&world).len(), 1, "documents kept for ops");
+    for _ in 0..2 {
+        world.engine.settle_every(60);
+        ensure_eq!(
+            kept_documents(&world).len(),
+            1,
+            "documents kept for ops while its ends are pending"
+        );
+    }
+    world.confirm_every("ops");
+    world.engine.settle_every(60);
+    ensure!(
+        kept_documents(&world).is_empty(),
+        "a document kept with nothing pending, after the watch's settle"
+    );
+    Ok(())
 }
 
 fn tidied(answer: Answer) -> Result<Tidied, String> {

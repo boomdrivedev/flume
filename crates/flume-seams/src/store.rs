@@ -144,27 +144,44 @@ impl<'de> Deserialize<'de> for DeliveryRecord {
     }
 }
 
-/// The newest settle of every place a caller asked as its watch: when it
-/// began by the host's clock, and the bound it stated. A caller keeps
-/// watch while it began less than twice its bound ago; a host that holds
-/// none has no watch (119, 208).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The newest settle a caller asked as its watch: when it began by the
+/// host's clock, the bound it stated, the command running it and when it
+/// ended. A caller keeps watch while that settle runs, and until twice
+/// its bound after it ended, or after it began where its command died
+/// with no end or a document written before names no command; a host that
+/// holds none has no watch (119, 208).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Watched {
     pub began: Seconds,
     pub bound: Seconds,
+    /// The command running the watch's settle, as held state names a
+    /// launch's making; none in a document written before (2, 76, 208).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    /// When the watch's settle ended, none while it runs and in a
+    /// document written before (208).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended: Option<Seconds>,
 }
 
 impl Watched {
-    /// Whether the watch is kept at `now`: its settle began less than
-    /// twice its bound ago (119, 208).
-    pub fn kept(&self, now: Seconds) -> bool {
-        now.saturating_sub(self.began) < self.bound.saturating_mul(2)
+    /// Whether the watch is kept at `now`: while its settle runs, its
+    /// command living by `alive` and no end held, and otherwise until
+    /// [`Watched::lapses`] (119, 208).
+    pub fn kept(&self, now: Seconds, alive: impl Fn(&str) -> bool) -> bool {
+        self.lapses(alive).is_none_or(|lapses| now < lapses)
     }
 
-    /// When the watch lapses: twice its bound after its settle began
-    /// (119, 208).
-    pub fn lapses(&self) -> Seconds {
-        self.began.saturating_add(self.bound.saturating_mul(2))
+    /// When the watch lapses: twice its bound after its settle ended, or
+    /// after it began where its command died with no end or none is
+    /// named; none while its settle runs (119, 208).
+    pub fn lapses(&self, alive: impl Fn(&str) -> bool) -> Option<Seconds> {
+        let twice = self.bound.saturating_mul(2);
+        match (self.ended, &self.by) {
+            (Some(ended), _) => Some(ended.saturating_add(twice)),
+            (None, Some(by)) if alive(by) => None,
+            (None, _) => Some(self.began.saturating_add(twice)),
+        }
     }
 }
 

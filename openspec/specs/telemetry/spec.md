@@ -229,10 +229,10 @@ flume's metrics SHALL name a repository, a kind, a stage, a stream, how
 a start ended, and whom a wait is on and for which move, and no place,
 intent, mark, conversation or account: each start's time to its end;
 each wait's time; the stalls and the stuck stages counted; and, at a
-settle of every place on the host, the places standing by kind, state
-and whom they wait on, and each stream's agents running and room. A
-command SHALL send what changed in them since it began, once, as it
-ends (220).
+settle of the watch's, the places standing by kind, state and whom
+they wait on, and each stream's agents running and room. A command
+SHALL send what changed in them since it began, once, as it ends (208,
+220).
 
 #### Scenario: A start's time by its kind and stage
 
@@ -241,8 +241,8 @@ ends (220).
 
 #### Scenario: The host's places at a settle of every place
 
-- **WHEN** a watch's settle of every place runs over two places waiting on their caller and one running, in two streams
-- **THEN** the command sends the places standing by kind, state and whom they wait on, and each stream's agents running and room; a settle of one place sends neither (220, 121, 208)
+- **WHEN** a watch's settle runs over two places waiting on their caller and one running, in two streams
+- **THEN** the command sends the places standing by kind, state and whom they wait on, the two waiting among them, and each stream's agents running and room; a settle of one place, a settle of every place a caller asks with no bound and the settle an unwatched command runs first send neither (220, 121, 208, 225)
 
 #### Scenario: No metric names a place
 

@@ -6,9 +6,10 @@
 //! delivered as a read, delivering nothing again; and otherwise follows
 //! the host's state until such an end comes or its timeout passes. While
 //! a caller keeps watch over the host it reads the store alone, and the
-//! caller's settles move the place; while none does it settles every
-//! place before each reading after its first, whatever terminal the
-//! host binds, as every acting command does,
+//! caller's settles move the place; while none does it settles the
+//! places where something is pending before each reading after its
+//! first, whatever terminal the host binds, as every acting command does
+//! (225),
 //! the first reading answering at once an end that stands pending
 //! before a settle could deliver it by notice and tidy its place away. The inbox gives
 //! every end pending for a recipient, of every place on the host, a
@@ -63,7 +64,10 @@ impl Engine {
     }
 
     /// Waits on the place's stage or submission as `recipient`, for up to
-    /// `timeout` where one is given (43; design 9).
+    /// `timeout` where one is given; where no caller keeps watch, each
+    /// reading after the first follows a settle of the places where
+    /// something is pending, which hands on no reading of the host (43,
+    /// 119, 208, 220, 225; design 9).
     pub fn wait(
         &self,
         place: &PlaceId,
@@ -81,7 +85,7 @@ impl Engine {
                 Ok(None) => {}
             }
             if !watched {
-                self.settle_all();
+                self.settle_pending();
                 match self.waited(place, of, recipient, confirms) {
                     Err(reason) => return Answer::refused(reason),
                     Ok(Some(answer)) => return answer,

@@ -362,7 +362,7 @@ fn a_failed_submission_goes_back_to_code_and_lands_on_the_second() {
     });
     assert_eq!(status["submission"]["send_backs"], 1, "{status}");
     // The failure flume acted on is confirmed, so the next settle is
-    // handed nothing and sends nothing back again (225).
+    // handed nothing and sends nothing back again (133).
     let first = walk.submissions();
     assert_eq!(first.len(), 1, "{first:?}");
     let delivery = walk.delivery(&first[0]["id"]);
@@ -433,7 +433,7 @@ fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
     // its entry's record, found in conflict as it was taken in, exiting
     // as a conflict does, as sluice answers a no-wait submit on a base
     // that takes pull requests, and flume confirms its delivery once it
-    // has acted on it (225; sluice 51; sluice record 0102). The place goes back to code with
+    // has acted on it (133; sluice 51; sluice record 0102). The place goes back to code with
     // the files contested and the base's revision in its words, never
     // waiting on its caller as if refused, and lands on the second.
     let walk = Walk::new("walk-conflict-at-submit");
@@ -916,7 +916,7 @@ fn a_stage_waiting_for_room_starts_at_the_next_command_once_the_host_gives_room(
     let said = walk.person(&["status"]);
     assert!(
         said.contains(
-            "no caller keeps watch: every place settles at each command of flume's that acts"
+            "no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
         ),
         "{said}"
     );

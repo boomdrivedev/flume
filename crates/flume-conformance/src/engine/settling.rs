@@ -8,6 +8,7 @@ use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Retry;
 use flume_fakes::Plan;
 use flume_seams::*;
+use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -19,7 +20,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "settle: a change sent back by a failure its merge queue hands again at every inbox, its confirm not taken, has its code begun in the settle that sent it back and ended in the settle that reads it delivered and quiet, the failure acted on once",
-            cites: &["40", "46", "112", "133", "74", "225"],
+            cites: &["40", "46", "112", "133", "74"],
             run: an_outcome_handed_again_holds_no_stage,
         },
         Scenario {
@@ -28,8 +29,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s7_two_held_places,
         },
         Scenario {
-            name: "settle: with no caller keeping watch, a killed agent is read only when a command acts",
-            cites: &["S27", "119", "I8", "57"],
+            name: "settle: with no caller keeping watch, a killed agent is read only when a command acts, which settles the places where something is pending first, the killed stage's among them",
+            cites: &["S27", "119", "I8", "57", "225"],
             run: s27_killed_with_nobody_watching,
         },
         Scenario {
@@ -43,14 +44,44 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_watched_host_with_one_stream_unwatched,
         },
         Scenario {
-            name: "settle: a caller's settle with a bound of two minutes holds the host's watch, flume unattended three minutes on and attended at five with no other settle between",
+            name: "settle: a caller's settle with a bound of two minutes holds the host's watch, when its settle began and ended and the command that ran it, flume unattended three minutes on and attended at five with no other settle between",
             cites: &["119", "208", "S118"],
             run: a_watch_kept_then_lapsed,
         },
         Scenario {
-            name: "settle: no terminal keeps watch: with no caller's settle with a bound, nothing settles at an agent's change and a caller's drop settles every place first",
-            cites: &["119", "122", "208"],
+            name: "settle: a caller's settle with a bound of one minute that reads the host's places for five holds the watch throughout, flume unattended while it runs and a minute after it ended, and attended two minutes after",
+            cites: &["119", "208"],
+            run: a_settle_that_runs_past_its_bound,
+        },
+        Scenario {
+            name: "settle: a watch whose settle another command began and never ended holds while that command lives, ten minutes on among it, and lapses once it died, twice its bound after the settle began",
+            cites: &["119", "208", "76"],
+            run: a_watch_whose_settle_died,
+        },
+        Scenario {
+            name: "settle: no terminal keeps watch: with no caller's settle with a bound, nothing settles at an agent's change and a caller's drop settles the places where something is pending first",
+            cites: &["119", "122", "208", "225"],
             run: no_terminal_keeps_watch,
+        },
+        Scenario {
+            name: "settle: a watch's settle asks the merge queue, the terminal and the agent program nothing of a fix waiting on an answer whose agent ended, a chore whose submission its launch held or a fix whose code was read lost, reads the fix whose agent runs, and leaves the status of each waiting place as it was",
+            cites: &["42", "45", "47", "225"],
+            run: places_with_nothing_pending,
+        },
+        Scenario {
+            name: "settle: with no caller keeping watch, a drop's settle asks the merge queue, the terminal and the agent program nothing of a fix waiting on an answer whose agent ended",
+            cites: &["119", "225"],
+            run: an_unwatched_drop,
+        },
+        Scenario {
+            name: "settle: a fix waiting on an answer under no hold's words is read by no watch's settle four minutes on, and the watch's settle six minutes on records its stall and delivers it to the fix's recipients",
+            cites: &["130", "225"],
+            run: a_stalls_time_comes,
+        },
+        Scenario {
+            name: "settle: a fix whose waiting move is held for ten minutes is read by no watch's settle nine minutes on, and the watch's settle eleven minutes on lapses the hold and records the fix stalled",
+            cites: &["130", "225"],
+            run: a_holds_bound_passes,
         },
         Scenario {
             name: "settle: S109, under a caller's watch a submitted chore with no agent is settled at each of the caller's settles, each stepping its base once, and once it lands the next delivers the landing and tidies it",
@@ -63,13 +94,13 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_queue_that_moves_on_its_own,
         },
         Scenario {
-            name: "settle: one settle of every place with a submission open on main and one open on a base place's branch landing on main steps each base once in the command",
-            cites: &["124", "125", "46", "202"],
+            name: "settle: one settle of a caller's watch with a submission open on main and one open on a base place's branch landing on main steps each base once in the command",
+            cites: &["124", "125", "46", "202", "208", "225"],
             run: two_depths_in_one_settle,
         },
         Scenario {
-            name: "settle: S118, a host with no watch runs attended, its chore submitted at its agent's quiet and its base stepped only by an act settling every place, until a caller keeps watch and lands it with no act, and four minutes after its last settle began it runs attended again",
-            cites: &["S118", "46", "119", "122", "124", "208"],
+            name: "settle: S118, a host with no watch runs attended, its chore submitted at its agent's quiet and its base stepped only by an act settling the places where something is pending, the submitted chore's among them, until a caller keeps watch and lands it with no act, and four minutes after its last settle ended it runs attended again",
+            cites: &["S118", "46", "119", "122", "124", "208", "225"],
             run: s118_a_host_with_no_watch_runs_attended,
         },
         Scenario {
@@ -111,6 +142,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "submit: a held submission's place landed by hand is over and never submitted",
             cites: &["S30", "63", "47", "111"],
             run: s30_a_landing_before_flume_submits,
+        },
+        Scenario {
+            name: "submit: a held submission's chore landed by a hand is read by no settle of a caller's watch, and a settle naming no place and stating no bound reads its work over and tidies it, never submitting it",
+            cites: &["S30", "63", "225"],
+            run: a_held_submission_landed_by_a_hand,
         },
         Scenario {
             name: "submit: after a restart a landing is collected by the next settle, never submitted anew",
@@ -245,7 +281,7 @@ fn an_outcome_handed_again_holds_no_stage(_: &()) -> Outcome {
     // failure again, so none read the stage's prompt received or its end
     // (40, 46, 133). A merge queue that takes no confirm keeps the
     // failure owed and hands it again at every inbox, as one did before
-    // flume confirmed what it acted on (225).
+    // flume confirmed what it acted on (133).
     let world = World::new();
     world
         .queue
@@ -414,6 +450,11 @@ fn s7_two_held_places(_: &()) -> Outcome {
     Ok(())
 }
 
+/// The settling spec's "Killed with nobody watching", S27: no caller keeps
+/// watch, a code stage's agent stops with nothing delivered, and nothing
+/// reads the stage until a caller drops another place, which settles the
+/// places where something is pending first, the killed stage's among
+/// them, reading it lost (S27, 119, 225).
 fn s27_killed_with_nobody_watching(_: &()) -> Outcome {
     let world = World::new();
     let id = World::id("fix", "one");
@@ -438,7 +479,7 @@ fn s27_killed_with_nobody_watching(_: &()) -> Outcome {
     ensure_eq!(
         world.status(&id)?.stages[0].state,
         StageState::Lost,
-        "the stage once a command acted"
+        "the stage once a command acted, settling the places where something is pending first"
     );
     ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
     Ok(())
@@ -798,6 +839,50 @@ fn s30_a_landing_before_flume_submits(_: &()) -> Outcome {
     world.settle(&id);
     ensure_eq!(world.queue.log.count("submit"), 0, "submissions flume made");
     ensure!(world.held(&id).is_none(), "the landed place is kept");
+    Ok(())
+}
+
+/// The settling spec's "A held submission landed by a hand": a chore's
+/// launch held its submission, a hand lands the chore's branch through the
+/// fake merge queue, and a caller keeps watch; the watch's settles ask the
+/// merge queue nothing of the chore, and a settle naming no place and
+/// stating no bound reads its work over and tidies it, never making the
+/// held submission. The chore's caller's pane waits, so its ends are
+/// handed to it by notice (S30, 43, 63, 225; design 3).
+fn a_held_submission_landed_by_a_hand(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = World::id("chore", "one");
+    let mut chore = launch("chore", "one", Some("bump it"));
+    chore.hold_submission = true;
+    launched(&world.engine.launch(&chore))?;
+    world.settle(&id);
+    world.commit("chore/one", &["chore.rs"]);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Delivered),
+        "the chore's code"
+    );
+    world.queue.hand_landing(REPOSITORY, "chore/one", "main");
+    world.queue.log.clear();
+    for _ in 0..2 {
+        world.engine.settle_every(60);
+        world.host.advance(60);
+    }
+    let asked = world.queue.log.calls();
+    ensure!(
+        !asked.iter().any(|call| call.contains("chore/one")),
+        "the watch's settles asked the merge queue of the chore: {asked:?}"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.phase),
+        Some(Phase::Live),
+        "the chore under the watch"
+    );
+    world.engine.settle(None);
+    ensure!(world.held(&id).is_none(), "the landed chore is kept");
+    ensure_eq!(world.queue.log.count("submit"), 0, "submissions flume made");
     Ok(())
 }
 
@@ -1185,10 +1270,16 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     }
     let began = world.host.now();
     world.engine.settle_every(120);
+    let watched = Watched {
+        began,
+        bound: 120,
+        by: Some(world.host.command()),
+        ended: Some(began),
+    };
     ensure_eq!(
         host_watch(&world),
-        Some(Watched { began, bound: 120 }),
-        "the host's watch"
+        Some(watched.clone()),
+        "the host's watch: when its settle began, the command that ran it, when it ended and its bound"
     );
     world
         .terminal
@@ -1217,8 +1308,106 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
     );
     ensure_eq!(
         host_watch(&world),
-        Some(Watched { began, bound: 120 }),
+        Some(watched),
         "the host's watch, which only a caller's settle with a bound writes"
+    );
+    Ok(())
+}
+
+/// The settling spec's "A settle that runs past its bound": a caller
+/// settles with a bound of one minute, and while that settle reads the
+/// host's places the fake clock passes five minutes; flume runs unattended
+/// throughout that settle and a minute after it ended, and attended once
+/// two minutes have passed since it ended (119, 208).
+fn a_settle_that_runs_past_its_bound(_: &()) -> Outcome {
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x"))))?;
+    let during = Arc::new(Mutex::new(None));
+    {
+        let host = world.host.clone();
+        let engine = world.engine();
+        let during = during.clone();
+        world.store.during_next_read_every(move || {
+            host.advance(5 * 60);
+            *during.lock().expect("the reading") = Some(engine.attended());
+        });
+    }
+    let began = world.host.now();
+    let settled = world.engine.settle_every(60);
+    ensure!(
+        settled.refusal().is_none(),
+        "the settle was refused: {settled:?}"
+    );
+    ensure_eq!(
+        *during.lock().expect("the reading"),
+        Some(false),
+        "whether flume ran attended while the settle read the places, five minutes on"
+    );
+    let ended = began + 5 * 60;
+    ensure_eq!(
+        host_watch(&world).map(|watched| (watched.began, watched.ended)),
+        Some((began, Some(ended))),
+        "when the watch's settle began and ended"
+    );
+    world.host.advance(60);
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended a minute after the settle ended"
+    );
+    world.host.advance(60);
+    ensure!(
+        world.engine.attended(),
+        "flume ran unattended two minutes after the settle ended"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        Some(ended + 2 * 60),
+        "when the watch lapsed"
+    );
+    Ok(())
+}
+
+/// The settling spec's "A watch whose settle died": the host's watch names
+/// a settle with a bound of one minute begun by another command, which has
+/// not ended it; flume runs unattended while that command lives, ten
+/// minutes on among it, and attended once the command has died, two
+/// minutes having passed since that settle began (76, 119, 208).
+fn a_watch_whose_settle_died(_: &()) -> Outcome {
+    let world = World::new();
+    let other = world.host.another_command();
+    let began = world.host.now();
+    let watched = Watched {
+        began,
+        bound: 60,
+        by: Some(other.clone()),
+        ended: None,
+    };
+    world
+        .store
+        .write_host(&HostKey::Watch, None, Some(&HostDocument::Watch(watched)));
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended while the other command's settle runs"
+    );
+    world.host.advance(10 * 60);
+    ensure!(
+        !world.engine.attended(),
+        "flume ran attended ten minutes on, the other command living"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        None,
+        "when the watch lapsed while its settle runs"
+    );
+    world.host.end_command(&other);
+    ensure!(
+        world.engine.attended(),
+        "flume ran unattended once the command running the watch's settle died"
+    );
+    ensure_eq!(
+        host_status(&world)?.watch_lapsed,
+        Some(began + 2 * 60),
+        "when the watch whose settle died lapsed"
     );
     Ok(())
 }
@@ -1226,7 +1415,8 @@ fn a_watch_kept_then_lapsed(_: &()) -> Outcome {
 /// The settling spec's "No terminal keeps watch": no caller has settled
 /// with a bound, and the fake terminal's agents change state, one killed
 /// and one working; nothing settles at those changes, and a caller's drop
-/// settles every place first (119, 122, 208).
+/// settles the places where something is pending first (119, 122, 208,
+/// 225).
 fn no_terminal_keeps_watch(_: &()) -> Outcome {
     let world = World::new();
     let id = World::id("fix", "one");
@@ -1254,9 +1444,265 @@ fn no_terminal_keeps_watch(_: &()) -> Outcome {
     ensure_eq!(
         world.stage_state(&id, "code"),
         Some(StageState::Lost),
-        "the stage once the drop settled every place first"
+        "the stage once the drop settled the places where something is pending first"
     );
     ensure_eq!(host_watch(&world), None, "a watch held");
+    Ok(())
+}
+
+/// A fix launched as `name` whose code stage stopped short needing an
+/// answer, its agent kept open for no time and ended, so it waits only on
+/// its caller's answer (42, 198).
+fn fix_waiting_on_an_answer(world: &World, name: &str) -> Result<PlaceId, String> {
+    let id = World::id("fix", name);
+    launched(&world.engine.launch(&Launch {
+        every_stage: Settings {
+            keep_open: Some("0".into()),
+            ..Settings::default()
+        },
+        ..launch("fix", name, Some("x"))
+    }))?;
+    world.settle(&id);
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start of the fix's code")?;
+    let answer = world.engine.needs(
+        &start.identity.to_string(),
+        &start.secret.0,
+        "which way?",
+        StopKind::NeedsAnswer,
+    );
+    ensure!(answer.refusal().is_none(), "the stop-short: {answer:?}");
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::EndedShort),
+        "the fix's code"
+    );
+    ensure!(no_agent_live(world, &id), "an agent of the fix is live");
+    Ok(id)
+}
+
+/// Every call the fake merge queue, terminal and agent program logged.
+fn seams_asked(world: &World) -> Vec<String> {
+    [
+        world.queue.log.calls(),
+        world.terminal.log.calls(),
+        world.agent.log.calls(),
+    ]
+    .concat()
+}
+
+/// Clears the fake merge queue's, terminal's and agent program's logs.
+fn clear_seams(world: &World) {
+    world.queue.log.clear();
+    world.terminal.log.clear();
+    world.agent.log.clear();
+}
+
+/// The settling spec's "Places with nothing pending": a fix waiting on an
+/// answer whose agent has ended, a chore whose launch held its
+/// submission, a fix whose code stage was read lost and a fix whose code
+/// agent runs; a caller's settle with a bound asks the fake merge queue,
+/// terminal and agent program nothing of the first three, by their names,
+/// branches or identities, reads the running fix, and leaves the status
+/// of each of the first three as it was. Their caller's pane waits, so
+/// each end of theirs was handed to it by notice (42, 43, 45, 47, 225).
+fn places_with_nothing_pending(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let one = fix_waiting_on_an_answer(&world, "one")?;
+    let two = World::id("chore", "two");
+    let mut chore = launch("chore", "two", Some("bump it"));
+    chore.hold_submission = true;
+    launched(&world.engine.launch(&chore))?;
+    world.settle(&two);
+    world.commit("chore/two", &["chore.rs"]);
+    world.settle(&two);
+    ensure_eq!(
+        world.stage_state(&two, "code"),
+        Some(StageState::Delivered),
+        "the chore's code"
+    );
+    let three = fix_begun(&world, "three")?;
+    world
+        .terminal
+        .kill(&World::identity("fix", "three", "code", 1));
+    world.settle(&three);
+    ensure_eq!(
+        world.stage_state(&three, "code"),
+        Some(StageState::Lost),
+        "the third fix's code"
+    );
+    fix_begun(&world, "four")?;
+    let waiting = [&one, &two, &three];
+    let before = waiting
+        .iter()
+        .map(|id| world.status(id))
+        .collect::<Result<Vec<_>, _>>()?;
+    clear_seams(&world);
+    let settled = world.engine.settle_every(120);
+    ensure!(
+        settled.refusal().is_none(),
+        "the settle was refused: {settled:?}"
+    );
+    let asked = seams_asked(&world);
+    for word in [
+        "fix--one",
+        "fix/one",
+        "chore--two",
+        "chore/two",
+        "fix--three",
+        "fix/three",
+    ] {
+        ensure!(
+            !asked.iter().any(|call| call.contains(word)),
+            "the watch's settle asked of {word}: {asked:?}"
+        );
+    }
+    ensure!(
+        asked.iter().any(|call| call.contains("fix--four")),
+        "the watch's settle did not read the running fix: {asked:?}"
+    );
+    let after = waiting
+        .iter()
+        .map(|id| world.status(id))
+        .collect::<Result<Vec<_>, _>>()?;
+    ensure_eq!(after, before, "the status of each waiting place");
+    Ok(())
+}
+
+/// The settling spec's "An unwatched drop": no caller keeps watch, a fix
+/// waits on an answer whose agent has ended, and a caller drops another
+/// place; the drop's settle asks the fake merge queue, terminal and agent
+/// program nothing of the waiting fix (119, 225).
+fn an_unwatched_drop(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let one = fix_waiting_on_an_answer(&world, "one")?;
+    let two = fix_begun(&world, "two")?;
+    clear_seams(&world);
+    ensure!(world.engine.attended(), "a caller keeps watch");
+    let dropped = world.engine.drop_place(&two, true);
+    ensure!(
+        dropped.refusal().is_none(),
+        "the drop was refused: {dropped:?}"
+    );
+    let asked = seams_asked(&world);
+    for word in ["fix--one", "fix/one"] {
+        ensure!(
+            !asked.iter().any(|call| call.contains(word)),
+            "the drop's settle asked of {word}: {asked:?}"
+        );
+    }
+    ensure_eq!(
+        world.stage_state(&one, "code"),
+        Some(StageState::EndedShort),
+        "the waiting fix's code"
+    );
+    Ok(())
+}
+
+/// Whether `calls` name the fix `name` by its place or its branch.
+fn names_fix(calls: &[String], name: &str) -> bool {
+    let (place, branch) = (format!("fix--{name}"), format!("fix/{name}"));
+    calls
+        .iter()
+        .any(|call| call.contains(&place) || call.contains(&branch))
+}
+
+/// The stalls the place's held state records.
+fn stalls_of(world: &World, id: &PlaceId) -> Vec<EndHeld> {
+    world
+        .held(id)
+        .map(|held| held.ends)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|end| matches!(end.of, EndOf::Stall { .. }))
+        .collect()
+}
+
+/// The settling spec's "A stall's time comes": a fix waits on an answer
+/// whose agent has ended, under no hold's words, and a caller settles with
+/// a bound of one minute four minutes after the fix began to wait and
+/// again six minutes after; the first settle reads nothing of the fix, and
+/// the second records its stall and delivers it to the fix's recipients
+/// (130, 225).
+fn a_stalls_time_comes(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = fix_waiting_on_an_answer(&world, "one")?;
+    world.host.advance(4 * 60);
+    clear_seams(&world);
+    world.engine.settle_every(60);
+    ensure!(
+        !names_fix(&seams_asked(&world), "one"),
+        "the settle four minutes on asked of the fix: {:?}",
+        seams_asked(&world)
+    );
+    ensure!(stalls_of(&world, &id).is_empty(), "a stall four minutes on");
+    world.host.advance(2 * 60);
+    world.engine.settle_every(60);
+    ensure_eq!(stalls_of(&world, &id).len(), 1, "the stalls six minutes on");
+    ensure!(world.status(&id)?.stalled, "status does not say stalled");
+    ensure!(
+        world
+            .terminal
+            .notices(CALLER)
+            .iter()
+            .any(|notice| notice.contains("stalled")),
+        "the stall was not delivered to the fix's recipient: {:?}",
+        world.terminal.notices(CALLER)
+    );
+    Ok(())
+}
+
+/// The settling spec's "A hold's bound passes": a fix's waiting move is
+/// held for ten minutes, and a caller settles with a bound of one minute
+/// nine minutes after the hold and again eleven minutes after; the first
+/// settle reads nothing of the fix, and the second lapses the hold and
+/// records the fix stalled (130, 225).
+fn a_holds_bound_passes(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session(CALLER, AgentState::Waiting);
+    let id = fix_waiting_on_an_answer(&world, "one")?;
+    let held = world
+        .engine
+        .hold(&id, HoldOn::Waiting, "on the user's card", Some(10 * 60));
+    ensure!(held.refusal().is_none(), "the hold was refused: {held:?}");
+    world.host.advance(9 * 60);
+    clear_seams(&world);
+    world.engine.settle_every(60);
+    ensure!(
+        !names_fix(&seams_asked(&world), "one"),
+        "the settle nine minutes on asked of the fix: {:?}",
+        seams_asked(&world)
+    );
+    ensure!(
+        world
+            .held(&id)
+            .is_some_and(|held| held.waiting_hold().is_some()),
+        "the hold lapsed nine minutes on"
+    );
+    world.host.advance(2 * 60);
+    let lapsed_at = world.host.now();
+    world.engine.settle_every(60);
+    let after = world.held(&id).ok_or("the fix is gone")?;
+    ensure!(
+        after
+            .holds
+            .iter()
+            .any(|hold| hold.on == HoldOn::Waiting && hold.lapsed == Some(lapsed_at)),
+        "the hold did not lapse eleven minutes on: {:?}",
+        after.holds
+    );
+    ensure!(world.status(&id)?.stalled, "status does not say stalled");
+    ensure_eq!(
+        stalls_of(&world, &id).len(),
+        1,
+        "the stalls eleven minutes on"
+    );
     Ok(())
 }
 
@@ -1346,11 +1792,12 @@ fn a_queue_that_moves_on_its_own(_: &()) -> Outcome {
 /// The settling spec's "A host with no runner", S118 as amended: no
 /// caller keeps watch, a chore's code stage delivers and the settle its
 /// agent's quiet runs submits the place; nothing settles for ten minutes,
-/// the terminal settling nothing; a caller's drop settles every place
-/// first, stepping the chore's base; a caller then keeps watch, and the
-/// chore lands at a later settle of its with no act; four minutes after
-/// its last settle began none keeps watch, and a drop settles every place
-/// first again (46, 119, 121, 122, 124, 208).
+/// the terminal settling nothing; a caller's drop settles the places where
+/// something is pending first, the submitted chore's among them, stepping
+/// its base; a caller then keeps watch, and the chore lands at a later
+/// settle of its with no act; four minutes after its last settle ended
+/// none keeps watch, and a drop settles the places where something is
+/// pending first again (46, 119, 121, 122, 124, 208, 225).
 fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     let world = World::new();
     world.terminal.add_session("ops", AgentState::Waiting);
@@ -1392,9 +1839,10 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         world.queue.log.of("step"),
         vec![format!("step {REPOSITORY} main")],
-        "the drop's steps, settling every place first"
+        "the drop's steps, settling the places where something is pending first"
     );
-    // The runner starts, each pass settling every place with a bound.
+    // The runner starts, each pass settling the places where something is
+    // pending with a bound.
     world.queue.log.clear();
     let first = world.host.now();
     world.engine().settle_every(120);
@@ -1436,7 +1884,7 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         (host.watch, host.watch_settled, host.watch_lapsed),
         (Watch::None, Some(last), Some(last + 4 * 60)),
-        "status four minutes after the last pass began"
+        "status four minutes after the last pass ended"
     );
     ensure_eq!(
         world.stage_state(&four, "code"),
@@ -1451,15 +1899,15 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         world.stage_state(&four, "code"),
         Some(StageState::Lost),
-        "the stage once the operator's drop settled every place first"
+        "the stage once the operator's drop settled the places where something is pending first"
     );
     Ok(())
 }
 
 /// The settling spec's "Two depths in one settle": a chore submitted to
 /// `main` and another submitted to `train/x`, a branch that lands on
-/// `main`, open together; one settle of every place steps each base once
-/// (124, 125).
+/// `main`, open together; one settle of a caller keeping watch steps each
+/// base once (124, 125, 202, 225).
 fn two_depths_in_one_settle(_: &()) -> Outcome {
     let world = World::new();
     world.queue.plan_submits(vec![Plan::Hold, Plan::Hold]);
@@ -1479,7 +1927,7 @@ fn two_depths_in_one_settle(_: &()) -> Outcome {
     }
     ensure_eq!(world.queue.log.count("submit"), 2, "the chores submitted");
     world.queue.log.clear();
-    world.engine().settle(None);
+    world.engine().settle_every(120);
     let mut steps = world.queue.log.of("step");
     steps.sort();
     ensure_eq!(
@@ -1488,7 +1936,7 @@ fn two_depths_in_one_settle(_: &()) -> Outcome {
             format!("step {REPOSITORY} main"),
             format!("step {REPOSITORY} train/x"),
         ],
-        "the steps of one settle of every place"
+        "the steps of one settle of the watch's"
     );
     Ok(())
 }

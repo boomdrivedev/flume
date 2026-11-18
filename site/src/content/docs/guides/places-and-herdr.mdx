@@ -169,7 +169,8 @@ The local layer, `config.local.toml`, may set a stream's
 managed file. A stream whose multiplexer names no profile flume carries
 refuses its own launches and starts, naming the name and the profiles
 there are, and every other stream runs. No multiplexer decides whether
-a command settles every place first: the host's watch does
+a command settles the places where something is pending first: the
+host's watch does
 ([keeping watch over the host](#keeping-watch-over-the-host)).
 
 ## Places under herdr
@@ -542,21 +543,33 @@ flume settle --every <time>
 ```
 
 on that bound, from a timer of the host's or whatever else keeps time
-there. Each run settles every place, an agent in it or none, and steps
-each open submission's base, so a place whose submission waits on the
-merge queue moves on within the bound. While the newest such settle
-began less than twice its bound ago, flume runs unattended: its
-commands leave the settling to the watch. While none does, flume runs
-attended: every command of flume's that acts settles every place first.
-The places then move at your commands and at their agents' quiet, and
-what no agent's quiet reports, an agent killed with no word or a
-submission the merge queue decided, waits for your next command that
-acts. `flume status` says which under the host's part:
+there. Each run settles the places where something is pending, an agent
+in them or none, and steps each open submission's base, so a place
+whose submission waits on the merge queue moves on within the bound.
+Something is pending on a place while a change that calls flume nothing
+may have moved it: a stage of it runs, its submission is in flight, a
+time it waits on has come, or an end of it waits to be handed on, among
+others. A place that waits only on an answer, its caller's word or a
+drop is not read: neither its merge queue, herdr nor its agent. flume
+reads what is pending from what it holds, and the run names none of it.
+`flume settle` naming no place and stating no bound still settles every
+place, when you ask it to.
+
+While a run's settle runs, and until twice its bound has passed since it
+ended, flume runs unattended: its commands leave the settling to the
+watch. A run whose command died before its settle ended keeps watch
+until twice its bound after it began. While none keeps watch, flume
+runs attended: every command of flume's that acts settles the places
+where something is pending first. The places then move at your commands
+and at their agents' quiet, and what no agent's quiet reports, an agent
+killed with no word or a submission the merge queue decided, waits for
+your next command that acts. `flume status` says which under the host's
+part:
 
 ```console
 $ flume status
 …
-  a caller keeps watch: every place settles every 2m, last at 1793287734
+  a caller keeps watch: the places where something is pending settle every 2m, last at 1793287734
 ```
 
 ### Setting up herdr
@@ -610,7 +623,7 @@ words you can act on:
 ```console
 $ flume status
 …
-  no caller keeps watch: every place settles at each command of flume's that acts
+  no caller keeps watch: the places where something is pending settle at each command of flume's that acts
     herdr's configuration, ~/.config/herdr/config.toml, binds no key to flume's places: add a [[keys.command]] entry with key = "prefix+f", type = "plugin_action", command = "agentplot.flume.places", description = "flume: places in flight", as the README of flume's herdr plugin gives it
 ```
 

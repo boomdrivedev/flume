@@ -160,17 +160,18 @@ enum Command {
     /// Remove what is over (63 to 68).
     Tidy { place: Option<String> },
     /// Move a place, or every place, on (46, 119 to 121); with `--every`,
-    /// every place as a caller's watch over the host (208).
+    /// the places where something is pending, as a caller's watch over the
+    /// host (208, 225).
     Settle {
         place: Option<String>,
         /// Read the place's agent until it is quiet, for up to 60 seconds,
         /// first.
         #[arg(long)]
         on_quiet: bool,
-        /// Settle every place as a watch over the host whose settles come
-        /// within this bound, as `<n>`, `<n>s`, `<n>m` or `<n>h`: flume
-        /// runs unattended while the newest such settle began less than
-        /// twice it ago.
+        /// Settle the places where something is pending as a watch over
+        /// the host whose settles come within this bound, as `<n>`, `<n>s`,
+        /// `<n>m` or `<n>h`: flume runs unattended while that settle runs
+        /// and until twice the bound after it ended.
         #[arg(long)]
         every: Option<String>,
     },
@@ -712,7 +713,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             ..
         } => {
             return Err(format!(
-                "--every settles every place as a caller's watch over the host, and takes no place: {given_place} was named"
+                "--every settles the places where something is pending as a caller's watch over the host, and takes no place: {given_place} was named"
             ));
         }
         Command::Settle {

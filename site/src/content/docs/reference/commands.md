@@ -20,7 +20,7 @@ sidebar:
 | `flume done <place>` | Declare complete the work of a place whose kind does not land, and tidy it. |
 | `flume priority <place> <n>` | Set the place's priority in the host's queue. |
 | `flume tidy [<place>]` | Remove what is over, for one place or every place. |
-| `flume settle [<place>]` | Move a place, or every place, on; with `--every <time>`, every place as a watch over the host. |
+| `flume settle [<place>]` | Move a place, or every place, on; with `--every <time>`, the places where something is pending, as a watch over the host. |
 | `flume wait <place>` | Wait on a stage's end or the submission's outcome, as a recipient; `--confirm` confirms the end as it is answered. |
 | `flume inbox [<place>]` | Collect every end pending for a recipient, on every place of the host, or on the place named alone; `--confirm` confirms each as it is given. |
 | `flume confirm <key>…` | Confirm, as a recipient, each end's delivery by its key, so the end is delivered and pending for it no more. |
@@ -62,8 +62,11 @@ error. `flume wait` has exits of its own.
 
 **Settling first.** Every command that acts, `launch`, `tell`,
 `hold`, `retry`, `stop`, `finish`, `drop`, `done`, `priority`, `tidy`,
-`wait`, `inbox` and `wake`, settles every place on the host first,
-unless a caller keeps watch over the host with `flume settle --every`.
+`wait`, `inbox` and `wake`, settles the places on the host where
+something is pending first, unless a caller keeps watch over the host
+with `flume settle --every`. A place that waits only on an answer, its
+caller's word or a drop is not read then; the command that acts on it
+settles it.
 `flume status`, `flume list`, `flume prompt` and `flume mcp`
 only read, `flume status --line` and `flume hook status-line` among
 them. `flume open` and `flume relay` settle nothing, and `flume kinds
@@ -188,8 +191,9 @@ what a tidy kept there. Then comes the host's configuration: whether
 its local layer was taken, each value it set and each key passed over
 with its pin. Last comes the host's watch: a caller keeping it, with
 the bound it stated and when its newest settle began, or no caller
-keeping it, and since when where one did. With none, places move on at
-flume's commands and when their agents go quiet. Under that line it gives what the terminal's own configuration
+keeping it, and since when where one did. With none, the places where
+something is pending move on at flume's commands, and a place when its
+agent goes quiet. Under that line it gives what the terminal's own configuration
 lacks for flume's plugin there, such as herdr's key for the popup, in
 words you can act on.
 
@@ -488,25 +492,43 @@ ends, wakes roles and tidies. Safe to repeat. `--on-quiet` first reads the place
 agent until it is quiet, for up to sixty seconds; the Stop hook runs it.
 No multiplexer and no plugin of one runs it.
 
-`--every <time>` settles every place as a watch over the host. `<time>`
-is the bound its runs come within, as `flume wait --timeout` takes one:
-`<n>`, `<n>s`, `<n>m` or `<n>h`. flume records in the host's state when
-the settle began and the bound, then settles every place, an agent in
-it or none, and steps each open submission's base. Run it on that bound
-from a timer of the host's or whatever else keeps time there. Every
-place then moves on within the bound with no command of yours, a place
-whose submission waits on the merge queue among them. While the newest such
-settle began less than twice its bound ago, a caller keeps watch and
-flume runs unattended: the commands that act settle no place first, and
-`flume wait` leaves the settling to the watch. Once its runs stop, the
-watch lapses and flume runs attended again. `flume status` gives the
-watch, its bound and when it last settled, or since when none is kept.
+Naming no place and no `--every`, it settles every place on the host,
+one that waits on nothing among them. Run it so to have flume read a
+move made outside it, such as a branch landed by hand while its place
+held its submission; a watch reads no such move.
+
+`--every <time>` settles the places where something is pending as a
+watch over the host. `<time>` is the bound its runs come within, as
+`flume wait --timeout` takes one: `<n>`, `<n>s`, `<n>m` or `<n>h`.
+flume records in the host's state when the settle began, its bound and
+the command running it. It then settles the places where something is
+pending, an agent in them or none, steps each open submission's base,
+starts the stages waiting for room the host now has, and records when
+the settle ended. Something is pending on a place while a change that
+calls flume nothing may have moved it: it is being made, or its work is
+over and it is not yet tidied away; a stage of it starts or runs; its
+submission is in flight; it is a base place; a time it waits on has
+come, a stall's or a hold's bound; or an end of it, or a wake for it,
+waits to be handed on. flume reads that from what it holds, and you name
+none of it. A place that waits only on an answer, its caller's word or a
+drop is not read: neither its merge queue, its multiplexer nor its agent.
+
+Run it on that bound from a timer of the host's or whatever else keeps
+time there. Every place then moves on within the bound with no command
+of yours, a place whose submission waits on the merge queue among them.
+While that settle runs, and until twice its bound has passed since it
+ended, a caller keeps watch and flume runs unattended: the commands that
+act settle no place first, and `flume wait` leaves the settling to the
+watch. A settle whose command died before it ended keeps watch until
+twice its bound after it began. Once its runs stop, the watch lapses and
+flume runs attended again. `flume status` gives the watch, its bound,
+when its settle began and ended, or since when none is kept.
 `--every` beside a place's name, or with a bound that is no positive
 duration, is refused before anything is read:
 
 ```console
 $ flume settle fix--one --every 2m
-refused: --every settles every place as a caller's watch over the host, and takes no place: fix--one was named
+refused: --every settles the places where something is pending as a caller's watch over the host, and takes no place: fix--one was named
 ```
 
 ## `flume wait`

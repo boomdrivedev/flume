@@ -926,8 +926,8 @@ fn a_submission_from_a_rex_block_names_no_session() {
 fn a_failed_entry_is_given_with_sluices_notice_until_it_is_confirmed() {
     // sluice hands an outcome over at every inbox until its reader
     // confirms it, which flume does by its key once it has acted on it;
-    // a second confirm of the key is taken as the first (133, 225; sluice
-    // 51; sluice record 0102).
+    // a second confirm of the key is taken as the first (133; sluice 51;
+    // sluice record 0102).
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.will_fail("test x failed");
@@ -1168,8 +1168,8 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     // sluice answers the submit with the entry's record, in conflict with
     // the one queued ahead of it, exiting as a conflict does: submit
     // answers the outcome with its delivery's key, the inbox gives it
-    // too until flume confirms it by that key, and nothing after (133,
-    // 225; sluice 51; sluice record 0102).
+    // too until flume confirms it by that key, and nothing after (133;
+    // sluice 51; sluice record 0102).
     let harness = Harness::new();
     let (place, head) = harness.place();
     let other = Harness::worktree(&harness.repository, "other", "other", "work.rs");
@@ -1249,7 +1249,7 @@ fn a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_
     // keeps it owed until flume confirms it once it has acted on it, so
     // an inbox in between may hand it over too, as the same entry's
     // conflict under the same key; the core acts on it once whichever
-    // gives it first (112, 133, 225; sluice 51; sluice record 0102).
+    // gives it first (112, 133; sluice 51; sluice record 0102).
     // Once it is confirmed, the inbox gives nothing.
     let harness = Harness::new();
     let (place, head) = harness.place();
@@ -1402,8 +1402,7 @@ fn a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_coll
     // sluice answers the inbox with every other branch's outcomes and the
     // branch it could not read in its `unread`, exiting as a failure:
     // the inbox passes that branch over with sluice's words, and the
-    // place's landing on main is collected until it is confirmed (133,
-    // 225).
+    // place's landing on main is collected until it is confirmed (133).
     let harness = Harness::new();
     let (place, head) = harness.place();
     harness.seam.submit(&place, &from_worktree(&head));

@@ -83,6 +83,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: nothing_usable,
         },
         Scenario {
+            name: "account pools: a stage waiting for room on a pool whose one account is spent, no place on the host pending, is started on that account by the watch's settle once the account's time has passed",
+            cites: &["70", "146", "225"],
+            run: room_the_host_now_has,
+        },
+        Scenario {
             name: "account pools: three places of one intent on a least-busy pool start on the first one's account, and once it is spent the next start goes to another, the affinity moving",
             cites: &["S56", "147", "145"],
             run: s56_three_units_of_one_intent,
@@ -778,6 +783,51 @@ fn nothing_usable(_: &()) -> Outcome {
         on("work", "work-2"),
         "the account once its reset passed"
     );
+    Ok(())
+}
+
+/// The settling spec's "Room the host now has": a fix's code stage waits
+/// for room since its pool's one account is spent until a time, no place
+/// on the host being pending, and a caller settles with a bound once that
+/// time has passed; that settle starts the code stage on that account
+/// (70, 146, 225; design 2).
+fn room_the_host_now_has(_: &()) -> Outcome {
+    let world = World::new();
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![account("work-1", None)],
+    );
+    world.host.set_host_pool(Some("work"));
+    let until = world.host.now() + 3600;
+    spent(&world, "work", "work-1", until);
+    let id = fix_in(&world, None, "one")?;
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::WaitingForRoom),
+        "the stage on a pool whose one account is spent"
+    );
+    world.host.advance(3600 + 1);
+    world.terminal.log.clear();
+    let settled = world.engine.settle_every(60);
+    ensure!(
+        matches!(&settled, Answer::Settled { places, .. } if places.is_empty()),
+        "the watch's settle read a place pending: {settled:?}"
+    );
+    ensure!(
+        world
+            .stage_state(&id, "code")
+            .is_some_and(StageState::running),
+        "the stage once the account's time passed: {:?}",
+        world.stage_state(&id, "code")
+    );
+    ensure_eq!(
+        account_of(&world, &id, "code"),
+        on("work", "work-1"),
+        "the account the stage started on"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 1, "agents opened");
     Ok(())
 }
 
