@@ -140,10 +140,20 @@ folder ends with nothing in play. A test that reads a submission
 before any verdict reads it open, queued or under test, since the host
 process takes it under test at once.
 
-**A refused branch.** sluice's status reads a branch's policy at the
-revision its host process last read of it (sluice 129). So the
-harness's `refuse_another` reads `sluice status bolt/x` until it
-refuses the branch, within 30 seconds, before it answers.
+**A branch sluice cannot read.** sluice's host process passes every
+branch with work in play and writes its records whole as it goes, so a
+lock on `bolt/x`'s `branch.json` alone lasts only until its next pass.
+The harness's `refuse_another` therefore locks that file in a records
+folder no process may write, and gives the branch once `sluice status
+bolt/x` refuses it. Neither the policy at a branch's tip, which a
+commit made outside sluice leaves for a reading of the host process to
+take up, nor a lock the host process writes over holds still under it.
+
+**What else the host process moves.** A close asked while the host
+process passes the branch is refused as a step holding it, to be asked
+again (206). A submit that waits on the host process is answered with
+the record's notice as its words (C.6). Each test that reads these asks
+again where sluice says to and reads sluice's notice.
 
 **Read to a decision, never stepped.** `Harness::decide` and
 `stepped_until_decided` read `sluice status` until the newest entry of

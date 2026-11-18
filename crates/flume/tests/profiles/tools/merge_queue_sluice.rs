@@ -84,7 +84,7 @@ struct Harness {
     seam: Sluice,
     home: PathBuf,
     place: PlaceRef,
-    locked: RefCell<Option<PathBuf>>,
+    locked: RefCell<Vec<PathBuf>>,
 }
 
 impl Harness {
@@ -130,7 +130,7 @@ impl Harness {
             seam,
             home,
             place,
-            locked: RefCell::new(None),
+            locked: RefCell::new(vec![]),
         }
     }
 
@@ -359,7 +359,7 @@ impl Drop for Harness {
         // Released first, so every run ends and the host process of the
         // test's state folder ends with nothing in play.
         self.release();
-        if let Some(path) = self.locked.borrow_mut().take() {
+        for path in self.locked.borrow_mut().drain(..).rev() {
             let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
         }
         unlink_user_scratch(&self.repository);
@@ -482,15 +482,15 @@ impl MergeQueueHarness for Harness {
         fs::create_dir_all(&records).expect("sluice's records");
         fs::set_permissions(&records, fs::Permissions::from_mode(0o000))
             .expect("the records locked");
-        *self.locked.borrow_mut() = Some(records);
+        self.locked.borrow_mut().push(records);
     }
 
     /// `bolt/x`, its policy naming it, given a submission from `unit/x`,
-    /// then a policy at its tip that declares `[[checkout.cache]]`, which
-    /// the pinned sluice refuses: `sluice status bolt/x` reads the policy
-    /// at the revision sluice's host process last read of the branch, and
-    /// once it has read the tip refuses the branch, as it refused one on
-    /// deneb on 2026-11-04; given once it does (sluice 129).
+    /// whose records sluice then cannot read: `branch.json` locked in a
+    /// folder no process may write, so sluice's host process, which passes
+    /// the branch, cannot write it whole again. `sluice status bolt/x` and
+    /// the inbox refuse the branch from then on, as sluice refused one
+    /// whose policy it could no longer read on deneb on 2026-11-04 (133).
     fn refuse_another(&self, _place: &PlaceRef) -> String {
         let other = "bolt/x";
         let at = self.repository.dir.join("places/bolt--x");
@@ -503,23 +503,23 @@ impl MergeQueueHarness for Harness {
             &at.to_string_lossy(),
             "main",
         ]);
-        let policy = format!("{POLICY}\n[branches.\"bolt/*\"]\n");
-        let commit = |text: &str| {
-            fs::write(at.join(".config/sluice.toml"), text).expect("bolt/x's policy");
-            git(&at, &["add", ".config/sluice.toml"]);
-            git(
-                &at,
-                &[
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                    "commit",
-                    "--quiet",
-                    "-m",
-                    "bolt/x's policy",
-                ],
-            );
-        };
-        commit(&policy);
+        fs::write(
+            at.join(".config/sluice.toml"),
+            format!("{POLICY}\n[branches.\"bolt/*\"]\n"),
+        )
+        .expect("bolt/x's policy");
+        git(&at, &["add", ".config/sluice.toml"]);
+        git(
+            &at,
+            &[
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "--quiet",
+                "-m",
+                "bolt/x's policy",
+            ],
+        );
         let unit = self.repository.dir.join("places/unit--x");
         self.repository.git(&[
             "worktree",
@@ -535,21 +535,19 @@ impl MergeQueueHarness for Harness {
         git(&unit, &["commit", "--quiet", "-m", "unit/x"]);
         let entry = self.sluice(&unit, &["submit", other, "--no-wait", "--json"]);
         assert!(entry["id"].is_u64(), "bolt/x's submission: {entry}");
-        commit(&format!(
-            "{policy}\n[[checkout.cache]]\nkey = [\"Cargo.lock\"]\npaths = [\"target\"]\n"
-        ));
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while self
-            .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
-            .0
-        {
-            assert!(
-                Instant::now() < deadline,
-                "sluice never refused {other}'s status; {}",
-                self.host_process()
-            );
-            std::thread::sleep(Duration::from_millis(300));
-        }
+        let records = self.repository.dir.join(".git/sluice").join(other);
+        let file = records.join("branch.json");
+        assert!(file.exists(), "{other}'s records at {file:?}");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("the records locked");
+        fs::set_permissions(&records, fs::Permissions::from_mode(0o500))
+            .expect("the records' folder locked");
+        self.locked.borrow_mut().extend([file, records]);
+        assert!(
+            !self
+                .sluice_ran(&self.repository.dir, &["status", other, "--all", "--json"])
+                .0,
+            "sluice read {other}'s status"
+        );
         other.into()
     }
 
@@ -928,12 +926,26 @@ fn a_close_sluice_refuses_keeps_the_branch_in_its_words() {
     git(&fix, &["commit", "--quiet", "-m", "fix/a"]);
     let entry = harness.sluice(&fix, &["submit", "train/a", "--no-wait", "--json"]);
     assert!(entry["id"].is_u64(), "the fix's submission: {entry}");
-    match harness.seam.close(&repository, "train/a", "main") {
-        BranchClosed::Kept { reason } => assert!(
-            reason.starts_with("sluice branch delete: ") && reason.contains("queued on train/a"),
-            "the refusal is not sluice's words: {reason}"
-        ),
-        other => panic!("a close with a submission queued answered {other:?}"),
+    // While sluice's host process passes train/a, sluice refuses a close
+    // as a step holding the branch and says to ask again, which the test
+    // does until it answers for the submission held open on it.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match harness.seam.close(&repository, "train/a", "main") {
+            BranchClosed::Kept { reason } if reason.contains("a step holds train/a") => {
+                assert!(Instant::now() < deadline, "a step held train/a: {reason}");
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            BranchClosed::Kept { reason } => {
+                assert!(
+                    reason.starts_with("sluice branch delete: ")
+                        && reason.contains("queued on train/a"),
+                    "the refusal is not sluice's words: {reason}"
+                );
+                break;
+            }
+            other => panic!("a close with a submission queued answered {other:?}"),
+        }
     }
     assert_eq!(
         harness.branch_head(&repository, "train/a"),
@@ -968,7 +980,10 @@ fn a_submission_from_a_herdr_panes_hook_names_the_place_and_no_session() {
         record["from"].get("session").is_none(),
         "the entry names a session: {record}"
     );
-    assert_eq!(record["state"], "queued", "the entry before any verdict");
+    assert!(
+        matches!(record["state"].as_str(), Some("queued" | "testing")),
+        "the entry before any verdict: {record}"
+    );
 }
 
 #[test]
@@ -1006,7 +1021,10 @@ fn a_submission_from_a_rex_block_names_no_session() {
         record["from"].get("session").is_none(),
         "the entry names a session: {record}"
     );
-    assert_eq!(record["state"], "queued", "the entry before any verdict");
+    assert!(
+        matches!(record["state"].as_str(), Some("queued" | "testing")),
+        "the entry before any verdict: {record}"
+    );
 }
 
 #[test]
@@ -1247,13 +1265,11 @@ fn a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal() {
     );
     assert_eq!(files, vec!["work.rs".to_string()], "the files contested");
     let ahead = harness.record("other").expect("the entry ahead")["id"].to_string();
-    for named in [
-        "conflict on main: work.rs with ",
-        &format!("#{ahead} ("),
-        "other)",
-    ] {
-        assert!(words.contains(named), "{named} is not in {words}");
-    }
+    assert!(
+        words.starts_with("[sluice] ")
+            && words.contains(&format!("conflicts on main with #{ahead} in work.rs")),
+        "the words are not sluice's notice: {words}"
+    );
     let expected = record["tested"]["on"].as_str().map_or_else(
         || Revision::new(harness.repository.git(&["rev-parse", "main"])),
         Revision::new,
@@ -1434,15 +1450,6 @@ fn a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_coll
     let (place, head) = harness.place();
     harness.seam.submit(&place, &from_worktree(&head));
     let other = harness.refuse_another(&place);
-    let records = harness
-        .repository
-        .dir
-        .join(".git/sluice")
-        .join(&other)
-        .join("branch.json");
-    assert!(records.exists(), "{other}'s records at {records:?}");
-    fs::set_permissions(&records, fs::Permissions::from_mode(0o000)).expect("the records locked");
-    *harness.locked.borrow_mut() = Some(records);
     harness.decide("fix/one");
     let landed = harness.record("fix/one").expect("the entry decided");
     assert_eq!(landed["state"], "landed", "{landed}");
