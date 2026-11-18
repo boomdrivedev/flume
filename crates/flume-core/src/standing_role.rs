@@ -195,6 +195,83 @@ impl Engine {
     }
 }
 
+impl Engine {
+    /// Each checkout of the standing role's place `id` moved to its
+    /// base's tip, at a start of its stage that opens an agent, once the
+    /// start has claimed its room and before its agent is opened: the base
+    /// read through the checkout's binding as the wake read it, where its
+    /// merge queue's profile says it lives, after flume's own fetch, then
+    /// the place seam's move, bound for the place's first repository.
+    /// Each outcome is recorded on its checkout in one write: moved, its
+    /// revision, where its base was read and when, its last move not made
+    /// cleared; or not moved, its revision kept, with when, the tip where
+    /// it was read and the words, and the start goes on. A move over a
+    /// change in the checkout is never forced (9, 126, 193, 213; core.5,
+    /// core.13, core.18). Nothing is read for any other place.
+    pub(crate) fn move_checkouts(&self, id: &PlaceId) {
+        let Some(read) = self.store.read(id) else {
+            return;
+        };
+        let place = read.state.place;
+        if !place.standing_role() {
+            return;
+        }
+        let now = self.host.now();
+        let seam = self
+            .bind(&place.repository, &place.binding)
+            .map(|bound| bound.place);
+        let outcomes: Vec<Result<(Revision, BaseFrom), Unmoved>> = place
+            .checkouts
+            .iter()
+            .map(|checkout| {
+                let unmoved = |tip: Option<Revision>, reason: String| Unmoved {
+                    at: now,
+                    tip,
+                    reason,
+                };
+                let seam = seam
+                    .as_ref()
+                    .map_err(|reason| unmoved(None, format!("its place seam: {reason}")))?;
+                let (tip, from) = self
+                    .bind(&checkout.repository, &checkout.binding)
+                    .and_then(|bound| {
+                        self.base_now(
+                            &checkout.repository,
+                            &checkout.base,
+                            bound.merge_queue.as_deref(),
+                        )
+                    })
+                    .map_err(|reason| unmoved(None, reason))?;
+                match seam.move_checkout(&checkout.place_ref(&place.location), &tip) {
+                    Moved::Moved => Ok((tip, from)),
+                    Moved::Kept { reason } => Err(unmoved(Some(tip), reason)),
+                    Moved::Gone => Err(unmoved(
+                        Some(tip),
+                        format!(
+                            "no checkout stands at {}/{}",
+                            place.location, checkout.folder
+                        ),
+                    )),
+                }
+            })
+            .collect();
+        self.update(id, |held| {
+            for (checkout, outcome) in held.place.checkouts.iter_mut().zip(&outcomes) {
+                match outcome {
+                    Ok((revision, from)) => {
+                        checkout.revision = revision.clone();
+                        checkout.base_from = Some(*from);
+                        checkout.moved_at = Some(now);
+                        checkout.unmoved = None;
+                    }
+                    Err(unmoved) => checkout.unmoved = Some(unmoved.clone()),
+                }
+            }
+            Step::Write(())
+        });
+    }
+}
+
 /// The checkouts of a standing role's place as the place seam is handed
 /// them, each at the revision its held state names (193, C.1).
 pub(crate) fn checkouts(place: &PlaceRecord) -> Vec<Checkout> {

@@ -8,6 +8,8 @@
 use super::role_waking::{addresses, asks, fix_for, runs};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
+use flume_core::Retry;
+use flume_fakes::FakeAgent;
 use flume_seams::*;
 use std::collections::BTreeMap;
 
@@ -57,6 +59,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "standing-roles: A repository with no default branch: git naming no default branch of /blueprints refuses the wake naming /blueprints, and nothing is made",
             cites: &["2", "9", "193"],
             run: a_repository_with_no_default_branch,
+        },
+        Scenario {
+            name: "standing-roles: Resumed onto a newer tip: east/ops' talk hibernated, /blueprints' main gains a commit, and a caller's resume moves the blueprints checkout to the new head before the resume's agent opens, the other where it stood, each with its revision and when it was moved",
+            cites: &["9", "193", "213"],
+            run: resumed_onto_a_newer_tip,
+        },
+        Scenario {
+            name: "standing-roles: A retry: east/ops' talk stopped, main moves, and the retry's fresh start opens its agent with each checkout at its base's tip",
+            cites: &["49", "193"],
+            run: a_retry,
         },
     ]
 }
@@ -368,5 +380,132 @@ fn a_repository_with_no_default_branch(_: &()) -> Outcome {
     );
     ensure!(world.held(&ops_id()).is_none(), "the place's held state");
     ensure_eq!(world.place.log.count("make_checkouts"), 0, "checkouts made");
+    Ok(())
+}
+
+/// The standing role's talk's start `start`.
+pub fn talk_of(start: u32) -> Identity {
+    World::identity("desk", "east-ops", "talk", start)
+}
+
+/// east/ops woken and its talk begun, its first start's word naming the
+/// session `s-1`, which the login environment's configuration home
+/// reaches, then hibernated at its caller's word (193, 212).
+pub fn ops_hibernated(world: &World) -> Result<PlaceId, String> {
+    world.agent.set_session(&talk_of(1), "s-1");
+    world.agent.carry_to(
+        FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    let id = ops_woken(world)?;
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Begun),
+        "the talk once woken"
+    );
+    taken(&world.engine().hibernate(&id, false))?;
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Hibernating),
+        "the talk once hibernated"
+    );
+    Ok(id)
+}
+
+/// The act taken, or why it was refused.
+pub fn taken(answer: &flume_core::Answer) -> Outcome {
+    match answer.refusal() {
+        Some(reason) => Err(format!("the act was refused: {reason}")),
+        None => Ok(()),
+    }
+}
+
+/// The revision and when it was moved of each checkout the place's held
+/// state names, in order.
+fn moves(world: &World, id: &PlaceId) -> Result<Vec<(Revision, Option<Seconds>)>, String> {
+    Ok(world
+        .held(id)
+        .ok_or("no place")?
+        .place
+        .checkouts
+        .into_iter()
+        .map(|checkout| (checkout.revision, checkout.moved_at))
+        .collect())
+}
+
+fn resumed_onto_a_newer_tip(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let before = moves(&world, &id)?;
+    let woken_at = before[0].1;
+    world.host.advance(3600);
+    let tip = world.git.commit(BLUEPRINTS, "main", &["design.md"]);
+    let opens = world.terminal.log.count("open");
+    taken(&world.engine().resume(&id))?;
+    ensure_eq!(
+        world.terminal.log.count("open"),
+        opens + 1,
+        "agents opened by the resume"
+    );
+    let now = world.host.now();
+    ensure_eq!(
+        checkout_at(&world, &id, "blueprints").1,
+        Some(tip.clone()),
+        "blueprints' checkout"
+    );
+    ensure_eq!(
+        checkout_at(&world, &id, "repository").1,
+        Some(before[0].0.clone()),
+        "the world's repository's checkout"
+    );
+    ensure_eq!(
+        moves(&world, &id)?,
+        vec![(before[0].0.clone(), Some(now)), (tip, Some(now))],
+        "each checkout's revision and when it was moved"
+    );
+    ensure!(
+        woken_at.is_some_and(|at| at < now),
+        "moved at the wake's start"
+    );
+    let start = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .ok_or("no start")?;
+    ensure_eq!(start.identity.resume, 1, "the talk's start resumed");
+    ensure_eq!(start.started_at, now, "when the resume started");
+    Ok(())
+}
+
+fn a_retry(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_woken(&world)?;
+    world.settle(&id);
+    taken(&world.engine().stop(&id, true))?;
+    world.host.advance(600);
+    let main = world.git.commit(REPOSITORY, "main", &["ops.rs"]);
+    let blueprints = world.git.commit(BLUEPRINTS, "main", &["design.md"]);
+    taken(&world.engine().retry(&id, Retry::Current, None, false))?;
+    let held = world.held(&id).ok_or("no place")?;
+    let start = held.stages[0].start.as_ref().ok_or("no start")?;
+    ensure_eq!(start.identity, talk_of(2), "the retry's fresh start");
+    ensure_eq!(
+        (
+            checkout_at(&world, &id, "repository").1,
+            checkout_at(&world, &id, "blueprints").1
+        ),
+        (Some(main.clone()), Some(blueprints.clone())),
+        "the checkouts as the fresh start opened"
+    );
+    ensure_eq!(
+        moves(&world, &id)?,
+        vec![
+            (main, Some(world.host.now())),
+            (blueprints, Some(world.host.now()))
+        ],
+        "each checkout's revision and when it was moved"
+    );
     Ok(())
 }

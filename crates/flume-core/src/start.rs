@@ -919,8 +919,10 @@ impl Engine {
         claimed
     }
 
-    /// Opens the agent of a claimed start, out of the room lock; an open
-    /// the terminal refuses ends the start, freeing its room (70). Once
+    /// Opens the agent of a claimed start, out of the room lock, a
+    /// standing role's checkouts first moved to their bases' tips (193,
+    /// 213); an open the terminal refuses ends the start, freeing its room
+    /// (70). Once
     /// the open answers, the start is no longer opening, and an agent that
     /// came up is sent its prompt at once where it said it started and
     /// waits, its receipt read by the settles that follow, so the command
@@ -945,6 +947,7 @@ impl Engine {
             resume,
             own,
         } = claim;
+        self.move_checkouts(id);
         let folder = self.store.folder(id);
         let command = agent.command(
             &folder,

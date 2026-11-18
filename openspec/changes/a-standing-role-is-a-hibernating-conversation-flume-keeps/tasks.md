@@ -32,7 +32,7 @@ configuration of the user's.
 
 ## 5. Moving the checkouts
 
-- [ ] 5.1 In `crates/flume-core/src/start.rs`, have each start of a standing role's stage that opens an agent, once it has claimed its room and before its agent opens, read each checkout's base through its binding as the wake read it and ask the place seam's `move_checkout`, recording each moved checkout's revision, where its base was read and when, in one write (design 6; 9, 126, 193, 213; core.5, core.13). Add standing-roles' "Resumed onto a newer tip" and "A retry". Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
+- [x] 5.1 In `crates/flume-core/src/start.rs`, have each start of a standing role's stage that opens an agent, once it has claimed its room and before its agent opens, read each checkout's base through its binding as the wake read it and ask the place seam's `move_checkout`, recording each moved checkout's revision, where its base was read and when, in one write (design 6; 9, 126, 193, 213; core.5, core.13). Add standing-roles' "Resumed onto a newer tip" and "A retry". Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
 - [ ] 5.2 In `crates/flume-core/src/start.rs`, have a move answered kept or gone, or whose base cannot be read, recorded as the checkout's `unmoved` with when, the tip and the words, the checkout's revision kept and the start going on, and a later move made clear it (design 6; 193; core.18). Add standing-roles' "A file changed in a checkout" and "Moved at the next start". Verify with `devenv shell -- cargo test -p flume-conformance --test engine the_engine_passes_its_scenarios`.
 
 ## 6. A delivery resumes a role
