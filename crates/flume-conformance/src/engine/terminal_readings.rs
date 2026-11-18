@@ -10,7 +10,7 @@
 use super::agent_launcher::{through_the_launcher, LAUNCHED};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
-use flume_core::OWN_WORK_AFTER;
+use flume_core::{DegradedPart, OWN_WORK_AFTER};
 use flume_fakes::FakeAgent;
 use flume_seams::*;
 
@@ -80,6 +80,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "terminal readings: an agent that reads the five from its terminal, read waiting past the stage's limit with nothing delivered, the terminal showing `nothing to do`, is reported stuck with those last words",
             cites: &["43", "44", "171"],
             run: stuck_with_its_screen,
+        },
+        Scenario {
+            name: "terminal readings: a fix over an agent that reads the five from its terminal, its prompt's turn seen, then read asking, then waiting at two settles a minute apart with its deliverable committed, status asked at each settle, delivers with none of the five read of its start from its profile",
+            cites: &["93", "171"],
+            run: nothing_of_the_five_asked,
+        },
+        Scenario {
+            name: "S73: a fix over an agent that starts through the launcher, reads the five from its terminal and offers no hooks, its program read in the launcher's process 41 and its prompt's turn seen, starts and begins, status naming the eight parts degraded with how each is read, and once it commits and is read waiting at two settles a minute apart code delivers and the place is submitted",
+            cites: &["35", "38", "171", "S73"],
+            run: s73_over_the_fakes,
         },
     ]
 }
@@ -611,4 +621,101 @@ fn stuck_with_its_screen(_: &()) -> Outcome {
         "the last words the end carries"
     );
     Ok(())
+}
+
+/// The terminal-readings spec's scenario "Nothing of the five asked of a
+/// profile that does not build them" (93, 171).
+fn nothing_of_the_five_asked(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, code) = opened_reading(&world, "one", &FakeAgent::FROM_TERMINAL)?;
+    world.terminal.set_state(&code, AgentState::Waiting);
+    world.settle(&id);
+    world.status(&id)?;
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code, its prompt's turn seen"
+    );
+    world.terminal.set_state(&code, AgentState::Asking);
+    world.settle(&id);
+    world.status(&id)?;
+    world.commit("fix/one", &["fix.rs"]);
+    world.terminal.set_state(&code, AgentState::Waiting);
+    for after in [0, OWN_WORK_AFTER] {
+        world.host.advance(after);
+        world.settle(&id);
+        if world.held(&id).is_some() {
+            world.status(&id)?;
+        }
+    }
+    delivered(&world, "code")?;
+    for operation in ["received", "asking", "own_work", "ended", "last_words"] {
+        ensure!(
+            reads_of(&world, operation, &code).is_empty(),
+            "the profile was asked {operation}: {:?}",
+            reads_of(&world, operation, &code)
+        );
+    }
+    Ok(())
+}
+
+/// S73 over the fakes, the terminal-readings spec's scenario of that name:
+/// the common profile of C.4 over a program herdr starts, as C.5 reads it
+/// (35, 38, 171, S73).
+fn s73_over_the_fakes(_: &()) -> Outcome {
+    let world = World::new();
+    let first = through_the_launcher(&world, "one");
+    world
+        .terminal
+        .set_process(&first, ProgramProcess::Runs { pid: LAUNCHED });
+    world.agent.read_mode_back();
+    world.agent.carry_to(
+        FakeAgent::LOGIN,
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.agent.take_own();
+    world.agent.no_send_back();
+    world.agent.no_guard();
+    world.agent.no_on_quiet();
+    let (id, code) = fix_reading(&world, "one", &FakeAgent::FROM_TERMINAL)?;
+    ensure_eq!(code, first, "the code start");
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code, its program read in the launcher's process and its prompt's turn seen"
+    );
+    ensure_eq!(
+        world.terminal.log.count("send-watching"),
+        1,
+        "watched sends"
+    );
+    let agent = agent_status(&world, &id)?;
+    let eight = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+        Part::SendBack,
+        Part::Guard,
+        Part::OnQuiet,
+    ];
+    ensure_eq!(
+        agent.degraded,
+        eight
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
+        "the agent's degraded parts"
+    );
+    world.commit("fix/one", &["fix.rs"]);
+    for after in [0, OWN_WORK_AFTER] {
+        world.host.advance(after);
+        world.settle(&id);
+    }
+    delivered(&world, "code")
 }
