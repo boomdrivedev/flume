@@ -29,8 +29,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s7_two_held_places,
         },
         Scenario {
-            name: "settle: with no caller keeping watch, a killed agent is read only when a command acts",
-            cites: &["S27", "119", "I8", "57"],
+            name: "settle: with no caller keeping watch, a killed agent is read only when a command acts, which settles the places where something is pending first, the killed stage's among them",
+            cites: &["S27", "119", "I8", "57", "225"],
             run: s27_killed_with_nobody_watching,
         },
         Scenario {
@@ -59,8 +59,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_watch_whose_settle_died,
         },
         Scenario {
-            name: "settle: no terminal keeps watch: with no caller's settle with a bound, nothing settles at an agent's change and a caller's drop settles every place first",
-            cites: &["119", "122", "208"],
+            name: "settle: no terminal keeps watch: with no caller's settle with a bound, nothing settles at an agent's change and a caller's drop settles the places where something is pending first",
+            cites: &["119", "122", "208", "225"],
             run: no_terminal_keeps_watch,
         },
         Scenario {
@@ -74,13 +74,13 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_queue_that_moves_on_its_own,
         },
         Scenario {
-            name: "settle: one settle of every place with a submission open on main and one open on a base place's branch landing on main steps each base once in the command",
-            cites: &["124", "125", "46", "202"],
+            name: "settle: one settle of a caller's watch with a submission open on main and one open on a base place's branch landing on main steps each base once in the command",
+            cites: &["124", "125", "46", "202", "208", "225"],
             run: two_depths_in_one_settle,
         },
         Scenario {
-            name: "settle: S118, a host with no watch runs attended, its chore submitted at its agent's quiet and its base stepped only by an act settling every place, until a caller keeps watch and lands it with no act, and four minutes after its last settle began it runs attended again",
-            cites: &["S118", "46", "119", "122", "124", "208"],
+            name: "settle: S118, a host with no watch runs attended, its chore submitted at its agent's quiet and its base stepped only by an act settling the places where something is pending, the submitted chore's among them, until a caller keeps watch and lands it with no act, and four minutes after its last settle ended it runs attended again",
+            cites: &["S118", "46", "119", "122", "124", "208", "225"],
             run: s118_a_host_with_no_watch_runs_attended,
         },
         Scenario {
@@ -425,6 +425,11 @@ fn s7_two_held_places(_: &()) -> Outcome {
     Ok(())
 }
 
+/// The settling spec's "Killed with nobody watching", S27: no caller keeps
+/// watch, a code stage's agent stops with nothing delivered, and nothing
+/// reads the stage until a caller drops another place, which settles the
+/// places where something is pending first, the killed stage's among
+/// them, reading it lost (S27, 119, 225).
 fn s27_killed_with_nobody_watching(_: &()) -> Outcome {
     let world = World::new();
     let id = World::id("fix", "one");
@@ -449,7 +454,7 @@ fn s27_killed_with_nobody_watching(_: &()) -> Outcome {
     ensure_eq!(
         world.status(&id)?.stages[0].state,
         StageState::Lost,
-        "the stage once a command acted"
+        "the stage once a command acted, settling the places where something is pending first"
     );
     ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
     Ok(())
@@ -1341,7 +1346,8 @@ fn a_watch_whose_settle_died(_: &()) -> Outcome {
 /// The settling spec's "No terminal keeps watch": no caller has settled
 /// with a bound, and the fake terminal's agents change state, one killed
 /// and one working; nothing settles at those changes, and a caller's drop
-/// settles every place first (119, 122, 208).
+/// settles the places where something is pending first (119, 122, 208,
+/// 225).
 fn no_terminal_keeps_watch(_: &()) -> Outcome {
     let world = World::new();
     let id = World::id("fix", "one");
@@ -1369,7 +1375,7 @@ fn no_terminal_keeps_watch(_: &()) -> Outcome {
     ensure_eq!(
         world.stage_state(&id, "code"),
         Some(StageState::Lost),
-        "the stage once the drop settled every place first"
+        "the stage once the drop settled the places where something is pending first"
     );
     ensure_eq!(host_watch(&world), None, "a watch held");
     Ok(())
@@ -1461,11 +1467,12 @@ fn a_queue_that_moves_on_its_own(_: &()) -> Outcome {
 /// The settling spec's "A host with no runner", S118 as amended: no
 /// caller keeps watch, a chore's code stage delivers and the settle its
 /// agent's quiet runs submits the place; nothing settles for ten minutes,
-/// the terminal settling nothing; a caller's drop settles every place
-/// first, stepping the chore's base; a caller then keeps watch, and the
-/// chore lands at a later settle of its with no act; four minutes after
-/// its last settle began none keeps watch, and a drop settles every place
-/// first again (46, 119, 121, 122, 124, 208).
+/// the terminal settling nothing; a caller's drop settles the places where
+/// something is pending first, the submitted chore's among them, stepping
+/// its base; a caller then keeps watch, and the chore lands at a later
+/// settle of its with no act; four minutes after its last settle ended
+/// none keeps watch, and a drop settles the places where something is
+/// pending first again (46, 119, 121, 122, 124, 208, 225).
 fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     let world = World::new();
     world.terminal.add_session("ops", AgentState::Waiting);
@@ -1507,9 +1514,10 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         world.queue.log.of("step"),
         vec![format!("step {REPOSITORY} main")],
-        "the drop's steps, settling every place first"
+        "the drop's steps, settling the places where something is pending first"
     );
-    // The runner starts, each pass settling every place with a bound.
+    // The runner starts, each pass settling the places where something is
+    // pending with a bound.
     world.queue.log.clear();
     let first = world.host.now();
     world.engine().settle_every(120);
@@ -1551,7 +1559,7 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         (host.watch, host.watch_settled, host.watch_lapsed),
         (Watch::None, Some(last), Some(last + 4 * 60)),
-        "status four minutes after the last pass began"
+        "status four minutes after the last pass ended"
     );
     ensure_eq!(
         world.stage_state(&four, "code"),
@@ -1566,15 +1574,15 @@ fn s118_a_host_with_no_watch_runs_attended(_: &()) -> Outcome {
     ensure_eq!(
         world.stage_state(&four, "code"),
         Some(StageState::Lost),
-        "the stage once the operator's drop settled every place first"
+        "the stage once the operator's drop settled the places where something is pending first"
     );
     Ok(())
 }
 
 /// The settling spec's "Two depths in one settle": a chore submitted to
 /// `main` and another submitted to `train/x`, a branch that lands on
-/// `main`, open together; one settle of every place steps each base once
-/// (124, 125).
+/// `main`, open together; one settle of a caller keeping watch steps each
+/// base once (124, 125, 202, 225).
 fn two_depths_in_one_settle(_: &()) -> Outcome {
     let world = World::new();
     world.queue.plan_submits(vec![Plan::Hold, Plan::Hold]);
@@ -1594,7 +1602,7 @@ fn two_depths_in_one_settle(_: &()) -> Outcome {
     }
     ensure_eq!(world.queue.log.count("submit"), 2, "the chores submitted");
     world.queue.log.clear();
-    world.engine().settle(None);
+    world.engine().settle_every(120);
     let mut steps = world.queue.log.of("step");
     steps.sort();
     ensure_eq!(
@@ -1603,7 +1611,7 @@ fn two_depths_in_one_settle(_: &()) -> Outcome {
             format!("step {REPOSITORY} main"),
             format!("step {REPOSITORY} train/x"),
         ],
-        "the steps of one settle of every place"
+        "the steps of one settle of the watch's"
     );
     Ok(())
 }

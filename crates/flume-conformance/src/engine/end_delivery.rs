@@ -148,8 +148,8 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_wait_under_a_watch,
         },
         Scenario {
-            name: "end delivery: while no caller keeps watch, under any terminal, a wait settles every place before each reading",
-            cites: &["43", "119", "122", "208"],
+            name: "end delivery: while no caller keeps watch, under any terminal, a wait settles the places where something is pending before each reading",
+            cites: &["43", "119", "122", "208", "225"],
             run: a_wait_attended,
         },
         Scenario {
@@ -1096,8 +1096,8 @@ fn a_wait_under_a_watch(_: &()) -> Outcome {
 }
 
 /// The end-delivery spec's "Attended under any terminal": no caller
-/// keeps watch, so a wait settles every place before each reading (119,
-/// 208).
+/// keeps watch, so a wait settles the places where something is pending
+/// before each reading (119, 208, 225).
 fn a_wait_attended(_: &()) -> Outcome {
     let world = World::new();
     world.queue.plan_submits(vec![Plan::Hold]);
