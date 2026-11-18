@@ -92,6 +92,19 @@ enum Command {
         #[arg(long, value_name = "KEY")]
         answers: Option<String>,
     },
+    /// Answer the decision standing at a region of a statechart place:
+    /// the answer is taken only while that decision stands and no answer
+    /// given it is waiting to be applied, and the place's next settle
+    /// applies it once; refused naming the region where no decision stands
+    /// there, or naming the answer taken, who gave it and when (130, 176).
+    Answer {
+        place: String,
+        /// The region whose state carries the decision, by its path, as
+        /// status gives it.
+        region: String,
+        /// The answer, one the decision takes.
+        answer: String,
+    },
     /// End the place's agent and nothing else (51).
     Stop(Forced),
     /// End a conversation, which then counts as delivered (109).
@@ -660,6 +673,17 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             let core = build()?;
             let answering = answering(&core, key);
             core.tell_answering(&place, words, within, &answering)
+        }
+        Command::Answer {
+            place,
+            region,
+            answer,
+        } => {
+            let place = named(place)?;
+            let core = build()?;
+            let by = recipient_of(&core, &None)
+                .unwrap_or_else(|_| "a caller that named no recipient".into());
+            core.answer_decision(&place, region, answer, &by)
         }
         Command::Stop(forced) => build_for(forced, &named, build, Engine::stop)?,
         Command::Finish(forced) => build_for(forced, &named, build, Engine::finish)?,
