@@ -46,7 +46,7 @@ impl Engine {
             return Answer::refused(format!("the place {place} has no stage {stage}"));
         };
         let identity = self.next_identity(&held, index);
-        let declared = &held.place.kind.stages[index];
+        let declared = held.declared(index);
         let agent = self
             .resolve(&held.place, declared)
             .and_then(|resolved| self.agent_for(&resolved, stage))
@@ -264,9 +264,7 @@ impl Engine {
         // process that runs its session, left as they are (30, 49, 77,
         // 198; core.10).
         let lost = index
-            .filter(|&index| {
-                held.place.kind.stages[index].conversation && carries_lost(&held.stages[index])
-            })
+            .filter(|&index| held.declared(index).conversation && carries_lost(&held.stages[index]))
             .and_then(|index| held.stages[index].start.as_ref())
             .map(|start| start.identity.clone());
         if lost.is_none() {
@@ -459,6 +457,7 @@ impl Engine {
             }
             match index {
                 Some(index) => {
+                    let repeats = held.declared(index).repeats;
                     let stage = &mut held.stages[index];
                     let unstarted = matches!(
                         stage.state,
@@ -467,7 +466,6 @@ impl Engine {
                             | StageState::WaitingForRoom
                             | StageState::WaitingOnReadiness
                     );
-                    let repeats = held.place.kind.stages[index].repeats;
                     let next_repetition = repeats
                         && (stage.state.running() || stage.state == StageState::Repeating);
                     if held.current == Some(index) && !unstarted && !next_repetition {
@@ -651,8 +649,7 @@ impl Engine {
         let held = read.state;
         let current = held.current.filter(|index| {
             let state = held.stages[*index].state;
-            held.place.kind.stages[*index].conversation
-                && (state.running() || state == StageState::Lost)
+            held.declared(*index).conversation && (state.running() || state == StageState::Lost)
         });
         let Some(index) = current else {
             return Answer::refused(format!("the place {place} runs no conversation"));

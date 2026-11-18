@@ -111,9 +111,7 @@ impl Engine {
                     (true, false) => start.dialog.is_some(),
                     (false, false) => self.read_dialog(id, &start),
                 };
-                let limit = held.place.kind.stages[index]
-                    .quiet_limit
-                    .unwrap_or(QUIET_LIMIT);
+                let limit = held.declared(index).quiet_limit.unwrap_or(QUIET_LIMIT);
                 let waited = self.host.now().saturating_sub(start.started_at);
                 if stopped || (!dialog && waited >= limit) {
                     // A start read begun without its settings is read so

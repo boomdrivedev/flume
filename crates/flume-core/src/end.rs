@@ -31,7 +31,7 @@ impl Engine {
         let Some(index) = held.current else {
             return false;
         };
-        let declared = held.place.kind.stages[index].clone();
+        let declared = held.declared(index).clone();
         let Some(start) = held.stages[index].start.clone().filter(|start| start.live) else {
             return false;
         };

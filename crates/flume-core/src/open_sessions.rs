@@ -179,7 +179,7 @@ impl Engine {
         let Some(by) = self.let_go_by(id, kept, reading.as_ref()) else {
             return false;
         };
-        let conversation = held.place.kind.stages[kept.index].conversation;
+        let conversation = held.declared(kept.index).conversation;
         let left = conversation && reading.as_ref().is_some_and(brought_back_bare);
         let now = self.host.now();
         self.update(id, |held| {
@@ -268,7 +268,7 @@ impl Engine {
         if reading.state == AgentState::Stopped {
             return self.ended_let_go(id, &kept, true);
         }
-        if brought_back_bare(&reading) && held.place.kind.stages[kept.index].conversation {
+        if brought_back_bare(&reading) && held.declared(kept.index).conversation {
             // An agent the terminal brought back in a conversation's pane
             // is left there, sent nothing and never ended by a settle: a
             // person may be at it (77; core.10).

@@ -382,7 +382,7 @@ impl Engine {
             if next >= held.stages.len() || held.stages[next].state != StageState::NotReached {
                 return Step::Keep(None);
             }
-            let declared = &held.place.kind.stages[next];
+            let declared = held.declared(next);
             if held.hold_on(&declared.name).is_some() || declared.waits {
                 held.stages[next].state = StageState::OnHold;
                 return Step::Write(None);

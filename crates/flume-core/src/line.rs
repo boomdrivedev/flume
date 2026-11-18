@@ -274,7 +274,7 @@ pub(crate) fn state_words(
             "asking"
         } else if state == StageState::Stuck {
             "stuck"
-        } else if held.place.kind.stages[index].conversation {
+        } else if held.declared(index).conversation {
             "in conversation"
         } else {
             "working"

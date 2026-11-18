@@ -211,7 +211,7 @@ impl Engine {
             }
         };
         let with_start = current.filter(|index| {
-            held.stages[*index].start.is_some() && !place.kind.stages[*index].conversation
+            held.stages[*index].start.is_some() && !held.declared(*index).conversation
         });
         let base = base_place(&place.kind);
         let facts = bound
@@ -302,7 +302,7 @@ impl Engine {
             let starting = held.stages[index].state == StageState::Starting;
             AgentStatus {
                 identity: start.identity.to_string(),
-                stage: place.kind.stages[index].name.clone(),
+                stage: held.declared(index).name.clone(),
                 program: start.program.clone(),
                 settings: AgentSettings {
                     settings: start.settings.clone(),
@@ -386,9 +386,9 @@ impl Engine {
         let stages: Vec<StageStatus> = held
             .stages
             .iter()
-            .zip(&place.kind.stages)
             .enumerate()
-            .map(|(index, (stage, declared))| StageStatus {
+            .map(|(index, stage)| (index, stage, held.declared(index)))
+            .map(|(index, stage, declared)| StageStatus {
                 name: stage.name.clone(),
                 state: stage.state,
                 starts: stage.starts,
@@ -540,7 +540,7 @@ impl Engine {
     pub(crate) fn current_group(&self, held: &HeldState) -> Option<GroupStatus> {
         let index = held.current?;
         let place = &held.place;
-        if !place.kind.stages[index].repeats {
+        if !held.declared(index).repeats {
             return None;
         }
         let change = self.bound(place).ok()?.change?;
@@ -569,7 +569,7 @@ pub(crate) fn group_status(
     index: usize,
     facts: &ChangeFacts,
 ) -> Option<GroupStatus> {
-    if !held.place.kind.stages[index].repeats {
+    if !held.declared(index).repeats {
         return None;
     }
     let stage = &held.stages[index];

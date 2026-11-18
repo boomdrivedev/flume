@@ -232,7 +232,7 @@ impl Engine {
     fn stop_words(&self, identity: &str) -> Option<String> {
         let (held, index) = self.current_start(identity)?;
         let place = &held.place;
-        let declared = &place.kind.stages[index];
+        let declared = held.declared(index);
         if declared.conversation || !held.stages[index].state.running() {
             return None;
         }
