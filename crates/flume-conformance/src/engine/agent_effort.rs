@@ -1,10 +1,12 @@
 //! An agent's effort (197; record 0044): its program's own word for how
-//! hard its model works on each turn, given by any of the eight layers
-//! and taken whole from the first, a stage's own before every stage's, as
-//! the model is; asked of the agent's profile, which takes its program's
+//! hard its model works on each turn, or a table of programs, given by
+//! any of the eight layers and taken whole from the first, a stage's own
+//! before every stage's, as the model is, the agent's entry its
+//! program's; asked of the agent's profile, which takes its program's
 //! words or refuses, the launch or the stage refused naming the effort,
-//! the program, the stage and the layer; and nothing asked or passed
-//! where no layer gives one (4, 8, 21, 27, 32, 88).
+//! the program, the stage and the layer, a table naming no entry for the
+//! agent's program refused so; and nothing asked or passed where no
+//! layer gives one (4, 8, 21, 27, 32, 88).
 
 use super::agent_modes::{change_kind, fix_kind, nothing_made};
 use super::agent_settings::{for_every_stage, for_stage, opened, to_code, to_verify};
@@ -22,9 +24,14 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_word_kept_as_written,
         },
         Scenario {
-            name: "agent effort: a declaration whose effort is a table of programs refuses the launch, naming the table's effort, and nothing is made",
-            cites: &["4", "8", "197"],
-            run: a_table_refused,
+            name: "agent effort: a kind's table of programs asks and passes the agent's program's entry, its settings giving the table as written from kind",
+            cites: &["56", "197"],
+            run: a_tables_entry_passed,
+        },
+        Scenario {
+            name: "agent effort: a table naming no entry for the agent's program refuses the launch naming the table, the program, the stage and the layer, the kind's effort not taken, and nothing is made",
+            cites: &["4", "32", "169", "197"],
+            run: no_entry_for_the_agents_program,
         },
         Scenario {
             name: "agent effort: the launch's effort for one stage comes before the kind's for every stage, each stage starting with its own from its layer",
@@ -165,17 +172,78 @@ fn a_word_kept_as_written(_: &()) -> Outcome {
     Ok(())
 }
 
-fn a_table_refused(_: &()) -> Outcome {
+/// Settings giving an effort's table of programs, each entry as written.
+pub(super) fn efforts(entries: &[(&str, &str)]) -> Result<Settings, String> {
+    Ok(Settings {
+        effort: Some(PerProgram::from_programs(
+            entries
+                .iter()
+                .map(|(program, word)| (program.to_string(), word.to_string()))
+                .collect(),
+        )?),
+        ..Settings::default()
+    })
+}
+
+fn a_tables_entry_passed(_: &()) -> Outcome {
     let world = World::new();
+    world.agent.take_efforts(&["low", "high"]);
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![fix_kind(for_every_stage(efforts(&[
+            ("agent", "high"),
+            ("other", "max"),
+        ])?))?],
+    );
+    launched(&world.engine.launch(&launch("fix", "one", Some("mend it"))))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    ensure_eq!(
+        world.agent.log.of("effort"),
+        vec!["effort high".to_string(); 2],
+        "the entry asked at the launch and the start"
+    );
+    ensure_eq!(
+        effort_passed(&world, &World::identity("fix", "one", "code", 1))?,
+        Some("high".to_string()),
+        "the entry passed"
+    );
+    ensure_eq!(
+        effort_from(&world, &id)?,
+        given(Layer::Kind, r#"{ agent = "high", other = "max" }"#),
+        "the effort as the kind wrote it"
+    );
+    Ok(())
+}
+
+fn no_entry_for_the_agents_program(_: &()) -> Outcome {
+    let world = World::new();
+    world.agent.take_efforts(&["low", "high"]);
     world
         .kinds
-        .unreadable_declaration("efforts.toml", "kinds.fix.agents.effort: must be a string");
+        .set_kinds(REPOSITORY, vec![fix_kind(for_every_stage(effort("high")))?]);
     let mut fix = launch("fix", "one", Some("mend it"));
-    fix.declaration = Some("efforts.toml".into());
+    fix.every_stage = efforts(&[("other", "low")])?;
     let reason = refused(&world.engine.launch(&fix))?;
     ensure!(
-        reason.contains("kinds.fix.agents.effort"),
+        [
+            r#"`{ other = "low" }`"#,
+            "names no entry for `agent`",
+            "`code`",
+            "`launch`"
+        ]
+        .iter()
+        .all(|named| reason.contains(named)),
         "the refusal: {reason}"
+    );
+    ensure!(
+        !reason.contains("high"),
+        "the kind's effort taken in the table's stead: {reason}"
+    );
+    ensure_eq!(
+        world.agent.log.of("effort"),
+        Vec::<String>::new(),
+        "efforts asked"
     );
     nothing_made(&world, &World::id("fix", "one"))
 }

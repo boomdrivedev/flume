@@ -23,12 +23,14 @@
 //! asked of its profile, or the stage refused naming the model as
 //! written, the program, the stage and the layer, a table naming no entry
 //! for its program refused so, and nothing is asked where no layer gives
-//! one (172); its effort, where a layer gives one, taken whole as the
-//! model is, is asked of its profile, or the stage refused naming the
-//! effort, the program, the stage and the layer, and nothing is asked
-//! where no layer gives one (197); and its own settings are taken by its profile,
-//! or the stage refused naming each key with its layer and its file (195,
-//! 196).
+//! one (172); its effort, where a layer gives one, its program's own word
+//! or a table of programs taken whole as the model is, the agent's entry
+//! its program's, is asked of its profile, or the stage refused naming
+//! the effort as written, the program, the stage and the layer, a table
+//! naming no entry for its program refused so, and nothing is asked
+//! where no layer gives one (197); and its own settings are taken by its
+//! profile, or the stage refused naming each key with its layer and its
+//! file (195, 196).
 
 use crate::own::{fold, Table};
 use crate::{Engine, KEEP_OPEN};
@@ -284,20 +286,31 @@ fn model_taken(
     })
 }
 
-/// Whether `agent` takes `stage`'s effort as `resolved` gives it, asked
-/// only where a layer gives one; or why the stage cannot run at it,
-/// naming the effort as written, the program, the stage and the layer,
-/// with the profile's words (4, 32, 197).
-fn effort_taken(resolved: &Resolved, agent: &dyn Agent, stage: &str) -> Result<(), String> {
+/// The agent's entry of `stage`'s effort as `resolved` gives it, which
+/// `agent` took, asked only where a layer gives one; or why the stage
+/// cannot run at it, naming the effort as written, the program, the
+/// stage and the layer: a table of programs naming no entry for its
+/// program, which no later layer's effort stands in for, or an entry its
+/// profile refuses, with the profile's words (4, 32, 197).
+fn effort_taken(
+    resolved: &Resolved,
+    agent: &dyn Agent,
+    stage: &str,
+) -> Result<Option<String>, String> {
     let Some(effort) = &resolved.settings.effort else {
-        return Ok(());
+        return Ok(None);
     };
+    let written = effort.written();
     let layer = resolved.layer_of("effort");
     let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
-    let effort = effort.written();
-    agent.effort(&effort).map_err(|words| {
+    let entry = effort.entry(program).ok_or_else(|| {
         format!(
-            "the stage `{stage}`'s effort `{effort}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
+            "the stage `{stage}`'s effort `{written}`, from the layer `{layer}`, names no entry for `{program}`"
+        )
+    })?;
+    agent.effort(entry).map(|()| Some(entry.to_string())).map_err(|words| {
+        format!(
+            "the stage `{stage}`'s effort `{written}`, from the layer `{layer}`, cannot run on `{program}`: {words}"
         )
     })
 }
@@ -554,8 +567,7 @@ impl Engine {
         let agent = self.agent_for(&resolved, &stage.name)?;
         let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
-        effort_taken(&resolved, agent.as_ref(), &stage.name)?;
-        let effort = resolved.settings.effort.as_ref().map(PerProgram::written);
+        let effort = effort_taken(&resolved, agent.as_ref(), &stage.name)?;
         if let Some(own) = &resolved.own {
             let program = program_name(resolved.settings.program.as_deref().unwrap_or_default());
             if let Some(refused) = own_refused(agent.as_ref(), &stage.name, program, own) {
