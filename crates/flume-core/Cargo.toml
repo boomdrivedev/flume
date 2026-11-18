@@ -12,6 +12,8 @@ serde_json.workspace = true
 sha2.workspace = true
 hmac.workspace = true
 weir-delivery.workspace = true
+weir-engine.workspace = true
+time.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
