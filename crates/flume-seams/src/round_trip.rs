@@ -267,6 +267,7 @@ fn held() -> HeldState {
             fix_of: None,
             fixes_as: None,
             token: None,
+            checkouts: Vec::new(),
         },
         phase: Phase::Over {
             over: Over::Landed {
@@ -1517,7 +1518,12 @@ fn a_hibernations_types_round_trip() {
         round_trips(why);
         assert_eq!(serde_json::to_value(why).unwrap(), why.name());
     }
-    for by in [ResumedBy::Caller, ResumedBy::Message, ResumedBy::Answer] {
+    for by in [
+        ResumedBy::Caller,
+        ResumedBy::Message,
+        ResumedBy::Answer,
+        ResumedBy::Delivery,
+    ] {
         round_trips(by);
         assert_eq!(serde_json::to_value(by).unwrap(), by.name());
     }
@@ -1563,6 +1569,106 @@ fn a_hibernation_absent_from_a_state_written_before() {
     for field in ["hibernated", "resumes", "handing"] {
         assert!(start.get(field).is_none(), "{field} written");
     }
+}
+
+/// A standing role's place: its talk hibernated then resumed by a batch
+/// at its address, two checkouts, `blueprints`'s last move not made, its
+/// branch empty and its own repository its first checkout's (193, 213,
+/// 214).
+fn standing_role_talk() -> HeldState {
+    let mut state = hibernated_talk();
+    state.role = Some("east/ops".into());
+    state.place.branch = String::new();
+    state.place.checkouts = vec![
+        CheckoutHeld {
+            repository: state.place.repository.clone(),
+            address: state.place.address.clone(),
+            folder: "r".into(),
+            base: "main".into(),
+            binding: state.place.binding.clone(),
+            revision: Revision::new("c1"),
+            base_from: Some(BaseFrom::MergeQueue),
+            moved_at: Some(1000),
+            unmoved: None,
+        },
+        CheckoutHeld {
+            repository: "/blueprints".into(),
+            address: None,
+            folder: "blueprints".into(),
+            base: "main".into(),
+            binding: Binding::default(),
+            revision: Revision::new("b1"),
+            base_from: Some(BaseFrom::NoOrigin),
+            moved_at: None,
+            unmoved: Some(Unmoved {
+                at: 1000,
+                tip: Some(Revision::new("b2")),
+                reason: "your local changes would be overwritten".into(),
+            }),
+        },
+    ];
+    let start = state.stages[0].start.as_mut().expect("a start");
+    start.resumes[0].by = ResumedBy::Delivery;
+    start.resumes[0].words = None;
+    state
+}
+
+/// seam-contracts' "Round-trip": a held state with two checkouts, one
+/// with a move not made, and a start resumed by `delivery` (56, 193,
+/// 213, 214).
+#[test]
+fn checkouts_held_round_trip() {
+    let state = standing_role_talk();
+    assert!(state.place.standing_role());
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    let checkouts = &json["place"]["checkouts"];
+    assert_eq!(checkouts[0]["folder"], "r");
+    assert_eq!(checkouts[0]["base_from"], "merge-queue");
+    assert_eq!(checkouts[0]["moved_at"], 1000);
+    assert!(checkouts[0].get("unmoved").is_none());
+    assert_eq!(checkouts[1]["repository"], "/blueprints");
+    assert_eq!(checkouts[1]["unmoved"]["tip"], "b2");
+    assert!(checkouts[1].get("moved_at").is_none());
+    assert_eq!(json["place"]["branch"], "");
+    assert_eq!(json["stages"][0]["start"]["resumes"][0]["by"], "delivery");
+    assert_eq!(ResumedBy::Delivery.name(), "delivery");
+    round_trips(Checkout {
+        repository: "/blueprints".into(),
+        folder: "blueprints".into(),
+        revision: Revision::new("b1"),
+    });
+    for moved in [
+        Moved::Moved,
+        Moved::Kept {
+            reason: "would be overwritten".into(),
+        },
+        Moved::Gone,
+    ] {
+        round_trips(moved);
+    }
+    assert_eq!(
+        state.place.checkouts[1].place_ref(&state.place.location),
+        PlaceRef {
+            repository: "/blueprints".into(),
+            location: format!("{}/blueprints", state.place.location),
+            branch: String::new(),
+            base: "main".into(),
+        }
+    );
+}
+
+/// seam-contracts' "A held state written before": it reads with no
+/// checkouts, its place no standing role's, and none is written back
+/// (74).
+#[test]
+fn checkouts_held_none_in_a_state_written_before() {
+    let before = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(before["place"].get("checkouts").is_none());
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert!(read.place.checkouts.is_empty());
+    assert!(!read.place.standing_role());
+    assert_eq!(serde_json::to_value(&read).unwrap(), before);
 }
 
 /// The seam-contracts spec's scenario "A lost conversation's wait and
@@ -3018,6 +3124,8 @@ fn a_role_run_as_its_source_declares_it() {
         },
         answers: Some("The work's scope.".into()),
         answerer: true,
+        repositories: Vec::new(),
+        kinds: BTreeMap::new(),
     };
     round_trips(run.clone());
     let bare = RoleRun {
@@ -3041,6 +3149,46 @@ fn a_role_run_as_its_source_declares_it() {
     )
     .unwrap();
     assert_eq!(before.source, "", "a run status gave before sources");
+}
+
+#[test]
+fn a_standing_roles_entry_round_trips() {
+    // A standing role's entry gives its repositories, the first its
+    // repository, and the kinds its session launches its projects as; an
+    // entry written before reads neither (193, C.7).
+    let run = RoleRun {
+        source: "acme".into(),
+        repository: "/code/flume".into(),
+        repositories: vec!["/code/flume".into(), "/code/blueprints".into()],
+        kind: "desk".into(),
+        priority: 0,
+        base: None,
+        brief: None,
+        name: None,
+        intent: None,
+        agents: RoleAgents::default(),
+        answers: None,
+        answerer: false,
+        kinds: BTreeMap::from([
+            ("change".into(), "a change a design asks for".into()),
+            ("fix".into(), "a failing landing or check".into()),
+        ]),
+    };
+    round_trips(run.clone());
+    let json = serde_json::to_value(&run).unwrap();
+    assert_eq!(
+        json["repositories"],
+        serde_json::json!(["/code/flume", "/code/blueprints"])
+    );
+    assert_eq!(json["kinds"]["fix"], "a failing landing or check");
+    let before: RoleRun = serde_json::from_value(
+        serde_json::json!({"source": "acme", "repository": "/r", "kind": "turn", "priority": 0}),
+    )
+    .unwrap();
+    assert!(before.repositories.is_empty(), "no repositories before");
+    assert!(before.kinds.is_empty(), "no kinds before");
+    let bare = serde_json::to_value(&before).unwrap();
+    assert!(bare.get("repositories").is_none() && bare.get("kinds").is_none());
 }
 
 #[test]
@@ -3082,6 +3230,8 @@ fn what_a_source_declares_for_an_address() {
                     agents: RoleAgents::default(),
                     answers: None,
                     answerer: true,
+                    repositories: Vec::new(),
+                    kinds: BTreeMap::new(),
                 })),
             ),
         ]),

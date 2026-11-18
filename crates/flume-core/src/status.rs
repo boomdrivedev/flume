@@ -16,9 +16,10 @@ use crate::reading::{find_group, reads_change};
 use crate::settings::program_name;
 use crate::start::Starts;
 use crate::{
-    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, EffortStatus, EndStatus, Engine,
-    ExpiredEnd, GroupStatus, ModeStatus, MoveStatus, OwnFileStatus, OwnStatus, PlaceStatus,
-    SessionAnswer, SessionWait, SourceStatus, StageStatus, SubmissionStatus, WaitingOn, Waits,
+    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, CheckoutStatus, EffortStatus,
+    EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, MoveStatus, OwnFileStatus, OwnStatus,
+    PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus, SubmissionStatus,
+    WaitingOn, Waits,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -475,7 +476,37 @@ impl Engine {
             forecast: held.forecast.clone(),
             fixes: held.fixes.clone(),
             fix_of: place.fix_of.clone(),
+            checkouts: self.checkouts_status(place, bound.as_ref()),
         }
+    }
+
+    /// Each checkout of a standing role's place as its held state keeps
+    /// it, read through the place seam `bound` gives at the ask, or why it
+    /// could not be; none for any other place (56, 80, 193; core.15).
+    fn checkouts_status(&self, place: &PlaceRecord, bound: Option<&Bound>) -> Vec<CheckoutStatus> {
+        place
+            .checkouts
+            .iter()
+            .map(|checkout| CheckoutStatus {
+                repository: checkout.repository.clone(),
+                address: checkout.address.clone(),
+                folder: checkout.folder.clone(),
+                base: checkout.base.clone(),
+                revision: checkout.revision.clone(),
+                moved_at: checkout.moved_at,
+                base_from: checkout.base_from,
+                unmoved: checkout.unmoved.clone(),
+                read: match bound {
+                    Some(bound) => bound.place.read(&checkout.place_ref(&place.location)),
+                    None => PlaceRead::CouldNotRead {
+                        reason: format!(
+                            "{} binds no place seam flume could read",
+                            place.repository
+                        ),
+                    },
+                },
+            })
+            .collect()
     }
 }
 

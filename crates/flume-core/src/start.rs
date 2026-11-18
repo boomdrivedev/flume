@@ -11,7 +11,7 @@ use crate::accounts::Choice;
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
-    asks, group_text, may_name, notes_path, render, roles_text, way_to_stop_short,
+    after_roles, asks, group_text, may_name, notes_path, render, way_to_stop_short,
 };
 use crate::room::Admit;
 use crate::start_record::start_record;
@@ -241,6 +241,20 @@ impl Engine {
         )
     }
 
+    /// The kinds a role's place's entry names its projects' kinds by,
+    /// each with its words, as the host's sources' roles give them now,
+    /// as `may_name` reads the roles; none for a place of no role's, or
+    /// whose address no source gives a run (28, 193).
+    pub(crate) fn kinds_named(&self, held: &HeldState) -> BTreeMap<String, String> {
+        let Some(address) = held.role.as_deref() else {
+            return BTreeMap::new();
+        };
+        match self.host.roles().declared(address) {
+            Ok(RoleEntry::Run(run)) => run.kinds,
+            _ => BTreeMap::new(),
+        }
+    }
+
     /// The stage's prompt filled for `identity`'s start, or the first
     /// part it asks for with nothing to fill it (27). The way to stop
     /// short is in every prompt (28), as `agent`, the profile of the
@@ -251,7 +265,8 @@ impl Engine {
     /// change could not be read, and `{{notes}}` with its notes' path; a
     /// stage that does not repeat fills neither (27, 141). The roles in
     /// `listed`, which a stop-short may name, come last, after every part
-    /// the stage's repetitions share (28, 41; core.31). A role's run's
+    /// the stage's repetitions share, and after them the kinds `kinds` a
+    /// role's entry names (28, 41, 193; core.31). A role's run's
     /// start's `batch`, every delivery pending at its address, comes after
     /// the kind's template and before the way to stop short (214; design
     /// 9).
@@ -265,6 +280,7 @@ impl Engine {
         agent: Option<&dyn Agent>,
         group: Option<Option<&GroupHeld>>,
         listed: &[AnsweringRole],
+        kinds: &BTreeMap<String, String>,
         batch: Option<&str>,
     ) -> Result<String, PromptPart> {
         let place = &held.place;
@@ -312,9 +328,11 @@ impl Engine {
             text.push_str("\n\n");
             text.push_str(&unready(&held.readiness));
         }
-        if let Some(roles) = agent.and_then(|agent| roles_text(listed, &place.stream.name, agent)) {
+        if let Some(after) =
+            agent.and_then(|agent| after_roles(listed, kinds, &place.stream.name, agent))
+        {
             text.push_str("\n\n");
-            text.push_str(&roles);
+            text.push_str(&after);
         }
         Ok(text)
     }
@@ -568,13 +586,25 @@ impl Engine {
         // its claim, so a claim written again reads no file again (28, 41,
         // 193).
         let listed = self.may_name(&read.state);
+        let kinds = self.kinds_named(&read.state);
         // A role's run's start whose prompt is filled carries its
         // address's batch, claimed under the start's identity before the
         // start is written, and let go of where the start is not made
         // with it (214; design 9).
-        let batched = match (&read.state.role, &resume, &resolution) {
-            (Some(address), None, Ok(_)) => {
+        // A resume by a delivery claims the batch under the resume's own
+        // identity, its prompt the batch's words (213, 214; design 7).
+        let batched = match (&read.state.role, &resume, &resolution, &resumes) {
+            (Some(address), None, Ok(_), _) => {
                 self.claim_for_start(address, &self.next_identity(&read.state, index))
+            }
+            (Some(address), Some(_), Ok(_), Some(from)) if resumed_by == ResumedBy::Delivery => {
+                self.claim_for_start(
+                    address,
+                    &Identity {
+                        resume: from.identity.resume + 1,
+                        ..from.identity.clone()
+                    },
+                )
             }
             _ => None,
         };
@@ -665,8 +695,8 @@ impl Engine {
             let stream = &held.place.stream.name;
             let way = |first: String| {
                 let way = format!("{first}\n\n{}", way_to_stop_short(agent, &identity));
-                match roles_text(&listed, stream, agent) {
-                    Some(roles) => format!("{way}\n\n{roles}"),
+                match after_roles(&listed, &kinds, stream, agent) {
+                    Some(after) => format!("{way}\n\n{after}"),
                     None => way,
                 }
             };
@@ -675,11 +705,17 @@ impl Engine {
                     let resumed = then_words(StartReason::Resumed.words(), words.as_deref());
                     (way(resumed), words.clone())
                 }
-                // A resume of a hibernated start is sent the resume's words
-                // and the way to stop short, and keeps the words its start
-                // was given (28, 213).
+                // A resume of a hibernated start is sent the resume's words,
+                // a resume by a delivery its batch's, else flume's for a
+                // bare resume, and the way to stop short, and keeps the
+                // words its start was given (28, 213, 214).
                 Some(_) if hibernated => {
-                    let resumed = words.clone().unwrap_or_else(|| StartReason::Woken.words());
+                    let resumed = batched
+                        .as_ref()
+                        .filter(|batched| batched.identity == identity)
+                        .map(|batched| batched.words.clone())
+                        .or_else(|| words.clone())
+                        .unwrap_or_else(|| StartReason::Woken.words());
                     let given = resumes.as_ref().and_then(|from| from.words.clone());
                     (way(resumed), given)
                 }
@@ -695,6 +731,7 @@ impl Engine {
                     Some(agent),
                     group.as_ref().map(Option::as_ref),
                     &listed,
+                    &kinds,
                     batched
                         .as_ref()
                         .filter(|batched| batched.identity == identity)
@@ -919,8 +956,10 @@ impl Engine {
         claimed
     }
 
-    /// Opens the agent of a claimed start, out of the room lock; an open
-    /// the terminal refuses ends the start, freeing its room (70). Once
+    /// Opens the agent of a claimed start, out of the room lock, a
+    /// standing role's checkouts first moved to their bases' tips (193,
+    /// 213); an open the terminal refuses ends the start, freeing its room
+    /// (70). Once
     /// the open answers, the start is no longer opening, and an agent that
     /// came up is sent its prompt at once where it said it started and
     /// waits, its receipt read by the settles that follow, so the command
@@ -945,6 +984,7 @@ impl Engine {
             resume,
             own,
         } = claim;
+        self.move_checkouts(id);
         let folder = self.store.folder(id);
         let command = agent.command(
             &folder,

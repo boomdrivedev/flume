@@ -340,6 +340,15 @@ impl Place for Inside {
     fn remove_branch(&self, repository: &str, branch: &str, base: &str) -> BranchRemoved {
         self.0.remove_branch(repository, branch, base)
     }
+    fn make_checkouts(&self, location: &str, checkouts: &[Checkout]) -> MakeOutcome {
+        self.0.make_checkouts(location, checkouts)
+    }
+    fn move_checkout(&self, checkout: &PlaceRef, revision: &Revision) -> Moved {
+        self.0.move_checkout(checkout, revision)
+    }
+    fn remove_checkouts(&self, location: &str, checkouts: &[Checkout]) -> Removed {
+        self.0.remove_checkouts(location, checkouts)
+    }
 }
 
 /// The profiles built in, with the stand-ins beside them.
@@ -4523,8 +4532,8 @@ fn planner_host(label: &str) -> (Host, Repository) {
 #[test]
 fn the_mcp_tools_listed() {
     // The agent program's plugin spec's "The tools listed" (section 9;
-    // design 12): status, message, launch and wake, each with its input
-    // schema, status alone read-only.
+    // design 12): status, message, launch, wake, hibernate and resume,
+    // each with its input schema, status alone read-only (212, 213).
     let host = Host::new("mcp-tools");
     let repository = repository("mcp-tools", None);
     let replies = mcp_session(
@@ -4538,7 +4547,10 @@ fn the_mcp_tools_listed() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect();
-    assert_eq!(names, ["status", "message", "launch", "wake"]);
+    assert_eq!(
+        names,
+        ["status", "message", "launch", "wake", "hibernate", "resume"]
+    );
     for tool in tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert_eq!(
@@ -4557,6 +4569,106 @@ fn the_mcp_tools_listed() {
     assert_eq!(required("message"), serde_json::json!(["target", "words"]));
     assert_eq!(required("launch"), serde_json::json!(["kind", "name"]));
     assert_eq!(required("wake"), serde_json::json!(["address"]));
+    assert_eq!(required("hibernate"), serde_json::json!(["place"]));
+    assert_eq!(required("resume"), serde_json::json!(["place"]));
+}
+
+/// A scratch repository with a fix `fix--one` launched by the stand-in
+/// flume, whose kind hibernates nothing (212).
+fn a_fix_launched(label: &str) -> (Host, Repository) {
+    let host = Host::new(label);
+    let repository = repository(label, Some(STAND_IN_QUEUE));
+    let kinds = kinds_file(&host, true);
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    (host, repository)
+}
+
+#[test]
+fn mcp_hibernate_refused_as_the_command_line_refuses_it() {
+    // The agent program's plugin spec's "A hibernate refused as the
+    // command line refuses it" (60, 212, C.2): a fix's kind hibernates
+    // nothing, so the tool's result is the refusal `flume hibernate`
+    // gives, naming the place, marked an error.
+    let (host, repository) = a_fix_launched("mcp-hibernate");
+    let replies = mcp_session(
+        &host,
+        &repository.dir,
+        &[],
+        &[tool_call(
+            "hibernate",
+            serde_json::json!({"place": "fix--one", "force": true}),
+        )],
+    );
+    let (over_mcp, error) = tool_result(&replies[0]);
+    assert!(error, "{over_mcp}");
+    let by_hand = answered(
+        &host.flume(
+            &repository.dir,
+            &["hibernate", "fix--one", "--force", "--json"],
+            &[],
+        ),
+        1,
+    );
+    assert_eq!(over_mcp, by_hand);
+    let reason = serde_json::from_value::<Answer>(over_mcp.clone())
+        .expect("an answer")
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    let place = host.place_of(&repository, "fix--one");
+    assert!(
+        reason.contains(&place) && reason.contains("does not hibernate"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn mcp_resume_refused_as_the_command_line_refuses_it() {
+    // The agent program's plugin spec's "A resume of nothing hibernating"
+    // (60, 213, C.2): the tool's result is the refusal `flume resume`
+    // gives, marked an error, and nothing is started.
+    let (host, repository) = a_fix_launched("mcp-resume");
+    let place = host.place_of(&repository, "fix--one");
+    let before = answered(
+        &host.flume(&repository.dir, &["status", "fix--one", "--json"], &[]),
+        0,
+    );
+    let replies = mcp_session(
+        &host,
+        &repository.dir,
+        &[],
+        &[tool_call(
+            "resume",
+            serde_json::json!({"place": "fix--one"}),
+        )],
+    );
+    let (over_mcp, error) = tool_result(&replies[0]);
+    assert!(error, "{over_mcp}");
+    let by_hand = answered(
+        &host.flume(&repository.dir, &["resume", "fix--one", "--json"], &[]),
+        1,
+    );
+    assert_eq!(over_mcp, by_hand);
+    let reason = serde_json::from_value::<Answer>(over_mcp.clone())
+        .expect("an answer")
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    assert!(reason.contains(&place), "{reason}");
+    let after = answered(
+        &host.flume(&repository.dir, &["status", "fix--one", "--json"], &[]),
+        0,
+    );
+    let starts = |status: &Value| status["status"]["places"][0]["stages"][0]["starts"].clone();
+    assert!(starts(&before).is_u64(), "{before}");
+    assert_eq!(starts(&after), starts(&before), "starts after the resume");
 }
 
 #[test]

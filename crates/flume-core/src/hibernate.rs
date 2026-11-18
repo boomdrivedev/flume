@@ -19,8 +19,11 @@
 //! its last write not made, is carried on by that settle once the agent
 //! is quiet, so every step is safe to repeat (31, 74, 75; core.17).
 //!
-//! A resume (213): its caller's `flume resume`, a message or the answer
-//! the hibernated agent waits on puts the stage waiting for room to carry
+//! A resume (213, 214): its caller's `flume resume`, a message, the
+//! answer the hibernated agent waits on, or a batch pending at the
+//! address of a role whose run's stage hibernates, reached by the
+//! address's wake or by a settle handing the batch, puts the stage
+//! waiting for room to carry
 //! the hibernated start's conversation, as a lost conversation's retry does,
 //! with the resume's words, and starts it: one fresh agent under an
 //! identity of its own, carrying the session where its profile can, on
@@ -99,7 +102,7 @@ impl Engine {
                 place,
                 index,
                 ResumedBy::Caller,
-                StartReason::Woken.words(),
+                Some(StartReason::Woken.words()),
                 &|_| true,
             ) {
                 Ok(()) => self.acted(Act::Resume, place),
@@ -188,7 +191,7 @@ impl Engine {
             place,
             index,
             ResumedBy::Answer,
-            asked(&question, words),
+            Some(asked(&question, words)),
             &record,
         ) {
             Ok(()) => self.acted(act, place),
@@ -199,9 +202,13 @@ impl Engine {
     /// A message's words to the place's hibernating stage, its resume's
     /// words: taken at once and answered with the place's status (53, 213).
     pub(crate) fn message_hibernating(&self, place: &PlaceId, index: usize, words: &str) -> Answer {
-        match self.resume_stage(place, index, ResumedBy::Message, words.to_string(), &|_| {
-            true
-        }) {
+        match self.resume_stage(
+            place,
+            index,
+            ResumedBy::Message,
+            Some(words.to_string()),
+            &|_| true,
+        ) {
             Ok(()) => self.acted(Act::Message, place),
             Err(reason) => Answer::refused(reason),
         }
@@ -209,17 +216,18 @@ impl Engine {
 
     /// Puts the hibernated stage at `index` waiting for room to carry its
     /// start's conversation, resumed by `by`, with `words` as the resume's
-    /// prompt's words, and starts it; why not where the terminal did not
-    /// open it or its prompt or settings refused it (49, 70, 213). What
-    /// `record` writes, an answer on the stop-short it answers, is written
-    /// in the same write, which is not made where it records nothing (42,
-    /// 75).
+    /// prompt's words, none for a resume by a delivery, whose prompt is
+    /// its address's batch as its start claims it, and starts it; why not
+    /// where the terminal did not open it or its prompt or settings
+    /// refused it (49, 70, 213, 214). What `record` writes, an answer on
+    /// the stop-short it answers, is written in the same write, which is
+    /// not made where it records nothing (42, 75).
     pub(crate) fn resume_stage(
         &self,
         place: &PlaceId,
         index: usize,
         by: ResumedBy,
-        words: String,
+        words: Option<String>,
         record: &dyn Fn(&mut HeldState) -> bool,
     ) -> Result<(), String> {
         let room = self.host.room();
@@ -252,7 +260,7 @@ impl Engine {
                 stage.state = StageState::WaitingForRoom;
                 stage.room = Some(RoomWait {
                     order,
-                    words: Some(words.clone()),
+                    words: words.clone(),
                     carry: Some(carry),
                     ..RoomWait::default()
                 });
@@ -266,7 +274,7 @@ impl Engine {
                 "the place {place} moved before its hibernating stage was resumed"
             ));
         }
-        match self.start_stage(place, index, Some(words)) {
+        match self.start_stage(place, index, words) {
             Start::Opened(_) | Start::Held(_) | Start::NeverBegun(_) | Start::WaitingForRoom => {
                 Ok(())
             }
@@ -280,6 +288,41 @@ impl Engine {
             }
             Start::Unresolved(reason) => Err(reason),
             Start::NoPlace => Err(format!("no place {place} stands on this host")),
+        }
+    }
+
+    /// The resume by a delivery of the run of the role's address
+    /// `address`, where its run stands with its current stage
+    /// hibernating and a batch is pending at the address: the stage put
+    /// waiting for room with no words of its own, carrying its
+    /// conversation as any resume does, and started, its start claiming
+    /// the address's batch as its prompt; the place resumed, none where
+    /// nothing was. A stage ended short whose agent hibernated while it
+    /// was kept open waits on its answer and takes no delivery, its batch
+    /// pending until the answer resumes it and its agent next waits (42,
+    /// 132, 213, 214; core.10, core.32).
+    pub(crate) fn resume_by_delivery(&self, address: &str) -> Option<PlaceId> {
+        let (id, index) = self.store.read_every().into_iter().find_map(|read| {
+            let held = read.state;
+            let index = held.current?;
+            (held.role.as_deref() == Some(address)
+                && held.phase == Phase::Live
+                && held.stages[index].state == StageState::Hibernating)
+                .then(|| (held.place.id.clone(), index))
+        })?;
+        if !self.batch_pending(address) {
+            return None;
+        }
+        match self.resume_stage(&id, index, ResumedBy::Delivery, None, &|held| {
+            held.stages[index].state == StageState::Hibernating
+        }) {
+            Ok(()) => Some(id),
+            Err(why) => {
+                self.host.log(&format!(
+                    "the run of {address} was not resumed by its delivery: {why}"
+                ));
+                None
+            }
         }
     }
 

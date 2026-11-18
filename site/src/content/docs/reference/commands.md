@@ -27,7 +27,7 @@ sidebar:
 | `flume wake <address>` | Wake a role's address, `<stream>/<role>`: launch its run where none stands, and nothing where an agent already holds it. |
 | `flume kinds lock <identity>…` | Record each kind at its content's hash in a lock of kinds, or take it out. |
 | `flume open [<session>]` | Show a session of a stream's, by the session's name, in its stream's view: a window its terminal app opens, its multiplexer's own app, or the line to run. |
-| `flume mcp` | Serve flume's status, and its `message`, `launch` and `wake`, over MCP on standard input and output. |
+| `flume mcp` | Serve flume's status, and its `message`, `launch`, `wake`, `hibernate` and `resume`, over MCP on standard input and output. |
 | `flume needs <words>` | From an agent flume started: its stage cannot deliver without an answer, or found work; `--to` names the role the words are for. |
 | `flume ack started`, `flume ack received` | From an agent flume started: it started, or it received a prompt. |
 | `flume hook <event>` | From an agent program's hook: what flume does with the hook's input. |
@@ -851,14 +851,15 @@ writes nothing it holds. It is refused, opening nothing, when:
 
 ## `flume mcp`
 
-Serves MCP on standard input and output with four tools. `status` takes
+Serves MCP on standard input and output with six tools. `status` takes
 an optional place, answers as `flume status --json` does and settles
 nothing. `message`, with `target`, `words`, `within` and `answers`;
 `launch`, with `kind`, `name`, `brief` and the command's other
 switches by their long names, `base`, `recipient`, `hold`,
 `hold_submission`, `mark`, `priority`, `stall_after`, `agent`, `stream`
-and `intent`, a list where the switch is given again and again; and
-`wake`, with `address`: each call is run as the command line runs the
+and `intent`, a list where the switch is given again and again;
+`wake`, with `address`; `hibernate`, with `place` and `force`; and
+`resume`, with `place`: each call is run as the command line runs the
 same words, every default, check and refusal the command's, its result
 the command's JSON and a refusal marked an error. A launch takes no
 file over MCP: its brief is text. The server runs in its caller's

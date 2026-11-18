@@ -7,6 +7,9 @@
 use super::account_pools::{account, fill_first_at_homes, home, pool, stops_at_limit};
 use super::carried_conversations::{by_hand, resumed as resumes_session};
 use super::open_sessions::{stops_short, QUESTION};
+use super::standing_roles::{
+    handovers_to_ops, message_ops, ops_hibernated, ops_talking, talk_of as ops_talk, OPS,
+};
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Answer, Answering, Waits, KEEP_OPEN};
@@ -145,6 +148,31 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "hibernation: A hibernating research place done: a caller's done of a place whose talk hibernates, its kind landing nothing, makes its work over with no agent closed through the terminal, and the next settle tidies it",
             cites: &["62", "114", "212"],
             run: a_hibernating_research_place_done,
+        },
+        Scenario {
+            name: "hibernation: Two messages and an end while asleep: east/ops' talk hibernates, two messages and a fix's end come for east/ops, and one resume starts by delivery, its prompt the three as one batch each with its confirm then the way to stop short, each recorded handed once the prompt is received, status giving the resume by delivery",
+            cites: &["43", "132", "213"],
+            run: two_messages_and_an_end_while_asleep,
+        },
+        Scenario {
+            name: "hibernation: A resume that never began: east/ops' resume by delivery read never begun lets its claims go, records nothing handed, and the start after it carries the same batch",
+            cites: &["146", "213"],
+            run: a_delivery_resume_that_never_began,
+        },
+        Scenario {
+            name: "hibernation: Handed meanwhile: a message the resume by delivery waited for room for, collected by east/ops' inbox before the resume fills its prompt, leaves the resume's prompt flume's words for a bare resume then the way to stop short",
+            cites: &["43", "213"],
+            run: handed_meanwhile,
+        },
+        Scenario {
+            name: "hibernation: A hibernated agent waiting on its answer: east/ops' talk ended short needing an answer and hibernated at the end of its keep-open time takes no message for east/ops, which stays pending until the answer resumes the talk and its agent next waits",
+            cites: &["42", "198", "213"],
+            run: a_hibernated_agent_waiting_on_its_answer,
+        },
+        Scenario {
+            name: "hibernation: A batch the terminal could not hand: east/ops' talk quiet past its hibernate time while the fake terminal refuses every send to east/ops and a message waits there is hibernated by no settle, and once the send is taken and the agent quiet its hibernate time again, a settle hibernates it",
+            cites: &["43", "212"],
+            run: a_batch_the_terminal_could_not_hand,
         },
     ]
 }
@@ -1444,6 +1472,268 @@ fn a_hibernating_research_place_done(_: &()) -> Outcome {
         !world.place.log.of("remove").is_empty(),
         "the place was not removed: {:?}",
         world.place.log.calls()
+    );
+    Ok(())
+}
+
+/// east/ops' talk hibernated, a fix for `recipients` holding the host's
+/// one room, so a resume waits for room: the fix (70, 213).
+fn the_room_held(world: &World, recipients: &[&str]) -> Result<PlaceId, String> {
+    let busy = super::role_waking::fix_for(world, "busy", recipients)?;
+    world.host.set_bound(Some(1));
+    Ok(busy)
+}
+
+fn two_messages_and_an_end_while_asleep(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let busy = the_room_held(&world, &[OPS])?;
+    let first = message_ops(&world, "First, the release.")?;
+    let second = message_ops(&world, "Second, the notes.")?;
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::WaitingForRoom),
+        "talk once messaged on a full host"
+    );
+    super::settling::deliver_fix(&world, &busy);
+    world.queue.plan_submits(vec![flume_fakes::Plan::Hold]);
+    world.settle(&busy);
+    world.settle(&id);
+    let resumed = Identity {
+        resume: 1,
+        ..ops_talk(1)
+    };
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(&start.identity, &resumed, "talk's start");
+    let resume = start.resumes.last().ok_or("talk's start holds no resume")?;
+    ensure_eq!(
+        (resume.by, resume.words.as_deref()),
+        (ResumedBy::Delivery, None),
+        "talk's resume"
+    );
+    let prompt = &start.prompt.text;
+    let way = flume_core::way_to_stop_short(world.agent.as_ref(), &resumed);
+    let release = prompt.find("First, the release.");
+    let notes = prompt.find("Second, the notes.");
+    let delivered = prompt.find("fix--busy");
+    ensure!(
+        release < notes && notes < delivered && release.is_some(),
+        "the batch's items in order: {prompt}"
+    );
+    ensure_eq!(
+        prompt.matches("flume confirm").count(),
+        3,
+        "the confirms the prompt gives"
+    );
+    ensure!(
+        prompt.find(&way) > delivered,
+        "the way to stop short after the batch: {prompt}"
+    );
+    world.settle(&id);
+    let end = world
+        .delivery_key("fix--busy", "stage/code/1/delivered")
+        .ok_or("no delivery of the fix's end")?;
+    for key in [&first, &second, &end] {
+        ensure_eq!(
+            handovers_to_ops(&world, key),
+            1,
+            "{key}'s hand-overs to east/ops"
+        );
+    }
+    let status = world.status(&id)?;
+    ensure_eq!(
+        status.stages[0].resumes.last().map(|resume| resume.by),
+        Some(ResumedBy::Delivery),
+        "the resume status gives"
+    );
+    ensure_eq!(
+        world.terminal.notices(OPS),
+        Vec::<String>::new(),
+        "notices typed to east/ops"
+    );
+    Ok(())
+}
+
+fn a_delivery_resume_that_never_began(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    world.agent.carried_starts_end();
+    let key = message_ops(&world, "Are you there?")?;
+    ensure_eq!(handovers_to_ops(&world, &key), 0, "hand-overs once resumed");
+    world.settle(&id);
+    let held = world.held(&id).ok_or("no held state")?;
+    ensure!(
+        held.uncarried
+            .iter()
+            .any(|read| read.stage == "talk" && read.start == 1),
+        "talk's resume was not read never begun: {:?}",
+        held.uncarried
+    );
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(start.identity, ops_talk(2), "the start after the resume");
+    ensure!(
+        start.prompt.text.contains("Are you there?"),
+        "the fresh start's prompt carries not the batch: {}",
+        start.prompt.text
+    );
+    world.settle(&id);
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        1,
+        "hand-overs once the fresh start took the batch"
+    );
+    let resumed = Identity {
+        resume: 1,
+        ..ops_talk(1)
+    }
+    .to_string();
+    let claims = flume_core::deliveries::read_whole(&*world.store)?.claims;
+    ensure!(
+        claims
+            .iter()
+            .all(|claim| claim.start.as_deref() != Some(resumed.as_str())),
+        "the resume's claims stand: {claims:?}"
+    );
+    Ok(())
+}
+
+fn handed_meanwhile(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    let busy = the_room_held(&world, &["operator"])?;
+    let key = message_ops(&world, "First, the release.")?;
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::WaitingForRoom),
+        "talk once messaged on a full host"
+    );
+    world.engine().inbox(OPS, None, false);
+    ensure_eq!(handovers_to_ops(&world, &key), 1, "hand-overs by the inbox");
+    taken(&world.engine().stop(&busy, true))?;
+    world.settle(&id);
+    let resumed = Identity {
+        resume: 1,
+        ..ops_talk(1)
+    };
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(&start.identity, &resumed, "talk's start");
+    ensure!(
+        start
+            .prompt
+            .text
+            .starts_with(&resume_prompt(&world, &resumed, WOKEN)),
+        "the resume's prompt: {}",
+        start.prompt.text
+    );
+    ensure!(
+        !start.prompt.text.contains("First, the release."),
+        "the resume's prompt carries a message handed meanwhile"
+    );
+    ensure_eq!(handovers_to_ops(&world, &key), 1, "hand-overs once resumed");
+    Ok(())
+}
+
+fn a_hibernated_agent_waiting_on_its_answer(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_talking(&world)?;
+    stops_short(
+        &world,
+        &id,
+        0,
+        &ops_talk(1),
+        QUESTION,
+        StopKind::NeedsAnswer,
+    )?;
+    world.settle(&id);
+    world.host.advance(KEEP_OPEN);
+    world.settle(&id);
+    let talk = stage_of(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            talk.state,
+            talk.start
+                .and_then(|start| start.hibernated)
+                .map(|held| held.why)
+        ),
+        (StageState::EndedShort, Some(HibernatedBy::KeptOpen)),
+        "talk once kept open its time"
+    );
+    let opens = world.terminal.log.count("open");
+    let key = message_ops(&world, "A note for later.")?;
+    world.settle(&id);
+    ensure_eq!(
+        (
+            world.stage_state(&id, "talk"),
+            world.terminal.log.count("open"),
+            handovers_to_ops(&world, &key)
+        ),
+        (Some(StageState::EndedShort), opens, 0),
+        "talk, the agents opened and the message's hand-overs once messaged"
+    );
+    taken(&world.engine().message(&id, "Ship it.", None))?;
+    let start = start_now(&world, &id, "talk")?;
+    ensure_eq!(
+        start.resumes.last().map(|resume| resume.by),
+        Some(ResumedBy::Answer),
+        "what resumed talk"
+    );
+    ensure!(
+        !start.prompt.text.contains("A note for later."),
+        "the answer's resume took the message: {}",
+        start.prompt.text
+    );
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        0,
+        "hand-overs once answered"
+    );
+    world.settle(&id);
+    world.settle(&id);
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        1,
+        "hand-overs once talk's agent waits"
+    );
+    ensure!(
+        world
+            .terminal
+            .notices(OPS)
+            .iter()
+            .any(|notice| notice.contains("A note for later.")),
+        "the message was not sent to east/ops: {:?}",
+        world.terminal.notices(OPS)
+    );
+    Ok(())
+}
+
+fn a_batch_the_terminal_could_not_hand(_: &()) -> Outcome {
+    let world = World::new();
+    let id = ops_talking(&world)?;
+    world
+        .terminal
+        .refuse_sends_to(OPS, Some("the pane is gone"));
+    let key = message_ops(&world, "A note for later.")?;
+    ensure_eq!(
+        handovers_to_ops(&world, &key),
+        0,
+        "hand-overs once messaged"
+    );
+    settle_through(&world, &id, 10 * 60, 2 * HOUR, "talk")?;
+    world.terminal.refuse_sends_to(OPS, None);
+    world.settle(&id);
+    ensure_eq!(handovers_to_ops(&world, &key), 1, "hand-overs once sent");
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Begun),
+        "talk once its batch was sent"
+    );
+    settle_through(&world, &id, 10 * 60, HOUR - 10 * 60, "talk")?;
+    world.host.advance(20 * 60);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "talk"),
+        Some(StageState::Hibernating),
+        "talk once quiet its hibernate time again"
     );
     Ok(())
 }

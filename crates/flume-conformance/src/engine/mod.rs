@@ -35,6 +35,7 @@ pub mod running_through;
 pub mod sessions;
 pub mod settling;
 pub mod stage_runs;
+pub mod standing_roles;
 pub mod start_integrity;
 pub mod starts;
 pub mod stream_terminals;
@@ -86,5 +87,6 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(hibernation::scenarios());
     every.extend(base_places::scenarios());
     every.extend(open_sessions::scenarios());
+    every.extend(standing_roles::scenarios());
     every
 }

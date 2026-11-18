@@ -58,6 +58,7 @@ impl Engine {
             .unwrap_or_else(|| held.place.base_revision.clone());
         let group = self.group_at(&held, index, &head);
         let listed = self.may_name(&held);
+        let kinds = self.kinds_named(&held);
         match self.fill(
             &held,
             index,
@@ -66,6 +67,7 @@ impl Engine {
             agent.as_deref(),
             group.as_ref().map(Option::as_ref),
             &listed,
+            &kinds,
             None,
         ) {
             Ok(text) => Answer::Prompt {

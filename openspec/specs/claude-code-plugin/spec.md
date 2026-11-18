@@ -315,17 +315,17 @@ named, or flume does not answer (43, C.4; weir 103).
 ### Requirement: The MCP tools take the command line's words
 
 `flume mcp`'s `message` SHALL take `target`, `words`, `within` and
-`answers`; its `launch` SHALL take `kind`, `name`, `brief` and the
-command's other words and switches by their long names, `base`,
-`recipient`, `hold`, `hold_submission`, `mark`, `priority`,
-`stall_after`, `agent`, `stream` and `intent`, arrays where the flag
-repeats; its `wake` SHALL take `address`; and `status` alone SHALL be
-marked read-only (7, 53, 60, 132, section 9).
+`answers`; its `launch`, `kind`, `name`, `brief` and the command's other
+words and switches by their long names, `base`, `recipient`, `hold`,
+`hold_submission`, `mark`, `priority`, `stall_after`, `agent`, `stream`
+and `intent`, arrays where the flag repeats; its `wake`, `address`; its
+`hibernate`, `place` and `force`; its `resume`, `place`; and `status`
+alone SHALL be read-only (7, 53, 60, 132, 212, 213).
 
 #### Scenario: The tools listed
 
 - **WHEN** a scripted MCP session lists `flume mcp`'s tools
-- **THEN** it lists `status`, `message`, `launch` and `wake`, each with its input schema, `status` alone read-only
+- **THEN** it lists `status`, `message`, `launch`, `wake`, `hibernate` and `resume`, each with its input schema, `status` alone read-only
 
 ### Requirement: The deliver mod runs the hook at the session's wait
 
@@ -378,3 +378,19 @@ validation (C.4).
 
 - **WHEN** the binary writes the plugin for a start
 - **THEN** its `hooks/flume.ts` names the binary's absolute path where `plugins/claude` names `flume`, it holds no `hooks/line.ts`, and `claude plugin validate --strict` passes over it
+
+### Requirement: hibernate and resume over MCP
+
+`flume mcp` SHALL serve `hibernate` and `resume`, each turned into the
+command line's arguments and run by its parser and act, its result the
+act's JSON and a refusal marked an error (60, 212, 213, C.2).
+
+#### Scenario: A hibernate refused as the command line refuses it
+
+- **WHEN** a scripted MCP session calls `hibernate` naming a fix's place
+- **THEN** the tool's result is the refusal `flume hibernate` gives, naming the place, marked an error
+
+#### Scenario: A resume of nothing hibernating
+
+- **WHEN** a scripted MCP session calls `resume` naming a place whose stage does not hibernate
+- **THEN** the tool's result is the refusal `flume resume` gives, marked an error, and nothing is started

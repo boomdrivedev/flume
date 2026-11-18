@@ -389,12 +389,27 @@ impl Engine {
     /// A place whose launching command is gone while it was made: what
     /// was made is removed, so nothing of it is left; a base place's
     /// branch closed by the merge queue into its base, where its open
-    /// made it, and nothing asked of the place seam (2, 76, 206).
+    /// made it, and nothing asked of the place seam; a standing role's
+    /// checkouts made so far, and what stands at its location, removed by
+    /// the place seam with no teardown, and no branch (2, 76, 193, 206).
     fn undo(&self, held: &HeldState) -> bool {
         let place = &held.place;
         let Ok(bound) = self.bound(place) else {
             return false;
         };
+        if place.standing_role() {
+            let checkouts = crate::standing_role::checkouts(place);
+            if let Removed::Refused { step, words } =
+                bound.place.remove_checkouts(&place.location, &checkouts)
+            {
+                self.host.log(&format!(
+                    "the checkouts of {}, whose wake died, were kept at {step}: {words}",
+                    place.id
+                ));
+                return false;
+            }
+            return self.remove_held(&place.id);
+        }
         if crate::base::base_place(&place.kind) {
             if let Some(queue) = &bound.merge_queue {
                 if let BranchClosed::Kept { reason } =

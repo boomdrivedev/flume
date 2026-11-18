@@ -361,6 +361,7 @@ mod tests {
             fix_of: None,
             fixes_as: None,
             token: None,
+            checkouts: Vec::new(),
         };
         serde_json::from_value(json!({
             "place": to_value(place).unwrap(),

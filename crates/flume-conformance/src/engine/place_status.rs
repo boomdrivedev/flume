@@ -346,6 +346,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["56", "203", "210"],
             run: a_forecast_unread_in_status,
         },
+        Scenario {
+            name: "status: A hibernating standing role with nothing pending: status gives east/ops among the host's addresses with standing_role naming its place and since when it hibernates",
+            cites: &["56", "193", "212"],
+            run: a_hibernating_standing_role_with_nothing_pending,
+        },
+        Scenario {
+            name: "status: Its checkouts: status of east/ops' place, its blueprints checkout holding an untracked file and its last move not made, gives two checkouts, blueprints' holding the file and its move not made with when, the tip and the words, and an empty branch",
+            cites: &["56", "80", "193"],
+            run: a_standing_roles_checkouts,
+        },
+        Scenario {
+            name: "status: A place of a run: status of a fix's place gives no checkouts, its JSON holding no checkouts and no other field changed",
+            cites: &["56", "61"],
+            run: a_place_of_a_run_gives_no_checkouts,
+        },
     ]
 }
 
@@ -3027,5 +3042,120 @@ fn a_resume_not_carried_in_status(_: &()) -> Outcome {
         !json.contains("/homes/") && !json.contains("CLAUDE_CONFIG_DIR="),
         "status names a path: {json}"
     );
+    Ok(())
+}
+
+fn a_hibernating_standing_role_with_nothing_pending(_: &()) -> Outcome {
+    use super::standing_roles::{ops_hibernated, OPS};
+    let world = World::new();
+    let id = ops_hibernated(&world)?;
+    // The talk confirms the end its first prompt carried, as a role that
+    // acted on it does (43; weir 102).
+    world.confirm_every(OPS);
+    let since = world
+        .held(&id)
+        .and_then(|held| held.stages[0].start.clone())
+        .and_then(|start| start.hibernated)
+        .map(|hibernated| hibernated.since)
+        .ok_or("talk records no hibernation")?;
+    let addresses = super::role_waking::addresses(&world)?;
+    let ops = addresses
+        .iter()
+        .find(|status| status.address == OPS)
+        .ok_or("status gives no east/ops")?;
+    ensure_eq!(
+        ops.standing_role.clone(),
+        Some(flume_core::StandingRoleStatus {
+            place: id.clone(),
+            hibernating_since: Some(since),
+        }),
+        "east/ops' standing role"
+    );
+    ensure_eq!(
+        (ops.pending.len(), ops.messages.len(), ops.run.clone()),
+        (0, 0, Some(id)),
+        "what is pending at east/ops, and its run"
+    );
+    Ok(())
+}
+
+fn a_standing_roles_checkouts(_: &()) -> Outcome {
+    use super::standing_roles::{checkout_at, resumed_over_a_change, IN_THE_WAY};
+    let world = World::new();
+    let before = world.blueprints();
+    let (id, tip) = resumed_over_a_change(&world)?;
+    let (blueprints, _) = checkout_at(&world, &id, "blueprints");
+    world.place.set_holds(
+        &blueprints,
+        Holds {
+            untracked: vec!["notes.md".into()],
+            ..Holds::default()
+        },
+    );
+    let status = world.status(&id)?;
+    ensure_eq!(status.branch, "", "the place's branch");
+    let folders: Vec<&str> = status
+        .checkouts
+        .iter()
+        .map(|checkout| checkout.folder.as_str())
+        .collect();
+    ensure_eq!(folders, vec!["repository", "blueprints"], "the checkouts");
+    let checkout = &status.checkouts[1];
+    ensure_eq!(
+        (
+            checkout.repository.as_str(),
+            checkout.base.as_str(),
+            &checkout.revision
+        ),
+        (BLUEPRINTS, "main", &before),
+        "blueprints' repository, base and revision"
+    );
+    ensure_eq!(
+        checkout.unmoved.clone(),
+        Some(Unmoved {
+            at: world.host.now(),
+            tip: Some(tip),
+            reason: IN_THE_WAY.into(),
+        }),
+        "blueprints' move not made"
+    );
+    match &checkout.read {
+        PlaceRead::Live { head, holds, .. } => {
+            ensure_eq!(head, &before, "blueprints' head as read");
+            ensure_eq!(
+                holds.untracked.clone(),
+                vec!["notes.md".to_string()],
+                "what blueprints holds"
+            );
+        }
+        other => return Err(format!("blueprints read {other:?}")),
+    }
+    let first = &status.checkouts[0];
+    ensure!(
+        first.moved_at == Some(world.host.now()) && first.unmoved.is_none(),
+        "the first checkout's move: {first:?}"
+    );
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure_eq!(
+        json["checkouts"][1]["unmoved"]["reason"].as_str(),
+        Some(IN_THE_WAY),
+        "the JSON form's move not made"
+    );
+    Ok(())
+}
+
+fn a_place_of_a_run_gives_no_checkouts(_: &()) -> Outcome {
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("mend it"))))?;
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    let status = world.status(&id)?;
+    ensure!(status.checkouts.is_empty(), "a fix's checkouts");
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure!(
+        json.get("checkouts").is_none(),
+        "a fix's JSON holds checkouts"
+    );
+    ensure_eq!(json["branch"], "fix/one", "a fix's branch");
     Ok(())
 }

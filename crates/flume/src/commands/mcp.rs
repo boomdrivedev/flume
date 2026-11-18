@@ -1,8 +1,9 @@
 //! `flume mcp` (57, 60; section 9; design 12, 17): flume served over the
 //! Model Context Protocol on standard input and output, one JSON-RPC
-//! message a line, with four tools: `status`, which answers what `flume
+//! message a line, with six tools: `status`, which answers what `flume
 //! status --json` answers over the same state and settles nothing; and
-//! `message`, `launch` and `wake`, each call turned into the command
+//! `message`, `launch`, `wake`, `hibernate` and `resume` (212, 213), each
+//! call turned into the command
 //! line's arguments and run through its parser and act, so every default,
 //! check and refusal is the command line's, its result the act's JSON and
 //! a refusal marked an error. A launch takes no file over MCP: its brief
@@ -99,6 +100,33 @@ fn tools() -> Value {
                 "additionalProperties": false
             },
             "annotations": { "readOnlyHint": false }
+        },
+        {
+            "name": "hibernate",
+            "description": "`flume hibernate` (212): a place's stage whose kind hibernates it put to sleep, its agent ended once quiet and its session kept, its room and account freed. Answers as `flume hibernate --json` does.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "place": text("A place, by its location or `<kind>--<name>` in the repository the server runs in."),
+                    "force": { "type": "boolean", "description": "End the agent though it is not quiet." }
+                },
+                "required": ["place"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": false }
+        },
+        {
+            "name": "resume",
+            "description": "`flume resume` (213): a place's hibernating stage resumed in its own session, its conversation carried where it can be. Answers as `flume resume --json` does.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "place": text("A place, by its location or `<kind>--<name>` in the repository the server runs in.")
+                },
+                "required": ["place"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": false }
         }
     ])
 }
@@ -157,6 +185,17 @@ fn words(name: &str, arguments: &Value) -> Option<Vec<String>> {
             words.push("--".into());
             words.push(string("address").unwrap_or_default());
         }
+        "hibernate" => {
+            if arguments["force"].as_bool() == Some(true) {
+                words.push("--force".into());
+            }
+            words.push("--".into());
+            words.push(string("place").unwrap_or_default());
+        }
+        "resume" => {
+            words.push("--".into());
+            words.push(string("place").unwrap_or_default());
+        }
         _ => return None,
     }
     Some(words)
@@ -207,9 +246,13 @@ fn status(
     })
 }
 
-/// Whether `name` names a tool of an act's: `message`, `launch` or `wake`.
+/// Whether `name` names a tool of an act's: `message`, `launch`, `wake`,
+/// `hibernate` or `resume`.
 fn act_named(name: &Value) -> bool {
-    matches!(name.as_str(), Some("message" | "launch" | "wake"))
+    matches!(
+        name.as_str(),
+        Some("message" | "launch" | "wake" | "hibernate" | "resume")
+    )
 }
 
 /// The answer to one request, none for a notification.

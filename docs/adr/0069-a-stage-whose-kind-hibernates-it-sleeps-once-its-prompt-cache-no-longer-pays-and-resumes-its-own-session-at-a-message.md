@@ -235,3 +235,97 @@ beside the records.
   list past 210 finds them to cite. Not taken: moving the list's
   revision here, which would list fourteen clauses and eleven scenarios
   that four changes on this bolt build.
+
+Dated 2026-11-18, the code stage's of the change
+`a-standing-role-is-a-hibernating-conversation-flume-keeps`, named for
+what its design
+(`openspec/changes/a-standing-role-is-a-hibernating-conversation-flume-keeps/design.md`)
+builds of this record: a standing role, its place of detached checkouts
+moved at each start, its entry's repositories and kinds, and a delivery
+resuming a role whose place hibernates. Each is the construction agent's,
+within what the operator ruled above, and the record stays accepted.
+Sources beside those above: `boomdrivedev/blueprints:design/flume/requirements.md`
+at main 786d040, clauses 7, 28, 56, 109, 132, 193, 212 to 214, B.1,
+C.1, C.2, C.7 and S128.
+
+- **A standing role's entry gives `repositories`, and any run's
+  `kinds`** (design decision 1). `repositories` is a list of locations,
+  each read as `repository` is, the first held as the run's
+  `repository` so every path that finds a run by its repository finds
+  it; it is refused empty, naming one location twice, naming two of one
+  folder, or beside `repository` or `base`, each checkout at its
+  repository's default branch. `kinds` maps a kind as a launch names it
+  to the words of when it serves, refused beside `agent` or `carried`
+  and checked against no source. Not taken: a `base` for each
+  repository, which no role needs yet and an entry can gain later;
+  `kinds` on a standing role's entry alone, where clause 193 gives every
+  role its kinds' words; checking each kind against the sources, which
+  clause 193 rules out.
+- **A standing role is known by its kind and its entry, at its wake**
+  (decision 2). Its kind has one stage, a conversation its kind
+  hibernates, `standing_role(kind)` in `flume-core/src/standing_role.rs`
+  beside `base_place(kind)`, and `standing.rs` keeps its meaning, a
+  standing agent flume did not open. Its wake is refused, before
+  anything is made, where its kind is no standing role's, lands, or asks
+  for `{{branch}}`, `{{base}}`, `{{change}}` or `{{report}}`, and where
+  an entry gives `repository` with a standing role's kind. Not taken:
+  refusing at the roles file's read, which cannot see a kind its source
+  resolves only at the wake.
+- **Its place is one folder of checkouts at its first repository's
+  place location** (decision 3). Each checkout is at
+  `<location>/<folder>`, its folder its location's last part less a
+  trailing `.git`; the record's repository, address, binding, base and
+  base's revision are its first checkout's as the wake read them, and
+  its branch is empty. A move updates the checkout's own revision and
+  leaves the record's base's revision the wake's, the revision the place
+  was made from. Not taken: a place of no repository, in a folder of the
+  host's own, which every path keyed by a place's repository would have
+  to learn apart; a full clone of each repository, which copies every
+  object a worktree shares.
+- **The place seam makes, moves and removes a standing role's
+  checkouts** (decision 4). `make_checkouts`, `git worktree add
+  --detach` with no hook run, a refused add undoing every checkout made,
+  what stands at the location and each repository's entry;
+  `move_checkout`, `git checkout --detach` with no `--force`, answered
+  kept with git's words where git refuses and gone where no checkout
+  stands; `remove_checkouts`, which reads each checkout first and
+  removes nothing where one cannot be read or holds work, then `git
+  worktree remove` with no `--force` and no teardown for each, then the
+  location and its group folder once empty. The statement's B.1 and C.1
+  name no operation for a standing role's checkouts: these are the
+  construction's choice until the statement carries them (core.19). Not
+  taken: the worktree operations on a branch with an empty branch name,
+  which would make, judge and remove branches a standing role has none
+  of.
+- **It is made at its wake, whole or not at all** (decision 5). The
+  wake reads each repository's default branch, binding and base's
+  revision where its merge queue says the base lives before anything is
+  made, writes the held state naming every checkout, then asks the
+  place seam's `make_checkouts`, a refusal removing the held state; no
+  readiness runs in a checkout. Not taken: equipping each checkout at
+  each move, which would run each repository's toolchain setup at every
+  resume for a place that runs no gate and commits nothing.
+- **Each start moves its checkouts; a move over a change is not made**
+  (decision 6). Every start that opens an agent, the first, a resume and
+  a retry among them, moves each checkout once it has claimed its room
+  and before its agent opens, out of the room lock, recording each
+  outcome in one write; a checkout not moved keeps its revision, holds
+  its move not made with when, the tip and the words, and the start goes
+  on. Not taken: discarding the change, `--force` or `reset --hard`,
+  which removes work no commit holds; refusing the start, which would
+  leave the role's batch unhandled for one file a person can see named
+  in status.
+- **A delivery resumes a role whose place hibernates** (decision 7).
+  `ResumedBy` gains `delivery`; where a batch is pending at a role's
+  address whose run's current stage hibernates, the address's wake and a
+  settle handing the batch each resume it with no words of its own, its
+  start claiming the batch under the resume's identity as its prompt,
+  else flume's words for a bare resume. A stage ended short whose agent
+  hibernated while kept open takes none. A role's run whose address
+  holds a batch handed to none is read not quiet, so its quiet starts
+  again once it has taken the batch, and a settle hibernates it only
+  once it has been quiet its hibernate time after that. Not taken:
+  counting its quiet across the wait, which would hibernate it the
+  moment the batch is handed, before its agent had read it; resuming
+  only at the settle's wake step, which leaves a batch a settle reads
+  first waiting a settle more.

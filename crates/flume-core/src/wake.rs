@@ -36,12 +36,16 @@
 //! wake (132; core.13, core.28; record 0039's amendment). A role's run
 //! that stalls with its own stream's answerer standing behind it, so its
 //! stall reaches no one, is named under the host's addresses (130, 193).
+//! A run whose entry gives `repositories` is a standing role's, its
+//! checkouts read before anything is made and its place made of them, as
+//! `standing_role.rs` says (193; design 2, 5).
 
 use crate::message::{is_message_key, sent};
 use crate::standing::Standing;
 use crate::start::Starts;
 use crate::{
-    what_ended, AddressStatus, Answer, Engine, PendingEnd, PendingMessage, RoleStatus, Step, Woke,
+    what_ended, AddressStatus, Answer, Engine, PendingEnd, PendingMessage, RoleStatus,
+    StandingRoleStatus, Step, Woke,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -108,11 +112,24 @@ impl Engine {
             Err(why) => return Err(format!("{address} wakes nothing: {why}")),
         };
         if let Some(held) = self.run_of(address, &run) {
+            // A run whose stage hibernates is resumed by a batch pending
+            // at its address, and nothing is launched (213, 214).
+            let held = match self.resume_by_delivery(address) {
+                Some(id) => self.store.read(&id).map_or(held, |read| read.state),
+                None => held,
+            };
             return Ok((standing(&held), held));
         }
-        let base = match &run.base {
-            Some(base) => base.clone(),
-            None => self
+        // A standing role's checkouts are read before anything is made,
+        // each at its repository's default branch (193; design 5).
+        let checkouts = match run.repositories.as_slice() {
+            [] => None,
+            repositories => Some(self.checkouts_of(address, repositories)?),
+        };
+        let base = match (&checkouts, &run.base) {
+            (Some(checkouts), _) => checkouts[0].base.clone(),
+            (None, Some(base)) => base.clone(),
+            (None, None) => self
                 .history
                 .default_branch(&run.repository)
                 .ok_or_else(|| {
@@ -135,7 +152,7 @@ impl Engine {
             settings: run.agents.stages.clone(),
             ..Launch::default()
         };
-        match self.make_place(&launch, Some(address), None) {
+        match self.make_place(&launch, Some(address), None, checkouts.as_deref()) {
             Ok(held) => Ok((Woke::Launched, held)),
             Err(reason) => match self.run_of(address, &run) {
                 Some(held) => Ok((standing(&held), held)),
@@ -269,6 +286,29 @@ impl Engine {
         for address in standing.addresses() {
             by.entry(address.clone())
                 .or_insert_with(|| AddressStatus::of(address));
+        }
+        // Each address whose standing role's place stands, with since when
+        // its stage hibernates (56, 193, 212).
+        for held in every
+            .iter()
+            .filter(|held| !matches!(held.phase, Phase::Tidied { .. }))
+            .filter(|held| held.place.standing_role())
+        {
+            let Some(address) = held.role.clone() else {
+                continue;
+            };
+            let hibernating_since = held
+                .current
+                .filter(|index| held.stages[*index].state == StageState::Hibernating)
+                .and_then(|index| held.stages[index].start.as_ref())
+                .and_then(|start| start.hibernated.as_ref())
+                .map(|hibernated| hibernated.since);
+            by.entry(address.clone())
+                .or_insert_with(|| AddressStatus::of(address))
+                .standing_role = Some(StandingRoleStatus {
+                place: held.place.id.clone(),
+                hibernating_since,
+            });
         }
         for status in by.values_mut() {
             status.standing = self
@@ -421,6 +461,7 @@ impl AddressStatus {
             messages: vec![],
             reporting: vec![],
             stalled: None,
+            standing_role: None,
         }
     }
 }

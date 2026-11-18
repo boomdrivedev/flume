@@ -521,6 +521,34 @@ pub struct PlaceStatus {
     /// the fix's number and its cause (56, 203).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_of: Option<FixOf>,
+    /// For a standing role's place, which has no branch, each of its
+    /// checkouts, as its held state keeps it and as the place seam reads
+    /// it at the ask; none for any other place (56, 80, 193; core.15).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkouts: Vec<CheckoutStatus>,
+}
+
+/// A checkout of a standing role's place as status gives it: its
+/// repository, its address where its clone has one, its folder under
+/// the place's location, its base, the revision it stands at, when it
+/// was last moved and where its base was read then, its last move not
+/// made with when, the tip and why, and what the place seam reads of it
+/// at the ask, its head and what it holds (56, 80, 193, 213; core.15).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckoutStatus {
+    pub repository: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    pub folder: String,
+    pub base: String,
+    pub revision: Revision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<Seconds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_from: Option<BaseFrom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unmoved: Option<Unmoved>,
+    pub read: PlaceRead,
 }
 
 /// A stage waiting for room while a process runs the conversation its
@@ -993,6 +1021,20 @@ pub struct AddressStatus {
     /// its recipients (7, 214).
     #[serde(default)]
     pub reporting: Vec<PlaceId>,
+    /// The address's standing role's place where one stands, and since
+    /// when its stage hibernates where it does (56, 193, 212, 214).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standing_role: Option<StandingRoleStatus>,
+}
+
+/// A standing role's place as status gives it under its address: the
+/// place, and since when its stage hibernates, none where it does not
+/// (56, 193, 212).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StandingRoleStatus {
+    pub place: PlaceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernating_since: Option<Seconds>,
 }
 
 /// A message pending at a role's address, as status gives it: its
