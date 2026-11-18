@@ -45,7 +45,10 @@ use std::time::Duration;
 /// own, unread among them, and the next input refused; and logs each
 /// relay as `relay <agent>`, each read as `relay read`, each text as
 /// `relay text` and each keys as `relay keys <key> <key>…`, never what
-/// was typed (106, 221, 222).
+/// was typed (106, 221, 222). It starts every kind until a test scripts
+/// one refused, with words, and lifts it, logging each asking as `starts
+/// <kind>` followed by the environment's variables by name alone, never
+/// a value (C.5).
 pub struct FakeTerminal {
     host: Arc<FakeHost>,
     state: Mutex<TerminalState>,
@@ -109,6 +112,9 @@ struct TerminalState {
     relay_reads: VecDeque<RelayScreen>,
     /// The next input a relay is given refused with these words.
     typed_refused: Option<String>,
+    /// Each kind the terminal cannot start, with its words, as scripted
+    /// (C.5).
+    kinds_refused: BTreeMap<String, String>,
 }
 
 /// A named agent in a part, its own named `own`, by its name and the
@@ -263,6 +269,7 @@ impl FakeTerminal {
                 relay_refused: None,
                 relay_reads: VecDeque::new(),
                 typed_refused: None,
+                kinds_refused: BTreeMap::new(),
             }),
             before_open: Mutex::default(),
             log: Log::default(),
@@ -602,6 +609,19 @@ impl FakeTerminal {
             .push_back(RelayScreen::Unread {
                 reason: reason.into(),
             });
+    }
+
+    /// Every asking whether the terminal starts `kind` refused with
+    /// `words` until [`FakeTerminal::start_kind`] lifts it (C.5).
+    pub fn refuse_kind(&self, kind: &str, words: &str) {
+        lock(&self.state)
+            .kinds_refused
+            .insert(kind.into(), words.into());
+    }
+
+    /// `kind` started again, its refusal lifted (C.5).
+    pub fn start_kind(&self, kind: &str) {
+        lock(&self.state).kinds_refused.remove(kind);
     }
 
     /// The next input a relay is given is refused with `reason`, nothing
@@ -1093,6 +1113,20 @@ impl Terminal for FakeTerminal {
     /// A relay of an open agent, logged as `relay <agent>`; refused as
     /// scripted, where the terminal cannot send, as the printed command
     /// cannot, or where no agent runs under the identity (222).
+    fn starts(&self, kind: &str, env: &BTreeMap<String, String>) -> Result<(), String> {
+        let names: Vec<&str> = env.keys().map(String::as_str).collect();
+        self.log.push(
+            std::iter::once(format!("starts {kind}"))
+                .chain(names.into_iter().map(str::to_string))
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        match lock(&self.state).kinds_refused.get(kind) {
+            Some(words) => Err(words.clone()),
+            None => Ok(()),
+        }
+    }
+
     fn relay(&self, agent: &Identity) -> Result<Box<dyn Relay + '_>, String> {
         self.log.push(format!("relay {agent}"));
         let key = agent.to_string();
