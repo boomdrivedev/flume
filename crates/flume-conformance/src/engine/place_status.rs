@@ -157,6 +157,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_pool_with_readings,
         },
         Scenario {
+            name: "status: each account of a pool gives its configuration home, the value of the variable its program's profile names read against the login environment, and none where the profile names none or its variables give none or an empty one, in the JSON form, and no other value of its variables",
+            cites: &["56", "144"],
+            run: each_accounts_home,
+        },
+        Scenario {
+            name: "status: an account whose home's value names a variable the login environment lacks gives no home and why, naming its variable and the one lacking and no value, and no account with a home or none gives why",
+            cites: &["56", "144"],
+            run: a_home_the_login_environment_cannot_read,
+        },
+        Scenario {
+            name: "status: an agent on an account whose variables name its home gives that variable from the account as <set>, and the home is given only with its account among the host's pools",
+            cites: &["56", "144"],
+            run: the_home_given_and_its_variable_masked,
+        },
+        Scenario {
             name: "status: an account whose 7-day window reads 95% used gives what holds it past its threshold, 7-day until its reset, and that window past, in the JSON form",
             cites: &["56", "185"],
             run: an_account_past_its_threshold,
@@ -1671,6 +1686,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
                 AccountStatus {
                     name: "work-2".into(),
@@ -1683,6 +1700,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
             ],
         }],
@@ -1731,6 +1750,7 @@ fn a_pool_with_readings(_: &()) -> Outcome {
             "bound": null,
             "spent_until": null,
             "reading": reading,
+            "home": null,
         })
     };
     ensure_eq!(
@@ -1767,6 +1787,181 @@ fn a_pool_with_readings(_: &()) -> Outcome {
             && !answer.contains("accounts/work"),
         "status gives a path: {answer}"
     );
+    Ok(())
+}
+
+/// The account `name` of `agent` whose `FAKE_HOME` is `home`.
+fn at_home(name: &str, home: &str) -> Account {
+    let mut account = account(name, None);
+    account.env.insert("FAKE_HOME".into(), home.into());
+    account
+}
+
+/// A world whose fake agent names `FAKE_HOME` as its home's variable and
+/// whose login environment's `HOME` is `/home/op`, with the host's pool
+/// `work` of `accounts` (56, C.4).
+fn homes(accounts: Vec<Account>) -> World {
+    let world = World::new();
+    world.agent.read_home_from("FAKE_HOME");
+    world.host.set_login("HOME", Some("/home/op"));
+    pool_at(&world, "work", Strategy::FillFirst, None, accounts);
+    world
+}
+
+/// The JSON form of the host's pool `work`'s accounts.
+fn accounts_json(world: &World) -> Result<Vec<serde_json::Value>, String> {
+    let json = serde_json::to_value(host(world)?).map_err(|error| error.to_string())?;
+    json["pools"][0]["accounts"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| format!("no accounts in {json}"))
+}
+
+/// The place-status spec's "Each account's home": work-1's `FAKE_HOME`
+/// read against the login environment's `HOME`, work-2's none, work-3's
+/// empty and other-1's, of a program whose profile names no variable,
+/// give no home, and no form gives the token (56, 144, C.4; core.30).
+fn each_accounts_home(_: &()) -> Outcome {
+    let mut work_1 = at_home("work-1", "~/.agent-work-1");
+    work_1
+        .env
+        .insert("AGENT_TOKEN".into(), "a-token-of-the-account".into());
+    let other_1 = Account {
+        program: "other".into(),
+        ..at_home("other-1", "~/.other")
+    };
+    let world = homes(vec![
+        work_1,
+        account("work-2", None),
+        at_home("work-3", ""),
+        other_1,
+    ]);
+    world.resolver.bind_agent(
+        "other",
+        std::sync::Arc::new(flume_fakes::FakeAgent::new(world.terminal.clone())),
+    );
+    let accounts = accounts_json(&world)?;
+    ensure_eq!(accounts.len(), 4, "the pool's accounts");
+    for (account, name, home) in [
+        (
+            &accounts[0],
+            "work-1",
+            serde_json::json!("/home/op/.agent-work-1"),
+        ),
+        (&accounts[1], "work-2", serde_json::Value::Null),
+        (&accounts[2], "work-3", serde_json::Value::Null),
+        (&accounts[3], "other-1", serde_json::Value::Null),
+    ] {
+        ensure_eq!(account["name"], serde_json::json!(name), "the account");
+        ensure_eq!(account.get("home"), Some(&home), format!("{name}'s home"));
+        ensure!(
+            account.get("home_unread").is_none(),
+            "{name} gives why it has no home: {account}"
+        );
+    }
+    let answer = world.engine().status(None).to_json();
+    ensure!(
+        !answer.contains("a-token-of-the-account"),
+        "status gives a value of an account's environment"
+    );
+    ensure!(
+        !answer.contains(".other") && !answer.contains("~/.agent-work-1"),
+        "status gives a variable's value as written, or a home its profile names no variable for: {answer}"
+    );
+    Ok(())
+}
+
+/// The place-status spec's "A home the login environment cannot read":
+/// work-4's `FAKE_HOME` names `$WORK_HOMES`, which the login environment
+/// lacks, so it gives no home and why, and work-1, with a home, and
+/// work-2, with none, give no why (56, 144, C.4).
+fn a_home_the_login_environment_cannot_read(_: &()) -> Outcome {
+    let world = homes(vec![
+        at_home("work-1", "~/.agent-work-1"),
+        account("work-2", None),
+        at_home("work-4", "$WORK_HOMES/four"),
+    ]);
+    world.host.set_login("WORK_HOMES", None);
+    let accounts = accounts_json(&world)?;
+    ensure_eq!(
+        accounts[2],
+        serde_json::json!({
+            "name": "work-4",
+            "program": "agent",
+            "running": 0,
+            "bound": null,
+            "spent_until": null,
+            "reading": {"unread": flume_core::NONE_REPORTED},
+            "home": null,
+            "home_unread": "env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks",
+        }),
+        "work-4 in the JSON form"
+    );
+    for account in &accounts[..2] {
+        ensure!(
+            account.get("home_unread").is_none(),
+            "an account with a home or none gives why: {account}"
+        );
+    }
+    ensure_eq!(
+        accounts[0]["home"],
+        serde_json::json!("/home/op/.agent-work-1"),
+        "work-1's home"
+    );
+    let answer = world.engine().status(None).to_json();
+    ensure!(
+        !answer.contains("/four"),
+        "status gives work-4's value: {answer}"
+    );
+    Ok(())
+}
+
+/// The place-status spec's "The home given and its variable masked": a
+/// fix's code agent on work-1, whose `FAKE_HOME` names its home, gives
+/// the variable from `account` as `<set>`, and the home is given once,
+/// as work-1's among the host's pools (56, 144; core.30).
+fn the_home_given_and_its_variable_masked(_: &()) -> Outcome {
+    let world = homes(vec![at_home("work-1", "~/.agent-work-1")]);
+    let id = fix_in(&world, None, "one")?;
+    ensure_eq!(
+        account_of(&world, &id, "code"),
+        on("work", "work-1"),
+        "the code agent's account"
+    );
+    let agent = world.status(&id)?.agent.ok_or("no agent")?;
+    ensure_eq!(
+        agent.settings.env.get("FAKE_HOME").map(String::as_str),
+        Some(SET),
+        "the agent's variable, by name and <set>"
+    );
+    ensure_eq!(
+        agent.settings.from.get("env.FAKE_HOME"),
+        Some(&Given {
+            layer: Layer::Account,
+            value: SET.into(),
+            file: None,
+        }),
+        "the variable's source, its value unsaid"
+    );
+    ensure_eq!(
+        accounts_json(&world)?[0]["home"],
+        serde_json::json!("/home/op/.agent-work-1"),
+        "work-1's home"
+    );
+    for answer in [
+        world.engine().status(None).to_json(),
+        world.engine().status(Some(&id)).to_json(),
+    ] {
+        ensure_eq!(
+            answer.matches("/home/op/.agent-work-1").count(),
+            1,
+            format!("the home given but once as work-1's: {answer}")
+        );
+        ensure!(
+            !answer.contains("~/.agent-work-1"),
+            "status gives the variable as written: {answer}"
+        );
+    }
     Ok(())
 }
 

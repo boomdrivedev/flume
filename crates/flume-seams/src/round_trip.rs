@@ -2052,6 +2052,14 @@ fn a_profile_that_names_no_way_to_give_an_effort() {
 }
 
 #[test]
+fn a_profile_that_names_no_home() {
+    // A profile that keeps the seam's defaults names no variable whose
+    // value is an account's configuration home, so its accounts give
+    // none (56, C.4).
+    assert_eq!(Bare.home_variable(), None);
+}
+
+#[test]
 fn a_profile_that_passes_no_own_settings() {
     // A profile that keeps the seam's defaults reserves no key, refuses
     // its program's keys, saying it passes none, and takes an empty entry
