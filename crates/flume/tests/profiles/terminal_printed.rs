@@ -418,6 +418,63 @@ fn printed(world: &World, scratch: &Scratch) -> Engine {
     )
 }
 
+/// The terminal-profiles spec's scenario "The launcher's line" (C.4,
+/// C.5).
+#[test]
+fn the_launchers_line() {
+    let scratch = Scratch::new("printed-launcher");
+    let harness = Harness {
+        scratch,
+        seam: Printed,
+    };
+    let place = harness.place();
+    let identity = Identity {
+        repository: "r1".into(),
+        place: "fix--one".into(),
+        stage: "code".into(),
+        start: 1,
+    };
+    let command = AgentCommand {
+        program: "amp".into(),
+        kind: Some("amp".into()),
+        env: std::collections::BTreeMap::from([("AMP_HOME".into(), "/scratch/amp-1".into())]),
+        launcher: vec![
+            "/opt/flume/bin/flume".into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+        ..AgentCommand::default()
+    };
+    let opened = harness.seam.open(
+        &place,
+        &harness.folder(),
+        &command,
+        &identity,
+        &OpenIn::Own,
+        None,
+    );
+    let Opened::Opened {
+        printed: Some(line),
+        ..
+    } = opened
+    else {
+        panic!("the printed command printed nothing: {opened:?}");
+    };
+    assert!(
+        line.starts_with(&format!("cd {} && sh -c ", place.location)),
+        "the line runs elsewhere than the place, or under no environment file: {line}"
+    );
+    assert!(
+        line.ends_with(" /opt/flume/bin/flume ack launched -- amp"),
+        "the line does not run the launcher before amp: {line}"
+    );
+    assert!(
+        !line.contains("/scratch/amp-1"),
+        "the line holds a value of the environment: {line}"
+    );
+}
+
 #[test]
 fn the_command_status_gives_carries_the_prompt() {
     let scratch = Scratch::new("printed-status");
