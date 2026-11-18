@@ -1,8 +1,9 @@
 use crate::{lock, FakeHost, Log};
 use flume_seams::{
     AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, Host, Identity, KeyName,
-    NamedAgent, OpenIn, Opened, PlaceRef, Relay, RelayScreen, Seconds, Sent, SessionRuns, Shown,
-    ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
+    NamedAgent, OpenIn, Opened, PlaceRef, ProgramProcess, Relay, RelayScreen, Seconds, Sent,
+    SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
+    NO_PROCESS,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -48,7 +49,10 @@ use std::time::Duration;
 /// was typed (106, 221, 222). It starts every kind until a test scripts
 /// one refused, with words, and lifts it, logging each asking as `starts
 /// <kind>` followed by the environment's variables by name alone, never
-/// a value (C.5).
+/// a value (C.5). It reads, for each agent a test scripts, the process
+/// its program runs in, that nothing runs it or unknown with words, and
+/// unknown with [`NO_PROCESS`] for every other, logging each asking as
+/// `process <identity>` (C.5).
 pub struct FakeTerminal {
     host: Arc<FakeHost>,
     state: Mutex<TerminalState>,
@@ -115,6 +119,9 @@ struct TerminalState {
     /// Each kind the terminal cannot start, with its words, as scripted
     /// (C.5).
     kinds_refused: BTreeMap<String, String>,
+    /// The process each agent's program runs in, by its identity, as
+    /// scripted (C.5).
+    processes: BTreeMap<String, ProgramProcess>,
 }
 
 /// A named agent in a part, its own named `own`, by its name and the
@@ -270,6 +277,7 @@ impl FakeTerminal {
                 relay_reads: VecDeque::new(),
                 typed_refused: None,
                 kinds_refused: BTreeMap::new(),
+                processes: BTreeMap::new(),
             }),
             before_open: Mutex::default(),
             log: Log::default(),
@@ -622,6 +630,14 @@ impl FakeTerminal {
     /// `kind` started again, its refusal lifted (C.5).
     pub fn start_kind(&self, kind: &str) {
         lock(&self.state).kinds_refused.remove(kind);
+    }
+
+    /// The terminal reads `agent`'s program as `process` from now on, as
+    /// `program_process` answers it (C.5).
+    pub fn set_process(&self, agent: &Identity, process: ProgramProcess) {
+        lock(&self.state)
+            .processes
+            .insert(agent.to_string(), process);
     }
 
     /// The next input a relay is given is refused with `reason`, nothing
@@ -1125,6 +1141,19 @@ impl Terminal for FakeTerminal {
             Some(words) => Err(words.clone()),
             None => Ok(()),
         }
+    }
+
+    /// As scripted, unknown with [`NO_PROCESS`] where nothing is, each
+    /// asking logged `process <identity>` (C.5).
+    fn program_process(&self, agent: &Identity) -> ProgramProcess {
+        self.log.push(format!("process {agent}"));
+        lock(&self.state)
+            .processes
+            .get(&agent.to_string())
+            .cloned()
+            .unwrap_or_else(|| ProgramProcess::Unknown {
+                why: NO_PROCESS.into(),
+            })
     }
 
     fn relay(&self, agent: &Identity) -> Result<Box<dyn Relay + '_>, String> {

@@ -3195,6 +3195,88 @@ fn the_fake_terminal_scripts_a_kind_it_cannot_start() {
     );
 }
 
+/// The seam-fakes spec's scenario "A launcher's start scripted" (C.4).
+#[test]
+fn the_fake_agent_scripts_a_start_through_the_launcher() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let agent = FakeAgent::new(terminal);
+    let (first, second) = (identity("code", 1), identity("code", 2));
+    let folder = "/state/fix--one";
+    let command = |who: &Identity| {
+        agent.command(
+            folder,
+            &Settings::default(),
+            None,
+            &BTreeMap::new(),
+            None,
+            &BTreeMap::new(),
+            &place_ref(),
+            who,
+            &Secret("s1".into()),
+            "go",
+        )
+    };
+    assert!(
+        !agent.launches(),
+        "the fake launched before it was scripted to"
+    );
+    assert!(command(&first).launcher.is_empty());
+    agent.start_through_launcher();
+    assert!(agent.launches());
+    assert_eq!(
+        command(&first).launcher,
+        vec!["/fake/flume", "ack", "launched", "--"]
+    );
+    assert_eq!(agent.launched(folder, &first), None, "before its word");
+    agent.set_launched(&first, 41);
+    assert_eq!(agent.launched(folder, &first), Some(41));
+    assert_eq!(agent.launched(folder, &second), None, "another start");
+    assert_eq!(
+        agent.log.of("launched"),
+        vec![
+            format!("launched {first}"),
+            format!("launched {first}"),
+            format!("launched {second}"),
+        ]
+    );
+}
+
+/// The seam-fakes spec's scenario "A process read, then another" (C.5).
+#[test]
+fn the_fake_terminal_scripts_the_process_it_reads() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let (who, other) = (identity("code", 1), identity("code", 2));
+    terminal.set_process(&who, ProgramProcess::Runs { pid: 41 });
+    assert_eq!(
+        terminal.program_process(&who),
+        ProgramProcess::Runs { pid: 41 }
+    );
+    terminal.set_process(&who, ProgramProcess::Runs { pid: 42 });
+    assert_eq!(
+        terminal.program_process(&who),
+        ProgramProcess::Runs { pid: 42 }
+    );
+    assert_eq!(
+        terminal.program_process(&other),
+        ProgramProcess::Unknown {
+            why: "the terminal reads no process".into()
+        }
+    );
+    terminal.set_process(&other, ProgramProcess::Nothing);
+    assert_eq!(terminal.program_process(&other), ProgramProcess::Nothing);
+    assert_eq!(
+        terminal.log.of("process"),
+        vec![
+            format!("process {who}"),
+            format!("process {who}"),
+            format!("process {other}"),
+            format!("process {other}"),
+        ]
+    );
+}
+
 #[test]
 fn a_fake_terminal_that_hands_no_words() {
     // The seam-fakes spec's first scenario: scripted to hand no words to a
