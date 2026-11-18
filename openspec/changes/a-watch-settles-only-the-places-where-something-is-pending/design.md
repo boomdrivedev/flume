@@ -73,14 +73,15 @@ something is pending on a place from its held state, the host's
 deliveries as `owing()` reads them once per settle, and the host's
 clock, and asks no seam: no merge queue, terminal, agent program,
 place or change (225: "flume alone reads what is pending"; core.62).
-It gives why, one of a closed set, so a scenario and the log can name
-it:
+It gives why, one of a closed set, so a scenario can name it; no line
+of flume's log names it, since the log hands each line on as a warning
+and a watch reads every place at each bound (core.56):
 
 | 225 | held state |
 |---|---|
 | it is being made | `Phase::Making` |
 | its work is over and it is not yet tidied away | `Phase::Over` or `Phase::Gone`; a `Phase::Tidied` document whose recipients pending as `owing` reads them differ from those it holds, none among it, so it is to be rewritten or let go (62) |
-| a stage of it starts or runs | a stage's start held `live`: its agent may have ended with no word, never received its prompt, worked past its limit, been kept open past its time or spent its account (38, 45, 118, 146, 198) |
+| a stage of it starts or runs | a stage's start held `live`: its agent may have ended with no word, never received its prompt, worked past its limit, been kept open past its time or spent its account; or an agent kept open for its answer whose letting go, or its end, is not yet recorded (38, 45, 118, 146, 198) |
 | its submission is in flight | `submission_open` (made, no outcome held), or a submission `due` with no hold on it and no live start (111, 124) |
 | it is a base place | its kind lands and has no stages (202, 203) |
 | a time it waits on has come | the move it waits on its caller for, read again at the clock as `refresh_waiting` reads it, under no hold's words and not yet stalled, waiting `stall_after` or longer; or a hold on that move whose bound has passed and that has not lapsed (130) |
@@ -97,7 +98,11 @@ live start and the submission, `forecast_base` for a base place,
 `read_stall` for the times, and `deliver_ends`, `record_claims` and
 `wake_roles` for the hand-overs. Each condition is the one the step
 tests before it acts, so a place a row leaves out is one the step would
-leave as it is.
+leave as it is. The times are read by `read_stall` itself, on a copy of
+the held state with no answerer asked, a time come being a stall it
+records, a hold it lapses or an earlier stall it reads; a predicate
+restating its tests was the path not taken, since it could drift from
+the step.
 
 Considered: a caller naming the places, as the runner reading flume's
 deadlines and the merge queue (record 0078, the option not chosen); a
