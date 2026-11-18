@@ -417,8 +417,8 @@ impl PerProgram {
         matches!(self, PerProgram::Programs(_))
     }
 
-    /// The setting as a layer would write it, `opus` or `{ claude =
-    /// "opus", codex = "gpt-5.5" }`, its programs in order, as
+    /// The setting as a layer would write it, `opus` or `{ agent =
+    /// "opus", other = "gpt-5.5" }`, its programs in order, as
     /// [`ModeSetting::written`] writes a mode's (56).
     pub fn written(&self) -> String {
         match self {

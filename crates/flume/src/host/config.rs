@@ -1967,7 +1967,7 @@ mod tests {
         // host-repository layer, each kept as written.
         let config = HostConfig::parse(
             "[kinds.fix.agents]\neffort = \"high\"\n\
-             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = { claude = \"xhigh\" }\n",
+             [repos.\"/r\".kinds.fix.agents.stages.code]\neffort = { agent = \"xhigh\" }\n",
         )
         .unwrap();
         assert_eq!(
@@ -1979,7 +1979,7 @@ mod tests {
             Some("high")
         );
         let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([(
-            "claude".to_string(),
+            "agent".to_string(),
             "xhigh".to_string(),
         )])));
         let repository = &config.repos["/r"]["fix"];
@@ -2011,12 +2011,12 @@ mod tests {
         // repository's stage" (32, 172, C.7).
         let config = HostConfig::parse(
             "[kinds.fix.agents]\nmodel = \"sonnet\"\n\
-             [repos.\"/r\".kinds.fix.agents.stages.code]\nmodel = { claude = \"opus\", codex = \"gpt-5.5\" }\n",
+             [repos.\"/r\".kinds.fix.agents.stages.code]\nmodel = { agent = \"opus\", other = \"gpt-5.5\" }\n",
         )
         .unwrap();
         let table = Some(flume_seams::PerProgram::Programs(BTreeMap::from([
-            ("claude".to_string(), "opus".to_string()),
-            ("codex".to_string(), "gpt-5.5".to_string()),
+            ("agent".to_string(), "opus".to_string()),
+            ("other".to_string(), "gpt-5.5".to_string()),
         ])));
         let scratch = Scratch::new("model-layers");
         let host = super::super::RealHost::new(scratch.0.join("state"), config, None);
@@ -2039,7 +2039,7 @@ mod tests {
         for text in [
             "[kinds.fix.agents]\nmodel = 4\n",
             "[kinds.fix.agents]\nmodel = {}\n",
-            "[kinds.fix.agents]\nmodel = { claude = 4 }\n",
+            "[kinds.fix.agents]\nmodel = { agent = 4 }\n",
         ] {
             let refused = HostConfig::parse(text).unwrap_err();
             assert!(

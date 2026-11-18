@@ -505,22 +505,22 @@ mod tests {
         // effort as a launch's settings do, a name or a table of programs
         // for every stage and for a stage, each kept as written.
         let read = agents(
-            "[agents]\nmodel = { claude = \"opus\", codex = \"gpt-5.5\" }\n\
-             effort = { claude = \"xhigh\" }\n\
+            "[agents]\nmodel = { agent = \"opus\", other = \"gpt-5.5\" }\n\
+             effort = { agent = \"xhigh\" }\n\
              [agents.stages.turn]\nmodel = \"sonnet\"\n",
         )
         .expect("the agents read");
         assert_eq!(
             read.every_stage.model,
             Some(PerProgram::Programs(BTreeMap::from([
-                ("claude".to_string(), "opus".to_string()),
-                ("codex".to_string(), "gpt-5.5".to_string()),
+                ("agent".to_string(), "opus".to_string()),
+                ("other".to_string(), "gpt-5.5".to_string()),
             ])))
         );
         assert_eq!(
             read.every_stage.effort,
             Some(PerProgram::Programs(BTreeMap::from([(
-                "claude".to_string(),
+                "agent".to_string(),
                 "xhigh".to_string()
             )])))
         );
@@ -528,7 +528,7 @@ mod tests {
         for text in [
             "[agents]\nmodel = 3\n",
             "[agents]\nmodel = {}\n",
-            "[agents.stages.turn]\neffort = { claude = 3 }\n",
+            "[agents.stages.turn]\neffort = { agent = 3 }\n",
         ] {
             let refused = agents(text).expect_err(text);
             assert!(

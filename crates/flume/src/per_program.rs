@@ -41,10 +41,10 @@ mod tests {
     fn a_string_or_a_table_of_programs() {
         assert_eq!(model("\"opus\""), Ok(PerProgram::One("opus".into())));
         assert_eq!(
-            model("{ claude = \"opus\", codex = \"gpt-5.5\" }"),
+            model("{ agent = \"opus\", other = \"gpt-5.5\" }"),
             Ok(PerProgram::Programs(BTreeMap::from([
-                ("claude".to_string(), "opus".to_string()),
-                ("codex".to_string(), "gpt-5.5".to_string()),
+                ("agent".to_string(), "opus".to_string()),
+                ("other".to_string(), "gpt-5.5".to_string()),
             ])))
         );
     }
@@ -55,7 +55,7 @@ mod tests {
             ("3", "a string or a table of programs"),
             ("[\"opus\"]", "a string or a table of programs"),
             ("{}", "names no program"),
-            ("{ claude = 3 }", "`claude`"),
+            ("{ agent = 3 }", "`agent`"),
         ] {
             let refused = model(text).unwrap_err();
             assert!(refused.contains(named), "{text}: {refused}");

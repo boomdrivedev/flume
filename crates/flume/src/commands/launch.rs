@@ -500,22 +500,22 @@ mod tests {
     #[test]
     fn a_model_and_an_effort_per_program() {
         let (every, stages) = given(&[
-            "model.claude=opus",
-            "model.codex=gpt-5.5",
-            "code.effort.claude=xhigh",
+            "model.agent=opus",
+            "model.other=gpt-5.5",
+            "code.effort.agent=xhigh",
         ])
         .unwrap();
         assert_eq!(
             every.model,
             Some(PerProgram::Programs(BTreeMap::from([
-                ("claude".to_string(), "opus".to_string()),
-                ("codex".to_string(), "gpt-5.5".to_string()),
+                ("agent".to_string(), "opus".to_string()),
+                ("other".to_string(), "gpt-5.5".to_string()),
             ])))
         );
         assert_eq!(
             stages["code"].effort,
             Some(PerProgram::Programs(BTreeMap::from([(
-                "claude".to_string(),
+                "agent".to_string(),
                 "xhigh".to_string()
             )])))
         );
@@ -536,15 +536,15 @@ mod tests {
     fn a_name_and_a_table_for_one_stage_are_refused() {
         for (words, whose) in [
             (
-                ["code.model=opus", "code.model.claude=sonnet"],
+                ["code.model=opus", "code.model.agent=sonnet"],
                 "code's model",
             ),
             (
-                ["code.model.claude=sonnet", "code.model=opus"],
+                ["code.model.agent=sonnet", "code.model=opus"],
                 "code's model",
             ),
-            (["effort=high", "effort.claude=max"], "every stage's effort"),
-            (["effort.claude=max", "effort=high"], "every stage's effort"),
+            (["effort=high", "effort.agent=max"], "every stage's effort"),
+            (["effort.agent=max", "effort=high"], "every stage's effort"),
         ] {
             let refused = given(&words).unwrap_err();
             for word in words {
@@ -552,7 +552,7 @@ mod tests {
             }
             assert!(refused.contains(whose), "{words:?}: {refused}");
         }
-        let (every, stages) = given(&["model=opus", "code.model.claude=sonnet"]).unwrap();
+        let (every, stages) = given(&["model=opus", "code.model.agent=sonnet"]).unwrap();
         assert!(every.model.is_some() && stages["code"].model.is_some());
     }
 

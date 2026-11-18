@@ -37,7 +37,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
 }
 
 /// The words the fake terminal refuses the kind `agent` with, naming an
-/// install as herdr's do (C.5).
+/// install as a terminal's own words do (C.5).
 const INSTALL: &str =
     "the agent's integration is not installed: run `fake-terminal integration install agent`";
 

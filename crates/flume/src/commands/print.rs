@@ -2730,25 +2730,25 @@ mod tests {
         );
         let table = AgentStatus {
             model: Some(ModelStatus {
-                name: r#"{ claude = "opus", codex = "gpt-5.5" }"#.into(),
+                name: r#"{ agent = "opus", other = "gpt-5.5" }"#.into(),
                 layer: Layer::HostKind,
-                entry: Some("claude".into()),
+                entry: Some("agent".into()),
                 passed: "opus".into(),
             }),
             ..base
         };
         assert_eq!(
             agent_line(&table),
-            r#"  agent flume:r:fix--one:code:1 (agent): working, on the model { claude = "opus", codex = "gpt-5.5" } (from host-kind), the entry claude, passed as opus"#
+            r#"  agent flume:r:fix--one:code:1 (agent): working, on the model { agent = "opus", other = "gpt-5.5" } (from host-kind), the entry agent, passed as opus"#
         );
-        let mut effort = with_effort(Some(r#"{ claude = "xhigh" }"#), Layer::Kind, false);
+        let mut effort = with_effort(Some(r#"{ agent = "xhigh" }"#), Layer::Kind, false);
         if let Some(status) = effort.effort.as_mut() {
-            status.entry = Some("claude".into());
+            status.entry = Some("agent".into());
             status.passed = "xhigh".into();
         }
         assert_eq!(
             agent_line(&effort),
-            r#"  agent flume:r:fix--one:code:1 (agent): working, at the effort { claude = "xhigh" } (from kind), the entry claude, passed as xhigh, not read back"#
+            r#"  agent flume:r:fix--one:code:1 (agent): working, at the effort { agent = "xhigh" } (from kind), the entry agent, passed as xhigh, not read back"#
         );
     }
 
