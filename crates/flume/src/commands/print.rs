@@ -1920,6 +1920,7 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            degraded: vec![],
         };
         assert_eq!(
             agent_line(&agent),
@@ -2409,6 +2410,7 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            degraded: vec![],
         }
     }
 
