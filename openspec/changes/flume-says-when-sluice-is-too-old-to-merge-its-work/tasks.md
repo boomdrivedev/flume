@@ -21,7 +21,7 @@ change's `design.md`.
 ## 2. Against the pinned sluice
 
 - [x] 2.1 In `crates/flume/tests/profiles/tools/merge_queue_sluice.rs`, have `a_base_places_branch_over_a_scratch_repository` read the counting sluice's first command as `--version` and its next as `submit main --head train/a --no-wait --json`, its message naming the version read before the submit by name, as design section 5 and merge-queue-profile's scenario "The pinned sluice is handed the work" say; keep its other assertions as they are (203, C.6; core.22). True when `devenv shell -- cargo test -p flume --features tools --test tools merge_queue_sluice::a_base_places_branch_over_a_scratch_repository` passes.
-- [ ] 2.2 In the same file, have `a_queue_the_settles_never_step_is_decided_by_sluices_host_process` read the counting sluice's first command as `--version` and its next as the submit, beginning `submit main `, and keep its check that every command after the submit begins `inbox`, `confirm`, `overview` or `status`, as design section 5 says (124, 125, C.6). True when `devenv shell -- cargo test -p flume --features tools --test tools merge_queue_sluice::a_queue_the_settles_never_step_is_decided_by_sluices_host_process` passes.
+- [x] 2.2 In the same file, have `a_queue_the_settles_never_step_is_decided_by_sluices_host_process` read the counting sluice's first command as `--version` and its next as the submit, beginning `submit main `, and keep its check that every command after the submit begins `inbox`, `confirm`, `overview` or `status`, as design section 5 says (124, 125, C.6). True when `devenv shell -- cargo test -p flume --features tools --test tools merge_queue_sluice::a_queue_the_settles_never_step_is_decided_by_sluices_host_process` passes.
 
 ## 3. The site
 
