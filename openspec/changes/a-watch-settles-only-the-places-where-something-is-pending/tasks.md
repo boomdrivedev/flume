@@ -34,7 +34,7 @@ and rule core.62 hold the outcome. Design sections are this change's
 
 ## 3. The command line
 
-- [ ] 3.1 In `crates/flume/src/commands/mod.rs`, have `Settle`'s doc comment and `--every`'s help say it settles the places where something is pending as a caller's watch, flume running unattended while that settle runs and until twice its bound after it ended, and the refusal beside a place read `--every settles the places where something is pending as a caller's watch over the host, and takes no place: <place> was named` (208, 225; core.35); have `a_watch_with_a_place_named` in `crates/flume/tests/commands.rs` read it. Check: `devenv shell -- cargo test -p flume --test commands a_watch_with_a_place_named`.
+- [x] 3.1 In `crates/flume/src/commands/mod.rs`, have `Settle`'s doc comment and `--every`'s help say it settles the places where something is pending as a caller's watch, flume running unattended while that settle runs and until twice its bound after it ended, and the refusal beside a place read `--every settles the places where something is pending as a caller's watch over the host, and takes no place: <place> was named` (208, 225; core.35); have `a_watch_with_a_place_named` in `crates/flume/tests/commands.rs` read it. Check: `devenv shell -- cargo test -p flume --test commands a_watch_with_a_place_named`.
 
 ## 4. The statement at 48a94da
 

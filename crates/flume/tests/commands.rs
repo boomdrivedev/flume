@@ -994,9 +994,9 @@ fn a_watch_over_a_scratch_repository() {
 #[test]
 fn a_watch_with_a_place_named() {
     // The command-line spec's "A watch with a place named": refused
-    // naming `--every` and the place, nothing settled and no watch
-    // recorded; a bound that is no positive duration refused the same
-    // (208).
+    // naming `--every`, the places it settles and the place, nothing
+    // settled and no watch recorded; a bound that is no positive duration
+    // refused the same (208, 225).
     let host = Host::new("settle-every-named");
     let repository = repository("settle-every-named", None);
     let kinds = kinds_file(&host, false);
@@ -1025,9 +1025,9 @@ fn a_watch_with_a_place_named() {
         .refusal()
         .map(str::to_string)
         .expect("a refusal");
-    assert!(
-        reason.contains("--every") && reason.contains("fix--one"),
-        "{reason}"
+    assert_eq!(
+        reason,
+        "--every settles the places where something is pending as a caller's watch over the host, and takes no place: fix--one was named"
     );
     for bound in ["0", "0m", "soon"] {
         let ran = host.stand_in(
