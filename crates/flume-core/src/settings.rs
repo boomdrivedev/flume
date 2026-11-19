@@ -32,7 +32,11 @@
 //! naming no entry for its program refused so, and nothing is asked
 //! where no layer gives one (197); and its own settings are taken by its
 //! profile, or the stage refused naming each key with its layer and its
-//! file (195, 196).
+//! file (195, 196). flume's default names the program only for an agent
+//! with no pool: where no layer above it names one and an account is
+//! chosen, the account's program stands in its place, at the layer
+//! `account`, and its own settings are read for that program (32 item 8,
+//! 173; design 1).
 
 use crate::own::{fold, Table};
 use crate::{Engine, HIBERNATE_AFTER, KEEP_OPEN};
@@ -82,6 +86,14 @@ impl Resolved {
         self.from
             .get(key)
             .map_or(Layer::Default, |given| given.layer)
+    }
+
+    /// Whether a layer above flume's default names the agent's program, so
+    /// no account's program stands in for it (32 item 8, 173; design 1).
+    pub(crate) fn names_program(&self) -> bool {
+        self.from
+            .get("program")
+            .is_some_and(|given| !matches!(given.layer, Layer::Default | Layer::Account))
     }
 
     /// `program`'s own settings as the layers give them, by its name, key
@@ -479,8 +491,17 @@ impl Engine {
     /// `stage`'s settings in `place` as each layer wrote them, folded
     /// from the most general layer to the most specific, keeping the
     /// layer of every setting and every variable, and its program's own
-    /// settings key by key (32, 195).
-    pub(crate) fn resolve(&self, place: &PlaceRecord, stage: &Stage) -> Result<Resolved, String> {
+    /// settings key by key (32, 195). `account` is the program the
+    /// account chosen names, none where none is chosen: where no layer
+    /// above flume's default names a program, it stands in the default's
+    /// place, at the layer `account`, and the own settings are read for
+    /// it; where one does, it is ignored (32 item 8, 173; design 1).
+    pub(crate) fn resolve(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        account: Option<&str>,
+    ) -> Result<Resolved, String> {
         let mut resolved = Resolved {
             layers: self.layers(place, stage)?,
             ..Resolved::default()
@@ -522,6 +543,17 @@ impl Engine {
                 );
             }
             resolved.settings = resolved.settings.under(&given);
+        }
+        if let Some(program) = account.filter(|_| !resolved.names_program()) {
+            resolved.settings.program = Some(program.to_string());
+            resolved.from.insert(
+                "program".into(),
+                Given {
+                    layer: Layer::Account,
+                    value: program.to_string(),
+                    file: None,
+                },
+            );
         }
         let program = resolved.settings.program.clone().unwrap_or_default();
         resolved.own = resolved.own_for(&program);
@@ -583,17 +615,19 @@ impl Engine {
             .collect()
     }
 
-    /// The stage's agent at a start: its settings resolved, the agent
-    /// profile that runs its program, the value it passes for its mode,
-    /// its effort, which the profile takes, and its program's own
-    /// settings, which the profile takes; or why the stage is refused (27,
-    /// 32, 169, 195, 197).
+    /// The stage's agent at a start: its settings resolved, with the
+    /// program `account` names where no layer above flume's default names
+    /// one, the agent profile that runs its program, the value it passes
+    /// for its mode, its effort, which the profile takes, and its
+    /// program's own settings, which the profile takes; or why the stage
+    /// is refused (27, 32, 169, 173, 195, 197).
     pub(crate) fn resolution(
         &self,
         place: &PlaceRecord,
         stage: &Stage,
+        account: Option<&str>,
     ) -> Result<Resolution, String> {
-        let resolved = self.resolve(place, stage)?;
+        let resolved = self.resolve(place, stage, account)?;
         let agent = self.agent_for(&resolved, &stage.name)?;
         let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
@@ -656,6 +690,142 @@ pub(crate) fn no_stage_lacking(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Defaults;
+    use flume_fakes::*;
+    use flume_seams::{Binding, Identity};
+    use serde_json::json;
+
+    /// An engine over fresh fakes whose default program is `agent`, its
+    /// resolver binding a fake agent to `agent` and another to `other`,
+    /// built as `engine` in `deliveries.rs`'s tests builds one (32).
+    fn engine() -> (Engine, Arc<FakeAgent>, Arc<FakeAgent>) {
+        let host = Arc::new(FakeHost::default());
+        let terminal = Arc::new(FakeTerminal::new(host.clone()));
+        let resolver = FakeResolver::new(Arc::new(FakeKinds::default()));
+        let agent = Arc::new(FakeAgent::new(terminal.clone()));
+        let other = Arc::new(FakeAgent::new(terminal.clone()));
+        resolver.bind_agent("agent", agent.clone());
+        resolver.bind_agent("other", other.clone());
+        let engine = Engine::new(
+            Arc::new(resolver),
+            terminal,
+            Arc::new(FakeStore::default()),
+            Arc::new(FakeHistory::new(FakeGit::new())),
+            host,
+            Defaults {
+                settings: Settings {
+                    program: Some("agent".into()),
+                    ..Settings::default()
+                },
+                send_backs: 2,
+            },
+        );
+        (engine, agent, other)
+    }
+
+    /// The stage `review`, delivering commits, its declaration's agent
+    /// `agents`.
+    fn stage(agents: Settings) -> Stage {
+        let mut stage: Stage = serde_json::from_value(json!({
+            "name": "review",
+            "prompt": "Review the work.",
+            "conversation": false,
+            "deliverables": ["commits"],
+            "agents": [],
+            "waits": false,
+        }))
+        .expect("a stage");
+        stage.agents = vec![agents];
+        stage
+    }
+
+    /// A place of `fix`, as `tests::record` in `lib.rs` makes one, whose
+    /// kind gives own settings for both `agent` and `other` (195).
+    fn place() -> PlaceRecord {
+        let mut place = crate::tests::record(Binding::default());
+        place.kind.agents.every_stage.programs = [("agent", "a"), ("other", "o")]
+            .into_iter()
+            .map(|(program, key)| {
+                (
+                    program.to_string(),
+                    ProgramSettings {
+                        file: None,
+                        settings: BTreeMap::from([(key.to_string(), json!(true))]),
+                    },
+                )
+            })
+            .collect();
+        place
+    }
+
+    fn identity() -> Identity {
+        Identity {
+            repository: "/r".into(),
+            place: "fix--one".into(),
+            stage: "review".into(),
+            start: 1,
+            resume: 0,
+        }
+    }
+
+    #[test]
+    fn an_accounts_program_stands_for_the_defaults() {
+        // Only flume's default names the program, so an account's stands
+        // in its place, at the layer `account`, with its own settings;
+        // with no account, the default's (32 item 8, 173).
+        let (engine, _, other) = engine();
+        let (place, stage) = (place(), stage(Settings::default()));
+        let alone = engine.resolve(&place, &stage, None).expect("resolved");
+        assert_eq!(alone.settings.program.as_deref(), Some("agent"));
+        assert_eq!(alone.from["program"].layer, Layer::Default);
+        assert!(!alone.names_program());
+        let own = alone.own.expect("agent's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("a".to_string(), json!(true))]));
+        let account = engine
+            .resolve(&place, &stage, Some("other"))
+            .expect("resolved");
+        assert_eq!(account.settings.program.as_deref(), Some("other"));
+        assert_eq!(
+            account.from["program"],
+            Given {
+                layer: Layer::Account,
+                value: "other".into(),
+                file: None,
+            }
+        );
+        assert!(!account.names_program());
+        let own = account.own.as_ref().expect("other's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("o".to_string(), json!(true))]));
+        assert!(account.from.contains_key("programs.other.settings.o"));
+        assert!(!account.from.contains_key("programs.agent.settings.a"));
+        other.take_own();
+        other.stop_short_words("other's way");
+        let resolution = engine
+            .resolution(&place, &stage, Some("other"))
+            .unwrap_or_else(|words| panic!("{words}"));
+        assert_eq!(resolution.agent.stop_short(&identity()), "other's way");
+        assert_eq!(resolution.resolved, account);
+    }
+
+    #[test]
+    fn a_layers_program_stands_over_the_accounts() {
+        // The kind names `agent`, so the account's `other` is ignored
+        // and the own settings are `agent`'s (32 item 8, 173).
+        let (engine, _, _) = engine();
+        let place = place();
+        let stage = stage(Settings {
+            program: Some("agent".into()),
+            ..Settings::default()
+        });
+        let resolved = engine
+            .resolve(&place, &stage, Some("other"))
+            .expect("resolved");
+        assert_eq!(resolved.settings.program.as_deref(), Some("agent"));
+        assert_eq!(resolved.from["program"].layer, Layer::Kind);
+        assert!(resolved.names_program());
+        let own = resolved.own.expect("agent's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("a".to_string(), json!(true))]));
+    }
 
     fn login(name: &str) -> Option<String> {
         match name {

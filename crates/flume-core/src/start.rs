@@ -476,7 +476,7 @@ impl Engine {
             (Some(fault), _) | (None, Err(fault)) => Err(fault),
             (None, Ok(terminal)) => {
                 let stage = &place.kind.stages[index];
-                self.resolution(place, stage).and_then(|resolution| {
+                self.resolution(place, stage, None).and_then(|resolution| {
                     let opens_in = queue.session_of(
                         &place.stream.name,
                         &place.kind.name,

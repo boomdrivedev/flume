@@ -884,7 +884,7 @@ impl Engine {
             .stages
             .iter()
             .map(|stage| {
-                let resolution = self.resolution(&held.place, stage)?;
+                let resolution = self.resolution(&held.place, stage, None)?;
                 kind_started(
                     terminal.as_ref(),
                     &resolution,

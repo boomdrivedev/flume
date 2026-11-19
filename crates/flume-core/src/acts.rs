@@ -50,7 +50,7 @@ impl Engine {
         let identity = self.next_identity(&held, index);
         let declared = &held.place.kind.stages[index];
         let agent = self
-            .resolve(&held.place, declared)
+            .resolve(&held.place, declared, None)
             .and_then(|resolved| self.agent_for(&resolved, stage))
             .ok();
         let head = self
