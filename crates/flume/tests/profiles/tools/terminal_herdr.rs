@@ -578,6 +578,7 @@ fn identity_of(place: &str, start: u32) -> Identity {
         place: place.into(),
         stage: "code".into(),
         start,
+        resume: 0,
     }
 }
 
@@ -805,6 +806,21 @@ impl TerminalHarness for Harness {
             socket: self.server.socket.clone(),
         }
         .session()
+    }
+
+    /// A stand-in in a pane of its own that herdr reads working, as a
+    /// session that began a turn does (54, 214).
+    fn working_recipient(&self) -> Option<String> {
+        let who = identity_of("ops--busy", 1);
+        let pane = opened_in(
+            &self.server,
+            &self.seam,
+            &self.server.place("ops--busy"),
+            &who,
+            &self.server.command(&[]),
+        );
+        self.server.report(&pane, "working");
+        Some(pane.session())
     }
 
     /// herdr 0.9.5 has no app of its own, and attaches a window's client
@@ -1220,6 +1236,53 @@ fn a_recipient_on_another_server_is_sent_to_through_its_own_socket() {
         vec!["flume: fix--one code delivered".to_string()],
         "what the asking recipient took"
     );
+}
+
+#[test]
+fn a_recipient_at_work_is_typed_nothing() {
+    // The terminal-profiles spec's "A recipient at work" (54, 214, C.5):
+    // a pane herdr reads working is refused naming that the session
+    // works, and neither `agent send-keys` nor `agent prompt` reaches it,
+    // so the stand-in clears nothing and takes nothing; once it waits, a
+    // notice goes in.
+    let server = TestServer::start("herdr-at-work");
+    let profile = server.profile();
+    let who = identity_of("ops--caller", 1);
+    let pane = opened_in(
+        &server,
+        &profile,
+        &server.place("ops--caller"),
+        &who,
+        &server.command(&[]),
+    );
+    server.report(&pane, "working");
+    assert_eq!(
+        profile.session_state(&pane.session()),
+        Some(AgentState::Working)
+    );
+    match profile.send_to(&pane.session(), "flume: fix--one code delivered") {
+        ToSession::Refused { reason } => assert!(reason.contains("works"), "{reason}"),
+        other => panic!("a send to a session at work gave {other:?}"),
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        server.kept(&pane.id, "got").is_empty(),
+        "words typed at work"
+    );
+    assert!(
+        !server
+            .kept(&pane.id, "events")
+            .contains(&"cleared".to_string()),
+        "ctrl+c pressed at work"
+    );
+    server.report(&pane, "idle");
+    assert_eq!(
+        profile.send_to(&pane.session(), "flume: fix--one code delivered"),
+        ToSession::Sent
+    );
+    server.within("the waiting recipient did not take the notice", || {
+        server.kept(&pane.id, "got") == vec!["flume: fix--one code delivered".to_string()]
+    });
 }
 
 #[test]
@@ -2748,6 +2811,7 @@ fn the_row_follows_the_line() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     server.report(&pane, "working");
@@ -2839,6 +2903,7 @@ fn a_quiet_pane_with_nothing_delivered_is_not_ended() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&code).expect("the pane recorded");
     for _ in 0..3 {
@@ -2878,6 +2943,7 @@ fn s42_a_finished_turn_nobody_looked_at_delivers_and_the_next_stage_starts() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&code).expect("the pane recorded");
     server.report(&pane, "working");
@@ -2939,6 +3005,7 @@ fn a_launch_and_a_retry_each_send_their_agents_prompt_with_no_settle() {
         place: "two--one".into(),
         stage: "code".into(),
         start,
+        resume: 0,
     };
     let took = |pane: &Pane| {
         server
@@ -3020,6 +3087,7 @@ fn a_dialog_before_the_prompt_waits_on_a_person_with_its_words() {
         place: "two--one".into(),
         stage: "code".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     std::thread::sleep(Duration::from_millis(1500));
@@ -3110,6 +3178,7 @@ fn an_agent_that_began_after_its_start_read_never_begun_is_begun_and_a_retry_lea
         place: "two--one".into(),
         stage: "talk".into(),
         start: 1,
+        resume: 0,
     };
     let pane = server.profile().pane(&who).expect("the pane recorded");
     std::thread::sleep(Duration::from_millis(1500));

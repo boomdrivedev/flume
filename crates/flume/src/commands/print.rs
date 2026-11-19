@@ -4,16 +4,16 @@
 //! spells it.
 
 use flume_core::{
-    group_name, percentage, AgentStatus, Answer, HostStatus, OwnStatus, PlaceStatus, PoolStatus,
-    Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer, SessionWait, SourceStatus,
-    StageStatus, StandingFound, StandingStatus, StreamOpened, StreamStatus, Tidied, TitleFrom,
-    WaitingPlace, WindowOutcome, Woke,
+    group_name, percentage, AgentStatus, Answer, Found, HostStatus, OwnStatus, PlaceStatus,
+    PoolStatus, Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer, SessionWait,
+    SourceStatus, StageStatus, StandingFound, StandingStatus, StreamOpened, StreamStatus, Tidied,
+    TitleFrom, WaitingPlace, WindowOutcome, Woke,
 };
 use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
     Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
     Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
-    ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
+    PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
     StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
     Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
 };
@@ -114,8 +114,9 @@ pub fn person(answer: &Answer) -> String {
             recipient,
             ends,
             waiting,
+            messages,
         } => {
-            if ends.is_empty() {
+            if ends.is_empty() && messages.is_empty() {
                 lines.push(format!("nothing pending for {recipient}"));
             }
             for collected in ends {
@@ -134,6 +135,25 @@ pub fn person(answer: &Answer) -> String {
                     collected.end.key,
                     collected.place
                 ));
+            }
+            for message in messages {
+                let state = match (message.confirmed, message.expired) {
+                    (true, _) => "; confirmed".to_string(),
+                    (false, expired) => format!(
+                        "{}; confirm: {}",
+                        if expired { "; expired" } else { "" },
+                        flume_core::confirm_command(recipient, &[message.key.as_str()])
+                    ),
+                };
+                lines.push(format!(
+                    "message from {} at {} [{}]{state}",
+                    message.from.as_deref().unwrap_or("no one named"),
+                    message.at,
+                    message.key
+                ));
+                for line in message.words.lines() {
+                    lines.push(format!("  {line}"));
+                }
             }
             for place in waiting {
                 lines.extend(waiting_place_lines(recipient, place));
@@ -162,6 +182,41 @@ pub fn person(answer: &Answer) -> String {
                 Woke::Waiting => format!("{address}'s run {} waits; nothing made", place.place),
             });
             lines.extend(place_lines(place));
+        }
+        Answer::Taken { words } => {
+            if let Some(words) = words {
+                lines.push(words.clone());
+            }
+        }
+        Answer::Messaged {
+            key,
+            address,
+            found,
+            run,
+            why,
+        } => {
+            let run = run
+                .as_ref()
+                .map(|run| format!(" {run}"))
+                .unwrap_or_default();
+            lines.push(format!("messaged {address}: {key}"));
+            lines.push(match found {
+                Found::Woken => format!("  its run{run} was woken to take it"),
+                Found::Live => format!("  its run{run} is live, and takes it at its next wait"),
+                Found::Waiting => format!("  its run{run} waits, and takes it once its prompt is received"),
+                Found::Unwoken => format!(
+                    "  its run was not woken: {}; the message waits at the address",
+                    why.as_deref().unwrap_or("no reason was read")
+                ),
+                Found::Standing => {
+                    "  its standing agent takes it at its next wait".to_string()
+                }
+                Found::Carried => {
+                    "  it is carried to another host, its message pending for the tool that carries it"
+                        .to_string()
+                }
+                Found::Handed => format!("  handed into its session{run}"),
+            });
         }
         Answer::Held {
             address,
@@ -318,11 +373,17 @@ fn place_lines(place: &PlaceStatus) -> Vec<String> {
         ),
         format!("  {}", place.line.full),
     ];
-    let mut facts = vec![format!(
-        "branch {} from {}",
-        place.branch,
-        base_words(&place.base, place.base_from)
-    )];
+    // A standing role's place has no branch: its checkouts stand in its
+    // branch's line's place (56, 193).
+    let mut facts = if place.checkouts.is_empty() {
+        vec![format!(
+            "branch {} from {}",
+            place.branch,
+            base_words(&place.base, place.base_from)
+        )]
+    } else {
+        vec![]
+    };
     lines.extend(kind_line(place.kind_from.as_ref()));
     if let Some(mark) = &place.mark {
         facts.push(format!("mark {mark}"));
@@ -333,7 +394,12 @@ fn place_lines(place: &PlaceStatus) -> Vec<String> {
     if let Some(head) = &place.head {
         facts.push(format!("head {head}"));
     }
-    lines.push(format!("  {}", facts.join(", ")));
+    if !facts.is_empty() {
+        lines.push(format!("  {}", facts.join(", ")));
+    }
+    for checkout in &place.checkouts {
+        lines.extend(checkout_lines(checkout));
+    }
     if let Phase::Over {
         kept: Some(kept), ..
     } = &place.phase
@@ -546,6 +612,7 @@ fn recipients_from_words(from: &RecipientsFrom) -> String {
             format!("from the stream's answerer, declared by {source}")
         }
         RecipientsFrom::BasePlace => "from the base place it fixes".into(),
+        RecipientsFrom::RoleRun => "from the role's run that launched it".into(),
         RecipientsFrom::Standing { agent, source } => {
             format!("from the standing agent {agent} that launched it, declared by {source}")
         }
@@ -811,7 +878,7 @@ fn stall_words(of: &EndOf) -> String {
 fn kept_open_line(waiting: &WaitingOn) -> Option<String> {
     if let Some(until) = waiting.open_until {
         return Some(format!(
-            "    its agent kept open for the answer until {until}: retry with --words, or tell it"
+            "    its agent kept open for the answer until {until}: retry with --words, or message it"
         ));
     }
     let closed = waiting.closed?;
@@ -820,6 +887,16 @@ fn kept_open_line(waiting: &WaitingOn) -> Option<String> {
         ClosedBy::AgentEnded => "its agent ended",
         ClosedBy::AccountSpent => "its account spent",
         ClosedBy::Stopped => "its caller stopped it",
+        ClosedBy::Hibernated => {
+            let ended = match closed.ended_at {
+                Some(at) => format!("ended at {at}"),
+                None => "to be ended once quiet".to_string(),
+            };
+            return Some(format!(
+                "    its agent hibernated at {}, its time passed, {ended}: its answer resumes its session, by a message or a retry with --words",
+                closed.at
+            ));
+        }
     };
     let ended = match (closed.ended_at, closed.left_in_pane) {
         (Some(at), _) => format!("and ended at {at}"),
@@ -956,6 +1033,59 @@ fn plain(words: &str) -> String {
 /// from, and its intent (56, 143, 147, 180).
 /// The base a place was cut from, with where the launch read its revision
 /// (56, C.1).
+/// A standing role's checkout as a person reads it: its folder, its
+/// repository, its revision, its base and where it was read, and when it
+/// was moved; its last move not made, with when, the tip and the words;
+/// and what it holds, or why it could not be read (56, 80, 193, 213).
+fn checkout_lines(checkout: &flume_core::CheckoutStatus) -> Vec<String> {
+    let moved = match checkout.moved_at {
+        Some(at) => format!("moved at {at}"),
+        None => "not moved since it was made".to_string(),
+    };
+    let mut lines = vec![format!(
+        "  checkout {}: {} at {}, from {}, {moved}",
+        checkout.folder,
+        checkout.repository,
+        checkout.revision,
+        base_words(&checkout.base, checkout.base_from)
+    )];
+    if let Some(unmoved) = &checkout.unmoved {
+        let tip = unmoved
+            .tip
+            .as_ref()
+            .map(|tip| format!(" to {tip}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    not moved{tip} at {}: {}",
+            unmoved.at, unmoved.reason
+        ));
+    }
+    match &checkout.read {
+        PlaceRead::Live { holds, .. } => {
+            if !holds.uncommitted.is_empty() {
+                lines.push(format!(
+                    "    holds uncommitted: {}",
+                    holds.uncommitted.join(", ")
+                ));
+            }
+            if !holds.untracked.is_empty() {
+                lines.push(format!(
+                    "    holds neither committed nor ignored: {}",
+                    holds.untracked.join(", ")
+                ));
+            }
+            if let Some(lock) = &holds.lock {
+                lines.push(format!("    locked: {lock}"));
+            }
+        }
+        PlaceRead::Gone => lines.push("    gone: no checkout stands there".to_string()),
+        PlaceRead::CouldNotRead { reason } => {
+            lines.push(format!("    could not be read: {reason}"));
+        }
+    }
+    lines
+}
+
 fn base_words(base: &str, from: Option<BaseFrom>) -> String {
     let from = match from {
         None => return base.to_string(),
@@ -1459,6 +1589,7 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
         line.push_str(&format!(", refused: {setting}"));
     }
     let mut lines = vec![line];
+    lines.extend(hibernation_lines(stage));
     for answer in &stage.answers {
         lines.push(answer_line(answer));
     }
@@ -1468,6 +1599,62 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
             Made::Text(text) => text.clone(),
         };
         lines.push(format!("    made: {line}"));
+    }
+    lines
+}
+
+/// A stage's hibernation in the person's form: its hibernate time with its
+/// layer where its kind hibernates it, since when it hibernates and why,
+/// with the account it ran under, and each resume of its current start,
+/// when, by what, its agent and whether it carried its conversation (56,
+/// 212, 213).
+fn hibernation_lines(stage: &StageStatus) -> Vec<String> {
+    let mut lines = vec![];
+    if stage.hibernates {
+        lines.push(match &stage.hibernate_after {
+            Some(given) => format!(
+                "    hibernates once idle {} (from {})",
+                given.value,
+                word(json!(given.layer))
+            ),
+            None => "    hibernates".to_string(),
+        });
+    }
+    if let Some(held) = &stage.hibernated {
+        let account = held
+            .account
+            .as_ref()
+            .map(|account| format!(", its session kept under {account}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    hibernating since {}, {}{account}",
+            held.since,
+            word(json!(held.why))
+        ));
+    }
+    for resume in &stage.resumes {
+        let carried = match (&resume.conversation.why, resume.conversation.carried) {
+            (None, true) => format!(
+                "carries the conversation of start {}",
+                resume.conversation.from
+            ),
+            (why, _) => format!(
+                "starts afresh after start {}: {}",
+                resume.conversation.from,
+                why.as_deref().unwrap_or("its conversation stayed behind")
+            ),
+        };
+        let words = resume
+            .words
+            .as_ref()
+            .map(|words| format!(", given: {words}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "    resumed at {} by {} as {}: {carried}{words}",
+            resume.at,
+            word(json!(resume.by)),
+            resume.identity
+        ));
     }
     lines
 }
@@ -1581,6 +1768,7 @@ fn host_lines(host: &HostStatus) -> Vec<String> {
             for end in &address.pending {
                 lines.push(format!("    {}: {}", end.place, end.what));
             }
+            lines.extend(address_messages_lines(address));
             continue;
         }
         let run = match (&address.run, &address.role, &address.carried) {
@@ -1605,6 +1793,16 @@ fn host_lines(host: &HostStatus) -> Vec<String> {
             address.pending.len(),
             address.address
         ));
+        if let Some(role) = &address.standing_role {
+            let since = role
+                .hibernating_since
+                .map(|since| format!(", hibernating since {since}"))
+                .unwrap_or_default();
+            lines.push(format!(
+                "    its standing role's place {}{since}",
+                role.place
+            ));
+        }
         for end in &address.pending {
             lines.push(format!("    {}: {}", end.place, end.what));
         }
@@ -1617,6 +1815,7 @@ fn host_lines(host: &HostStatus) -> Vec<String> {
                 stall.place, stall.what
             ));
         }
+        lines.extend(address_messages_lines(address));
     }
     lines.push(watch_line(host));
     for setup in &host.terminal_setup {
@@ -1632,6 +1831,44 @@ fn host_lines(host: &HostStatus) -> Vec<String> {
             end.expires_at,
             flume_core::confirm_command(&end.recipient, &[end.delivery.as_str()])
         ));
+    }
+    lines
+}
+
+/// Under a role's address, each message pending at it, with its key, who
+/// sent it and its first line, handed to none or by what, and each place
+/// whose work is not over that reports to it, by `<kind>--<name>` (56,
+/// 214).
+fn address_messages_lines(address: &flume_core::AddressStatus) -> Vec<String> {
+    let mut lines = vec![];
+    if !address.messages.is_empty() {
+        lines.push("    messages:".to_string());
+    }
+    for message in &address.messages {
+        let handed = match message.handovers.last() {
+            None => "handed to none".to_string(),
+            Some(handover) => format!("handed by {} at {}", word(json!(handover.by)), handover.at),
+        };
+        let expired = if message.expired { ", expired" } else { "" };
+        lines.push(format!(
+            "      {} from {}: {}; {handed}{expired}",
+            message.key,
+            message.from.as_deref().unwrap_or("no one named"),
+            message.line
+        ));
+    }
+    if !address.reporting.is_empty() {
+        let places: Vec<String> = address
+            .reporting
+            .iter()
+            .map(|place| {
+                std::path::Path::new(&place.0).file_name().map_or_else(
+                    || place.0.clone(),
+                    |name| name.to_string_lossy().into_owned(),
+                )
+            })
+            .collect();
+        lines.push(format!("    reporting: {}", places.join(", ")));
     }
     lines
 }
@@ -1726,6 +1963,7 @@ fn unsettled_line(unsettled: &UnsettledStart) -> String {
 fn conversation_line(conversation: &Conversation) -> String {
     let lost = match conversation.cause {
         CarryCause::Lost => ", lost",
+        CarryCause::Hibernated => ", hibernated",
         CarryCause::Spent => "",
     };
     match &conversation.why {
@@ -3290,6 +3528,7 @@ mod tests {
                 expired: false,
             }],
             waiting: vec![],
+            messages: vec![],
         };
         assert_eq!(
             person(&inbox),
@@ -3444,6 +3683,97 @@ mod tests {
     }
 
     #[test]
+    fn a_standing_roles_place_and_its_checkouts() {
+        // 56, 193, 212, 214: a standing role's place with no branch line
+        // and a line for each checkout, a move not made with its words
+        // and what it holds; and its address with its place, hibernating
+        // since when.
+        let checkout = |folder: &str| flume_core::CheckoutStatus {
+            repository: format!("/code/{folder}"),
+            address: None,
+            folder: folder.into(),
+            base: "main".into(),
+            revision: flume_seams::Revision::new("c1"),
+            moved_at: Some(3600),
+            base_from: Some(BaseFrom::Origin),
+            unmoved: None,
+            read: PlaceRead::Live {
+                branch: "(detached)".into(),
+                head: flume_seams::Revision::new("c1"),
+                holds: flume_seams::Holds::default(),
+            },
+        };
+        let place = PlaceStatus {
+            branch: String::new(),
+            checkouts: vec![
+                checkout("flume"),
+                flume_core::CheckoutStatus {
+                    unmoved: Some(flume_seams::Unmoved {
+                        at: 7200,
+                        tip: Some(flume_seams::Revision::new("c9")),
+                        reason: "your local changes would be overwritten".into(),
+                    }),
+                    read: PlaceRead::Live {
+                        branch: "(detached)".into(),
+                        head: flume_seams::Revision::new("c1"),
+                        holds: flume_seams::Holds {
+                            untracked: vec!["notes.md".into()],
+                            ..flume_seams::Holds::default()
+                        },
+                    },
+                    ..checkout("blueprints")
+                },
+            ],
+            ..a_place()
+        };
+        let lines = place_lines(&place);
+        assert!(
+            !lines.iter().any(|line| line.starts_with("  branch ")),
+            "a branch line: {lines:?}"
+        );
+        let at = lines
+            .iter()
+            .position(|line| line.starts_with("  checkout flume:"))
+            .expect("the flume checkout's line");
+        assert_eq!(
+            lines[at..at + 4],
+            [
+                "  checkout flume: /code/flume at c1, from main (at origin), moved at 3600",
+                "  checkout blueprints: /code/blueprints at c1, from main (at origin), moved at 3600",
+                "    not moved to c9 at 7200: your local changes would be overwritten",
+                "    holds neither committed nor ignored: notes.md",
+            ]
+        );
+        let lines = host_lines(&HostStatus {
+            addresses: vec![AddressStatus {
+                address: "east/ops".into(),
+                role: None,
+                run: Some(PlaceId::new("/places/desk--east-ops")),
+                pending: vec![],
+                unwoken: None,
+                standing: None,
+                carried: None,
+                wakes_nothing: None,
+                messages: vec![],
+                reporting: vec![],
+                stalled: None,
+                standing_role: Some(flume_core::StandingRoleStatus {
+                    place: PlaceId::new("/places/desk--east-ops"),
+                    hibernating_since: Some(7200),
+                }),
+            }],
+            ..HostStatus::default()
+        });
+        assert_eq!(
+            lines[1..lines.len() - 1],
+            [
+                "  0 ends pending for east/ops, its run /places/desk--east-ops",
+                "    its standing role's place /places/desk--east-ops, hibernating since 7200",
+            ]
+        );
+    }
+
+    #[test]
     fn an_address_carried_or_waking_nothing() {
         // 56, 132, 193: an address with ends pending that a source
         // declares carried, or that no source declares, with why.
@@ -3456,7 +3786,10 @@ mod tests {
             standing: None,
             carried,
             wakes_nothing: wakes_nothing.map(str::to_string),
+            messages: vec![],
+            reporting: vec![],
             stalled: None,
+            standing_role: None,
         };
         let lines = host_lines(&HostStatus {
             addresses: vec![
@@ -3488,6 +3821,48 @@ mod tests {
     }
 
     #[test]
+    fn a_roles_messages_and_the_places_reporting_to_it() {
+        // 56, 214: under the address, each message pending at it with its
+        // key, sender and first line, and each place reporting to it.
+        let lines = host_lines(&HostStatus {
+            addresses: vec![AddressStatus {
+                address: "east/ops".into(),
+                role: None,
+                run: Some(PlaceId::new("/places/turn--east-ops")),
+                pending: vec![],
+                unwoken: None,
+                standing: None,
+                carried: None,
+                wakes_nothing: None,
+                messages: vec![flume_core::PendingMessage {
+                    key: "message/east/ops/0a1b2c3d".into(),
+                    from: Some("ops".into()),
+                    at: 120,
+                    line: "the nightly job failed".into(),
+                    handovers: vec![],
+                    expired: false,
+                }],
+                reporting: vec![
+                    PlaceId::new("/places/fix--one"),
+                    PlaceId::new("/places/fix--two"),
+                ],
+                stalled: None,
+                standing_role: None,
+            }],
+            ..HostStatus::default()
+        });
+        assert_eq!(
+            lines[1..lines.len() - 1],
+            [
+                "  0 ends pending for east/ops, its run /places/turn--east-ops",
+                "    messages:",
+                "      message/east/ops/0a1b2c3d from ops: the nightly job failed; handed to none",
+                "    reporting: fix--one, fix--two",
+            ]
+        );
+    }
+
+    #[test]
     fn a_doors_run_whose_stall_reached_no_one() {
         // 130, 132, 193: the run of its stream's own answerer, stalled
         // with no one to reach, named under the host's addresses.
@@ -3502,11 +3877,14 @@ mod tests {
                 standing: None,
                 carried: None,
                 wakes_nothing: None,
+                messages: vec![],
+                reporting: vec![],
                 stalled: Some(PendingEnd {
                     place: run,
                     key: "stall/420".parse().unwrap(),
                     what: "stalled: a retry of plan".into(),
                 }),
+                standing_role: None,
             }],
             ..HostStatus::default()
         });
@@ -3763,7 +4141,10 @@ mod tests {
                 standing: Some(standing),
                 carried: None,
                 wakes_nothing: None,
+                messages: vec![],
+                reporting: vec![],
                 stalled: None,
+                standing_role: None,
             }],
             ..HostStatus::default()
         });
@@ -4045,6 +4426,7 @@ mod tests {
             forecast: None,
             fixes: vec![],
             fix_of: None,
+            checkouts: vec![],
         }
     }
 
@@ -4269,6 +4651,7 @@ mod tests {
                 expired: false,
             }],
             waiting: vec![],
+            messages: vec![],
         };
         assert_eq!(
             person(&inbox),
@@ -4315,7 +4698,7 @@ mod tests {
             from_the_move(&asking(Some(4600), None)),
             vec![
                 ASKS.to_string(),
-                "    its agent kept open for the answer until 4600: retry with --words, or tell it"
+                "    its agent kept open for the answer until 4600: retry with --words, or message it"
                     .to_string(),
             ]
         );
@@ -4430,15 +4813,24 @@ mod tests {
             group: None,
             answers: vec![
                 answer("Which file holds the log?", "notes.md", Act::Retry, 1200),
-                answer("Which test covers it?", "the walkthrough", Act::Tell, 2400),
+                answer(
+                    "Which test covers it?",
+                    "the walkthrough",
+                    Act::Message,
+                    2400,
+                ),
             ],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
             vec![
                 "  stage code: begun, started 1 times".to_string(),
                 "    answered by retry, received at 1205: asked Which file holds the log?; answered notes.md".to_string(),
-                "    answered by tell, received at 2405: asked Which test covers it?; answered the walkthrough".to_string(),
+                "    answered by message, received at 2405: asked Which test covers it?; answered the walkthrough".to_string(),
             ]
         );
         // 42: who gave an answer, where it named one.
@@ -4446,7 +4838,7 @@ mod tests {
         from_ops.answers[1].answer.by = Some("east/ops".into());
         assert_eq!(
             stage_lines(&from_ops)[2],
-            "    answered by tell from east/ops, received at 2405: asked Which test covers it?; answered the walkthrough"
+            "    answered by message from east/ops, received at 2405: asked Which test covers it?; answered the walkthrough"
         );
     }
 
@@ -4484,6 +4876,7 @@ mod tests {
                 expired: false,
             }],
             waiting: vec![],
+            messages: vec![],
         };
         assert_eq!(
             person(&inbox),
@@ -4529,6 +4922,7 @@ mod tests {
                     lapsed: None,
                 }),
             }],
+            messages: vec![],
         };
         assert_eq!(
             person(&inbox),
@@ -4537,7 +4931,7 @@ mod tests {
                 "change--plan (one of two designs), in east, waits on east/ops; read: flume status /d/places/1/change--plan",
                 "  waits on its caller to retry construct (answer) since 100: Which design does the brief mean?",
                 "  its stop-short stage/construct/1/ended-short needs an answer, asking east/ops",
-                "    its agent kept open for the answer until 3700: retry with --words, or tell it",
+                "    its agent kept open for the answer until 3700: retry with --words, or message it",
                 "  the move it waits on on hold since 160, for 3600 seconds: east-planner has it",
             ]
             .join("\n")
@@ -4760,6 +5154,10 @@ mod tests {
                 title: Some("Two".into()),
             }),
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),
@@ -4773,6 +5171,99 @@ mod tests {
             stage_lines(&once),
             vec!["  stage code: begun, started 2 times".to_string()]
         );
+    }
+
+    #[test]
+    fn a_hibernating_stage_and_its_resumes() {
+        // 56, 212, 213: a stage hibernating since when and why, its
+        // hibernate time with its layer, and each resume, whether it
+        // carried its conversation, in the person's form; and in the JSON
+        // form as fields.
+        let resumed = flume_seams::Identity {
+            repository: "r1".into(),
+            place: "research--one".into(),
+            stage: "talk".into(),
+            start: 1,
+            resume: 1,
+        };
+        let stage = StageStatus {
+            name: "talk".into(),
+            state: StageState::Hibernating,
+            starts: 1,
+            end: None,
+            refused_part: None,
+            refused_setting: None,
+            conversation: true,
+            group: None,
+            answers: vec![],
+            hibernates: true,
+            hibernate_after: Some(Given {
+                layer: Layer::Host,
+                value: "30m".into(),
+                file: None,
+            }),
+            hibernated: Some(flume_seams::HibernationHeld {
+                since: 7200,
+                why: flume_seams::HibernatedBy::Idle,
+                account: Some("work-1".into()),
+            }),
+            resumes: vec![flume_seams::ResumeHeld {
+                at: 3600,
+                by: flume_seams::ResumedBy::Message,
+                identity: resumed.clone(),
+                words: Some("where were we?".into()),
+                conversation: Conversation {
+                    from: 1,
+                    cause: CarryCause::Hibernated,
+                    carried: true,
+                    why: None,
+                },
+            }],
+        };
+        assert_eq!(
+            stage_lines(&stage),
+            vec![
+                "  stage talk: hibernating, started 1 times".to_string(),
+                "    hibernates once idle 30m (from host)".to_string(),
+                "    hibernating since 7200, idle, its session kept under work-1".to_string(),
+                format!(
+                    "    resumed at 3600 by message as {resumed}: carries the conversation of start 1, given: where were we?"
+                ),
+            ]
+        );
+        let json = serde_json::to_value(&stage).expect("the stage as JSON");
+        assert_eq!(json["hibernated"]["why"], "idle");
+        assert_eq!(json["resumes"][0]["by"], "message");
+        assert_eq!(json["hibernate_after"]["layer"], "host");
+        // A resume that could not carry its conversation reads why, and the
+        // agent's conversation after it its cause.
+        assert_eq!(
+            conversation_line(&Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: false,
+                why: Some("its transcript is gone".into()),
+            }),
+            "    starts afresh after start 1, hibernated: its transcript is gone"
+        );
+        assert_eq!(
+            conversation_line(&Conversation {
+                from: 1,
+                cause: CarryCause::Hibernated,
+                carried: true,
+                why: None,
+            }),
+            "    carries the conversation of start 1, hibernated"
+        );
+        // A stage whose kind does not hibernate it prints none of it.
+        let plain = StageStatus {
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
+            ..stage
+        };
+        assert_eq!(stage_lines(&plain).len(), 1);
     }
 
     #[test]
@@ -4980,6 +5471,10 @@ mod tests {
             conversation: false,
             group: None,
             answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
         };
         assert_eq!(
             stage_lines(&stage),

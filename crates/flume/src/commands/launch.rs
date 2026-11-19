@@ -22,8 +22,8 @@ use serde_json::Value as Json;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// The fields `--agent` sets (32, 107, 162, 195, 197, 198).
-const FIELDS: [&str; 9] = [
+/// The fields `--agent` sets (32, 107, 162, 195, 197, 198, 212).
+const FIELDS: [&str; 10] = [
     "program",
     "model",
     "effort",
@@ -32,12 +32,13 @@ const FIELDS: [&str; 9] = [
     "session",
     "mode",
     "keep_open",
+    "hibernate_after",
     "programs",
 ];
 
 /// The settings `--agent` gives, as its refusals name them.
 const SETTINGS: &str =
-    "the settings are program, model, effort, instructions, beside, session and mode, or model.<program>, effort.<program> and mode.<program> for one program's entry of a model, an effort and a mode, keep_open, how long an agent is kept open for an answer as <n>, <n>s, <n>m or <n>h, and programs, programs.<program>.settings.<key> for one of a program's own settings and programs.<program>.file for its settings file";
+    "the settings are program, model, effort, instructions, beside, session and mode, or model.<program>, effort.<program> and mode.<program> for one program's entry of a model, an effort and a mode, keep_open, how long an agent is kept open for an answer as <n>, <n>s, <n>m or <n>h, hibernate_after, how long a conversation whose kind hibernates it may idle before it hibernates, in the same forms, and programs, programs.<program>.settings.<key> for one of a program's own settings and programs.<program>.file for its settings file";
 
 /// Sets the one setting `given` names, `[<stage>.]<field>=<value>`, in
 /// `every_stage` or in its stage's entry of `stages` (7, 32); a mode's
@@ -46,7 +47,8 @@ const SETTINGS: &str =
 /// programs build one table each, which one name or word for the same
 /// stage refuses, and it them (172, 197); `keep_open` is a time [`read_span`]
 /// takes, kept as written, and one time for every program, so a
-/// `keep_open.<program>` is refused (198); a program's own settings build one
+/// `keep_open.<program>` is refused (198), and `hibernate_after` likewise
+/// (212); a program's own settings build one
 /// entry, its file read now, relative to `directory`, the command's
 /// working directory (21, 195).
 pub fn agent(
@@ -102,9 +104,22 @@ pub fn agent(
             })?;
             settings.keep_open = text;
         }
+        "hibernate_after" => {
+            read_span(value).map_err(|reason| {
+                format!(
+                    "--agent {given}: {prefix}hibernate_after is how long a conversation whose kind hibernates it may idle before it hibernates, and {reason}; {SETTINGS}"
+                )
+            })?;
+            settings.hibernate_after = text;
+        }
         _ if field.starts_with("keep_open.") => {
             return Err(format!(
                 "--agent {given}: keep_open is one time for every program, never a program's: it is [<stage>.]keep_open=<time>, the time <n>, <n>s, <n>m or <n>h; {SETTINGS}"
+            ))
+        }
+        _ if field.starts_with("hibernate_after.") => {
+            return Err(format!(
+                "--agent {given}: hibernate_after is one time for every program, never a program's: it is [<stage>.]hibernate_after=<time>, the time <n>, <n>s, <n>m or <n>h; {SETTINGS}"
             ))
         }
         _ if field.starts_with("programs.") => {
@@ -446,6 +461,63 @@ mod tests {
                 "{refused}"
             );
         }
+    }
+
+    #[test]
+    fn a_launchs_hibernate_after_for_a_stage() {
+        // 7, 32, 212: the command-line spec's "A stage's time", kept as
+        // written, and every stage's beside it; the launch's JSON form
+        // takes it as `Settings` serializes it.
+        let (every, stages) = given(&["talk.hibernate_after=20m", "hibernate_after=0"]).unwrap();
+        assert_eq!(stages["talk"].hibernate_after.as_deref(), Some("20m"));
+        assert_eq!(every.hibernate_after.as_deref(), Some("0"));
+        assert_eq!(stages["talk"].keep_open, None);
+        let launch = flume_seams::Launch {
+            every_stage: every,
+            settings: stages,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&launch).unwrap();
+        assert_eq!(json["settings"]["talk"]["hibernate_after"], "20m");
+        assert_eq!(json["every_stage"]["hibernate_after"], "0");
+        let read: flume_seams::Launch = serde_json::from_value(json).unwrap();
+        assert_eq!(read, launch);
+    }
+
+    #[test]
+    fn a_launchs_hibernate_after_in_another_form_is_refused() {
+        // 7, 212: the command-line spec's "A time in another form", named
+        // with the field and the forms it takes, a stage's as every
+        // stage's.
+        for words in [
+            "hibernate_after=later",
+            "talk.hibernate_after=1d",
+            "hibernate_after=",
+        ] {
+            let refused = given(&[words]).unwrap_err();
+            assert!(
+                refused.contains(&format!("--agent {words}:"))
+                    && refused.contains("hibernate_after is how long a conversation")
+                    && refused.contains("<n>, <n>s, <n>m or <n>h"),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_launchs_hibernate_after_for_a_program_is_refused() {
+        // 7, 212: one time for every program, never a program's.
+        for words in ["hibernate_after.agent=1h", "talk.hibernate_after.agent=1h"] {
+            let refused = given(&[words]).unwrap_err();
+            assert!(
+                refused.contains(&format!("--agent {words}:"))
+                    && refused.contains("hibernate_after is one time for every program")
+                    && refused.contains("<n>, <n>s, <n>m or <n>h"),
+                "{refused}"
+            );
+        }
+        let refused = given(&["colour=red"]).unwrap_err();
+        assert!(refused.contains("hibernate_after"), "{refused}");
     }
 
     #[test]

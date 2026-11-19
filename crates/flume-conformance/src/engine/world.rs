@@ -172,6 +172,17 @@ impl World {
         PlaceId::new(place_location(REPOSITORY, &format!("{kind}--{name}")))
     }
 
+    /// Every item handed to the session named `name`, in order: each text
+    /// sent to it split at its blank lines, since a batch joins its items
+    /// by one (43, 214).
+    pub fn notice_items(&self, name: &str) -> Vec<String> {
+        self.terminal
+            .notices(name)
+            .iter()
+            .flat_map(|text| text.split("\n\n").map(str::to_string).collect::<Vec<_>>())
+            .collect()
+    }
+
     pub fn held(&self, place: &PlaceId) -> Option<HeldState> {
         self.store.held(place)
     }
@@ -299,6 +310,7 @@ pub fn stage(name: &str, deliverable: Option<Deliverable>, prompt: &str) -> Stag
         send_back_limit: None,
         makes: vec![],
         repeats: false,
+        hibernates: false,
     }
 }
 
@@ -315,6 +327,77 @@ pub fn kind(name: &str, lands: bool, stages: Vec<Stage>) -> Kind {
         stages,
         fix: None,
         fix_limit: None,
+    }
+}
+
+/// The repository's kind `research`, landing nothing, its one stage
+/// `talk` a conversation its kind hibernates, whose prompt asks for the
+/// words a retry gives (109, 212).
+pub fn research_that_hibernates() -> Kind {
+    let mut talk = stage(
+        "talk",
+        None,
+        "Talk {{name}} over.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    talk.hibernates = true;
+    kind("research", false, vec![talk])
+}
+
+/// The repository's kind `patch`, landing nothing, its one stage `code`
+/// delivering commits, which its kind hibernates (212).
+pub fn patch_that_hibernates() -> Kind {
+    let mut code = stage(
+        "code",
+        Some(Deliverable::Commits),
+        "Patch {{name}}.\n\n{{brief}}\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    code.hibernates = true;
+    kind("patch", false, vec![code])
+}
+
+/// The source that declares a standing role, and where its packages
+/// lie (132, 193).
+pub const ACME: &str = "acme";
+pub const ACME_KINDS: &str = "/kinds/acme";
+
+/// The world's second repository, which a standing role reads beside
+/// the world's own (193).
+pub const BLUEPRINTS: &str = "/blueprints";
+
+/// acme's source's kind `desk`, landing nothing, its one stage `talk` a
+/// conversation its kind hibernates, as a standing role's kind is (193,
+/// 212).
+pub fn desk() -> Kind {
+    let mut talk = stage(
+        "talk",
+        None,
+        "Keep the desk {{name}} at {{place}}.\n\n{{#words}}{{words}}\n\n{{/words}}{{needs}}",
+    );
+    talk.hibernates = true;
+    kind("desk", false, vec![talk])
+}
+
+impl World {
+    /// acme holds each of `kinds` at its version, each locked in the
+    /// host's lock, the host declaring acme as a source (155, 193;
+    /// core.34).
+    pub fn acme_holds(&self, kinds: Vec<Kind>) {
+        use crate::seams::kinds::{entry, hash_of};
+        self.host.set_source(ACME, ACME_KINDS);
+        let mut entries = vec![];
+        for kind in kinds {
+            entries.push(entry(ACME, &kind.name, kind.version, &hash_of('d')));
+            self.kinds.set_package(ACME_KINDS, kind, &hash_of('d'));
+        }
+        self.kinds.set_lock_file(flume_fakes::HOST_LOCK, entries);
+    }
+
+    /// The world's second repository, `/blueprints`, on `main` in the fake
+    /// history, made where it was not: its `main`'s head (193).
+    pub fn blueprints(&self) -> Revision {
+        self.git
+            .branch_head(BLUEPRINTS, "main")
+            .unwrap_or_else(|| self.git.init(BLUEPRINTS, "main"))
     }
 }
 
@@ -355,6 +438,7 @@ impl World {
             place: format!("{kind}--{name}"),
             stage: stage.into(),
             start,
+            resume: 0,
         }
     }
 
@@ -462,6 +546,39 @@ impl World {
                 Ok(places.remove(0))
             }
             other => Err(format!("status answered {other:?}")),
+        }
+    }
+
+    /// The research place `name`, of the kind whose talk hibernates,
+    /// launched as `given` launches it and settled once, its talk begun
+    /// (212).
+    pub fn researching(&self, given: Launch) -> Result<PlaceId, String> {
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
+        let id = World::id("research", &given.name);
+        launched(&self.engine.launch(&given))?;
+        self.settle(&id);
+        match self.stage_state(&id, "talk") {
+            Some(StageState::Begun) => Ok(id),
+            other => Err(format!("talk did not begin: {other:?}")),
+        }
+    }
+
+    /// The patch place `name`, of the kind whose code hibernates,
+    /// launched and settled once, its code begun (212).
+    pub fn patching(&self, name: &str) -> Result<PlaceId, String> {
+        self.kinds.set_kinds(
+            REPOSITORY,
+            vec![research_that_hibernates(), patch_that_hibernates()],
+        );
+        let id = World::id("patch", name);
+        launched(&self.engine.launch(&launch("patch", name, Some("mend it"))))?;
+        self.settle(&id);
+        match self.stage_state(&id, "code") {
+            Some(StageState::Begun) => Ok(id),
+            other => Err(format!("code did not begin: {other:?}")),
         }
     }
 

@@ -166,6 +166,7 @@ fn identity(stage: &str) -> Identity {
         place: "fix--one".into(),
         stage: stage.into(),
         start: 1,
+        resume: 0,
     }
 }
 

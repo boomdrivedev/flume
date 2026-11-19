@@ -15,6 +15,16 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
+            name: "place line: Hibernating, then resumed: a place whose talk conversation hibernates reads `hibernating`, and once its caller resumes it on a host with room and the resumed agent has its prompt, `in conversation`",
+            cites: &["57", "109", "212", "213"],
+            run: hibernating_then_resumed,
+        },
+        Scenario {
+            name: "place line: Hibernated waiting on its answer: a place whose code agent, kept open for its answer, hibernated at the end of its time reads `waiting on an answer`",
+            cites: &["42", "57", "212"],
+            run: hibernated_waiting_on_its_answer,
+        },
+        Scenario {
             name: "place line: a change@2 place at its code stage's first of two groups gives `change--parser · change@2 · code 1/2 · run 1 · tasks 0/3 · working`, and its short form less its name and kind",
             cites: &["56", "142", "48"],
             run: a_change_at_its_first_group,
@@ -516,6 +526,53 @@ fn a_lost_talk_retried_while_its_session_runs(_: &()) -> Outcome {
             Some(StageState::WaitingForRoom)
         ),
         "the line's state and talk once its session ended, the host having no room"
+    );
+    Ok(())
+}
+
+fn hibernating_then_resumed(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::hibernated_talk(&world, "one")?;
+    ensure_eq!(
+        line(&world, &id)?.state,
+        "hibernating",
+        "talk's line once hibernated"
+    );
+    if let Some(reason) = world.engine().resume(&id).refusal() {
+        return Err(format!("the resume was refused: {reason}"));
+    }
+    world.settle(&id);
+    ensure_eq!(
+        line(&world, &id)?.state,
+        "in conversation",
+        "talk's line once resumed"
+    );
+    Ok(())
+}
+
+fn hibernated_waiting_on_its_answer(_: &()) -> Outcome {
+    let world = World::new();
+    let (id, _) = super::hibernation::patch_asking(&world, "one")?;
+    // Its caller holds the move it waits on, so the hour it is kept open
+    // does not stall it (130).
+    if let Some(reason) = world
+        .engine()
+        .hold(&id, HoldOn::Waiting, "on the user's card", None)
+        .refusal()
+    {
+        return Err(format!("the hold was refused: {reason}"));
+    }
+    world.host.advance(flume_core::KEEP_OPEN);
+    world.settle(&id);
+    ensure_eq!(
+        super::hibernation::hibernation(&world, &id, "code")?.map(|held| held.why),
+        Some(HibernatedBy::KeptOpen),
+        "code's hibernation"
+    );
+    ensure_eq!(
+        line(&world, &id)?.state,
+        "waiting on an answer",
+        "code's line once hibernated waiting on its answer"
     );
     Ok(())
 }

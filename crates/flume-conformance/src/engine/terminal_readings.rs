@@ -189,7 +189,7 @@ fn asking_as_the_terminal_shows_it(_: &()) -> Outcome {
     let agent = agent_status(&world, &id)?;
     ensure_eq!(agent.state, AgentState::Asking, "the agent's state");
     ensure_eq!(agent.asking, Reading::Yes, "the agent's asking");
-    let told = world.engine().tell(&id, "go on", Some(30));
+    let told = world.engine().message(&id, "go on", Some(30));
     ensure!(
         told.refusal().is_some(),
         "a tell to an asking agent was taken"
@@ -223,7 +223,7 @@ fn a_profile_that_builds_them_reads_no_question(_: &()) -> Outcome {
     let agent = agent_status(&world, &id)?;
     ensure_eq!(agent.state, AgentState::Unknown, "the agent's state");
     ensure_eq!(agent.asking, Reading::No, "the agent's asking");
-    let told = world.engine().tell(&id, "go on", Some(30));
+    let told = world.engine().message(&id, "go on", Some(30));
     ensure!(
         told.refusal().is_some(),
         "a tell into a question flume cannot name was taken"
@@ -424,7 +424,7 @@ fn a_tell_handed_on_the_turn(_: &()) -> Outcome {
         "code"
     );
     let watched = world.terminal.log.count("send-watching");
-    let told = world.engine().tell(&id, "look again", Some(30));
+    let told = world.engine().message(&id, "look again", Some(30));
     ensure!(
         told.refusal().is_none(),
         "the tell was refused: {:?}",
