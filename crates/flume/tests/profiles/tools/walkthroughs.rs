@@ -963,14 +963,15 @@ const NO_CLAUDE: &str = "[streams.default]\npool = \"stand-in\"\n\n[pools.stand-
 
 #[test]
 fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_later_start() {
-    // S81, 4, 32, 145, under the printed command, every stage running
-    // `claude`: a fix launched on a stream whose pool holds only `codex`
-    // accounts is refused naming code, the pool and `claude`, with no
-    // branch and no place made. A change on the stand-in's pool runs
-    // construct, and while construct works the host's configuration leaves
-    // that pool a `codex` account alone; once construct delivers, code is
-    // refused naming the pool and `claude`, with no command printed for it
-    // and the place waiting on its caller's retry. Once the configuration
+    // S81, 4, 32, 145, 173, under the printed command, no stage naming a
+    // program: a fix launched on a stream whose pool holds only `codex`
+    // accounts, whose entry maps no mode, is refused naming code, the pool
+    // and why `codex` cannot run it, with no branch and no place made. A
+    // change on the stand-in's pool runs construct, and while construct
+    // works the host's configuration leaves that pool a `codex` account
+    // alone; once construct delivers, code is refused naming the pool and
+    // why `codex` cannot run it, with no command printed for it and the
+    // place waiting on its caller's retry. Once the configuration
     // is mended, a retry starts code under the stand-in's account, the
     // intent's for `claude`.
     let walk = Walk::new("walk-no-account");
@@ -989,10 +990,10 @@ fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_
     assert!(refused, "the launch was taken: {answer}");
     let reason = answer.to_string();
     assert!(
-        reason.contains("stage code's")
-            && reason.contains("pool elsewhere")
-            && reason.contains("account of claude"),
-        "the refusal names not code, the pool and claude: {reason}"
+        reason.contains("stage `code`")
+            && reason.contains("pool `elsewhere`")
+            && reason.contains("`codex` cannot"),
+        "the refusal names not code, the pool and codex: {reason}"
     );
     assert!(!walk.has_branch("fix/one"), "the fix's branch was made");
     assert_eq!(walk.everything()["places"], json!([]), "a place was made");
@@ -1034,10 +1035,10 @@ fn a_pool_with_no_account_of_a_stages_program_refuses_it_at_its_launch_and_at_a_
         .as_str()
         .unwrap_or_else(|| panic!("no refusal given: {status}"));
     assert!(
-        words.contains("stage code's")
-            && words.contains("pool stand-in")
-            && words.contains("account of claude"),
-        "the refusal names not code, the pool and claude: {words}"
+        words.contains("stage `code`")
+            && words.contains("pool `stand-in`")
+            && words.contains("`codex` cannot"),
+        "the refusal names not code, the pool and codex: {words}"
     );
     assert_eq!(code["starts"], 0, "{status}");
     assert!(status["agent"].is_null(), "a command was printed: {status}");
