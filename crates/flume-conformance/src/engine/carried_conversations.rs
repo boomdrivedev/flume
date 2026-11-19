@@ -14,6 +14,7 @@ use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Retry;
 use flume_fakes::FakeAgent;
 use flume_seams::*;
+use std::sync::Arc;
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -166,6 +167,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "carried conversations: a lost talk that cannot be carried waits while its session is live, and starts afresh once it ends",
             cites: &["49", "207"],
             run: a_lost_talk_that_cannot_be_carried_its_session_still_live,
+        },
+        Scenario {
+            name: "carried conversations: a code naming no program whose agent on other-1 stops at its limit, agent-1 the pool's only usable account, is ended once quiet and started afresh on agent-1, its program agent from account, its conversation staying since agent-1 runs another program, no profile asked of it",
+            cites: &["146", "173", "179"],
+            run: a_spent_agents_stage_moves_to_another_program,
+        },
+        Scenario {
+            name: "carried conversations: a talk naming no program whose agent on other-1 is lost is retried on other-1 for its conversation while it is usable, its program other from account, no affinity moving",
+            cites: &["145", "173", "179"],
+            run: a_lost_conversations_retry_on_its_program,
         },
     ]
 }
@@ -1767,6 +1778,175 @@ fn a_resumed_talk(_: &()) -> Outcome {
             why: None,
         }),
         "the conversation status gives"
+    );
+    Ok(())
+}
+
+/// A fake agent of its own bound to `other`, and the host's own
+/// fill-first pool `work` of other-1, of `other`, and agent-1, each at
+/// its [`home`], so a stage naming no program starts on other-1 (173).
+fn other_first_at_homes(world: &World) -> Arc<FakeAgent> {
+    let other = Arc::new(FakeAgent::new(world.terminal.clone()));
+    world.resolver.bind_agent("other", other.clone());
+    pool(
+        world,
+        "work",
+        Strategy::FillFirst,
+        vec![
+            Account {
+                program: "other".into(),
+                ..account_at_home("other-1")
+            },
+            account_at_home("agent-1"),
+        ],
+    );
+    world.host.set_host_pool(Some("work"));
+    other
+}
+
+/// The start's program as held, and where status gives it came from.
+fn program_from(start: &StartHeld) -> (String, Option<Given>) {
+    (start.program.clone(), start.from.get("program").cloned())
+}
+
+/// The program `program` as an account names it (173).
+fn of_account(program: &str) -> (String, Option<Given>) {
+    (
+        program.to_string(),
+        Some(Given {
+            layer: Layer::Account,
+            value: program.into(),
+            file: None,
+        }),
+    )
+}
+
+/// The account-pools spec's scenario "A spent agent's stage moves to
+/// another program" (146, 173, 179).
+fn a_spent_agents_stage_moves_to_another_program(_: &()) -> Outcome {
+    let world = World::new();
+    let other = other_first_at_homes(&world);
+    for profile in [&world.agent, &other] {
+        profile.carry_to(
+            &home("agent-1"),
+            Carry::Yes {
+                session: "s-1".into(),
+            },
+        );
+    }
+    let id = begun_fix(&world, "one")?;
+    let first = start_of(&world, &id, "code")?;
+    ensure_eq!(
+        (
+            first.account.clone().map(|held| held.name),
+            program_from(&first)
+        ),
+        (Some("other-1".to_string()), of_account("other")),
+        "code's first start"
+    );
+    let spent_agent = code("one", 1);
+    other.set_spent(
+        &spent_agent,
+        Spent::Yes {
+            until: Some(world.host.now() + 3600),
+            words: "a usage limit this test writes".into(),
+        },
+    );
+    other.set_last_words(&spent_agent, "a usage limit this test writes");
+    world.settle(&id);
+    ensure_eq!(
+        world.terminal.log.of("close"),
+        vec![format!("close {spent_agent}")],
+        "the agents ended"
+    );
+    let start = start_of(&world, &id, "code")?;
+    ensure_eq!(
+        (
+            start.n,
+            start.account.clone().map(|held| (held.pool, held.name)),
+            program_from(&start)
+        ),
+        (2, on("work", "agent-1"), of_account("agent")),
+        "code's start after the limit"
+    );
+    afresh_after(
+        &world,
+        &start,
+        "the account chosen, agent-1, runs agent, another program than its conversation's other",
+    )?;
+    ensure_eq!(
+        (world.agent.log.count("carry"), other.log.count("carry")),
+        (0, 0),
+        "the carries asked"
+    );
+    let moved = world
+        .held(&id)
+        .ok_or("no held state")?
+        .moves
+        .into_iter()
+        .find(|moved| {
+            moved.on
+                == MoveOn::Stage {
+                    stage: "code".into(),
+                }
+        })
+        .map(|moved| (moved.from, moved.to, moved.why, moved.carried));
+    ensure_eq!(
+        moved,
+        Some((
+            "other-1".to_string(),
+            "agent-1".to_string(),
+            MoveWhy::Spent,
+            Some(false)
+        )),
+        "code's move"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "A lost conversation's retry" (145,
+/// 173, 179).
+fn a_lost_conversations_retry_on_its_program(_: &()) -> Outcome {
+    let world = World::new();
+    let other = other_first_at_homes(&world);
+    other.carry_to(
+        &home("other-1"),
+        Carry::Yes {
+            session: "s-1".into(),
+        },
+    );
+    world.kinds.set_kinds(REPOSITORY, vec![research()]);
+    world.terminal.add_session("ops", AgentState::Waiting);
+    other.set_session(&talk(1), "s-1");
+    let mut given = launch("research", "one", Some("weigh the options"));
+    given.intent = Some("one".into());
+    given.recipients = vec!["ops".into()];
+    launched(&world.engine.launch(&given))?;
+    let id = World::id("research", "one");
+    world.settle(&id);
+    ensure_eq!(
+        account_of(&world, &id, "talk"),
+        on("work", "other-1"),
+        "talk's first account"
+    );
+    let intent = world.held(&id).ok_or("no held state")?.place.intent;
+    lost_with_host(&world, &id)?;
+    retry_talk(&world, &id, None, false)?;
+    let start = start_of(&world, &id, "talk")?;
+    ensure_eq!(
+        (
+            start.n,
+            start.account.clone().map(|held| held.from),
+            program_from(&start)
+        ),
+        (2, Some(AccountFrom::Conversation), of_account("other")),
+        "talk's start after the retry"
+    );
+    carries_lost(&world, &start, "other-1")?;
+    ensure_eq!(
+        affinity(&world, &intent).map(|held| held.moves),
+        Some(vec![]),
+        "the affinity's moves"
     );
     Ok(())
 }
