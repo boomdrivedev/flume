@@ -615,9 +615,9 @@ fn blocked_without_a_mark(_: &()) -> Outcome {
 }
 
 /// The terminal-profiles spec's scenario "Blocked for a profile that
-/// reads asking from its terminal", herdr's blocked read as asking by its
-/// profile as C.5 says, over the fake terminal reading it asking (90, 96,
-/// 171).
+/// reads asking from its terminal", a terminal's blocked read as asking by
+/// its profile as C.5 says, over the fake terminal reading it asking (90,
+/// 96, 171).
 fn blocked_reading_asking_from_the_terminal(_: &()) -> Outcome {
     let world = World::new();
     let id = World::id("fix", "one");

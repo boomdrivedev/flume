@@ -5,7 +5,8 @@
 //! builds it, the core reads it from the profile alone. Part C's profiles
 //! are cited in words alone, since the suite cites as data only the
 //! clauses of Parts A and B, the invariants and section 11's scenarios:
-//! the common profile of C.4 and herdr's watched send and states of C.5.
+//! the common profile of C.4 and a terminal's watched send and states of
+//! C.5.
 
 use super::agent_launcher::{through_the_launcher, LAUNCHED};
 use super::world::*;
@@ -660,8 +661,8 @@ fn nothing_of_the_five_asked(_: &()) -> Outcome {
 }
 
 /// S73 over the fakes, the terminal-readings spec's scenario of that name:
-/// the common profile of C.4 over a program herdr starts, as C.5 reads it
-/// (35, 38, 171, S73).
+/// the common profile of C.4 over a program its terminal starts, as C.5
+/// reads it (35, 38, 171, S73).
 fn s73_over_the_fakes(_: &()) -> Outcome {
     let world = World::new();
     let first = through_the_launcher(&world, "one");

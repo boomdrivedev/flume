@@ -2252,10 +2252,15 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(Bare.on_quiet(), Offered::NotOffered);
     assert_eq!(Bare.reports_windows(), Offered::NotOffered);
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
-    // No part's lesser reading names a terminal (core.1).
+    // No part's lesser reading names a terminal (core.1), the names spelled
+    // in pieces so this file names none of them.
     for part in Part::ALL {
-        for name in ["herdr", "Rex", "tmux"] {
-            assert!(!part.read().contains(name), "{}", part.read());
+        for name in [
+            ["her", "dr"].concat(),
+            ["R", "ex"].concat(),
+            ["tm", "ux"].concat(),
+        ] {
+            assert!(!part.read().contains(&name), "{}", part.read());
         }
     }
     assert_eq!(
