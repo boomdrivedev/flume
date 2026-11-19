@@ -4997,3 +4997,47 @@ fn a_role_runs_launch_over_mcp_reports_to_its_address() {
         "{launched}"
     );
 }
+
+#[test]
+fn launch_keeps_the_parameters_a_file_gives() {
+    // The command-line spec's "Parameters given by a file" (224, C.7): the
+    // file read whole and kept in the place's own folder as `params`, and
+    // a file that cannot be read refusing the launch, naming it, with
+    // nothing made.
+    let host = Host::new("params-file");
+    let repository = repository("params-file", Some(STAND_IN_QUEUE));
+    let file = host.scratch.path("moves.json");
+    let text = "{\"moves\":[{\"name\":\"weir\",\"from\":\"0.4.1\",\"to\":\"0.4.2\"}]}\n";
+    std::fs::write(&file, text).expect("the parameters");
+    let launch = |name: &str, params: &str| {
+        host.stand_in(
+            &repository.dir,
+            &[
+                "launch",
+                "--kind",
+                "fix",
+                "--name",
+                name,
+                "--brief",
+                "Move the pins.",
+                "--params-file",
+                params,
+                "--agent",
+                &format!("program={STAND_IN}"),
+                "--json",
+            ],
+            &[],
+        )
+    };
+    answered(&launch("one", &file.to_string_lossy()), 0);
+    let place = host.place_of(&repository, "fix--one");
+    assert_eq!(
+        std::fs::read_to_string(Path::new(&host.folder(&place)).join("params"))
+            .expect("the place's copy of the parameters"),
+        text
+    );
+    let missing = host.scratch.path("nowhere.json");
+    let reason = reason_of(&launch("two", &missing.to_string_lossy()));
+    assert!(reason.contains(&*missing.to_string_lossy()), "{reason}");
+    made_nothing(&host, &repository, "fix--two", "fix/two");
+}
