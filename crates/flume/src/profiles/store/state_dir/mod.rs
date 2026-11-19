@@ -24,7 +24,7 @@ use flume_seams::{
 };
 use serde::Serialize;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -358,7 +358,70 @@ impl Store for StateDir {
         read_json(&self.host_path(key).0)
     }
 
+    fn host_version(&self, key: &HostKey) -> Option<u64> {
+        version_at(&self.host_path(key).0)
+    }
+
     fn write_host(&self, key: &HostKey, at: Option<u64>, next: Option<&HostDocument>) -> Written {
         self.host_written(key, at, next)
+    }
+}
+
+/// A host's document read for its version alone, its document passed
+/// over unbuilt (153).
+#[derive(serde::Deserialize)]
+struct VersionOnly {
+    version: u64,
+}
+
+/// The version of the host's document at `path`, read from the bytes it
+/// opens with, since this store writes a document's version as its first
+/// field; the document read whole for its version where it opens
+/// otherwise; none where there is none (153).
+fn version_at(path: &Path) -> Option<u64> {
+    let mut head = [0u8; 128];
+    let read = File::open(path).ok()?.read(&mut head).ok()?;
+    leading_version(&head[..read])
+        .or_else(|| read_json::<VersionOnly>(path).map(|read| read.version))
+}
+
+/// The version a document's first bytes `head` open with, `{"version":`
+/// and its whole number; none where they open otherwise or the number
+/// runs past them.
+fn leading_version(head: &[u8]) -> Option<u64> {
+    let text = match std::str::from_utf8(head) {
+        Ok(text) => text,
+        Err(error) => std::str::from_utf8(&head[..error.valid_up_to()]).ok()?,
+    };
+    let rest = text
+        .trim_start()
+        .strip_prefix('{')?
+        .trim_start()
+        .strip_prefix("\"version\"")?
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start();
+    let end = rest.find(|c: char| !c.is_ascii_digit())?;
+    rest[..end].parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::leading_version;
+
+    #[test]
+    fn a_documents_version_is_read_from_the_bytes_it_opens_with() {
+        assert_eq!(
+            leading_version(b"{\n  \"version\": 1795124219129819000,\n  \"document\": {"),
+            Some(1_795_124_219_129_819_000)
+        );
+        assert_eq!(leading_version(b"{\"version\":7,\"document\":{}}"), Some(7));
+    }
+
+    #[test]
+    fn a_document_that_opens_otherwise_gives_no_version_from_its_head() {
+        assert_eq!(leading_version(b"{\"document\": {}, \"version\": 7}"), None);
+        assert_eq!(leading_version(b"{\"version\": 17951242"), None);
+        assert_eq!(leading_version(b""), None);
     }
 }
