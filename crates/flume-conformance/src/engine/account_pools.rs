@@ -353,6 +353,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["4", "145", "173"],
             run: a_launch_no_account_can_run,
         },
+        Scenario {
+            name: "account pools: flume prompt of a review naming no program, its intent's last program other with other-1 usable, holds other's way to stop short, writing no held state, affinity or account document",
+            cites: &["29", "119", "173"],
+            run: the_preview_of_a_stage_on_the_last_program,
+        },
     ]
 }
 
@@ -3941,5 +3946,51 @@ fn a_launch_no_account_can_run(_: &()) -> Outcome {
         "the terminal asked at the launch"
     );
     ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The preview of a stage on the last
+/// program" (29, 119, 173).
+fn the_preview_of_a_stage_on_the_last_program(_: &()) -> Outcome {
+    let world = World::new();
+    let other = a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings::default(),
+    );
+    other.stop_short_words("to stop short, tell `other` so");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?.2,
+        Some("other".to_string()),
+        "the intent's last program"
+    );
+    world.store.log.clear();
+    let text = match world.engine().prompt(&id, "review") {
+        Answer::Prompt { text, .. } => text,
+        other => return Err(format!("the prompt answered {other:?}")),
+    };
+    ensure!(
+        text.contains("to stop short, tell `other` so") && !text.contains("flume needs --found"),
+        "the preview does not hold other's way to stop short: {text}"
+    );
+    let written: Vec<String> = world
+        .store
+        .log
+        .calls()
+        .into_iter()
+        .filter(|call| {
+            [
+                "write",
+                "remove",
+                "write_host",
+                "remove_host",
+                "made",
+                "write_file",
+            ]
+            .contains(&call.split(' ').next().unwrap_or_default())
+        })
+        .collect();
+    ensure_eq!(written, Vec::<String>::new(), "what the preview wrote");
     Ok(())
 }

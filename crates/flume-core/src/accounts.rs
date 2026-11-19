@@ -679,6 +679,20 @@ impl Engine {
         Some((read.version, self.folded(affinity)))
     }
 
+    /// The intent's affinity as [`Engine::affinity`] reads it, one whose
+    /// last place went an hour ago or more read as none and left as it
+    /// stands, for a reader that writes nothing (29, 119, 147).
+    pub(crate) fn affinity_unwritten(&self, intent: &IntentKey) -> Option<Affinity> {
+        let read = self.store.read_host(&Self::intent_key(intent))?;
+        let HostDocument::Intent(affinity) = read.document else {
+            return None;
+        };
+        let expired = affinity
+            .gone
+            .is_some_and(|gone| self.host.now() >= gone.saturating_add(AFFINITY_KEPT));
+        (!expired).then(|| self.folded(affinity))
+    }
+
     /// A document written before an intent kept an account per program,
     /// its one account given its program, as the host's configuration
     /// declares the account in its pool now: the account kept for that
