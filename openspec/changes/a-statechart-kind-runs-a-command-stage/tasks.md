@@ -22,7 +22,7 @@ C.7). Design sections are this change's `design.md`.
 
 - [x] 3.1 Record a command stage's one session with its command filled, take no words for it, and start it by `start_command` through the terminal's `run` (223, 224, C.5; design 3, 4). Check: `devenv shell -- cargo test -p flume-conformance --test engine`.
 - [x] 3.2 Step a run from its launcher's word and recorded exit, deliver or fail it, read `stage.end` `passed` or `failed` under its bound, and give its failure to the next agent's stage (25, 112, 223; core.9; design 6, 7). Check: `devenv shell -- cargo test -p flume-conformance --test engine`.
-- [x] 3.3 Have a retry naming a command stage run it again and refuse words (49, 223). Check: `devenv shell -- cargo test -p flume-conformance --test engine`.
+- [x] 3.3 Have a retry naming a command stage run it again and refuse words, and a caller's stop end a run that works with no force (49, 51, 223). Check: `devenv shell -- cargo test -p flume-conformance --test engine`.
 - [x] 3.4 Have flume's launcher run a command start's command as its child, keeping its output and exit, then settle the place (223, C.2; design 5). Check: `devenv shell -- cargo test -p flume --lib launcher`.
 - [x] 3.5 Give the herdr, Rex and printed terminals `run` (223, C.5; design 8). Check: `devenv shell -- cargo test -p flume --lib`.
 

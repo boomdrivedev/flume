@@ -126,3 +126,13 @@ with words SHALL be refused naming the stage (49, 223).
 
 - **WHEN** update@1's move failed past its bound, and its caller retries `main.move` with words, then with none
 - **THEN** the first is refused naming `main.move#1/1` as a command stage, and the second runs the command again under start 2 (49, 223)
+
+### Requirement: A caller's stop ends a command
+
+A caller's stop SHALL end a command stage's run whether or not it
+works, since it is no agent, and leave its stage to a retry (51, 223).
+
+#### Scenario: A stop and a retry
+
+- **WHEN** update@1's move runs, its launcher's word standing, and its caller stops the place with no force
+- **THEN** the stop is taken, the terminal closes the run, the move's session reads stopped, and a retry naming `main.move` runs the command again (49, 51, 223)

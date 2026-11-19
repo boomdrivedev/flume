@@ -58,7 +58,8 @@ settles the place (223, 224, C.2, C.5, C.7).
 - **A retry runs a command again; words are refused (49, 223).** A
   retry naming the command stage by its path, or its session, runs its
   command again from the place's head under the next start; one with
-  words is refused naming the stage.
+  words is refused naming the stage. A caller's stop ends a run that
+  works, with no force, since it is no agent (51).
 - **core.9 is amended** for a command stage's end, which is read from
   its launcher's recorded exit and the place's branch.
 - **The suite builds 223, 224 and S130.**
