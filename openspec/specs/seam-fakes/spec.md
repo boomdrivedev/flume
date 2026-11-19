@@ -462,6 +462,100 @@ moved, writing nothing, until it is told to take them again (75, 102).
 - **WHEN** every write of a place is refused and a settle acts on a failed submission
 - **THEN** nothing of the place is written, and once its writes are taken again the next settle acts on it
 
+### Requirement: The fake agent's parts follow its scripts
+
+The fake agent SHALL build each part its scripts give it and degrade
+each other: each of received, asking, own work, ended and last words
+unless scripted to read it from its terminal, then answering the lesser
+way; send-back, guard and on-quiet unless scripted off; windows unless
+scripted to report none; spent always; the mode, carry and own settings
+once scripted. It SHALL pass the agent seam's parts scenarios under each
+of its harnesses (106, 171, 174).
+
+#### Scenario: The fake scripted as each harness scripts it
+
+- **WHEN** the fake agent is scripted as its harness does by default, then to carry none, take no own settings, report no windows, offer no send-back, guard or on-quiet, read asking alone from its terminal, and read the five from its terminal
+- **THEN** its parts build every part by default, and each script degrades its own parts alone: carry, own settings, windows, send-back, guard and on-quiet together, asking alone, and received, asking, own work, ended and last words together, each of those it degrades then answering unknown, or none for last words (171, 174)
+
+#### Scenario: The fake as a new fake makes it
+
+- **WHEN** a fake agent no test has scripted is asked its parts
+- **THEN** received, asking, own work, ended, last words, send-back, guard, on-quiet, windows and spent are built, and the mode, carry and own settings degraded (174)
+
+### Requirement: The fake agent scripts the models it takes
+
+The fake agent SHALL take every model by default and SHALL script
+taking none, refusing each name in the seam's default words; its
+command SHALL pass `--model <name>` where the settings hand it one, its
+log SHALL name each `model` it is asked, and its kind SHALL be `agent`
+(88, 172).
+
+#### Scenario: A model taken, then none
+
+- **WHEN** a fix launches with `--agent model=large`, and then the fake agent is scripted to take no model and a second fix launches the same way
+- **THEN** the fake's log shows `model` asked of `large` at the first's launch and start, its start's command passing `--model large`, and the second launch is refused in the seam's default words (88, 172)
+
+### Requirement: The fake terminal scripts a kind it cannot start
+
+The fake terminal SHALL start every kind by default, SHALL script a
+kind it refuses, with words, until the script is lifted, and its log
+SHALL name each kind it is asked of with the environment's variables by
+name alone (C.5).
+
+#### Scenario: A kind refused, then started
+
+- **WHEN** a test scripts the fake terminal to refuse `agent` with words, asks it of `agent` and `other`, lifts the script and asks of `agent` again
+- **THEN** the first is refused in those words, `other` and the last are started, and the log names each ask (C.5)
+
+### Requirement: The fake agent scripts a start through the launcher
+
+The fake agent SHALL script that it starts its program through flume's
+launcher, not by default; its command SHALL then carry the launcher's
+words; and, for a start a test names, it SHALL script the process its
+launcher's word names, none until scripted, each read logged
+`launched <identity>` (106, C.4).
+
+#### Scenario: A launcher's start scripted
+
+- **WHEN** the fake agent is scripted to start through the launcher and a start's word to name the process 41
+- **THEN** it says it starts through the launcher, its command carries the launcher's words, and it names 41 for that start and no process for any other (C.4)
+
+### Requirement: The fake terminal scripts the process it reads
+
+The fake terminal SHALL answer, for an agent a test names, the process
+its program is scripted to run in, that nothing runs it, or unknown
+with words, unknown saying it reads no process where nothing is
+scripted, each asking logged `process <identity>` (106, C.5).
+
+#### Scenario: A process read, then another
+
+- **WHEN** the fake terminal is scripted to read an agent's program running in 41, then in 42, and is asked between
+- **THEN** it answers 41, then 42, and unknown for an agent nothing was scripted for, logging each asking (C.5)
+
+### Requirement: The fake terminal scripts a watched send's turn
+
+The fake terminal SHALL deliver a watched send as its send delivers
+text, refuse it where its send refuses, and answer that it saw the turn
+begin unless a test scripted another answer for that agent, a turn not
+seen with words or a refusal, each asking logged `send-watching
+<identity>` (106, 171, C.5).
+
+#### Scenario: A turn seen, then not
+
+- **WHEN** a test sends an agent `go` by the fake terminal's watched send, scripts that agent's turn not seen with words and sends `again`, and sends to a stopped agent
+- **THEN** the first answers the turn seen, the second the turn not seen in those words, both texts are delivered and logged, and the third is refused with nothing delivered (171, C.5)
+
+### Requirement: The fake agent scripts its way to stop short
+
+The fake agent SHALL give the way to stop short scripted for it, and
+its own fixed words where none is scripted, so two fake programs give
+two ways (41, 92).
+
+#### Scenario: Two fake programs' ways
+
+- **WHEN** the fake resolver binds `agent` to a fake agent scripted with no way to stop short and `other` to one scripted with its own words
+- **THEN** `agent`'s profile gives the fixed words and `other`'s the scripted words, each the same for every start (41, 92)
+
 ### Requirement: The fake agent scripts its home's variable
 
 The fake agent SHALL name no variable as an account's configuration

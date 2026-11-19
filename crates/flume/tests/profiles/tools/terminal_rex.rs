@@ -534,6 +534,7 @@ impl Fixture {
             }),
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2376,6 +2377,7 @@ impl Agent for StandIn {
             folder_trust: None,
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2418,16 +2420,20 @@ impl Agent for StandIn {
         "name it by flume needs --to".into()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
+    /// Received, asking, own work, ended and last words, read from its
+    /// own record, so none is read from the terminal (171, 174).
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+        ])
     }
 
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 

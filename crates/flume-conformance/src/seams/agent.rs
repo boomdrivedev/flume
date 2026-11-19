@@ -1,5 +1,7 @@
 //! The agent seam's scenarios (B.4, 88 to 93, 115, 116, 121, 128, 134,
-//! 135, 151, 161, 162, 169, 171, 174, 179, 196, 197, 207, 211).
+//! 135, 151, 161, 162, 169, 171, 172, 174, 179, 196, 197, 207, 211), and the
+//! parts a profile builds, each answered the lesser way where it builds
+//! none (174).
 
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_seams::*;
@@ -87,6 +89,11 @@ pub trait AgentHarness {
     /// the seam's defaults (197).
     fn efforts(&self) -> Efforts;
 
+    /// Whether the profile takes a name as its program's model, as its
+    /// program's release has it or the harness scripted it; false where
+    /// it keeps the seam's default, refusing every name (172).
+    fn models(&self) -> bool;
+
     /// The agent's program reports `windows` for its account, taken at
     /// `taken_at` by the host's clock, kept as flume's own part of the
     /// program keeps them (184, 211).
@@ -161,6 +168,13 @@ fn identity(stage: &str) -> Identity {
         start: 1,
         resume: 0,
     }
+}
+
+/// Whether the harness's profile builds `part`: a scenario of a part
+/// reads it from the profile only where it does, the parts scenario
+/// holding a part it does not build to its lesser answer (93, 171, 174).
+fn builds<H: AgentHarness>(harness: &H, part: Part) -> bool {
+    harness.seam().parts().builds(part)
 }
 
 fn started<H: AgentHarness>(harness: &H, stage: &str) -> Identity {
@@ -252,7 +266,7 @@ pub fn scenarios<H: AgentHarness>() -> Vec<Scenario<H>> {
         },
         Scenario {
             name: "agent: a profile that builds no windows answers not offered, and windows reads unknown for any agent",
-            cites: &["211"],
+            cites: &["211", "174"],
             run: windows_not_offered::<H>,
         },
         Scenario {
@@ -325,7 +339,192 @@ pub fn scenarios<H: AgentHarness>() -> Vec<Scenario<H>> {
             cites: &["197", "88"],
             run: the_command_passes_the_effort::<H>,
         },
+        Scenario {
+            name: "agent: model takes a name its program takes, or refuses every name where its profile names no way, the command passing the model taken",
+            cites: &["88", "172"],
+            run: model_takes_a_name_or_refuses_every_name::<H>,
+        },
+        Scenario {
+            name: "agent: kind names the program's kind",
+            cites: &["88", "172"],
+            run: kind_names_the_programs_kind::<H>,
+        },
+        Scenario {
+            name: "agent: the parts name each part once, built or degraded; send-back, on-quiet, windows and the mode's read-back are offered exactly where they are built; and each part not built answers the lesser way",
+            cites: &["174", "93"],
+            run: answers_agree_with_the_parts::<H>,
+        },
     ]
+}
+
+fn model_takes_a_name_or_refuses_every_name<H: AgentHarness>(harness: &H) -> Outcome {
+    let who = identity("code");
+    let command = |model: Option<&str>| {
+        harness.seam().command(
+            &harness.folder(),
+            &Settings {
+                model: model.map(Into::into),
+                ..Settings::default()
+            },
+            None,
+            &BTreeMap::new(),
+            None,
+            &BTreeMap::new(),
+            &harness.place(),
+            &who,
+            &Secret("secret".into()),
+            "begin",
+        )
+    };
+    // A name passed as written, alone or as an option's value.
+    let passes = |command: &AgentCommand, name: &str| {
+        command
+            .args
+            .iter()
+            .any(|arg| arg == name || arg.ends_with(&format!("={name}")))
+    };
+    let name = "large";
+    if harness.models() {
+        ensure_eq!(
+            harness.seam().model(name),
+            Ok::<(), String>(()),
+            format!("the model {name}")
+        );
+        ensure!(
+            passes(&command(Some(name)), name),
+            "the command passes no {name}"
+        );
+        ensure!(
+            !passes(&command(None), name),
+            "a command given no model passes {name}"
+        );
+        return Ok(());
+    }
+    // A profile that names no way to give a model refuses every name,
+    // and the core asks the model first, so its command is never given
+    // one (172).
+    for name in [name, "another-model"] {
+        match harness.seam().model(name) {
+            Ok(()) => {
+                return Err(format!(
+                    "the model {name} taken by a profile that names no way to give one"
+                ))
+            }
+            Err(words) => ensure!(
+                words.contains(&format!("`{name}`")),
+                "the refusal of {name} does not name it: {words}"
+            ),
+        }
+    }
+    Ok(())
+}
+
+fn kind_names_the_programs_kind<H: AgentHarness>(harness: &H) -> Outcome {
+    let who = identity("code");
+    let command = harness.seam().command(
+        &harness.folder(),
+        &Settings::default(),
+        None,
+        &BTreeMap::new(),
+        None,
+        &BTreeMap::new(),
+        &harness.place(),
+        &who,
+        &Secret("secret".into()),
+        "begin",
+    );
+    ensure_eq!(
+        harness.seam().kind().map(str::to_string),
+        command.kind,
+        "the kind the profile names beside its command's"
+    );
+    Ok(())
+}
+
+/// The seam-contracts spec's scenario "A profile's answers agree with its
+/// parts" (174, 93): a part not built is answered the lesser way, received,
+/// asking, own work, ended, spent and windows unknown, last words none,
+/// guard and carry not offered, own settings given refused and no key
+/// reserved, after the harness scripted what a profile that builds the part
+/// would answer by.
+fn answers_agree_with_the_parts<H: AgentHarness>(harness: &H) -> Outcome {
+    let seam = harness.seam();
+    let who = started(harness, "code");
+    harness.deliver(&who, "the prompt");
+    harness.ask(&who);
+    harness.start_own_work(&who);
+    harness.say_last(&who, "I could not sign in");
+    harness.end_session(&who);
+    harness.hit_usage_limit(&who);
+    harness.carry_accounts(&who);
+    harness.report_windows(&who, AT_1402, &reported(4_200));
+    harness.try_push(&who);
+    let parts = seam.parts();
+    let degraded = parts.degraded();
+    for part in Part::ALL {
+        let named = usize::from(parts.builds(part)) + usize::from(degraded.contains(&part));
+        ensure_eq!(
+            named,
+            1,
+            format!("how often the parts name {}", part.name())
+        );
+    }
+    for (part, answer) in [
+        (Part::SendBack, seam.send_back()),
+        (Part::OnQuiet, seam.on_quiet()),
+        (Part::Windows, seam.reports_windows()),
+        (Part::Mode, seam.mode_read_back()),
+    ] {
+        let built = if parts.builds(part) {
+            Offered::Offered
+        } else {
+            Offered::NotOffered
+        };
+        ensure_eq!(
+            answer,
+            built,
+            format!("whether the profile offers {}", part.name())
+        );
+    }
+    let folder = harness.folder();
+    for part in degraded {
+        let what = format!("{}, degraded", part.name());
+        match part {
+            Part::Received => ensure_eq!(
+                seam.received(&folder, &who, "the prompt"),
+                Received::Unknown,
+                what
+            ),
+            Part::Asking => ensure_eq!(seam.asking(&folder, &who), Reading::Unknown, what),
+            Part::OwnWork => ensure_eq!(seam.own_work(&folder, &who), Reading::Unknown, what),
+            Part::Ended => ensure_eq!(seam.ended(&folder, &who), Reading::Unknown, what),
+            Part::LastWords => ensure_eq!(seam.last_words(&folder, &who), None, what),
+            Part::Spent => ensure_eq!(seam.spent(&folder, &who), Spent::Unknown, what),
+            Part::Windows => ensure_eq!(seam.windows(&folder, &who), Windows::Unknown, what),
+            Part::Guard => ensure_eq!(seam.guard(&folder, &who), Guarded::NotOffered, what),
+            Part::Carry => {
+                for env in [
+                    BTreeMap::new(),
+                    BTreeMap::from([(
+                        "AGENT_HOME".to_string(),
+                        "/scratch/agent-work-2".to_string(),
+                    )]),
+                ] {
+                    ensure_eq!(seam.carry(&folder, &who, &env), Carry::NotOffered, what);
+                }
+            }
+            Part::OwnSettings => {
+                ensure!(
+                    seam.own(&a_line()).is_err(),
+                    "{what}: own settings given were taken"
+                );
+                ensure_eq!(seam.reserved(), Vec::<Reserved>::new(), what);
+            }
+            // Offered or not as the parts say, by the answers above.
+            Part::SendBack | Part::OnQuiet | Part::Mode => {}
+        }
+    }
+    Ok(())
 }
 
 fn effort_takes_its_programs_words<H: AgentHarness>(harness: &H) -> Outcome {
@@ -377,7 +576,7 @@ fn the_command_passes_the_effort<H: AgentHarness>(harness: &H) -> Outcome {
         harness.seam().command(
             &harness.folder(),
             &Settings {
-                effort: effort.map(str::to_string),
+                effort: effort.map(Into::into),
                 ..Settings::default()
             },
             None,
@@ -828,16 +1027,20 @@ fn begun_without_and_no_turn<H: AgentHarness>(harness: &H) -> Outcome {
         harness.seam().started_without(&folder, &who).is_some(),
         "the agent read begun with its settings"
     );
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::No,
-        "own work of an agent that has had no turn"
-    );
-    ensure_eq!(
-        harness.seam().asking(&folder, &who),
-        Reading::No,
-        "asking, of an agent that has had no turn"
-    );
+    if builds(harness, Part::OwnWork) {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::No,
+            "own work of an agent that has had no turn"
+        );
+    }
+    if builds(harness, Part::Asking) {
+        ensure_eq!(
+            harness.seam().asking(&folder, &who),
+            Reading::No,
+            "asking, of an agent that has had no turn"
+        );
+    }
     Ok(())
 }
 
@@ -975,8 +1178,8 @@ fn windows_reads_each_report<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 /// The seam-contracts spec's scenario "A profile that reports no
-/// windows" (171, 174, 211). It cites 211 alone: the list leaves 171 and
-/// 174, a degraded part of the agent seam, to record 0026's change.
+/// windows" (171, 174, 211): the windows' part degraded, as the parts
+/// scenarios cite it beside 211.
 fn windows_not_offered<H: AgentHarness>(harness: &H) -> Outcome {
     let who = started(harness, "code");
     // A profile that builds windows answers by the scenario before.
@@ -1027,6 +1230,9 @@ fn started_reads_the_agents_word<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 fn last_words_from_the_record<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::LastWords) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     harness.say_last(&who, "I could not sign in");
@@ -1092,6 +1298,9 @@ fn command_carries_identity_and_secret<H: AgentHarness>(harness: &H) -> Outcome 
 }
 
 fn received_reads_the_record<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::Received) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     ensure!(
@@ -1115,20 +1324,32 @@ fn received_reads_the_record<H: AgentHarness>(harness: &H) -> Outcome {
 fn asking_and_own_work<H: AgentHarness>(harness: &H) -> Outcome {
     let who = started(harness, "code");
     let folder = harness.folder();
-    ensure_eq!(harness.seam().asking(&folder, &who), Reading::No, "asking");
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::No,
-        "own work"
+    let (asking, own_work) = (
+        builds(harness, Part::Asking),
+        builds(harness, Part::OwnWork),
     );
+    if asking {
+        ensure_eq!(harness.seam().asking(&folder, &who), Reading::No, "asking");
+    }
+    if own_work {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::No,
+            "own work"
+        );
+    }
     harness.ask(&who);
     harness.start_own_work(&who);
-    ensure_eq!(harness.seam().asking(&folder, &who), Reading::Yes, "asking");
-    ensure_eq!(
-        harness.seam().own_work(&folder, &who),
-        Reading::Yes,
-        "own work"
-    );
+    if asking {
+        ensure_eq!(harness.seam().asking(&folder, &who), Reading::Yes, "asking");
+    }
+    if own_work {
+        ensure_eq!(
+            harness.seam().own_work(&folder, &who),
+            Reading::Yes,
+            "own work"
+        );
+    }
     Ok(())
 }
 
@@ -1136,6 +1357,7 @@ fn unknown_when_the_record_cannot_say<H: AgentHarness>(harness: &H) -> Outcome {
     let who = started(harness, "code");
     let folder = harness.folder();
     harness.hide_record(&who);
+    // Unknown whether the profile builds them or not (93).
     ensure_eq!(
         harness.seam().own_work(&folder, &who),
         Reading::Unknown,
@@ -1194,13 +1416,15 @@ fn the_folder_handed_to_the_readings<H: AgentHarness>(harness: &H) -> Outcome {
     let folder = harness.folder();
     let elsewhere = format!("{folder}-of-another-place");
     harness.deliver(&who, "the prompt");
-    ensure!(
-        matches!(
-            harness.seam().received(&folder, &who, "the prompt"),
-            Received::Received { .. }
-        ),
-        "the prompt delivered read as not received in the place's folder"
-    );
+    if builds(harness, Part::Received) {
+        ensure!(
+            matches!(
+                harness.seam().received(&folder, &who, "the prompt"),
+                Received::Received { .. }
+            ),
+            "the prompt delivered read as not received in the place's folder"
+        );
+    }
     ensure_eq!(
         harness.seam().received(&elsewhere, &who, "the prompt"),
         Received::Unknown,
@@ -1225,6 +1449,9 @@ fn the_folder_handed_to_the_readings<H: AgentHarness>(harness: &H) -> Outcome {
 }
 
 fn ended_reads_the_session<H: AgentHarness>(harness: &H) -> Outcome {
+    if !builds(harness, Part::Ended) {
+        return Ok(());
+    }
     let who = started(harness, "code");
     let folder = harness.folder();
     ensure_eq!(

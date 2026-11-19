@@ -16,21 +16,48 @@ use crate::reading::{find_group, reads_change};
 use crate::settings::program_name;
 use crate::start::Starts;
 use crate::{
-    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, CheckoutStatus, EffortStatus,
-    EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, MoveStatus, OwnFileStatus, OwnStatus,
-    PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus, SubmissionStatus,
-    WaitingOn, Waits,
+    side_by_side, Act, AgentSettings, AgentStatus, Answer, Bound, CheckoutStatus, DegradedPart,
+    EffortStatus, EndStatus, Engine, ExpiredEnd, GroupStatus, ModeStatus, ModelStatus, MoveStatus,
+    OwnFileStatus, OwnStatus, PlaceStatus, SessionAnswer, SessionWait, SourceStatus, StageStatus,
+    SubmissionStatus, WaitingOn, Waits,
 };
 use flume_seams::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-/// The effort `start` passed, with its layer, and `variable`, the one its
-/// program reads over it, where its account's environment names it, by
-/// its name alone; none where no layer gave an effort (56, 197; core.30).
+/// The program whose entry of `setting`'s table `start` took, none for a
+/// value given whole, and the entry itself, as its command passed it;
+/// none where the table names no entry for it, which no start passed (56,
+/// 172, 197).
+fn entry_of(start: &StartHeld, setting: &PerProgram) -> Option<(Option<String>, String)> {
+    let program = program_name(&start.program);
+    let passed = setting.entry(program)?.to_string();
+    Some((setting.is_table().then(|| program.to_string()), passed))
+}
+
+/// The model `start` passed, as its layer wrote it, with its layer and
+/// the program whose table entry it took; none where no layer gave a
+/// model (56, 172).
+fn model_status(start: &StartHeld) -> Option<ModelStatus> {
+    let model = start.settings.model.as_ref()?;
+    let given = start.from.get("model")?;
+    let (entry, passed) = entry_of(start, model)?;
+    Some(ModelStatus {
+        name: model.written(),
+        layer: given.layer,
+        entry,
+        passed,
+    })
+}
+
+/// The effort `start` passed, with its layer, the program whose table
+/// entry it took, and `variable`, the one its program reads over it,
+/// where its account's environment names it, by its name alone; none
+/// where no layer gave an effort (56, 197; core.30).
 fn effort_status(start: &StartHeld, variable: Option<&'static str>) -> Option<EffortStatus> {
     let word = start.settings.effort.as_ref()?;
     let given = start.from.get("effort")?;
+    let (entry, passed) = entry_of(start, word)?;
     let outranked_by = variable
         .filter(|name| {
             start
@@ -40,9 +67,10 @@ fn effort_status(start: &StartHeld, variable: Option<&'static str>) -> Option<Ef
         })
         .map(str::to_string);
     Some(EffortStatus {
-        word: word.clone(),
+        word: word.written(),
         layer: given.layer,
-        passed: word.clone(),
+        entry,
+        passed,
         read_back: false,
         outranked_by,
     })
@@ -256,15 +284,25 @@ impl Engine {
             let mut read_back = false;
             let mut reserved = vec![];
             let mut effort_variable = None;
+            let mut degraded = vec![];
             if let Some(agent) = self.agent(&start.program) {
                 if let Guarded::Refused { acts } = agent.guard(&folder, &start.identity) {
                     refused_acts.extend(acts);
                 }
-                last_words = agent.last_words(&folder, &start.identity);
+                last_words = self.read_last_words(agent.as_ref(), &folder, start);
                 notes = agent.notes(&folder, &start.identity);
                 read_back = agent.mode_read_back() == Offered::Offered;
                 reserved = agent.reserved();
                 effort_variable = agent.effort_variable();
+                degraded = agent
+                    .parts()
+                    .degraded()
+                    .into_iter()
+                    .map(|part| DegradedPart {
+                        part,
+                        read: part.read().to_string(),
+                    })
+                    .collect();
             }
             let own = start.own.as_ref().map(|own| OwnStatus {
                 passed: own.passed.clone(),
@@ -336,6 +374,8 @@ impl Engine {
                     .is_some_and(|end| end.left_in_pane),
                 own,
                 effort,
+                model: model_status(start),
+                degraded,
             }
         });
         let agent_state = agent.as_ref().map(|agent| agent.state);

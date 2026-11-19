@@ -12,6 +12,7 @@ pub mod git;
 pub mod host;
 pub mod mode;
 pub mod own;
+pub mod per_program;
 pub mod profiles;
 pub mod shell;
 pub mod telemetry;

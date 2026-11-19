@@ -7,10 +7,13 @@ sidebar:
 
 import Delivery from '../../../components/Delivery.astro';
 
-Every agent flume starts is Claude Code with flume's own plugin. Its
+Every Claude Code agent flume starts runs with flume's own plugin, and
+`claude` is the program a stage runs where no layer names another. Its
 hooks are how flume knows what the agent did: that it started, that it
 received its prompt, that it is asking a person something, and that it
-went quiet. The same plugin, installed in your own sessions, gives you
+went quiet. flume runs every other program herdr starts by an entry of
+its name and kind, with no plugin
+([the program](/flume/guides/agent-settings/#the-program)). The same plugin, installed in your own sessions, gives you
 `/launch` and flume's status, message, launch and wake over MCP, and its
 hooks do nothing there.
 
@@ -40,9 +43,17 @@ Each agent in the fork gets this file:
 {"attribution":{"commit":"","pr":"","sessionUrl":false}}
 ```
 
+`--model` is there only where a layer gives the agent a model. Claude
+Code takes every name, its aliases such as `opus` and its full names
+alike, so flume passes the agent's model as written. Where a layer
+gives a table of programs, such as `{ claude = "opus", codex =
+"gpt-5.5" }`, `--model` passes Claude Code's entry, `opus`, and no other
+([the model](/flume/guides/agent-settings/#the-model)).
+
 `--effort` is there only where a layer gives the agent an effort, one
 of the pinned release's five words, `low`, `medium`, `high`, `xhigh`
-and `max` ([the effort](/flume/guides/agent-settings/#the-effort)).
+and `max`, or Claude Code's entry of a table of programs
+([the effort](/flume/guides/agent-settings/#the-effort)).
 It is the session's own level, which Claude Code reads over every
 settings file's. So Claude Code's `effortLevel` setting is flume's
 `effort`'s: a layer's `settings` that writes it is refused, and a
@@ -77,6 +88,14 @@ to Claude Code. Where that path is a nix wrapper, flume runs the program
 it wraps, with the variables the wrapper sets, so herdr recognises the
 agent as Claude Code. Any other program refuses the launch, since
 Claude Code is the one agent program flume runs.
+
+Claude Code's profile builds every part of what flume reads of an
+agent from Claude Code's own record and the plugin's hooks: whether its
+account reached a usage limit, its usage windows, the Stop hook's
+send-back and on-quiet, the guard, the mode it began in, the carry of
+its conversation to another account, and its own settings. So status
+names no part of a Claude Code agent degraded, and its JSON holds no
+`degraded` ([state](/flume/reference/state/)).
 
 flume checks the plugin's hooks against the Claude Code release its
 repository pins, 2.1.296. It checks there too the `--settings` option,

@@ -12,7 +12,7 @@ use flume_core::{
 use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
     Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
-    Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
+    Kept, KindFrom, LabelHeld, Layer, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
     PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
     StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
     Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
@@ -1121,8 +1121,9 @@ fn intent_words(intent: &IntentKey) -> String {
 
 /// The current agent of a place of `kind` in `stream`: its line, where
 /// it opened, its terminal, each setting with its layer, its own
-/// settings' files and how they were passed, and what its record says
-/// (56, 190, 195, 199).
+/// settings' files and how they were passed, what its record says, and
+/// each part its profile does not build with how flume reads it (56,
+/// 174, 190, 195, 199).
 fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     let mut lines = vec![agent_line(agent)];
     lines.extend(where_line(agent, stream, kind));
@@ -1147,6 +1148,13 @@ fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     }
     for note in &agent.notes {
         lines.push(format!("    note: {note}"));
+    }
+    for degraded in &agent.degraded {
+        lines.push(format!(
+            "    {} degraded: {}",
+            degraded.part.name(),
+            degraded.read
+        ));
     }
     lines
 }
@@ -1204,16 +1212,31 @@ fn own_lines(own: &OwnStatus) -> Vec<String> {
     lines
 }
 
-/// The current agent's line: its identity, program, account and state,
-/// the account from the intent's affinity for the agent's program, the
+/// The current agent's line: its identity, program, said to come from its
+/// account where its account named it, account and state, the account
+/// from the intent's affinity for the agent's program, the
 /// strategy, or the account a lost conversation's start ran under, its
 /// conversation's, its mode as written with its layer, the entry it took of
-/// a table and the value passed, where a layer gave one, and its effort
-/// as written with its layer, the value passed and the account's variable
-/// that outranks it, by its name alone, where a layer gave one (56, 145,
-/// 147, 169, 197).
+/// a table and the value passed, where a layer gave one, its model as
+/// written with its layer, and for a table the entry it took and the name
+/// passed, where a layer gave one, and its effort as written with its
+/// layer, the entry it took of a table, the value passed and the
+/// account's variable that outranks it, by its name alone, where a layer
+/// gave one (56, 145, 147, 169, 172, 173, 197).
 fn agent_line(agent: &AgentStatus) -> String {
-    let mut line = format!("  agent {} ({})", agent.identity, agent.program);
+    let named_by_account = agent
+        .settings
+        .from
+        .get("program")
+        .is_some_and(|given| given.layer == Layer::Account);
+    let mut line = if named_by_account {
+        format!(
+            "  agent {} ({}, from its account)",
+            agent.identity, agent.program
+        )
+    } else {
+        format!("  agent {} ({})", agent.identity, agent.program)
+    };
     if let Some(account) = &agent.account {
         let from = match account.from {
             AccountFrom::Affinity => format!("from the affinity for {}", agent.program),
@@ -1228,6 +1251,16 @@ fn agent_line(agent: &AgentStatus) -> String {
     line.push_str(&format!(": {}", word(json!(agent.state))));
     if agent.past_limit {
         line.push_str(", past its limit");
+    }
+    if let Some(model) = &agent.model {
+        line.push_str(&format!(
+            ", on the model {} (from {})",
+            model.name,
+            word(json!(model.layer))
+        ));
+        if let Some(entry) = &model.entry {
+            line.push_str(&format!(", the entry {entry}, passed as {}", model.passed));
+        }
     }
     if let (Some(mode), Some(given)) = (&agent.mode, agent.settings.from.get("mode")) {
         line.push_str(&format!(
@@ -1245,11 +1278,15 @@ fn agent_line(agent: &AgentStatus) -> String {
     }
     if let Some(effort) = &agent.effort {
         line.push_str(&format!(
-            ", at the effort {} (from {}) passed as {}",
+            ", at the effort {} (from {})",
             effort.word,
             word(json!(effort.layer)),
-            effort.passed
         ));
+        match &effort.entry {
+            Some(entry) => line.push_str(&format!(", the entry {entry}, passed as ")),
+            None => line.push_str(" passed as "),
+        }
+        line.push_str(&effort.passed);
         if !effort.read_back {
             line.push_str(", not read back");
         }
@@ -2121,20 +2158,87 @@ fn tidy_lines(tidy: &Tidied) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flume_core::EndStatus;
     use flume_core::{
-        AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, MoveStatus,
-        OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted, StreamListed,
-        StreamStatus, TitleFrom, TitleHeld, WindowStatus,
+        AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, ModelStatus,
+        MoveStatus, OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted,
+        StreamListed, StreamStatus, TitleFrom, TitleHeld, WindowStatus,
     };
+    use flume_core::{DegradedPart, EndStatus};
     use flume_seams::{
         AccountFrom, AccountHeld, AccountMove, AgentState, AnswerHeld, BaseFix, Declared, EndHeld,
         EndOf, FixCause, FixKind, FixOf, ForecastHeld, Given, Handed, Layer, ModeBegan, MoveOn,
-        MoveWhy, NamedBy, Phase, PlaceId, ProfileHeld, Reading, ReadyStep, Reserved, SessionClosed,
-        SessionRuns, StageEnd, StageState, StopShortWaited, Strategy, StreamFrom, StreamHeld,
-        Unsettled, View, ViewHeld,
+        MoveWhy, NamedBy, Part, Phase, PlaceId, ProfileHeld, Reading, ReadyStep, Reserved,
+        SessionClosed, SessionRuns, StageEnd, StageState, StopShortWaited, Strategy, StreamFrom,
+        StreamHeld, Unsettled, View, ViewHeld,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn an_agent_whose_account_names_its_program() {
+        // The place-status spec's person's form of "A review on the
+        // account's program": the program `other`, from the layer
+        // `account`, said to come from its account (56, 173).
+        let mut settings = AgentSettings::default();
+        settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Account,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        let agent = AgentStatus {
+            left_in_pane: false,
+            identity: "flume:r:look--a:review:1".into(),
+            stage: "review".into(),
+            program: "other".into(),
+            settings,
+            account: Some(AccountHeld {
+                pool: "work".into(),
+                name: "other-1".into(),
+                from: AccountFrom::Strategy,
+            }),
+            state: AgentState::Working,
+            started: Reading::Yes,
+            asking: Reading::No,
+            own_work: Reading::No,
+            past_limit: false,
+            screen: None,
+            dialog: None,
+            printed: None,
+            last_words: None,
+            notes: vec![],
+            mode: None,
+            conversation: None,
+            session: None,
+            terminal: None,
+            own: None,
+            effort: None,
+            model: None,
+            degraded: vec![],
+        };
+        assert_eq!(
+            agent_line(&agent),
+            "  agent flume:r:look--a:review:1 (other, from its account) on the account other-1 of work (from the strategy): working"
+        );
+        assert_eq!(
+            setting_line("program", &agent.settings.from["program"]),
+            "    program = other (from account)"
+        );
+        let mut named = agent.clone();
+        named.settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Kind,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        assert_eq!(
+            agent_line(&named),
+            "  agent flume:r:look--a:review:1 (other) on the account other-1 of work (from the strategy): working"
+        );
+    }
 
     #[test]
     fn an_agents_account() {
@@ -2165,6 +2269,8 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
+            degraded: vec![],
         };
         assert_eq!(
             agent_line(&agent),
@@ -2654,6 +2760,8 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
+            degraded: vec![],
         }
     }
 
@@ -2884,7 +2992,7 @@ mod tests {
         AgentStatus {
             settings: AgentSettings {
                 settings: flume_seams::Settings {
-                    effort: word.map(str::to_string),
+                    effort: word.map(Into::into),
                     ..flume_seams::Settings::default()
                 },
                 env,
@@ -2894,6 +3002,7 @@ mod tests {
             effort: word.map(|word| EffortStatus {
                 word: word.into(),
                 layer,
+                entry: None,
                 passed: word.into(),
                 read_back: false,
                 outranked_by: outranked.then(|| variable.to_string()),
@@ -2922,6 +3031,49 @@ mod tests {
         assert_eq!(
             agent_lines(&agent, "work", "fix")[2..],
             ["    effort = xhigh (from launch)"]
+        );
+    }
+
+    #[test]
+    fn an_agents_model_and_its_tables_entry() {
+        // 56, 172, 197: a model given whole names its layer; a model's
+        // table names the entry the agent took and the name passed, and
+        // an effort's table its entry, as design 7 words them.
+        let base = with_effort(None, Layer::Launch, false);
+        let whole = AgentStatus {
+            model: Some(ModelStatus {
+                name: "opus".into(),
+                layer: Layer::Launch,
+                entry: None,
+                passed: "opus".into(),
+            }),
+            ..base.clone()
+        };
+        assert_eq!(
+            agent_line(&whole),
+            "  agent flume:r:fix--one:code:1 (agent): working, on the model opus (from launch)"
+        );
+        let table = AgentStatus {
+            model: Some(ModelStatus {
+                name: r#"{ agent = "opus", other = "gpt-5.5" }"#.into(),
+                layer: Layer::HostKind,
+                entry: Some("agent".into()),
+                passed: "opus".into(),
+            }),
+            ..base
+        };
+        assert_eq!(
+            agent_line(&table),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, on the model { agent = "opus", other = "gpt-5.5" } (from host-kind), the entry agent, passed as opus"#
+        );
+        let mut effort = with_effort(Some(r#"{ agent = "xhigh" }"#), Layer::Kind, false);
+        if let Some(status) = effort.effort.as_mut() {
+            status.entry = Some("agent".into());
+            status.passed = "xhigh".into();
+        }
+        assert_eq!(
+            agent_line(&effort),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, at the effort { agent = "xhigh" } (from kind), the entry agent, passed as xhigh, not read back"#
         );
     }
 
@@ -4437,6 +4589,63 @@ mod tests {
             conversation_line(&lost(false, Some("its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"))),
             "    starts afresh after start 1, lost: its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"
         );
+    }
+
+    #[test]
+    fn an_agents_degraded_parts() {
+        // 56, 171, 174: each part its profile does not build on a line of
+        // its own after the agent's notes, in 171's order, with how flume
+        // reads it, the five it reads from the terminal among them, and
+        // none for an agent whose profile builds every part.
+        let none = in_mode(
+            "edits",
+            Layer::Kind,
+            ModeStatus {
+                passed: "edit-files".into(),
+                entry: None,
+                read_back: true,
+            },
+        );
+        let agent = AgentStatus {
+            notes: vec!["the agent runs flume's plugin version 0.1".into()],
+            degraded: [
+                Part::Received,
+                Part::Asking,
+                Part::OwnWork,
+                Part::Ended,
+                Part::LastWords,
+                Part::SendBack,
+                Part::Guard,
+                Part::OnQuiet,
+            ]
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
+            ..none.clone()
+        };
+        let lines = agent_lines(&agent, "work", "fix");
+        let note = lines
+            .iter()
+            .position(|line| line.starts_with("    note: "))
+            .expect("the agent's note");
+        assert_eq!(
+            lines[note + 1..],
+            [
+                "    received degraded: read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+                "    asking degraded: read from the terminal, asking while it reads the agent waiting on a question",
+                "    own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+                "    ended degraded: read from the terminal, ended once it reads the agent stopped",
+                "    last words degraded: read from the terminal, what it shows of the agent",
+                "    send-back degraded: not offered, so it may go quiet with its deliverable missing",
+                "    guard degraded: not offered, so nothing refuses its submitting, merging or pushing its place's branch",
+                "    on-quiet degraded: not offered, so the host's watch, or a command where none keeps watch, settles its place",
+            ]
+        );
+        assert!(!agent_lines(&none, "work", "fix")
+            .iter()
+            .any(|line| line.contains(" degraded: ")));
     }
 
     #[test]

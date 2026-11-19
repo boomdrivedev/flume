@@ -7,13 +7,14 @@
 //! into the place's folder before the terminal opens the agent, and a
 //! start whose command lists one outside it is not opened (196).
 
-use crate::accounts::Choice;
+use crate::accounts::{Choice, Programs};
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
     after_roles, asks, group_text, may_name, notes_path, render, way_to_stop_short,
 };
 use crate::room::Admit;
+use crate::settings::{cannot_run, kind_started, program_name, Resolution, RunsOn};
 use crate::start_record::start_record;
 use crate::{repository_id, Engine, Step};
 use flume_seams::*;
@@ -183,6 +184,25 @@ fn conversation(after: &CarryFrom, carry: Option<&Carry>) -> Conversation {
         carried: why.is_none(),
         why,
     }
+}
+
+/// A stage's settings as a start reads them before its account is
+/// chosen: resolved as they stand, a layer above flume's default naming
+/// its program or its stream having no pool; or, where neither holds, for
+/// each program of its pool's accounts (32 item 8, 173; design 6).
+enum Resolving {
+    Named(Box<Resolution>),
+    Pool(RunsOn),
+}
+
+/// Why a start does not carry the conversation of a start that ran
+/// `earlier`: the account chosen, `account`, runs `program`, and no
+/// profile reads another program's session as its own (146, 173, 179,
+/// 213; design 6).
+fn another_program(account: &str, program: &str, earlier: &str) -> String {
+    format!(
+        "the account chosen, {account}, runs {program}, another program than its conversation's {earlier}"
+    )
 }
 
 /// The count a start of `stage` carries, its own point `own` where it
@@ -467,35 +487,55 @@ impl Engine {
         // 181, 182, 190). Where the settings name no pane and no session,
         // the stream's word for the stage's kind or the stage, read once
         // they are resolved, refuses it where that word is at fault (4,
-        // 107, 199).
-        let resolution = match (
+        // 107, 199). A stage whose settings name no program above flume's
+        // default, on a pool, is read for each program of its pool's
+        // accounts, the session it opens in read from its settings before
+        // the program, which name none; every other is resolved as it
+        // stands (32 item 8, 144, 145, 173, 199; design 6).
+        let stage = &place.kind.stages[index];
+        let pool_room = queue
+            .pool_of(&place.stream.name)
+            .and_then(|pool| queue.pools.get(pool));
+        let reading = match (
             queue.stream(&place.stream.name).fault,
             self.stream_terminal(&place.stream.name),
         ) {
             (Some(fault), _) | (None, Err(fault)) => Err(fault),
-            (None, Ok(terminal)) => {
-                let stage = &place.kind.stages[index];
-                self.resolution(place, stage).and_then(|resolution| {
-                    let opens_in = queue.session_of(
-                        &place.stream.name,
-                        &place.kind.name,
-                        &stage.name,
-                        &resolution.resolved.settings,
-                    )?;
-                    Ok((resolution, terminal, opens_in))
-                })
-            }
+            (None, Ok(terminal)) => self.resolve(place, stage, None).and_then(|resolved| {
+                let opens_in = queue.session_of(
+                    &place.stream.name,
+                    &place.kind.name,
+                    &stage.name,
+                    &resolved.settings,
+                )?;
+                let reading = match pool_room {
+                    Some(room) if !resolved.names_program() => Resolving::Pool(
+                        self.runs_on(
+                            place,
+                            stage,
+                            room.accounts
+                                .iter()
+                                .map(|room| room.account.program.as_str()),
+                        ),
+                    ),
+                    _ => Resolving::Named(Box::new(self.checked(resolved, stage)?)),
+                };
+                Ok((reading, terminal, opens_in))
+            }),
         };
         let now = self.host.now();
         let affinity = queue
             .pool_of(&place.stream.name)
             .and_then(|_| self.affinity(&place.intent))
             .map(|(_, affinity)| affinity);
-        let program = resolution
-            .as_ref()
-            .ok()
-            .and_then(|(resolution, _, _)| resolution.resolved.settings.program.clone());
-        let stage_name = &place.kind.stages[index].name;
+        let programs = match &reading {
+            Ok((Resolving::Pool(runs), _, _)) => Programs::of_pool(runs),
+            Ok((Resolving::Named(resolution), _, _)) => {
+                Programs::named(resolution.resolved.settings.program.as_deref())
+            }
+            Err(_) => Programs::default(),
+        };
+        let stage_name = &stage.name;
         // A stage waiting after its agent stopped at its account's usage
         // limit, or after its caller's retry of a conversation reported
         // lost: its profile is asked, under the room lock once an account
@@ -525,11 +565,11 @@ impl Engine {
                         .is_some_and(|after| after.start == start.identity)
             })
             .cloned();
-        let (chosen, intent_moved) = match &resolution {
+        let (chosen, intent_moved) = match &reading {
             Ok(_) => self.choose_account(
                 place,
                 stage_name,
-                program.as_deref(),
+                &programs,
                 affinity.as_ref(),
                 lost_start.as_ref().and_then(|start| start.account.as_ref()),
                 queue,
@@ -537,6 +577,32 @@ impl Engine {
             ),
             Err(_) => (Choice::NoPool, None),
         };
+        // The resolution of the program the account chosen runs, or, while
+        // the stage waits for an account, of the first program of its
+        // pool's that can run it, so its prompt is filled as a start would
+        // fill it (173; design 6).
+        let resolution = reading.and_then(|(reading, terminal, opens_in)| {
+            let resolution = match reading {
+                Resolving::Named(resolution) => Ok(*resolution),
+                Resolving::Pool(runs) => {
+                    let chosen = match &chosen {
+                        Choice::Chose { account, .. } => Some(account.program.as_str()),
+                        _ => None,
+                    };
+                    let pool = queue.pool_of(&place.stream.name).unwrap_or_default();
+                    let refused = cannot_run(stage_name, pool, &programs.refused);
+                    runs.into_iter()
+                        .filter(|(program, _)| chosen.is_none_or(|chosen| chosen == program))
+                        .find_map(|(_, resolution)| resolution.ok())
+                        .ok_or(refused)
+                }
+            };
+            resolution.map(|resolution| (resolution, terminal, opens_in))
+        });
+        let program = resolution
+            .as_ref()
+            .ok()
+            .and_then(|(resolution, _, _)| resolution.resolved.settings.program.clone());
         let env = match &chosen {
             Choice::Chose { account, .. } => self.account_env(account, stage_name),
             _ => Ok(BTreeMap::new()),
@@ -548,10 +614,40 @@ impl Engine {
             _ => resolution,
         };
         let env = env.unwrap_or_default();
+        // The terminal the start records asked whether it starts the
+        // agent's program's kind under the chosen account's environment,
+        // so it reads the home the agent will hold; a refusal leaves the
+        // stage refused in its words until a retry (27, 32, C.5).
+        let resolution = resolution.and_then(|(resolution, terminal, opens_in)| {
+            kind_started(terminal.0.as_ref(), &resolution, stage_name, &env)?;
+            Ok((resolution, terminal, opens_in))
+        });
+        // The program of the start whose conversation the start would
+        // carry: its profile alone reads that conversation, so a start on
+        // an account of another program carries it not, asking no profile
+        // (146, 173, 179, 213; design 6).
+        let earlier = after.as_ref().and_then(|after| {
+            read.state
+                .index_of(&after.start)
+                .and_then(|at| read.state.stages[at].start.as_ref())
+                .filter(|start| start.identity == after.start)
+                .map(|start| start.program.clone())
+        });
+        let elsewhere = match (&chosen, &earlier, &program) {
+            (Choice::Chose { account, .. }, Some(earlier), Some(program))
+                if program_name(earlier) != program_name(program) =>
+            {
+                Some(another_program(&account.name, program, earlier))
+            }
+            _ => None,
+        };
         // A lost conversation's start under no pool asks the profile of
         // the login environment's, an empty one; a spent agent always ran
         // under an account (146, 179).
         let carry = match (&after, &chosen, &resolution) {
+            (Some(after), Choice::Chose { .. }, Ok(_)) if after.carry && elsewhere.is_some() => {
+                elsewhere.clone().map(|why| Carry::No { why })
+            }
             (Some(after), Choice::Chose { .. }, Ok((resolution, _, _))) if after.carry => Some(
                 resolution
                     .agent
@@ -590,7 +686,10 @@ impl Engine {
                 id,
                 after,
                 lost_start.as_ref(),
-                program.as_deref().unwrap_or_default(),
+                earlier
+                    .as_deref()
+                    .or(program.as_deref())
+                    .unwrap_or_default(),
                 queue,
                 ask,
             ),
@@ -789,13 +888,12 @@ impl Engine {
                 return Step::Write(Err(Start::WaitingForRoom));
             }
             if let Admit::Queue(queue) = admit {
-                let program = resolution.resolved.settings.program.as_deref();
                 if matches!(chosen, Choice::Wait)
                     || queue.must_wait(
                         id,
                         &held.place.stream.name,
                         label.as_ref().map(|label| label.name.as_str()),
-                        program,
+                        Some(&programs.able),
                         held.priority,
                     )
                 {
@@ -971,6 +1069,7 @@ impl Engine {
                 counts,
                 span: None,
                 asking_since: None,
+                waiting: None,
             });
             if !held
                 .terminals
@@ -985,7 +1084,7 @@ impl Engine {
                 secret,
                 text,
                 place: held.place.place_ref(),
-                settings: resolution.resolved.settings.clone(),
+                settings: resolution.command_settings(),
                 env: env.clone(),
                 agent: resolution.agent.clone(),
                 session: held.role.clone(),
