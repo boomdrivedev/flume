@@ -110,6 +110,9 @@ struct AgentModel {
     /// The program takes no model, as a profile that names no way to give
     /// one, as scripted (172).
     no_model: bool,
+    /// The variable of an account's environment whose value is the
+    /// program's configuration home, as scripted (56, C.4).
+    home_variable: Option<&'static str>,
     /// The profile builds no windows, as scripted (171, 211).
     no_windows: bool,
     /// The profile starts its program through flume's launcher, as
@@ -575,6 +578,13 @@ impl FakeAgent {
     /// effort its command passes (197).
     pub fn read_effort_over(&self, name: &'static str) {
         lock(&self.state).effort_variable = Some(name);
+    }
+
+    /// The program reads its configuration home from the variable `name`
+    /// of an account's environment, which status gives each account read
+    /// against the login environment (56, C.4).
+    pub fn read_home_from(&self, name: &'static str) {
+        lock(&self.state).home_variable = Some(name);
     }
 
     /// The program keeps `names` from every process it starts (161).
@@ -1110,6 +1120,10 @@ impl Agent for FakeAgent {
 
     fn effort_variable(&self) -> Option<&'static str> {
         lock(&self.state).effort_variable
+    }
+
+    fn home_variable(&self) -> Option<&'static str> {
+        lock(&self.state).home_variable
     }
 
     fn deliver(&self) -> Offered {

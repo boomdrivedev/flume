@@ -689,6 +689,17 @@ pub trait Agent: Send + Sync {
         None
     }
 
+    /// The variable of an account's environment whose value is its
+    /// program's configuration home, the folder the program keeps its
+    /// settings in under that account, which status gives with the
+    /// account's variables read against the host user's login environment
+    /// as a start reads them, and no other value of them (56, C.4;
+    /// core.30); none by default, so a profile that names none gives its
+    /// accounts no home.
+    fn home_variable(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Whether the program's word at its start, its word that it started
     /// or at its start's first prompt, names the mode it began in, so its
     /// start is compared with the mode it asked, read from its

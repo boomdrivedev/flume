@@ -1333,8 +1333,14 @@ fn threshold() -> u32 {
 /// none, the time it is spent until, none where it is not spent, and,
 /// where that time is the hour 146 gives because flume read no reset in
 /// its agent's words, those words, its reading or why it has none, and
-/// what holds it past its threshold, none where nothing does; never a
-/// value of its environment or a path.
+/// what holds it past its threshold, none where nothing does; and its
+/// configuration home, the value of the variable its program's profile
+/// names in its environment, read against the host user's login
+/// environment as a start reads it, none where the profile names none or
+/// the environment gives none or an empty one, or, where the login
+/// environment lacks a variable the value names, none and why, naming
+/// the variables and no value (56, C.4; core.30). The home is the one
+/// value of its environment and the one path it gives.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountStatus {
     pub name: String,
@@ -1348,6 +1354,10 @@ pub struct AccountStatus {
     pub reading: Option<ReadingStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub past: Option<Past>,
+    #[serde(default)]
+    pub home: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_unread: Option<String>,
 }
 
 /// An account's reading as status gives it (184): when flume took it,

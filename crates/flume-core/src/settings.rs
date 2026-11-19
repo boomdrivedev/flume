@@ -371,6 +371,12 @@ fn sessionless(mut settings: Settings) -> Settings {
     settings
 }
 
+/// The words for an account's `env.<name>` naming `$<variable>`, which
+/// the host user's login environment lacks, naming no value (29, 144).
+fn lacks(name: &str, variable: &str) -> String {
+    format!("env.{name} names ${variable}, which the host user's login environment lacks")
+}
+
 /// `value` with a leading `~` read as the home and each `$VAR` or
 /// `${VAR}` as `login` gives it, or the first variable `login` lacks
 /// (29, C.7).
@@ -611,12 +617,39 @@ impl Engine {
                     .map(|read| (name.clone(), read))
                     .map_err(|variable| {
                         format!(
-                            "the stage {stage}'s account {}'s env.{name} names ${variable}, which the host user's login environment lacks",
-                            account.name
+                            "the stage {stage}'s account {}'s {}",
+                            account.name,
+                            lacks(name, &variable)
                         )
                     })
             })
             .collect()
+    }
+
+    /// `account`'s configuration home and why it cannot be read: the value
+    /// of the variable its program's profile names in its environment,
+    /// its `~` and variables read against the host user's login
+    /// environment as [`Engine::account_env`] reads it at a start; none
+    /// where no profile runs its program, the profile names no variable or
+    /// the environment gives none or an empty one; and none with words
+    /// naming the variable and the one the login environment lacks, never
+    /// the value, where it lacks one. The account's other variables are
+    /// left unread (29, 56, 144, C.4; core.30).
+    pub(crate) fn account_home(&self, account: &Account) -> (Option<String>, Option<String>) {
+        let Some(variable) = self
+            .agent(&account.program)
+            .and_then(|agent| agent.home_variable())
+        else {
+            return (None, None);
+        };
+        let Some(value) = account.env.get(variable).filter(|value| !value.is_empty()) else {
+            return (None, None);
+        };
+        match expand(value, |name| self.host.login(name)) {
+            Ok(home) if home.is_empty() => (None, None),
+            Ok(home) => (Some(home), None),
+            Err(lacking) => (None, Some(lacks(variable, &lacking))),
+        }
     }
 
     /// The stage's agent at a start: its settings resolved, with the
