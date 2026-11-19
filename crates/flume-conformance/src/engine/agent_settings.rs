@@ -10,7 +10,7 @@
 //! else flume's own hour (32, 198), and how long a conversation whose kind
 //! hibernates it may idle, given the same way (212).
 
-use super::account_pools::{account, fix_in, pool};
+use super::account_pools::{account, fix_in, fix_of, pool, stream_on};
 use super::agent_modes::{in_mode, mode_from, passed, the_fakes_map};
 use super::settling::write_change;
 use super::world::*;
@@ -120,6 +120,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "launching: Read at each start: the host's hibernate_after for every agent changing from 1h to 15m while talk hibernates, the resumed agent starts with 15m",
             cites: &["32", "213"],
             run: hibernate_after_read_at_each_start,
+        },
+        Scenario {
+            name: "launching: flume's default and a pool: a fix's code naming no program runs flume's default from default on a stream with no pool, and other from account under other-1 on a stream whose pool holds other-1 alone",
+            cites: &["32", "144", "173"],
+            run: flumes_default_and_a_pool,
         },
     ]
 }
@@ -328,9 +333,15 @@ fn s44_settings_from_four_layers(_: &()) -> Outcome {
         Some(SET),
         "status names the variable and gives no value"
     );
+    // No layer names the program and the agent has a pool, so its account
+    // names it (32 item 8, 173).
     ensure_eq!(
-        from.get("program").map(|given| given.layer),
-        Some(Layer::Default),
+        from.get("program"),
+        Some(&Given {
+            layer: Layer::Account,
+            value: "agent".into(),
+            file: None,
+        }),
         "the program's layer"
     );
     to_verify(&world, &id, "plan")?;
@@ -984,5 +995,76 @@ fn keep_open_changed_after_the_launch(_: &()) -> Outcome {
         layer_gave(Layer::Host, "15m"),
         "code's keep_open from the host as it stands at its start"
     );
+    Ok(())
+}
+
+/// The launching spec's scenario "flume's default and a pool": a fix's
+/// code naming no program in any layer runs once on the stream `solo`,
+/// which names no pool, and once on `pooled`, whose pool holds other-1 of
+/// `other` alone; the second place's code is held at its launch, while
+/// `pooled` names no pool, and started by its caller's retry once the
+/// host's configuration gives `pooled` its pool, read as it stands at
+/// that start (32, 144, 173).
+fn flumes_default_and_a_pool(_: &()) -> Outcome {
+    let world = World::new();
+    world.resolver.bind_agent("other", world.agent.clone());
+    stream_on(&world, "solo", None, 0);
+    stream_on(&world, "pooled", None, 0);
+    let first = fix_of(&world, Some("solo"), "one", None)?;
+    launched(&world.engine.launch(&Launch {
+        stream: Some("pooled".into()),
+        hold: vec!["code".into()],
+        ..launch("fix", "two", Some("x"))
+    }))?;
+    let second = World::id("fix", "two");
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![Account {
+            program: "other".into(),
+            ..account("other-1", None)
+        }],
+    );
+    stream_on(&world, "pooled", Some("work"), 0);
+    let answer = world
+        .engine()
+        .retry(&second, Retry::Stage("code".into()), None, false);
+    ensure!(answer.refusal().is_none(), "the retry: {answer:?}");
+    for (id, program, layer, account) in [
+        (&first, "agent", Layer::Default, None),
+        (
+            &second,
+            "other",
+            Layer::Account,
+            Some(("work".to_string(), "other-1".to_string())),
+        ),
+    ] {
+        let start = world
+            .held(id)
+            .ok_or("no held state")?
+            .stages
+            .into_iter()
+            .find(|held| held.name == "code")
+            .and_then(|held| held.start)
+            .ok_or("code has no start")?;
+        ensure_eq!(
+            (start.program.as_str(), start.from.get("program")),
+            (
+                program,
+                Some(&Given {
+                    layer,
+                    value: program.into(),
+                    file: None,
+                })
+            ),
+            "{id}'s program"
+        );
+        ensure_eq!(
+            start.account.map(|held| (held.pool, held.name)),
+            account,
+            "{id}'s account"
+        );
+    }
     Ok(())
 }

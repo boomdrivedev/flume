@@ -564,6 +564,11 @@ impl AgentHarness for Harness {
         }
     }
 
+    /// Every name, since 2.1.296's model names are open (172, C.4).
+    fn models(&self) -> bool {
+        true
+    }
+
     /// The plugin's module passes the windows in the engine's form, and
     /// `flume hook usage` keeps them on the start's record as it keeps
     /// them, taken at `taken_at` (211, C.4).
@@ -616,6 +621,27 @@ impl AgentHarness for Harness {
 #[test]
 fn the_profile_passes_the_agent_scenarios() {
     pass_all("agent", &agent::scenarios(), Harness::new);
+}
+
+/// The agent-profile spec's scenario "Claude Code's parts" (174, C.4).
+#[test]
+fn the_profile_builds_every_part() {
+    let harness = Harness::new();
+    let seam = &harness.seam;
+    let parts = seam.parts();
+    assert_eq!(Part::ALL.len(), 13);
+    for part in Part::ALL {
+        assert!(
+            parts.builds(part),
+            "Claude Code's profile degrades {}",
+            part.name()
+        );
+    }
+    assert_eq!(parts.degraded(), vec![]);
+    assert_eq!(seam.send_back(), Offered::Offered);
+    assert_eq!(seam.on_quiet(), Offered::Offered);
+    assert_eq!(seam.reports_windows(), Offered::Offered);
+    assert_eq!(seam.mode_read_back(), Offered::Offered);
 }
 
 fn identity(stage: &str) -> Identity {
@@ -730,6 +756,55 @@ fn the_command_for_a_code_stage() {
     assert_eq!(command.program, "/opt/claude/bin/claude");
 }
 
+/// The agent-profile spec's scenario "A table's entry passed by --model"
+/// (172, C.4).
+#[test]
+fn every_model_name_is_taken_and_the_entry_passed_by_model() {
+    let harness = Harness::new();
+    for name in ["opus", "claude-opus-4-5[1m]"] {
+        assert_eq!(harness.seam.model(name), Ok(()), "{name}");
+    }
+    assert_eq!(harness.seam.kind(), Some("claude"));
+    // The core hands the profile the agent's entry of the table, `opus`
+    // of `{ claude = "opus", codex = "gpt-5.5" }`, given whole.
+    let table = PerProgram::from_programs(BTreeMap::from([
+        ("claude".to_string(), "opus".to_string()),
+        ("codex".to_string(), "gpt-5.5".to_string()),
+    ]))
+    .expect("a table naming two programs");
+    let entry = table.entry("claude").expect("claude's entry");
+    let command = harness.seam.command(
+        &harness.folder(),
+        &Settings {
+            model: Some(entry.into()),
+            ..Settings::default()
+        },
+        None,
+        &BTreeMap::new(),
+        None,
+        &BTreeMap::new(),
+        &harness.place(),
+        &identity("code"),
+        &Secret("s".into()),
+        "x",
+    );
+    assert!(command.program.ends_with("claude"), "{}", command.program);
+    assert_eq!(command.kind.as_deref(), Some("claude"));
+    let models: Vec<&String> = command
+        .args
+        .iter()
+        .zip(command.args.iter().skip(1))
+        .filter(|(flag, _)| *flag == "--model")
+        .map(|(_, name)| name)
+        .collect();
+    assert_eq!(models, ["opus"], "{:?}", command.args);
+    assert!(
+        !command.args.iter().any(|arg| arg.contains("gpt-5.5")),
+        "another program's entry passed: {:?}",
+        command.args
+    );
+}
+
 #[test]
 fn the_command_passes_the_mode_it_is_given() {
     // The value the claim's resolution mapped goes to
@@ -840,7 +915,8 @@ fn each_of_the_five_and_two_the_release_reads_otherwise() {
     // and `ultracode`, which the release reads as `medium` and `xhigh`,
     // each naming it, `claude` and the five; it names the variable the
     // release reads over `--effort` (197, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     for word in ["low", "medium", "high", "xhigh", "max"] {
         assert_eq!(seam.effort(word), Ok(()), "{word}");
     }
@@ -1258,6 +1334,7 @@ fn an_effort_the_accounts_variable_outranks() {
         Some(EffortStatus {
             word: "xhigh".into(),
             layer: Layer::Host,
+            entry: None,
             passed: "xhigh".into(),
             read_back: false,
             outranked_by: Some(effort::VARIABLE.into()),
@@ -1318,7 +1395,8 @@ fn a_repositorys_tagline_written_as_given() {
 fn each_of_the_four() {
     // Each of flume's four maps to the one choice of 2.1.296's that means
     // it (169, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let mapped: Vec<String> = Mode::ALL
         .iter()
         .map(|mode| seam.mode(&ModeEntry::Flume(*mode)).expect("mapped"))
@@ -1334,7 +1412,8 @@ fn its_own_value_under_its_name() {
     // `{ claude = "auto" }`'s entry passes `auto` as written, and `{ claude
     // = "yolo" }`'s is refused naming `yolo`, `claude` and the release's
     // six values (169, C.4).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let entry = |value: &str| {
         ModeSetting::from_programs(BTreeMap::from([(NAME.to_string(), value.to_string())]))
             .expect("a table")
@@ -1375,7 +1454,8 @@ fn the_words_a_fixs_code_is_told() {
     // change's verify agent is one text, naming `flume needs --found` for
     // work a stage before this one must do again, with nothing of either
     // agent's identity and no "cannot deliver past" (28, 41, 131; core.31).
-    let seam = Harness::new().seam;
+    let harness = Harness::new();
+    let seam = &harness.seam;
     let code = identity("code");
     let verify = Identity {
         repository: "/elsewhere".into(),
@@ -1413,7 +1493,9 @@ fn the_resolver_binds_the_program_by_name_or_path() {
     let resolver = BuiltIn::new();
     assert!(resolver.agent(DEFAULT_PROGRAM).is_some());
     assert!(resolver.agent("/opt/claude/bin/claude").is_some());
-    assert!(resolver.agent("codex").is_none());
+    // A program with no entry is bound to no profile; every entry's
+    // program is bound, `every_entry_is_bound` reads (105, 170).
+    assert!(resolver.agent("nonesuch").is_none());
 }
 
 #[test]

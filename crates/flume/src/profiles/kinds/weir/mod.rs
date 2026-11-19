@@ -25,6 +25,16 @@
 //! beside it, change@1 to change@5, chore@1 and chore@2, and fix@1 and
 //! fix@2 side by side (157; records 0064, 0077).
 //!
+//! A statechart kind, a table holding `regions`, is read by weir-kinds
+//! into its statechart and mapped onto the seam's kind with its
+//! statechart: its title, its table spelled again as a declaration of it
+//! alone, and each state's stage parameters by the state's path, a
+//! state's `prompt` in its `params` read beside the declaration as a
+//! simple stage's prompt is; every other key of `params` is the
+//! template's, and ignored (21, 23, 84, 175, C.2; weir 94). A held
+//! statechart kind's text and the stage template's are read back by
+//! weir-kinds into the engine's types at each settle (85, 176).
+//!
 //! flume's own kinds are packages, each read through weir-kinds' package
 //! reader at its identity, `flume/<name>@<version>`, with its content's
 //! hash over its declaration's and prompts' paths and bytes (156, 157).
@@ -74,8 +84,9 @@
 use crate::git::{tree_path, Git, REMOTE};
 use crate::own::{self, Reader};
 use flume_seams::{
-    Binding, BindingRead, Deliverable, Kind, KindIdentity, KindNamed, KindSettings, Kinds,
-    KindsRead, LockEntry, LockRead, PackageRead, Packaged, Revision, Settings, SourceRead, Stage,
+    Binding, BindingRead, ChartAgents, ChartStage, Charts, Deliverable, Join, Kind, KindIdentity,
+    KindNamed, KindSettings, KindStatechart, Kinds, KindsRead, LockEntry, LockRead, PackageRead,
+    Packaged, Revision, Settings, SourceRead, Stage,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
@@ -313,6 +324,16 @@ impl Kinds for Weir {
             Ok(revision) => binding_at(repository, &revision),
             Err(reason) => BindingRead::CouldNotRead { reason },
         }
+    }
+
+    /// The held text and the stage template's, each read by weir-kinds to
+    /// exactly one statechart kind, the template keyed by its name; refused
+    /// naming which could not be read and why (21, 85, 176).
+    fn read_statechart(&self, kind: &KindStatechart, template: &str) -> Result<Charts, String> {
+        let chart = one_statechart(&kind.text)
+            .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
+        let templates = statecharts(template).map_err(|why| format!("the templates {why}"))?;
+        Ok(Charts { chart, templates })
     }
 
     fn read_named(&self, text: &str) -> Result<KindNamed, String> {
@@ -742,11 +763,21 @@ fn read(text: &str, whose: Whose, beside: Reader) -> KindsRead {
         }
     };
     let mut problems = vec![];
-    let kinds = declaration
+    let mut kinds: Vec<Kind> = declaration
         .kinds
         .values()
         .map(|kind| map_kind(kind, beside, &mut problems))
         .collect();
+    if !declaration.statecharts.is_empty() {
+        let tables = weir_kinds::toml::from_str::<Table>(text).unwrap_or_default();
+        kinds.extend(
+            declaration
+                .statecharts
+                .values()
+                .map(|kind| map_statechart(kind, &tables, beside, &mut problems)),
+        );
+        kinds.sort_by(|a, b| a.name.cmp(&b.name));
+    }
     let settings = declaration
         .settings
         .values()
@@ -858,6 +889,251 @@ fn map_kind(kind: &weir_kinds::Kind, beside: Reader, problems: &mut Vec<String>)
                 0
             })
         }),
+        statechart: None,
+    }
+}
+
+/// The seam's kind of a statechart kind weir-kinds read, every problem it
+/// finds pushed onto `problems`: its title, label, branch, whether it
+/// lands, its landing fix spelled as a simple kind's is and its bound; its
+/// table, taken from `tables`, the declaration as parsed, spelled again as
+/// a declaration of it alone, which the kinds seam reads back into the
+/// engine's types at each settle; and each state's stage parameters by its
+/// path, its entries' settings read as a simple stage's agents are, its
+/// deliverables as a simple stage's, and its `prompt`, a string in the
+/// state's own `params`, read beside the declaration as a simple stage's
+/// prompt is, `<at>.params.prompt` named where it cannot be read. Every
+/// other key of `params` is the template's, and ignored; its stages are
+/// none, and it starts ready with no settings of its own (19, 21, 23, 84,
+/// 175, C.2; core.4).
+fn map_statechart(
+    kind: &weir_kinds::StatechartKind,
+    tables: &Table,
+    beside: Reader,
+    problems: &mut Vec<String>,
+) -> Kind {
+    let name = kind.name();
+    let at = format!("kinds.{name}");
+    let version = u32::try_from(kind.version()).unwrap_or_else(|_| {
+        problems.push(format!("{at}.version: is more than flume counts"));
+        0
+    });
+    let table = tables
+        .get("kinds")
+        .and_then(Value::as_table)
+        .and_then(|kinds| kinds.get(name))
+        .and_then(Value::as_table)
+        .cloned()
+        .unwrap_or_default();
+    let alone = Table::from_iter([(
+        "kinds".to_string(),
+        Value::Table(Table::from_iter([(name.to_string(), Value::Table(table))])),
+    )]);
+    let text = weir_kinds::toml::to_string(&alone).unwrap_or_else(|error| {
+        problems.push(format!("{at}: could not be spelled again: {error}"));
+        String::new()
+    });
+    let stages = kind
+        .params
+        .iter()
+        .map(|(path, params)| {
+            let at = state_at(&at, path);
+            let state = state_of(&kind.statechart, path);
+            let stage = map_chart_stage(params, state, &at, beside, problems);
+            (path.clone(), stage)
+        })
+        .collect();
+    Kind {
+        name: name.to_string(),
+        version,
+        branch_prefix: kind.branch.clone(),
+        starts_unready: false,
+        lands: kind.lands,
+        agents: KindSettings::default(),
+        stages: vec![],
+        label: kind.label.clone(),
+        fix: kind.landing_fix.as_ref().map(ToString::to_string),
+        fix_limit: kind.max_landing_fixes.map(|times| {
+            u32::try_from(times).unwrap_or_else(|_| {
+                problems.push(format!("{at}.max_landing_fixes: is more than flume counts"));
+                0
+            })
+        }),
+        statechart: Some(KindStatechart {
+            title: kind.title.clone(),
+            text,
+            stages,
+        }),
+    }
+}
+
+/// The one statechart kind `text` declares, read by weir-kinds; or why it
+/// gives none: refused by weir, or declaring other than one statechart
+/// kind (21, 85).
+fn one_statechart(text: &str) -> Result<weir_kinds::weir_engine::Statechart, String> {
+    let declaration = weir_kinds::read_kinds(text)
+        .map_err(|refusal| format!("could not be read: {}", refused(&refusal)))?;
+    let mut statecharts = declaration.statecharts.into_values();
+    match (
+        statecharts.next(),
+        statecharts.next(),
+        declaration.kinds.is_empty(),
+    ) {
+        (Some(kind), None, true) => Ok(kind.statechart),
+        _ => Err("holds other than one statechart kind".into()),
+    }
+}
+
+/// Every statechart kind `text` declares, keyed by its name, read by
+/// weir-kinds; or why it gives none: refused by weir, declaring a simple
+/// kind, or declaring none (175, 223, C.2).
+fn statecharts(
+    text: &str,
+) -> Result<BTreeMap<String, weir_kinds::weir_engine::Statechart>, String> {
+    let declaration = weir_kinds::read_kinds(text)
+        .map_err(|refusal| format!("could not be read: {}", refused(&refusal)))?;
+    if !declaration.kinds.is_empty() || declaration.statecharts.is_empty() {
+        return Err("hold other than statechart kinds".into());
+    }
+    Ok(declaration
+        .statecharts
+        .into_values()
+        .map(|kind| (kind.statechart.name.clone(), kind.statechart))
+        .collect())
+}
+
+/// Where the state at `path`, `<region>.<state>` and so on down, lies in
+/// its kind's table at `at`: `kinds.persona` and `stages.test` give
+/// `kinds.persona.regions.stages.states.test`.
+fn state_at(at: &str, path: &str) -> String {
+    let mut spelled = at.to_string();
+    for (n, part) in path.split('.').enumerate() {
+        let field = if n % 2 == 0 { "regions" } else { "states" };
+        spelled.push_str(&format!(".{field}.{part}"));
+    }
+    spelled
+}
+
+/// The state at `path` in `chart`, through its states' own regions.
+fn state_of<'a>(
+    chart: &'a weir_kinds::weir_engine::Statechart,
+    path: &str,
+) -> Option<&'a weir_kinds::weir_engine::State> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut regions = &chart.regions;
+    let mut found = None;
+    for pair in parts.chunks(2) {
+        let [region, state] = pair else {
+            return None;
+        };
+        let state = regions.get(*region)?.states.get(*state)?;
+        regions = &state.regions;
+        found = Some(state);
+    }
+    found
+}
+
+/// A state's stage parameters at `at`, its `prompt` read from the state's
+/// own `params` by `beside` (23, 175, C.2).
+fn map_chart_stage(
+    params: &weir_kinds::Params,
+    state: Option<&weir_kinds::weir_engine::State>,
+    at: &str,
+    beside: Reader,
+    problems: &mut Vec<String>,
+) -> ChartStage {
+    let agents = match &params.agents {
+        None => ChartAgents::Entries(vec![]),
+        Some(weir_kinds::ParamAgents::Entries(entries)) => ChartAgents::Entries(
+            entries
+                .iter()
+                .enumerate()
+                .map(|(n, agent)| {
+                    map_agent(agent, &format!("{at}.params.agents[{n}]"), beside, problems)
+                })
+                .collect(),
+        ),
+        Some(weir_kinds::ParamAgents::Rule { rule, pattern }) => ChartAgents::Rule {
+            rule: rule.clone(),
+            pattern: pattern.clone(),
+        },
+    };
+    let join = match params.join {
+        None | Some(weir_kinds::Join::All) => Join::All,
+        Some(weir_kinds::Join::Any) => Join::Any,
+        Some(weir_kinds::Join::Count(n)) => Join::Count(u32::try_from(n).unwrap_or_else(|_| {
+            problems.push(format!("{at}.params.join: is more than flume counts"));
+            0
+        })),
+    };
+    let send_back_limit = params.max_send_backs.map(|times| {
+        u32::try_from(times).unwrap_or_else(|_| {
+            problems.push(format!(
+                "{at}.params.max_send_backs: is more than flume counts"
+            ));
+            0
+        })
+    });
+    let prompt = match state
+        .and_then(|state| state.params.as_ref())
+        .and_then(|params| params.get("prompt"))
+    {
+        None => None,
+        Some(Value::String(path)) => match beside(path) {
+            Ok((_, text)) => Some(text),
+            Err(reason) => {
+                problems.push(format!("{at}.params.prompt: {reason}"));
+                None
+            }
+        },
+        Some(_) => {
+            problems.push(format!(
+                "{at}.params.prompt: must be the path of the prompt's file, a string"
+            ));
+            None
+        }
+    };
+    // A command stage's command, read only where its state runs the
+    // command template: the program and its arguments as a list of words
+    // (223, C.2).
+    let command = match state
+        .filter(|state| state.machine.as_deref() == Some("command"))
+        .and_then(|state| state.params.as_ref())
+        .and_then(|params| params.get("command"))
+    {
+        None => None,
+        Some(Value::Array(words)) => {
+            let read: Option<Vec<String>> = words
+                .iter()
+                .map(|word| word.as_str().map(str::to_string))
+                .collect();
+            if read.is_none() {
+                problems.push(format!(
+                    "{at}.params.command: must be the program and its arguments, a list of strings"
+                ));
+            }
+            read
+        }
+        Some(_) => {
+            problems.push(format!(
+                "{at}.params.command: must be the program and its arguments, a list of strings"
+            ));
+            None
+        }
+    };
+    ChartStage {
+        command,
+        agents,
+        join,
+        deliverables: params
+            .deliverables
+            .iter()
+            .flatten()
+            .map(map_deliverable)
+            .collect(),
+        prompt,
+        on_fail: params.on_fail.clone(),
+        send_back_limit,
     }
 }
 
@@ -950,9 +1226,11 @@ fn map_agents(
 
 /// An agent's settings, its table as written: `program`, `model`,
 /// `effort`, `instructions`, `beside`, `mode` and `programs` (32, 107,
-/// 162, 195, 197), the effort its program's own word, kept as written
-/// for the agent's profile to take or refuse, any other value, a table
-/// of programs among it, failing it naming the field (197, C.2), the
+/// 162, 195, 197), the model and the effort each its program's own name
+/// or word, or a table of programs whose entries are strings, kept as
+/// written for the agent's profile to take or refuse, read by flume's
+/// one reader of them, any other value, a table naming no program among
+/// it, failing it naming the field (172, 197, C.2), the
 /// mode one of flume's four or a table of programs, read as the
 /// host's configuration reads it, any other failing it naming the field
 /// (169, C.2), and `programs` each program's own settings, read by
@@ -976,10 +1254,17 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
         }
     };
     let program = text("program");
-    let model = text("model");
-    let effort = text("effort");
     let instructions = text("instructions");
     let pane = text("beside");
+    let mut per_program = |name: &str| {
+        agent.get(name).and_then(|value| {
+            crate::per_program::read(value)
+                .map_err(|reason| problems.push(format!("{at}.{name}: {reason}")))
+                .ok()
+        })
+    };
+    let model = per_program("model");
+    let effort = per_program("effort");
     let mode = agent.get("mode").and_then(|mode| {
         crate::mode::read(mode)
             .map_err(|reason| problems.push(format!("{at}.mode: {reason}")))

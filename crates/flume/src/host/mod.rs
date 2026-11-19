@@ -240,6 +240,20 @@ fn modified(path: &Path) -> Option<Seconds> {
 }
 
 impl Host for RealHost {
+    /// This binary by its absolute path, as the common profile's launcher
+    /// names it (C.4; core.60).
+    fn launcher(&self) -> Vec<String> {
+        let binary = std::env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .unwrap_or_else(|_| "flume".into());
+        vec![
+            binary.to_string_lossy().into_owned(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ]
+    }
+
     fn now(&self) -> Seconds {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

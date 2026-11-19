@@ -257,7 +257,8 @@ is, and reached by every flume process on the host (102 to 104, 153).
 The seams SHALL pass one type each for a stream, a pool, its strategy
 and its accounts, an account chosen and where from, a move between
 accounts, an intent's naming the program whose account moved, an
-intent's affinity with an account for each program, and a start's record
+intent's affinity with an account for each program and the program its
+last agent ran, and a start's record
 of what its agent runs under, held as the start's `start_record` and
 holding digests and no value; each SHALL serialize to JSON and back
 unchanged (143 to 147, 153, 161).
@@ -271,6 +272,11 @@ unchanged (143 to 147, 153, 161).
 
 - **WHEN** an affinity holding an account for `agent` and one for `other`, and an intent's move for `agent`, is written and read
 - **THEN** it reads back unchanged, and it once left the move's `from` for `agent` and never for `other` (147, 153)
+
+#### Scenario: An affinity with its last program
+
+- **WHEN** an affinity whose last program is `other` is written and read, and the JSON of an affinity written before, which names no last program, is read and written again
+- **THEN** the first reads back with `other` as its last program; the second reads with none and is written again with no field for it (147, 153, 173)
 
 ### Requirement: The agent seam maps a mode and says whether it reads one back
 
@@ -1272,6 +1278,228 @@ C.6).
 - **WHEN** the fake merge queue holds a submission of `fix/one` and none of `fix/two`, and both are asked at once
 - **THEN** the answer gives `fix/one` its submission and `fix/two` none, in that order, from one read (99)
 
+### Requirement: The kinds seam reads a held statechart kind
+
+The kinds seam SHALL read a statechart kind's held text and the stage
+template's text into the engine's statechart and templates, and SHALL
+refuse, naming why, a text it cannot read; a kinds profile that reads no
+statechart kind SHALL refuse every one (84, 85, 176, core.2).
+
+#### Scenario: A kinds seam that reads none
+
+- **WHEN** a kinds seam that gives no reading of its own is asked to read a held statechart kind
+- **THEN** it refuses, naming the kind (84, core.2)
+
+### Requirement: Git's history gives a revision's files
+
+Git's history SHALL give the path of every file a revision of a
+repository holds, the same revision always giving the same files, and
+nothing for a revision it does not hold (176, 178, section 9).
+
+#### Scenario: Files at two revisions
+
+- **WHEN** a branch's first commit adds `personas/a.md` and its second adds `personas/b.md`
+- **THEN** the first revision's files name `personas/a.md` alone, and the second's name both (178)
+
+### Requirement: The types of a statechart kind and its place
+
+The seams SHALL pass a kind's statechart, each stage parameter of it, a
+session held as a stage of its place, and a statechart place's held
+engine state, answers and stage entries as types that round-trip
+through JSON, each new field left out while empty, so that a kind and a
+held state written before read unchanged (21, 103, 177).
+
+#### Scenario: Round trips
+
+- **WHEN** a statechart kind, a held session and a statechart place's held state are written and read back, and a kind and a held state written before this change are read
+- **THEN** each reads back equal, and the earlier two read with no statechart, no session and no engine state (21, 177)
+
+### Requirement: The agent seam says which parts its profile builds
+
+The agent seam SHALL give, for its program, which of the thirteen
+parts 171 names a profile may degrade its profile builds from the
+program's own record, and for each other that it is degraded, with how
+flume reads it; none built by default. Whether it offers send-back and
+on-quiet, reports windows and reads its mode back SHALL be read from
+them, and a part not built SHALL be answered the lesser way where it is
+asked (93, 171, 174).
+
+#### Scenario: A profile that builds no part
+
+- **WHEN** an agent profile that keeps the seam's defaults is asked its parts
+- **THEN** each of the thirteen is degraded, in 171's order, each with how flume reads it: received, asking, own work, ended and last words from the terminal, spent and windows unknown, send-back, guard, on-quiet and carry not offered, the mode recorded and not compared, and own settings neither reserved nor taken; and it offers neither send-back nor on-quiet, reports no windows and reads no mode back (174)
+
+#### Scenario: A profile's answers agree with its parts
+
+- **WHEN** the agent seam's scenarios run against a profile, the fake agent among them building every part, reading the five from its terminal, carrying none, taking no own settings, reporting no windows and offering no hooks
+- **THEN** its parts name each of the thirteen once; send-back, on-quiet, windows and the mode's read-back are offered exactly where its parts build them; and each part it does not build answers the lesser way, received, asking, own work, ended, spent and windows unknown, last words none, guard and carry not offered, own settings given refused and no key reserved (93, 174)
+
+### Requirement: The type of a part
+
+The seams SHALL pass one type for a part a profile may degrade, which
+SHALL serialize to its word, `received`, `asking`, `own_work`, `ended`,
+`last_words`, `spent`, `windows`, `send_back`, `guard`, `on_quiet`,
+`mode`, `carry` or `own_settings`, and back unchanged, a word that is
+no part refused naming it; each part SHALL give its name as the
+statement writes it, and how flume reads it where its profile does not
+build it, naming no terminal (171, 174; core.1).
+
+#### Scenario: Each part written and read
+
+- **WHEN** each of the thirteen parts is written to JSON and read back, and the word `colour` is read as a part
+- **THEN** each reads back unchanged from its word, and `colour` is refused naming it (174)
+
+#### Scenario: A part's name and its lesser reading
+
+- **WHEN** the name of `send_back`, of `own_work` and of `own_settings` is read, and how flume reads `carry` and `own_work` where its profile does not build them
+- **THEN** the names are `send-back`, `own work` and `own settings`; carry reads as not offered, a stage whose agent stopped at its account's usage limit starting afresh, and own work as read from the terminal, none once two settles a minute or more apart read the agent waiting (171, 174)
+
+### Requirement: The agent seam takes a model or refuses it, and names its program's kind
+
+The agent seam SHALL say whether its program takes a name as its
+model, refusing every name by default in words saying its profile names
+no way to give a model; SHALL name its program's kind, by which a
+terminal that starts a known agent program names it, none by default;
+and its command SHALL pass the model the settings hand it as its
+profile's way gives it, and none where they give none (88, 170, 172).
+
+#### Scenario: A profile that keeps the seam's defaults
+
+- **WHEN** an agent profile that keeps the seam's defaults is asked of the model `large` and its kind
+- **THEN** it refuses `large` in words naming it, and names no kind (170, 172)
+
+#### Scenario: The fake's models over the seam's scenarios
+
+- **WHEN** the agent seam's scenarios run against the fake agent, once taking every model and once scripted to take none
+- **THEN** the first takes `large` and its command passes `--model large`, the second refuses `large` in the seam's default words, and each names the kind `agent` (88, 172)
+
+### Requirement: The terminal seam says whether it starts a kind
+
+The terminal seam SHALL say whether it can start a program of a kind
+now, under the login environment with a given environment over it,
+starting every kind by default, a refusal in its tool's words (4,
+C.5).
+
+#### Scenario: A terminal that keeps the seam's default
+
+- **WHEN** a terminal profile that keeps the seam's default is asked whether it starts `agent` and `amp`
+- **THEN** it starts each (C.5)
+
+### Requirement: The settings carry a model and an effort per program
+
+`Settings` SHALL carry its model and its effort each as one value or a
+table of programs, each taken whole by `Settings::under`, the agent's
+entry its program's, serialized to JSON as the string or the object it
+was written as and read back unchanged; a held state written before
+SHALL read its model and effort as it did, and a table that names no
+program SHALL be refused where it is read (32, 172, 197).
+
+#### Scenario: A held state with a model's table and an effort's
+
+- **WHEN** a held state whose launch gives the model `{ agent = "large", other = "small" }` and the effort `{ agent = "high" }`, and whose kind gives the model `medium`, is written and read
+- **THEN** it reads back unchanged, the entry for `agent` is `large` and for `nonesuch` none, and a state written with the model `"medium"` alone reads it as one value (32, 172, 197)
+
+#### Scenario: A table that names no program
+
+- **WHEN** a model is read from the JSON object `{}`
+- **THEN** it is refused, saying the table names no program (172)
+
+### Requirement: The agent seam says whether a start runs through the launcher
+
+The agent seam SHALL say whether a profile starts its program through
+flume's launcher, not by default, and SHALL give, read in the place's
+own folder, the process its start's launcher wrote that it became, none
+by default and none before the launcher's word (35, 171, C.4).
+
+#### Scenario: A profile that keeps the seam's defaults names no launcher
+
+- **WHEN** a profile that answers only the seam's required parts is asked whether it starts its program through the launcher, and the process of a start
+- **THEN** it says it does not, and names no process (35)
+
+### Requirement: An agent's command carries the launcher's words
+
+An agent's command SHALL carry the words that run its program through
+flume's launcher, the launcher's program and its arguments, after which
+a terminal puts the program and its arguments; none by default, left
+out of the JSON while none, and none in a command written before
+(88, C.4, C.5).
+
+#### Scenario: A command with the launcher's words and one without
+
+- **WHEN** a command naming the launcher `/opt/flume/bin/flume` with `ack launched --`, and one naming none, are each written to JSON and read back, and a command written before is read
+- **THEN** each reads back unchanged, the second's JSON holds no launcher, and the one written before reads with none (88, C.4)
+
+### Requirement: The terminal seam reads the process an agent's program runs in
+
+The terminal seam SHALL give the process the terminal reads running an
+agent's program, by its id; that nothing runs it, where the agent's
+part holds no such process or is gone; or unknown, in the terminal's
+words. A terminal that reads no process SHALL answer unknown, saying
+so, the seam's default (35, 171, C.5).
+
+#### Scenario: A terminal that keeps the seam's default reads no process
+
+- **WHEN** a terminal that answers only the seam's required operations is asked the process of an agent
+- **THEN** it answers unknown, saying the terminal reads no process (35, C.5)
+
+#### Scenario: The process's answers in JSON
+
+- **WHEN** a process read running as 41, nothing running, and unknown with words are each written to JSON and read back
+- **THEN** each reads back unchanged (C.5)
+
+### Requirement: A start begun in another process says so
+
+How a start began otherwise SHALL carry whether its program runs in
+another process than the one its start's launcher became, false by
+default, left out of the JSON while false and false in a word written
+before, and its words SHALL say so, naming no process's id (161, S74).
+
+#### Scenario: Begun in another process
+
+- **WHEN** a start begun in another process is written to JSON and read back, and its words are read
+- **THEN** it reads back unchanged, and its words say it began in another process than the one its start's launcher became (161, S74)
+
+#### Scenario: A word written before
+
+- **WHEN** a word of how a start began otherwise, written before, with no field for the process, is read
+- **THEN** it reads with the process false, and writes back with no such field (161)
+
+### Requirement: The terminal seam sends and watches the turn
+
+The terminal seam SHALL send text to an agent as its send does, its
+held input cleared first, and answer whether it saw the turn the
+sending began, the agent working or asking, within a bound it is given;
+that it saw none, with its words; or a refusal. A terminal that reads
+no turn SHALL refuse it, saying so, with nothing typed: the seam's
+default (89, 95, 171, C.5).
+
+#### Scenario: A terminal that keeps the seam's default reads no turn
+
+- **WHEN** a terminal that answers only the seam's required operations is asked to send `go` to an agent and watch its turn
+- **THEN** it refuses, saying it reads no turn a sending began (95, 171)
+
+#### Scenario: A watched send's answers in JSON
+
+- **WHEN** a turn seen, a turn not seen with words, and a refusal with words are each written to JSON and read back
+- **THEN** each reads back unchanged (95)
+
+### Requirement: A start holds when a settle read its agent waiting
+
+A start's held record SHALL carry when a settle first read its agent
+waiting and when one last did, none while none has or a settle read it
+otherwise, left out of the JSON while none and none in a start written
+before (31, 171; core.16).
+
+#### Scenario: A start read waiting
+
+- **WHEN** a start whose agent a settle first read waiting at 100 and last at 160 is written to JSON and read back
+- **THEN** it reads back unchanged with both times (171)
+
+#### Scenario: A start written before
+
+- **WHEN** a start written before, with no field for its agent's waiting, is read
+- **THEN** it reads with none, and writes back with no such field (171; core.16)
+
 ### Requirement: The agent seam names an account's home's variable
 
 The agent seam SHALL name the variable of an account's environment
@@ -1283,3 +1511,28 @@ profile that names none gives its accounts no home (56, 171, C.4).
 
 - **WHEN** an agent profile that keeps the seam's defaults is asked which variable names an account's configuration home
 - **THEN** it names none (56, C.4)
+
+### Requirement: The store reads a file of a place's folder
+
+The store seam SHALL read a file under a place's own folder by its
+absolute path, as written: none where there is none, and why not where
+it cannot be read or lies outside the folder (223, C.7).
+
+#### Scenario: A file read back
+
+- **WHEN** a file is written under a place's folder and read back, and a path outside it is read
+- **THEN** the first reads its text whole and the second is refused naming the path (223)
+
+### Requirement: The terminal seam runs a command
+
+The terminal seam SHALL give `run`: a command stage's command run under
+an identity as a program of a pane or block, through flume's launcher,
+never an agent of the terminal; a terminal that runs no program but an
+agent refuses it in its words. The host SHALL give the words that run
+flume's launcher, the binary by its absolute path (223, C.4, C.5;
+core.60).
+
+#### Scenario: A terminal that runs no command
+
+- **WHEN** a terminal profile that keeps the seam's default is asked to run a command
+- **THEN** it refuses, naming the program (223, C.5)

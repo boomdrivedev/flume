@@ -74,9 +74,11 @@ fn environment_text(command: &AgentCommand) -> String {
 
 /// The line a person runs: into the place, then a POSIX shell that reads
 /// the command's environment from `env` over theirs and runs the program
-/// with its arguments and the prompt (88, 38). No value of the
-/// environment is in it, only the file's path; the person's own shell is
-/// left as it was.
+/// with its arguments and the prompt, the command's launcher words before
+/// the program where it carries them, so a person who runs it starts the
+/// program through flume's launcher as a terminal would (88, 38, C.4,
+/// C.5). No value of the environment is in it, only the file's path; the
+/// person's own shell is left as it was.
 pub fn line(place: &PlaceRef, command: &AgentCommand, env: &Path) -> String {
     let mut words: Vec<String> = vec!["cd".into(), shell::quote(&place.location), "&&".into()];
     if !command.env.is_empty() {
@@ -88,7 +90,11 @@ pub fn line(place: &PlaceRef, command: &AgentCommand, env: &Path) -> String {
         ]));
     }
     words.push(shell::words(
-        std::iter::once(command.program.as_str())
+        command
+            .launcher
+            .iter()
+            .map(String::as_str)
+            .chain(std::iter::once(command.program.as_str()))
             .chain(command.args.iter().map(String::as_str))
             .chain(command.prompt_args.iter().map(String::as_str)),
     ));
@@ -140,6 +146,20 @@ impl Terminal for Printed {
                 reason: format!("{}: {error}", mark.display()),
             },
         }
+    }
+
+    /// A command stage's command printed for a person to run in the
+    /// place, through flume's launcher, as an agent's command is (223,
+    /// C.5).
+    fn run(
+        &self,
+        place: &PlaceRef,
+        folder: &str,
+        command: &AgentCommand,
+        identity: &Identity,
+        at: &OpenIn,
+    ) -> Opened {
+        self.open(place, folder, command, identity, at, None)
     }
 
     fn send(&self, _agent: &Identity, _text: &str) -> Sent {

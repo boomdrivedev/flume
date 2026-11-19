@@ -305,6 +305,18 @@ impl FakeGit {
         })
     }
 
+    /// Each path a commit `revision` reaches touched, in path order, as a
+    /// revision's files (178).
+    fn files(&self, revision: &Revision) -> Vec<String> {
+        let state = lock(&self.state);
+        let files: BTreeSet<String> = Self::reachable(&state, revision)
+            .iter()
+            .filter_map(|revision| state.commits.get(revision))
+            .flat_map(|node| node.touches.iter().cloned())
+            .collect();
+        files.into_iter().collect()
+    }
+
     /// The first-parent line from `revision` back, itself first.
     pub fn first_parents(&self, revision: &Revision) -> Vec<Revision> {
         let state = lock(&self.state);
@@ -390,6 +402,11 @@ impl History for FakeHistory {
             "in_commit_since {repository} {head} {start} {path}"
         ));
         self.git.touched_since(head, start, path)
+    }
+
+    fn files(&self, repository: &str, revision: &Revision) -> Vec<String> {
+        self.log.push(format!("files {repository} {revision}"));
+        self.git.files(revision)
     }
 
     /// The repository's own `.git`, as for a repository with its main

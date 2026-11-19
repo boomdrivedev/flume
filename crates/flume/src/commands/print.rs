@@ -4,15 +4,15 @@
 //! spells it.
 
 use flume_core::{
-    group_name, percentage, AgentStatus, Answer, Found, HostStatus, OwnStatus, PlaceStatus,
-    PoolStatus, Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer, SessionWait,
-    SourceStatus, StageStatus, StandingFound, StandingStatus, StreamOpened, StreamStatus, Tidied,
-    TitleFrom, WaitingPlace, WindowOutcome, Woke,
+    group_name, percentage, AgentStatus, Answer, ChartStatus, Found, HostStatus, OwnStatus,
+    PlaceStatus, PoolStatus, Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer,
+    SessionWait, SourceStatus, StageStatus, StandingFound, StandingStatus, StreamOpened,
+    StreamStatus, Tidied, TitleFrom, WaitingPlace, WindowOutcome, Woke,
 };
 use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
     Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
-    Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
+    Kept, KindFrom, LabelHeld, Layer, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
     PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
     StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
     Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
@@ -412,10 +412,20 @@ fn place_lines(place: &PlaceStatus) -> Vec<String> {
         &place.intent,
     ));
     lines.extend(readiness_lines(&place.readiness));
+    if let Some(chart) = &place.statechart {
+        lines.extend(chart_lines(chart));
+    }
     for stage in &place.stages {
         lines.extend(stage_lines(stage));
     }
-    if let Some(agent) = &place.agent {
+    // A statechart place's every live session has its agent; a simple
+    // kind's place its one (30, 56).
+    if place.agents.is_empty() {
+        if let Some(agent) = &place.agent {
+            lines.extend(agent_lines(agent, &place.stream.name, &place.kind));
+        }
+    }
+    for agent in &place.agents {
         lines.extend(agent_lines(agent, &place.stream.name, &place.kind));
     }
     for moved in &place.moves {
@@ -732,6 +742,76 @@ fn fix_lines(place: &PlaceStatus) -> Vec<String> {
     lines
 }
 
+/// A statechart place's run (56, 175, 176): whether it is over, each live
+/// region with its state, since when and whether final, each counter,
+/// each decision standing with its answers and what it shows, each answer
+/// given with who gave it, when and whether it was applied, and each stage
+/// entered with its entry, join, send-backs and sessions.
+fn chart_lines(chart: &ChartStatus) -> Vec<String> {
+    let mut lines = vec![format!(
+        "  statechart: {}",
+        if chart.over { "over" } else { "running" }
+    )];
+    for region in &chart.regions {
+        let mut line = format!("    region {} at {}", region.region, region.state);
+        if region.is_final {
+            line.push_str(", final");
+        }
+        if let Some(since) = region.since {
+            line.push_str(&format!(" since {since}"));
+        }
+        lines.push(line);
+    }
+    for (counter, count) in &chart.counters {
+        lines.push(format!("    counter {counter}: {count}"));
+    }
+    for decision in &chart.decisions {
+        let mut line = format!(
+            "    decision at {} ({}), answered by flume answer: {}",
+            decision.region,
+            decision.kind,
+            if decision.answers.is_empty() {
+                "any words".to_string()
+            } else {
+                decision.answers.join(", ")
+            }
+        );
+        if !decision.shows.is_empty() {
+            line.push_str(&format!("; shows {}", decision.shows.join(", ")));
+        }
+        lines.push(line);
+    }
+    for answer in &chart.answers {
+        lines.push(format!(
+            "    answer {}: {} by {} at {}, {}",
+            answer.given.id,
+            answer.given.answer,
+            answer.given.by,
+            answer.given.at,
+            if answer.applied {
+                "applied"
+            } else {
+                "not yet applied"
+            }
+        ));
+    }
+    for stage in &chart.stages {
+        lines.push(format!(
+            "    stage {}: entry {}, joined by {}, sent back {} times{}",
+            stage.stage,
+            stage.entry,
+            stage.join,
+            stage.send_backs,
+            if stage.sessions.is_empty() {
+                ", no session".to_string()
+            } else {
+                format!(": {}", stage.sessions.join(", "))
+            }
+        ));
+    }
+    lines
+}
+
 /// What a place waits on its caller for, since when, and its words; a
 /// place waiting on its readiness without them, since its readiness
 /// lines give the failed step and the last of its words (12, 56); a
@@ -739,6 +819,11 @@ fn fix_lines(place: &PlaceStatus) -> Vec<String> {
 /// dialog's lines beneath, as the terminal draws them (34, 35).
 fn waiting_line(waiting: &WaitingOn, stalled: bool) -> String {
     let mut line = match waiting.act {
+        Act::Decide => format!(
+            "  waits on its caller to answer the decision at {} ({})",
+            waiting.stage.as_deref().unwrap_or("its region"),
+            word(json!(waiting.why))
+        ),
         Act::Answer => format!(
             "  waits on a person to answer the dialog its agent shows{} ({})",
             waiting
@@ -1121,8 +1206,9 @@ fn intent_words(intent: &IntentKey) -> String {
 
 /// The current agent of a place of `kind` in `stream`: its line, where
 /// it opened, its terminal, each setting with its layer, its own
-/// settings' files and how they were passed, and what its record says
-/// (56, 190, 195, 199).
+/// settings' files and how they were passed, what its record says, and
+/// each part its profile does not build with how flume reads it (56,
+/// 174, 190, 195, 199).
 fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     let mut lines = vec![agent_line(agent)];
     lines.extend(where_line(agent, stream, kind));
@@ -1147,6 +1233,13 @@ fn agent_lines(agent: &AgentStatus, stream: &str, kind: &str) -> Vec<String> {
     }
     for note in &agent.notes {
         lines.push(format!("    note: {note}"));
+    }
+    for degraded in &agent.degraded {
+        lines.push(format!(
+            "    {} degraded: {}",
+            degraded.part.name(),
+            degraded.read
+        ));
     }
     lines
 }
@@ -1204,16 +1297,31 @@ fn own_lines(own: &OwnStatus) -> Vec<String> {
     lines
 }
 
-/// The current agent's line: its identity, program, account and state,
-/// the account from the intent's affinity for the agent's program, the
+/// The current agent's line: its identity, program, said to come from its
+/// account where its account named it, account and state, the account
+/// from the intent's affinity for the agent's program, the
 /// strategy, or the account a lost conversation's start ran under, its
 /// conversation's, its mode as written with its layer, the entry it took of
-/// a table and the value passed, where a layer gave one, and its effort
-/// as written with its layer, the value passed and the account's variable
-/// that outranks it, by its name alone, where a layer gave one (56, 145,
-/// 147, 169, 197).
+/// a table and the value passed, where a layer gave one, its model as
+/// written with its layer, and for a table the entry it took and the name
+/// passed, where a layer gave one, and its effort as written with its
+/// layer, the entry it took of a table, the value passed and the
+/// account's variable that outranks it, by its name alone, where a layer
+/// gave one (56, 145, 147, 169, 172, 173, 197).
 fn agent_line(agent: &AgentStatus) -> String {
-    let mut line = format!("  agent {} ({})", agent.identity, agent.program);
+    let named_by_account = agent
+        .settings
+        .from
+        .get("program")
+        .is_some_and(|given| given.layer == Layer::Account);
+    let mut line = if named_by_account {
+        format!(
+            "  agent {} ({}, from its account)",
+            agent.identity, agent.program
+        )
+    } else {
+        format!("  agent {} ({})", agent.identity, agent.program)
+    };
     if let Some(account) = &agent.account {
         let from = match account.from {
             AccountFrom::Affinity => format!("from the affinity for {}", agent.program),
@@ -1228,6 +1336,16 @@ fn agent_line(agent: &AgentStatus) -> String {
     line.push_str(&format!(": {}", word(json!(agent.state))));
     if agent.past_limit {
         line.push_str(", past its limit");
+    }
+    if let Some(model) = &agent.model {
+        line.push_str(&format!(
+            ", on the model {} (from {})",
+            model.name,
+            word(json!(model.layer))
+        ));
+        if let Some(entry) = &model.entry {
+            line.push_str(&format!(", the entry {entry}, passed as {}", model.passed));
+        }
     }
     if let (Some(mode), Some(given)) = (&agent.mode, agent.settings.from.get("mode")) {
         line.push_str(&format!(
@@ -1245,11 +1363,15 @@ fn agent_line(agent: &AgentStatus) -> String {
     }
     if let Some(effort) = &agent.effort {
         line.push_str(&format!(
-            ", at the effort {} (from {}) passed as {}",
+            ", at the effort {} (from {})",
             effort.word,
             word(json!(effort.layer)),
-            effort.passed
         ));
+        match &effort.entry {
+            Some(entry) => line.push_str(&format!(", the entry {entry}, passed as ")),
+            None => line.push_str(" passed as "),
+        }
+        line.push_str(&effort.passed);
         if !effort.read_back {
             line.push_str(", not read back");
         }
@@ -1563,6 +1685,15 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
         }
         if let Some(words) = &end.words {
             line.push_str(&format!(", saying: {words}"));
+        }
+        // A command stage's run: how its command exited and where its
+        // output lies (56, 223).
+        if let Some(ran) = &end.ran {
+            match ran.exit {
+                Some(exit) => line.push_str(&format!(", its command exiting {exit}")),
+                None => line.push_str(", its command with no exit"),
+            }
+            line.push_str(&format!(", its output at {}", ran.output));
         }
     }
     if let Some(part) = &stage.refused_part {
@@ -2121,20 +2252,88 @@ fn tidy_lines(tidy: &Tidied) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flume_core::EndStatus;
     use flume_core::{
-        AccountStatus, AddressStatus, AgentSettings, EffortStatus, Listed, ModeStatus, MoveStatus,
-        OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine, RoomWanted, StreamListed,
-        StreamStatus, TitleFrom, TitleHeld, WindowStatus,
+        AccountStatus, AddressStatus, AgentSettings, AnswerStatus, ChartStageStatus, EffortStatus,
+        Listed, ModeStatus, ModelStatus, MoveStatus, OwnFileStatus, OwnStatus, Past, PendingEnd,
+        PlaceLine, RegionStatus, RoomWanted, StreamListed, StreamStatus, TitleFrom, TitleHeld,
+        WindowStatus,
     };
+    use flume_core::{DegradedPart, EndStatus};
     use flume_seams::{
-        AccountFrom, AccountHeld, AccountMove, AgentState, AnswerHeld, BaseFix, Declared, EndHeld,
-        EndOf, FixCause, FixKind, FixOf, ForecastHeld, Given, Handed, Layer, ModeBegan, MoveOn,
-        MoveWhy, NamedBy, Phase, PlaceId, ProfileHeld, Reading, ReadyStep, Reserved, SessionClosed,
-        SessionRuns, StageEnd, StageState, StopShortWaited, Strategy, StreamFrom, StreamHeld,
-        Unsettled, View, ViewHeld,
+        AccountFrom, AccountHeld, AccountMove, AgentState, AnswerGiven, AnswerHeld, BaseFix,
+        DecisionHeld, Declared, EndHeld, EndOf, FixCause, FixKind, FixOf, ForecastHeld, Given,
+        Handed, Join, Layer, ModeBegan, MoveOn, MoveWhy, NamedBy, Part, Phase, PlaceId,
+        ProfileHeld, Reading, ReadyStep, Reserved, SessionClosed, SessionRuns, StageEnd,
+        StageState, StopShortWaited, Strategy, StreamFrom, StreamHeld, Unsettled, View, ViewHeld,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn an_agent_whose_account_names_its_program() {
+        // The place-status spec's person's form of "A review on the
+        // account's program": the program `other`, from the layer
+        // `account`, said to come from its account (56, 173).
+        let mut settings = AgentSettings::default();
+        settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Account,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        let agent = AgentStatus {
+            left_in_pane: false,
+            identity: "flume:r:look--a:review:1".into(),
+            stage: "review".into(),
+            program: "other".into(),
+            settings,
+            account: Some(AccountHeld {
+                pool: "work".into(),
+                name: "other-1".into(),
+                from: AccountFrom::Strategy,
+            }),
+            state: AgentState::Working,
+            started: Reading::Yes,
+            asking: Reading::No,
+            own_work: Reading::No,
+            past_limit: false,
+            screen: None,
+            dialog: None,
+            printed: None,
+            last_words: None,
+            notes: vec![],
+            mode: None,
+            conversation: None,
+            session: None,
+            terminal: None,
+            own: None,
+            effort: None,
+            model: None,
+            degraded: vec![],
+        };
+        assert_eq!(
+            agent_line(&agent),
+            "  agent flume:r:look--a:review:1 (other, from its account) on the account other-1 of work (from the strategy): working"
+        );
+        assert_eq!(
+            setting_line("program", &agent.settings.from["program"]),
+            "    program = other (from account)"
+        );
+        let mut named = agent.clone();
+        named.settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Kind,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        assert_eq!(
+            agent_line(&named),
+            "  agent flume:r:look--a:review:1 (other) on the account other-1 of work (from the strategy): working"
+        );
+    }
 
     #[test]
     fn an_agents_account() {
@@ -2165,6 +2364,8 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
+            degraded: vec![],
         };
         assert_eq!(
             agent_line(&agent),
@@ -2654,6 +2855,8 @@ mod tests {
             terminal: None,
             own: None,
             effort: None,
+            model: None,
+            degraded: vec![],
         }
     }
 
@@ -2884,7 +3087,7 @@ mod tests {
         AgentStatus {
             settings: AgentSettings {
                 settings: flume_seams::Settings {
-                    effort: word.map(str::to_string),
+                    effort: word.map(Into::into),
                     ..flume_seams::Settings::default()
                 },
                 env,
@@ -2894,6 +3097,7 @@ mod tests {
             effort: word.map(|word| EffortStatus {
                 word: word.into(),
                 layer,
+                entry: None,
                 passed: word.into(),
                 read_back: false,
                 outranked_by: outranked.then(|| variable.to_string()),
@@ -2922,6 +3126,49 @@ mod tests {
         assert_eq!(
             agent_lines(&agent, "work", "fix")[2..],
             ["    effort = xhigh (from launch)"]
+        );
+    }
+
+    #[test]
+    fn an_agents_model_and_its_tables_entry() {
+        // 56, 172, 197: a model given whole names its layer; a model's
+        // table names the entry the agent took and the name passed, and
+        // an effort's table its entry, as design 7 words them.
+        let base = with_effort(None, Layer::Launch, false);
+        let whole = AgentStatus {
+            model: Some(ModelStatus {
+                name: "opus".into(),
+                layer: Layer::Launch,
+                entry: None,
+                passed: "opus".into(),
+            }),
+            ..base.clone()
+        };
+        assert_eq!(
+            agent_line(&whole),
+            "  agent flume:r:fix--one:code:1 (agent): working, on the model opus (from launch)"
+        );
+        let table = AgentStatus {
+            model: Some(ModelStatus {
+                name: r#"{ agent = "opus", other = "gpt-5.5" }"#.into(),
+                layer: Layer::HostKind,
+                entry: Some("agent".into()),
+                passed: "opus".into(),
+            }),
+            ..base
+        };
+        assert_eq!(
+            agent_line(&table),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, on the model { agent = "opus", other = "gpt-5.5" } (from host-kind), the entry agent, passed as opus"#
+        );
+        let mut effort = with_effort(Some(r#"{ agent = "xhigh" }"#), Layer::Kind, false);
+        if let Some(status) = effort.effort.as_mut() {
+            status.entry = Some("agent".into());
+            status.passed = "xhigh".into();
+        }
+        assert_eq!(
+            agent_line(&effort),
+            r#"  agent flume:r:fix--one:code:1 (agent): working, at the effort { agent = "xhigh" } (from kind), the entry agent, passed as xhigh, not read back"#
         );
     }
 
@@ -4407,7 +4654,162 @@ mod tests {
             forecast: None,
             fixes: vec![],
             fix_of: None,
+            statechart: None,
+            agents: vec![],
             checkouts: vec![],
+        }
+    }
+
+    /// persona at its test stage: build passed, test's two sessions, one
+    /// delivered and one working, each with its agent (175, 176).
+    fn persona_place() -> PlaceStatus {
+        let session = |n: u32, state| StageStatus {
+            name: format!("stages.test#1/{n}"),
+            state,
+            starts: 1,
+            end: None,
+            refused_part: None,
+            refused_setting: None,
+            conversation: false,
+            group: None,
+            answers: vec![],
+            hibernates: false,
+            hibernate_after: None,
+            hibernated: None,
+            resumes: vec![],
+        };
+        let agent = |n: u32| AgentStatus {
+            identity: format!("flume:r:persona--a:stages.test#1/{n}:1"),
+            stage: format!("stages.test#1/{n}"),
+            ..in_mode(
+                "edits",
+                Layer::Kind,
+                ModeStatus {
+                    passed: "edit-files".into(),
+                    entry: None,
+                    read_back: true,
+                },
+            )
+        };
+        PlaceStatus {
+            kind: "persona".into(),
+            stages: vec![
+                session(1, StageState::Delivered),
+                session(2, StageState::Begun),
+            ],
+            agent: Some(agent(2)),
+            agents: vec![agent(2)],
+            statechart: Some(ChartStatus {
+                regions: vec![
+                    RegionStatus {
+                        region: "stages".into(),
+                        state: "test".into(),
+                        since: Some(100),
+                        is_final: false,
+                    },
+                    RegionStatus {
+                        region: "stages.test.run".into(),
+                        state: "working".into(),
+                        since: Some(100),
+                        is_final: false,
+                    },
+                ],
+                counters: BTreeMap::new(),
+                over: false,
+                decisions: vec![],
+                answers: vec![],
+                stages: vec![ChartStageStatus {
+                    stage: "stages.test".into(),
+                    entry: 1,
+                    join: Join::All,
+                    send_backs: 0,
+                    sessions: vec!["stages.test#1/1".into(), "stages.test#1/2".into()],
+                }],
+            }),
+            ..a_place()
+        }
+    }
+
+    #[test]
+    fn a_statechart_place() {
+        // 56, 175: a statechart place's run after its stages' lines' head:
+        // each live region with its state and since when, each stage with
+        // its entry, join, send-backs and sessions; each session a stage;
+        // and each live session's agent once.
+        let lines = place_lines(&persona_place());
+        let at = |line: &str| lines.iter().position(|given| given == line);
+        assert!(at("  statechart: running").is_some(), "{lines:#?}");
+        assert!(
+            at("    region stages at test since 100").is_some(),
+            "{lines:#?}"
+        );
+        assert!(
+            at("    region stages.test.run at working since 100").is_some(),
+            "{lines:#?}"
+        );
+        assert!(
+            at("    stage stages.test: entry 1, joined by all, sent back 0 times: stages.test#1/1, stages.test#1/2")
+                .is_some(),
+            "{lines:#?}"
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line.starts_with("  agent flume:r:persona--a:"))
+                .count(),
+            1,
+            "{lines:#?}"
+        );
+        assert!(
+            at("  stage stages.test#1/1: delivered, started 1 times").is_some(),
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_statechart_places_decision() {
+        // 56, 130, 176: a decision standing with its kind, its answers and
+        // what it shows; the answers given, applied or not; and the wait
+        // naming the region and `flume answer`'s move.
+        let mut place = persona_place();
+        if let Some(chart) = place.statechart.as_mut() {
+            chart.regions[0].state = "stopped".into();
+            chart.regions.truncate(1);
+            chart.decisions = vec![DecisionHeld {
+                region: "stages".into(),
+                state: "stopped".into(),
+                kind: "stalled".into(),
+                answers: vec!["retry".into(), "drop".into()],
+                shows: vec!["the persona that failed".into()],
+                since: Some(200),
+            }];
+            chart.answers = vec![AnswerStatus {
+                given: AnswerGiven {
+                    id: "stages#1".into(),
+                    region: "stages".into(),
+                    answer: "retry".into(),
+                    by: "ops".into(),
+                    at: 150,
+                },
+                applied: true,
+            }];
+        }
+        place.waiting_on = Some(WaitingOn {
+            act: Act::Decide,
+            stage: Some("stages".into()),
+            why: Waits::Decision,
+            since: Some(200),
+            words: Some("stalled: retry, drop".into()),
+            open_until: None,
+            closed: None,
+        });
+        let lines = place_lines(&place);
+        for line in [
+            "    decision at stages (stalled), answered by flume answer: retry, drop; shows the persona that failed",
+            "    answer stages#1: retry by ops at 150, applied",
+            "  waits on its caller to answer the decision at stages (decision) since 200: stalled: retry, drop",
+        ] {
+            assert!(lines.iter().any(|given| given == line), "{line} is not in {lines:#?}");
         }
     }
 
@@ -4437,6 +4839,63 @@ mod tests {
             conversation_line(&lost(false, Some("its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"))),
             "    starts afresh after start 1, lost: its conversation's transcript, in the stopped account's configuration home (`CLAUDE_CONFIG_DIR`), cannot be read"
         );
+    }
+
+    #[test]
+    fn an_agents_degraded_parts() {
+        // 56, 171, 174: each part its profile does not build on a line of
+        // its own after the agent's notes, in 171's order, with how flume
+        // reads it, the five it reads from the terminal among them, and
+        // none for an agent whose profile builds every part.
+        let none = in_mode(
+            "edits",
+            Layer::Kind,
+            ModeStatus {
+                passed: "edit-files".into(),
+                entry: None,
+                read_back: true,
+            },
+        );
+        let agent = AgentStatus {
+            notes: vec!["the agent runs flume's plugin version 0.1".into()],
+            degraded: [
+                Part::Received,
+                Part::Asking,
+                Part::OwnWork,
+                Part::Ended,
+                Part::LastWords,
+                Part::SendBack,
+                Part::Guard,
+                Part::OnQuiet,
+            ]
+            .map(|part| DegradedPart {
+                part,
+                read: part.read().into(),
+            })
+            .to_vec(),
+            ..none.clone()
+        };
+        let lines = agent_lines(&agent, "work", "fix");
+        let note = lines
+            .iter()
+            .position(|line| line.starts_with("    note: "))
+            .expect("the agent's note");
+        assert_eq!(
+            lines[note + 1..],
+            [
+                "    received degraded: read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+                "    asking degraded: read from the terminal, asking while it reads the agent waiting on a question",
+                "    own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+                "    ended degraded: read from the terminal, ended once it reads the agent stopped",
+                "    last words degraded: read from the terminal, what it shows of the agent",
+                "    send-back degraded: not offered, so it may go quiet with its deliverable missing",
+                "    guard degraded: not offered, so nothing refuses its submitting, merging or pushing its place's branch",
+                "    on-quiet degraded: not offered, so the host's watch, or a command where none keeps watch, settles its place",
+            ]
+        );
+        assert!(!agent_lines(&none, "work", "fix")
+            .iter()
+            .any(|line| line.contains(" degraded: ")));
     }
 
     #[test]

@@ -84,11 +84,12 @@ fn written(kinds: &[Kind]) -> (String, Vec<(String, String)>) {
                 .iter()
                 .map(|agent| {
                     let mut fields = vec![];
+                    let model = agent.model.as_ref().and_then(|model| model.one());
                     for (name, value) in [
-                        ("program", &agent.program),
-                        ("model", &agent.model),
-                        ("instructions", &agent.instructions),
-                        ("beside", &agent.beside),
+                        ("program", agent.program.as_deref()),
+                        ("model", model),
+                        ("instructions", agent.instructions.as_deref()),
+                        ("beside", agent.beside.as_deref()),
                     ] {
                         if let Some(value) = value {
                             fields.push(format!("{name} = \"{value}\""));
@@ -460,7 +461,14 @@ agents = [{ instructions = "keep it short" }]
         "settings apart from the kinds"
     );
     let change = &settings["change"];
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -468,7 +476,11 @@ agents = [{ instructions = "keep it short" }]
     let bump = &kinds[0];
     assert_eq!(bump.agents.every_stage.program.as_deref(), Some("agent"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -511,7 +523,14 @@ fn a_kind_that_lands_with_no_stages_beside_one_that_does_not_and_settings() {
         vec!["fix"],
         "fix's table, settings for a kind declared elsewhere"
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     repository.write(
         DECLARATION,
         &format!("{declared}\n[kinds.idle]\nlands = false\nstages = []\n"),
@@ -698,6 +717,7 @@ fn bump(version: u32, stages: &[&str]) -> Kind {
             .collect(),
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 
@@ -1064,14 +1084,101 @@ agents = [{ effort = "xhigh" }]
         panic!("the declaration did not read");
     };
     let bump = &kinds[0];
-    assert_eq!(bump.agents.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(bump.stages[0].agents[0].effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        bump.agents
+            .every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        bump.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("xhigh")
+    );
+}
+
+#[test]
+fn a_model_for_every_stage_and_a_table_for_one() {
+    // The kinds-profile spec's "A model for every stage and a table for
+    // one" (23, 172, C.2): a kind's agents table gives a model for every
+    // stage, and a stage's agents a table of programs, each kept as
+    // written.
+    let repository = Repository::new("declared-model");
+    repository.write(
+        DECLARATION,
+        r#"[kinds.bump.agents]
+model = "sonnet"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ model = { claude = "opus", codex = "gpt-5.5" } }]
+"#,
+    );
+    repository.write(".config/prompts/bump-code.md", "{{brief}}");
+    repository.commit("a model for bump and a table for its code");
+    let revision = Revision::new(repository.head());
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("the declaration did not read");
+    };
+    let bump = &kinds[0];
+    assert_eq!(bump.agents.every_stage.model, Some("sonnet".into()));
+    assert_eq!(
+        bump.stages[0].agents[0].model,
+        Some(PerProgram::Programs(BTreeMap::from([
+            ("claude".to_string(), "opus".to_string()),
+            ("codex".to_string(), "gpt-5.5".to_string()),
+        ])))
+    );
+}
+
+#[test]
+fn a_model_that_is_neither_fails_the_declaration_naming_the_field() {
+    // The kinds-profile spec's "A model that is neither" (4, 172, C.2): a
+    // number, a table naming no program and a table whose entry is no
+    // string each fail the read, naming the table's `model`.
+    let repository = Repository::new("declared-bad-model");
+    repository.write(
+        DECLARATION,
+        r#"[agents]
+model = 3
+
+[kinds.change.agents]
+model = {}
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ model = { claude = 3 } }]
+"#,
+    );
+    repository.write(".config/prompts/bump-code.md", "{{brief}}");
+    repository.commit("models that are neither");
+    let reason = could_not_read(&repository);
+    for field in [
+        "agents.model:",
+        "kinds.change.agents.model",
+        "kinds.bump.stages[0].agents[0].model",
+    ] {
+        assert!(
+            reason.contains(field),
+            "the read names not {field}: {reason}"
+        );
+    }
+    launch_refused_naming(&repository, "change", &["kinds.change.agents.model"]);
 }
 
 #[test]
 fn an_effort_for_every_kind_of_a_repository() {
     // 32, 197, C.2: the repository's `[agents]` gives an effort for every
-    // kind, apart from its table for fix, which gives its own.
+    // kind, apart from its table for fix, which gives its own, a table of
+    // programs.
     let repository = Repository::new("every-kind-effort");
     repository.write(
         DECLARATION,
@@ -1079,7 +1186,7 @@ fn an_effort_for_every_kind_of_a_repository() {
 effort = "medium"
 
 [kinds.fix.agents]
-effort = "high"
+effort = { claude = "high" }
 "#,
     );
     let revision = Revision::new(repository.commit("the repository's efforts"));
@@ -1089,28 +1196,37 @@ effort = "high"
     else {
         panic!("the declaration did not read");
     };
-    assert_eq!(agents.effort.as_deref(), Some("medium"));
-    assert_eq!(settings["fix"].every_stage.effort.as_deref(), Some("high"));
+    assert_eq!(
+        agents.effort.as_ref().and_then(|effort| effort.one()),
+        Some("medium")
+    );
+    assert_eq!(
+        settings["fix"].every_stage.effort,
+        Some(PerProgram::Programs(BTreeMap::from([(
+            "claude".to_string(),
+            "high".to_string()
+        )])))
+    );
 }
 
 #[test]
 fn an_effort_that_is_no_word_refuses_the_launch_naming_the_field() {
-    // 4, 197, C.2: a number and a table of programs each fail the read,
-    // naming the table's `effort`, in a repository's table for every kind,
-    // in its table for a kind it does not declare, in a stage's of a
-    // kind's own and in its agents; the launch is refused with nothing
-    // made.
+    // 4, 197, C.2: a number, a table naming no program and a table whose
+    // entry is no string each fail the read, naming the table's `effort`,
+    // in a repository's table for every kind, in its table for a kind it
+    // does not declare, in a stage's of a kind's own and in its agents;
+    // the launch is refused with nothing made.
     let repository = Repository::new("declared-bad-effort");
     repository.write(
         DECLARATION,
         r#"[agents]
-effort = { claude = "high" }
+effort = {}
 
 [kinds.change.agents]
 effort = 3
 
 [kinds.bump.agents.stages.code]
-effort = { claude = "high" }
+effort = { claude = 3 }
 
 [[kinds.bump.stages]]
 name = "code"
@@ -1181,7 +1297,14 @@ agents = [{ session = "z", instructions = "keep it short" }]
     let change = &settings["change"];
     assert_eq!(change.every_stage.session, None, "change's every stage");
     assert_eq!(change.for_stage("verify").session, None, "change's verify");
-    assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+    assert_eq!(
+        change
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(
         change.for_stage("verify").instructions.as_deref(),
         Some("Read every task.")
@@ -1190,9 +1313,20 @@ agents = [{ session = "z", instructions = "keep it short" }]
     assert_eq!(bump.agents.every_stage.session, None, "bump's every stage");
     assert_eq!(bump.agents.for_stage("code").session, None, "bump's code");
     assert_eq!(bump.stages[0].agents[0].session, None, "code's own agent");
-    assert_eq!(bump.agents.every_stage.model.as_deref(), Some("sonnet"));
     assert_eq!(
-        bump.agents.for_stage("code").model.as_deref(),
+        bump.agents
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
+    assert_eq!(
+        bump.agents
+            .for_stage("code")
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("haiku")
     );
     assert_eq!(
@@ -1486,14 +1620,24 @@ model = "sonnet"
         panic!("the declaration did not read");
     };
     assert!(kinds.is_empty());
-    assert_eq!(agents.model.as_deref(), Some("opus"));
+    assert_eq!(
+        agents.model.as_ref().and_then(|model| model.one()),
+        Some("opus")
+    );
     assert_eq!(agents.mode, Some(ModeSetting::Flume(Mode::Edits)));
     assert_eq!(agents.instructions.as_deref(), Some("Mind the tagline."));
     assert_eq!(
         agents.programs["claude"].settings["attribution"],
         serde_json::json!({ "commit": "Assisted-by: Claude Code", "pr": "" })
     );
-    assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        settings["fix"]
+            .every_stage
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
+        Some("sonnet")
+    );
     assert!(settings["fix"].every_stage.programs.is_empty(), "apart");
     let scratch = Scratch::new("launch-agents");
     let file = scratch.path("kinds.toml");
@@ -1790,7 +1934,10 @@ makes = ["preview"]
     );
     assert_eq!(kind.stages[0].agents[0].program.as_deref(), Some("agent"));
     assert_eq!(
-        kind.stages[0].agents[0].effort.as_deref(),
+        kind.stages[0].agents[0]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
         Some("high"),
         "the stage's effort, read as written (197)"
     );
@@ -3628,4 +3775,261 @@ fn a_packages_settings_file_is_read_within_it_and_never_outside() {
         reason.contains("claude.json") && reason.contains("symbolic link"),
         "{reason}"
     );
+}
+
+/// weir C.4's persona, its test stage's rule flume's `every-file`, with a
+/// prompt beside each stage's parameters under `prompts/` (175, S76; weir
+/// C.4).
+const PERSONA: &str = r#"[kinds.persona]
+version = 1
+title = "Persona test"
+branch = "persona"
+lands = true
+
+[kinds.persona.regions.stages]
+initial = "build"
+
+[kinds.persona.regions.stages.states.build]
+machine = "stage"
+params = { agents = [{ model = "opus" }], join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["commits"], prompt = "prompts/build.md" }
+transitions = [
+  { when = { final = "passed" }, to = "test" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.test]
+machine = "stage"
+params = { agents = { rule = "every-file", pattern = "personas/*.md" }, join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["committed:tests/personas.md"], prompt = "prompts/test.md" }
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "sent-back" }, to = "build" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.passed]
+final = true
+
+[kinds.persona.regions.stages.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "build" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.persona.regions.stages.states.dropped]
+final = true
+"#;
+
+/// A scratch repository declaring persona beside a simple kind, `bump`,
+/// with each prompt beside the declaration (175, 177).
+fn declaring_persona(name: &str) -> (Repository, Revision) {
+    let repository = Repository::new(name);
+    repository.write(
+        DECLARATION,
+        &format!(
+            "{PERSONA}\n[kinds.bump]\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/build.md\"\ndeliverables = [\"commits\"]\nagents = [{{}}]\n"
+        ),
+    );
+    repository.write(".config/prompts/build.md", "Build the personas. {{brief}}");
+    repository.write(".config/prompts/test.md", "Test {{file}}.");
+    let revision = Revision::new(repository.commit("persona beside bump"));
+    (repository, revision)
+}
+
+#[test]
+fn a_statechart_kind_is_read_through_weirs_crate() {
+    // The kinds-profile spec's "Persona read" and "A simple kind and a
+    // statechart kind side by side": weir's crate reads persona beside a
+    // simple kind, each in its format, its statechart's text the kind's
+    // table alone, and refuses a table holding both `stages` and
+    // `regions`, naming the field (84, 85, 175, 177; weir 95; core.4).
+    let (repository, revision) = declaring_persona("persona");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("persona did not read");
+    };
+    assert_eq!(
+        kinds
+            .iter()
+            .map(|kind| (kind.name.as_str(), kind.is_statechart()))
+            .collect::<Vec<_>>(),
+        vec![("bump", false), ("persona", true)],
+        "each kind in its format"
+    );
+    let persona = &kinds[1];
+    assert_eq!(
+        (
+            persona.branch_prefix.as_str(),
+            persona.lands,
+            persona.version
+        ),
+        ("persona", true, 1)
+    );
+    assert!(persona.stages.is_empty(), "{:?}", persona.stages);
+    let chart = persona.statechart.as_ref().expect("persona's statechart");
+    assert_eq!(chart.title, "Persona test");
+    assert!(
+        chart.text.contains("[kinds.persona]") && !chart.text.contains("[kinds.bump"),
+        "{}",
+        chart.text
+    );
+    assert_eq!(
+        chart.stages.keys().collect::<Vec<_>>(),
+        vec!["stages.build", "stages.test"]
+    );
+    let build = &chart.stages["stages.build"];
+    match &build.agents {
+        ChartAgents::Entries(entries) => {
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|agent| agent.model.clone())
+                    .collect::<Vec<_>>(),
+                vec![Some(PerProgram::from("opus"))]
+            );
+        }
+        other => panic!("build's agents read as {other:?}"),
+    }
+    assert_eq!(build.deliverables, vec![Deliverable::Commits]);
+    assert_eq!(
+        (build.on_fail.as_deref(), build.send_back_limit),
+        (Some("build"), Some(2))
+    );
+    let test = &chart.stages["stages.test"];
+    assert_eq!(
+        test.agents,
+        ChartAgents::Rule {
+            rule: "every-file".into(),
+            pattern: Some("personas/*.md".into()),
+        }
+    );
+    assert_eq!(test.join, Join::All);
+    assert_eq!(
+        test.deliverables,
+        vec![Deliverable::CommittedReport {
+            path: "tests/personas.md".into()
+        }]
+    );
+    assert_eq!(test.prompt.as_deref(), Some("Test {{file}}."));
+    // A table holding both stages and regions.
+    repository.write(
+        DECLARATION,
+        "[kinds.both]\nstages = []\nlands = true\n\n[kinds.both.regions.r]\ninitial = \"s\"\n\n[kinds.both.regions.r.states.s]\nfinal = true\n",
+    );
+    let revision = Revision::new(repository.commit("stages and regions"));
+    match Weir.read_kinds(&repository.name(), &revision) {
+        KindsRead::CouldNotRead { reason } => {
+            assert!(reason.contains("kinds.both.regions"), "{reason}");
+        }
+        other => panic!("a table of stages and regions read as {other:?}"),
+    }
+}
+
+#[test]
+fn a_statechart_stages_prompt_the_revision_lacks_is_named() {
+    // The kinds-profile spec's "A prompt the revision lacks": a stage's
+    // `prompt` is read beside the declaration at the base's revision as a
+    // simple stage's is, and named by its path where it cannot be read;
+    // a key of `params` weir does not name is the template's, and ignored
+    // (20, 23, C.2).
+    let repository = Repository::new("persona-no-prompt");
+    repository.write(
+        DECLARATION,
+        &PERSONA.replace(
+            "prompt = \"prompts/build.md\"",
+            "prompt = \"prompts/build.md\", colour = \"blue\"",
+        ),
+    );
+    repository.write(".config/prompts/build.md", "Build.");
+    let revision = Revision::new(repository.commit("persona with no test prompt"));
+    match Weir.read_kinds(&repository.name(), &revision) {
+        KindsRead::CouldNotRead { reason } => {
+            assert!(
+                reason.contains("kinds.persona.regions.stages.states.test.params.prompt")
+                    && reason.contains(".config/prompts/test.md"),
+                "{reason}"
+            );
+            assert!(
+                !reason.contains("colour") && !reason.contains("states.build"),
+                "{reason}"
+            );
+        }
+        other => panic!("a missing prompt read as {other:?}"),
+    }
+}
+
+#[test]
+fn the_stage_template_names_the_atoms_flume_binds() {
+    // The stage template is a statechart kind in weir's format, `stage`,
+    // final at passed, sent-back and stopped, which reads and runs only
+    // the template's atoms flume binds (175, 178, C.2).
+    use flume_core::atoms;
+    let declaration =
+        weir_kinds::read_kinds(atoms::STAGE_TEMPLATE).expect("the stage template reads");
+    assert!(declaration.kinds.is_empty(), "{:?}", declaration.kinds);
+    assert_eq!(
+        declaration.statecharts.keys().collect::<Vec<_>>(),
+        vec![atoms::TEMPLATE]
+    );
+    let template = &declaration.statecharts[atoms::TEMPLATE].statechart;
+    let run = &template.regions[atoms::TEMPLATE_REGION];
+    assert_eq!(run.initial, "working");
+    let finals: Vec<&str> = run
+        .states
+        .iter()
+        .filter(|(_, state)| state.is_final)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(
+        finals,
+        vec![atoms::PASSED, atoms::SENT_BACK, atoms::STOPPED]
+    );
+    let names = weir_kinds::weir_engine::names(template);
+    assert_eq!(
+        names
+            .evidence
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec![atoms::STAGE_END]
+    );
+    assert_eq!(
+        names.effects.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec![atoms::START_SESSIONS]
+    );
+    assert!(names.machines.is_empty(), "{:?}", names.machines);
+    assert!(atoms::TEMPLATE_EVIDENCE.contains(&atoms::STAGE_STARTED));
+}
+
+#[test]
+fn a_held_statechart_reads_back_the_same() {
+    // The kinds-profile spec's "Read back twice": persona's held text and
+    // the stage template's read back give the same statechart each time,
+    // the one read-kinds gave at the launch, and the template `stage`; a
+    // text holding no statechart kind is refused naming why (21, 85, 176).
+    let (repository, revision) = declaring_persona("persona-back");
+    let KindsRead::Read { kinds, .. } = Weir.read_kinds(&repository.name(), &revision) else {
+        panic!("persona did not read");
+    };
+    let held = kinds[1].statechart.clone().expect("persona's statechart");
+    let template = flume_core::atoms::STAGE_TEMPLATE;
+    let first = Weir.read_statechart(&held, template).expect("read back");
+    let second = Weir
+        .read_statechart(&held, template)
+        .expect("read back again");
+    assert_eq!(first, second, "the same texts give the same statechart");
+    let launched = weir_kinds::read_kinds(PERSONA).expect("persona reads");
+    assert_eq!(first.chart, launched.statecharts["persona"].statechart);
+    assert_eq!(first.templates.keys().collect::<Vec<_>>(), vec!["stage"]);
+    let words = Weir
+        .read_statechart(&held, "[kinds.bump]\nstages = []\nlands = true\n")
+        .expect_err("a template that is no statechart kind read");
+    assert!(words.contains("templates"), "{words}");
+    let unreadable = KindStatechart {
+        text: "[kinds.persona".into(),
+        ..held
+    };
+    let words = Weir
+        .read_statechart(&unreadable, template)
+        .expect_err("an unreadable held text read");
+    assert!(words.contains("Persona test"), "{words}");
 }

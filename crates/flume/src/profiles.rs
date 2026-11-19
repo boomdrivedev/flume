@@ -37,6 +37,10 @@ pub mod change {
 // ---- the agent seam's profiles: a profile unit appends its module line below ----
 pub mod agent {
     pub mod claude;
+    pub mod common;
+    pub mod launcher;
+    pub mod programs;
+    pub mod start;
 }
 
 // ---- the terminal seam's profiles: a profile unit appends its module line below ----
@@ -64,16 +68,19 @@ pub mod window {
     pub mod terminal;
 }
 
-/// The program an agent runs where no layer of its settings names one:
-/// Claude Code (32, C.4; design 16).
+/// The program an agent with no pool runs where no layer of its
+/// settings names one: Claude Code. An agent with a pool runs its
+/// account's program instead, so the default names a program only for an
+/// agent with no pool (32 item 8, 173, C.4; design 16).
 pub const DEFAULT_PROGRAM: &str = "claude";
 
 /// The send-backs a kind allows where it sets none (23, 112; design 16).
 pub const SEND_BACKS: u32 = 3;
 
 /// What the engine is built with where the statement leaves the value
-/// to flume: Claude Code with no model, instructions or environment, and
-/// three send-backs (32, 23; design 16).
+/// to flume: Claude Code with no model, instructions or environment, its
+/// program naming one only for an agent with no pool, and three
+/// send-backs (32 item 8, 23, 173; design 16).
 pub fn defaults() -> Defaults {
     Defaults {
         settings: Settings {
@@ -226,16 +233,17 @@ impl Resolver for BuiltIn {
     }
 
     /// Claude Code's profile for the program [`DEFAULT_PROGRAM`] names,
-    /// by that name or by a path to it, with flume's plugin; any other
-    /// program resolves to nothing, and a launch naming it is refused
-    /// (32, 105, C.4).
-    /// The plugin is written under the login environment's
-    /// `$XDG_DATA_HOME`, or its `$HOME/.local/share`, where the resolver
-    /// was given one.
+    /// by that name or by a path to it, with flume's plugin; the common
+    /// profile over its entry for every other program an entry of
+    /// [`agent::programs`] names, by its name or a path to it; and any
+    /// other program resolves to nothing, so a launch naming it is refused
+    /// (32, 105, 170, C.4; core.3; design 1). The plugin is written under
+    /// the login environment's `$XDG_DATA_HOME`, or its
+    /// `$HOME/.local/share`, where the resolver was given one.
     fn agent(&self, program: &str) -> Option<Arc<dyn Agent>> {
-        let name = Path::new(program).file_name()?.to_str()?;
-        if name != agent::claude::NAME {
-            return None;
+        let entry = agent::programs::entry(program)?;
+        if entry.name != agent::claude::NAME {
+            return Some(Arc::new(agent::common::Common::of_host(entry)));
         }
         let claude = match self.login_data() {
             None => agent::claude::Claude::of_host(),
@@ -673,6 +681,57 @@ pub fn ack_started(
         build,
         &binary,
     )
+}
+
+/// flume's launcher, run by a terminal flume opened in the program's
+/// place, for the start this process's environment names: `command`, the
+/// program and its arguments, is run in this process, which becomes it,
+/// where the start's record matches; otherwise nothing runs. It answers
+/// only where nothing ran, saying why (35, 41, 161, 171, C.4; design 1,
+/// 2).
+pub fn ack_launched(command: &[String], build: &dyn Fn() -> Result<Engine, String>) -> String {
+    use std::os::unix::process::CommandExt;
+    let Some((program, args)) = command.split_first() else {
+        return "no program is given after `--`, so nothing runs".into();
+    };
+    let binary = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .unwrap_or_else(|_| "flume".into());
+    match agent::launcher::launch(
+        &agent::launcher::Launching::of_process(),
+        program,
+        args,
+        build,
+        &binary,
+        |name| std::env::var_os(name).map(|value| value.to_string_lossy().into_owned()),
+        &std::env::var("PATH").unwrap_or_default(),
+        std::process::id(),
+    ) {
+        Ok(becomes) if becomes.runs.is_some() => {
+            // A command stage's command runs as the launcher's child, its
+            // exit written and the place settled once it exits (223, C.2).
+            let launching = agent::launcher::Launching::of_process();
+            let folder = becomes.runs.clone().unwrap_or_default();
+            let identity = launching.agent.clone().unwrap_or_default();
+            match agent::launcher::run(
+                &becomes,
+                &folder,
+                &identity,
+                launching.place.as_deref(),
+                &binary,
+            ) {
+                Ok(code) => std::process::exit(code),
+                Err(why) => why,
+            }
+        }
+        Ok(becomes) => {
+            let error = std::process::Command::new(&becomes.program)
+                .args(&becomes.args)
+                .exec();
+            format!("{} could not be run: {error}", becomes.program.display())
+        }
+        Err(why) => why,
+    }
 }
 
 /// The received ack of the agent this process's environment names: the

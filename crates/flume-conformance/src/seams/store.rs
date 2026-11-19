@@ -97,7 +97,41 @@ pub fn scenarios<H: StoreHarness>() -> Vec<Scenario<H>> {
             cites: &["43", "75", "102", "103", "104"],
             run: the_pack_over_the_store::<H>,
         },
+        Scenario {
+            name: "store: a file written under a place's folder reads back whole, one never written reads none, and a path outside the folder is refused",
+            cites: &["223"],
+            run: a_file_of_the_folder_read_back::<H>,
+        },
     ]
+}
+
+fn a_file_of_the_folder_read_back<H: StoreHarness>(harness: &H) -> Outcome {
+    let (id, held) = place(harness, "files");
+    written(harness.seam().write(&id, None, Some(&held)))?;
+    let folder = harness.seam().folder(&id);
+    let exit = format!("{folder}/ran/one/exit.json");
+    ensure_eq!(
+        harness.seam().read_file(&id, &exit),
+        Ok(None),
+        "a file never written"
+    );
+    harness
+        .seam()
+        .write_file(&id, &exit, "{\"exit\":0}")
+        .map_err(|why| format!("the file was not written: {why}"))?;
+    ensure_eq!(
+        harness.seam().read_file(&id, &exit),
+        Ok(Some("{\"exit\":0}".to_string())),
+        "the file read back"
+    );
+    ensure!(
+        harness
+            .seam()
+            .read_file(&id, &format!("{folder}/../elsewhere"))
+            .is_err(),
+        "a path outside the folder was read"
+    );
+    Ok(())
 }
 
 fn write_then_read<H: StoreHarness>(harness: &H) -> Outcome {
@@ -303,6 +337,7 @@ fn the_hosts_own_documents<H: StoreHarness>(harness: &H) -> Outcome {
         gone: None,
         pool: None,
         account: None,
+        last: None,
     });
     let version = written(harness.seam().write_host(&intent, None, Some(&affinity)))?;
     ensure_eq!(

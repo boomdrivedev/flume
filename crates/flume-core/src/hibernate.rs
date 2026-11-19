@@ -63,7 +63,7 @@ impl Engine {
             return Answer::refused(format!("the work of the place {place} is over"));
         }
         let index = held.current.unwrap_or(0);
-        let declared = held.place.kind.stages.get(index);
+        let declared = (index < held.stages.len()).then(|| held.declared(index));
         if !declared.is_some_and(|stage| stage.hibernates) {
             let stage = declared.map_or("", |stage| stage.name.as_str());
             return Answer::refused(format!(
@@ -356,7 +356,7 @@ impl Engine {
             let Some(index) = held.current else {
                 return Step::Keep(());
             };
-            let declared = &held.place.kind.stages[index];
+            let declared = held.declared(index);
             if !(declared.conversation && declared.hibernates) {
                 return Step::Keep(());
             }

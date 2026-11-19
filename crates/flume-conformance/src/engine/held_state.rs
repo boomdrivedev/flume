@@ -1,10 +1,13 @@
 //! Held state: one versioned document per place, written by
 //! compare-and-set (73 to 77, 102, 103).
 
+use super::repeating_stages::GROUPS;
+use super::statecharts::{one, one_stage, ON_PASSED};
 use super::world::*;
 use crate::scenario::sample_held;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::Step;
+use flume_seams::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -19,6 +22,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "held state: a first write over a place's held state is refused",
             cites: &["75", "103", "3"],
             run: a_second_first_write,
+        },
+        Scenario {
+            name: "held state: a statechart place whose stage recorded its sessions, read by an engine built anew after a restart, settles from the same engine state, starting no session twice and performing no effect already proven",
+            cites: &["74", "76", "176"],
+            run: a_restart_between_two_settles,
+        },
+        Scenario {
+            name: "held state: a change@2 place whose held state was written before statechart kinds, settled after them while its code stage repeats, runs its next repetition, verify and its submission as before, holding no statechart and no session and ticked never",
+            cites: &["21", "140", "177", "S77"],
+            run: a_change_2_place_across_the_release,
         },
     ]
 }
@@ -72,5 +85,128 @@ fn a_second_first_write(_: &()) -> Outcome {
         None,
         "the held mark"
     );
+    Ok(())
+}
+
+fn a_restart_between_two_settles(_: &()) -> Outcome {
+    let world = World::new();
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![one(&one_stage(false, "stage", ON_PASSED), listed(2))],
+    );
+    launched(&world.engine.launch(&launch("one", "a", Some("the work"))))?;
+    let id = World::id("one", "a");
+    let before = world.held(&id).ok_or("the place holds no state")?;
+    ensure_eq!(before.stages.len(), 2, "sessions recorded");
+    let chart = before
+        .chart
+        .clone()
+        .ok_or("the place holds no statechart")?;
+    world.host.restart();
+    let rebuilt = world.engine();
+    let read = world.kinds.log.count("read_statechart");
+    rebuilt.settle(Some(&id));
+    ensure!(
+        world.kinds.log.count("read_statechart") > read,
+        "the settle after the restart did not read the statechart back"
+    );
+    let after = world.held(&id).ok_or("the place's held state was lost")?;
+    let next = after.chart.clone().ok_or("the statechart was lost")?;
+    ensure_eq!(next.state, chart.state, "the engine's state");
+    ensure_eq!(next.stages, chart.stages, "the stages' entries");
+    ensure_eq!(after.stages.len(), 2, "sessions recorded");
+    ensure_eq!(
+        after
+            .stages
+            .iter()
+            .map(|stage| stage.starts)
+            .collect::<Vec<_>>(),
+        vec![1, 1],
+        "each session's starts"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 2, "agents opened");
+    Ok(())
+}
+
+/// The place holds no statechart and no session, and no tick read a
+/// statechart back for it (177).
+fn as_before(world: &World, id: &PlaceId, when: &str) -> Outcome {
+    let held = world.held(id).ok_or("the place holds no state")?;
+    ensure!(held.chart.is_none(), "{when}: the place holds a statechart");
+    ensure!(
+        held.stages.iter().all(|stage| stage.session.is_none()),
+        "{when}: a stage holds a session"
+    );
+    ensure_eq!(
+        world.kinds.log.count("read_statechart"),
+        0,
+        format!("{when}: statecharts read back")
+    );
+    Ok(())
+}
+
+fn a_change_2_place_across_the_release(_: &()) -> Outcome {
+    let world = World::new();
+    world.queue.plan_submits(vec![flume_fakes::Plan::Hold]);
+    launched(
+        &world
+            .engine
+            .launch(&launch("change@2", "plan", Some("plan it"))),
+    )?;
+    let id = World::id("change", "plan");
+    world.settle(&id);
+    world.tick_groups("change/plan", "plan", GROUPS, 0);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code's first repetition"
+    );
+    // Its held state as a release before statechart kinds wrote it: none
+    // of their fields, and read back the same (21, 177).
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let mut json = serde_json::to_value(&held).map_err(|error| error.to_string())?;
+    let document = json.as_object_mut().ok_or("the held state is no object")?;
+    ensure!(
+        !document.contains_key("chart"),
+        "the held state writes a chart"
+    );
+    let stages = document
+        .get_mut("stages")
+        .and_then(|stages| stages.as_array_mut())
+        .ok_or("the held state has no stages")?;
+    for stage in stages.iter_mut() {
+        let stage = stage.as_object_mut().ok_or("a stage is no object")?;
+        ensure!(!stage.contains_key("session"), "a stage writes a session");
+    }
+    let read: HeldState = serde_json::from_value(json).map_err(|error| error.to_string())?;
+    ensure_eq!(read, held, "the held state written before, read back");
+    world.host.restart();
+    as_before(&world, &id, "after its launch")?;
+    world.tick_groups("change/plan", "plan", GROUPS, 2);
+    world.engine().settle(Some(&id));
+    as_before(&world, &id, "after group 1")?;
+    let group = world.held(&id).ok_or("the place holds no state")?.stages[1]
+        .start
+        .clone()
+        .and_then(|start| start.group)
+        .and_then(|group| group.number);
+    ensure_eq!(
+        group,
+        Some("2".to_string()),
+        "code's next repetition's group"
+    );
+    world.tick_groups("change/plan", "plan", GROUPS, 5);
+    world.engine().settle(Some(&id));
+    as_before(&world, &id, "after every group")?;
+    ensure_eq!(
+        world.stage_state(&id, "verify"),
+        Some(StageState::Begun),
+        "verify"
+    );
+    super::settling::archive(&world, "plan");
+    world.engine().settle(Some(&id));
+    as_before(&world, &id, "after verify")?;
+    ensure_eq!(world.queue.log.count("submit"), 1, "submissions");
     Ok(())
 }

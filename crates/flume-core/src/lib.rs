@@ -12,14 +12,18 @@ mod acts;
 pub mod address;
 mod agent_acts;
 mod answer;
+pub mod atoms;
 mod base;
 mod batch;
+mod chart;
 mod clues;
+mod command;
 mod deliver;
 pub mod deliveries;
 mod end;
 mod ends;
 mod fixes;
+mod glob;
 mod held;
 mod hibernate;
 mod kinds_lock;
@@ -103,6 +107,11 @@ const _: () = assert!(
 /// How long after each sending flume reads whether a prompt was
 /// received (38).
 pub const RECEIVED_WITHIN: Seconds = 60;
+
+/// How far apart two settles' readings of an agent waiting lie before its
+/// own work reads none, where its profile does not build own work (31,
+/// 171).
+pub const OWN_WORK_AFTER: Seconds = 60;
 
 /// How long a message waits for its agent where its caller gives no bound
 /// (54).
@@ -298,6 +307,7 @@ mod tests {
 
     pub(crate) fn record(binding: Binding) -> PlaceRecord {
         PlaceRecord {
+            params: None,
             id: PlaceId::new("/r/places/fix--one"),
             repository: "/r".into(),
             address: None,
@@ -312,6 +322,7 @@ mod tests {
                 label: None,
                 fix: None,
                 fix_limit: None,
+                statechart: None,
             },
             declared: Declared::Flume,
             kind_from: None,

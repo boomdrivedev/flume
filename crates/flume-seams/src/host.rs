@@ -930,6 +930,14 @@ pub fn stream_of(address: &str) -> &str {
 
 /// The host's facts (design 3).
 pub trait Host: Send + Sync {
+    /// The words that run flume's launcher, `<binary> ack launched --`,
+    /// the binary by its absolute path, after which a terminal puts a
+    /// program and its arguments; none where the host names no binary of
+    /// flume's (88, 223, C.4, C.5; core.60).
+    fn launcher(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// The host's clock.
     fn now(&self) -> Seconds;
 

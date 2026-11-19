@@ -8,7 +8,8 @@
 //! `check-ref-format --branch`, and `fetch` from `origin` for a branch
 //! as origin holds it, `ls-remote --exit-code` telling a branch origin
 //! lacks from a fetch that failed, and `config --get remote.origin.url`
-//! for origin's URL as configured (9, 24, 25, 33, 132, 143, C.1, C.7). A
+//! for origin's URL as configured, and `ls-tree -r` for a revision's
+//! files (9, 24, 25, 33, 132, 143, 178, C.1, C.7). A
 //! revision git cannot read holds nothing since and touches nothing.
 
 use crate::git::{Git, REMOTE};
@@ -124,6 +125,21 @@ impl History for GitHistory {
                 path,
             ])
             .is_ok_and(|commits| !commits.trim().is_empty())
+    }
+
+    /// `git ls-tree -r -z --name-only <revision>`, each path as git gives
+    /// it; nothing where git cannot read the revision (178).
+    fn files(&self, repository: &str, revision: &Revision) -> Vec<String> {
+        Git::at(repository)
+            .text(&["ls-tree", "-r", "-z", "--name-only", &revision.0])
+            .map(|files| {
+                files
+                    .split('\0')
+                    .filter(|path| !path.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     fn common_dir(&self, repository: &str) -> Option<String> {

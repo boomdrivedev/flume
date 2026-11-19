@@ -167,10 +167,11 @@ it shows the question or holds still a second, up to ten seconds (34,
 
 The herdr profile SHALL lead the pane's `PATH` with a folder of the
 start's own linking the kind's name to the program the settings name,
-SHALL give the pane the host user's login environment under the agent's
-and a shell of the start's own that reads no startup file, and SHALL
-close and refuse, naming what ran, a start whose pane runs any other
-program (29, 32, C.4, C.5; record 0018).
+or to flume's launcher where the command carries its words, SHALL give
+the pane the host user's login environment under the agent's and a
+shell of the start's own that reads no startup file, and SHALL close
+and refuse, naming what ran, a start whose pane runs any other program
+(29, 32, C.4, C.5; record 0018).
 
 #### Scenario: Startup files that put another program first
 
@@ -302,11 +303,11 @@ under the printed command none (7).
 ### Requirement: The printed command
 
 The printed-command profile SHALL answer open with the command, its
-prompt carried in it, for a person to run in the place; refuse send and
-close; tidy nothing and show nothing; read
-the agent stopped only once the agent's own record says its session
-ended (134); give no screen (136); and settle nothing (32, 38, 122,
-C.5).
+prompt carried in it, for a person to run in the place, the launcher's
+words leading the program and its arguments where the command carries
+them; refuse send and close; tidy nothing and show nothing; read the
+agent stopped only once the agent's own record says its session ended
+(134); give no screen (136); and settle nothing (32, 38, 122, C.5).
 
 #### Scenario: A tell under the printed command
 
@@ -317,6 +318,11 @@ C.5).
 
 - **WHEN** the terminal seam's scenarios run against the profile
 - **THEN** each passes, its refusals among them
+
+#### Scenario: The launcher's line
+
+- **WHEN** the printed command opens a command of `amp` naming the launcher `/opt/flume/bin/flume` with `ack launched --`
+- **THEN** its line runs `/opt/flume/bin/flume ack launched -- amp` in the place under the command's environment file (C.4, C.5)
 
 ### Requirement: The printed command's environment
 
@@ -1261,3 +1267,104 @@ which they name `<typed>` (98, 221, 222; core.29, core.57).
 
 - **WHEN** the stand-in `rex` sleeps five seconds before answering a relay's `send` of `secret-typed`
 - **THEN** the input is refused naming one second and `<typed>`, within two seconds, and its words do not hold `secret-typed` (98, 221)
+
+### Requirement: herdr starts a program it reads through its integration only once it is installed
+
+herdr's profile SHALL start `omp` and `mastracode`, whose state the
+pinned herdr reads only through its integration, only while `herdr
+integration status`, run under the login environment with the given
+one over it, reports the kind's integration in a state other than `not
+installed`, which SHALL be refused naming `herdr integration install
+<kind>` (4, C.5).
+
+#### Scenario: omp's integration not installed, then installed
+
+- **WHEN** herdr's profile is asked whether it starts `omp` under a scratch home where the pinned herdr reports omp's integration not installed, and again after `herdr integration install omp` there with the home's `.omp/agent/extensions` made
+- **THEN** the first is refused naming `herdr integration install omp`, and the second starts it (4, S75)
+
+### Requirement: herdr's integration status read within its bound
+
+herdr's profile SHALL run `herdr integration status` within its bound,
+and SHALL refuse a status that does not answer within it, or names no
+line for the kind, naming what herdr gave; it SHALL start every kind
+herdr reads on its own with no call to herdr (C.5; core.29).
+
+#### Scenario: herdr's status lines read
+
+- **WHEN** the profile reads `omp: not installed (<path>)`, `omp: current (v10) (<path>)`, `omp: outdated (v8 < v10) (<path>)`, and a status naming only `mastracode`, each for `omp`
+- **THEN** the first is refused naming the install, the second and third start it, and the fourth is refused naming what herdr gave (C.5)
+
+#### Scenario: A kind herdr reads on its own
+
+- **WHEN** herdr's profile is asked whether it starts `amp` and `claude` with no `herdr` it can run
+- **THEN** it starts each (C.5)
+
+### Requirement: herdr runs the launcher in the program's place
+
+Where an agent's command carries the launcher's words, the herdr
+profile SHALL link the kind's name in the start's own folder to the
+launcher's program, and its agent start SHALL pass the launcher's
+arguments, then the program's absolute path, then the command's
+arguments; the pane's foreground SHALL then run the program the
+settings name, as for any program (C.4, C.5).
+
+#### Scenario: A program started through the launcher
+
+- **WHEN** a command of the kind `amp` names as its launcher a scratch script that writes its process id and its arguments and then execs what follows them, under the pinned herdr
+- **THEN** the kind's link in the start's folder leads to the script, the script is given the program's absolute path and the command's arguments, the program the settings name runs in the script's process, and the open is taken (C.4, C.5)
+
+### Requirement: herdr reads the process its agent's program runs in
+
+The herdr profile SHALL read, by `pane process-info` within its bound,
+the process in the agent's pane's foreground running the program its
+open checked, by its id; nothing where no foreground process runs it or
+the pane is gone; unknown, in herdr's words, where herdr does not
+answer, and where the agent's record, written before, names no program
+(35, C.5; core.29).
+
+#### Scenario: The launcher's process, then one started by hand
+
+- **WHEN** an agent of the kind `amp` opens through a scratch launcher under the pinned herdr, and its program is then ended and run again by its path in the same pane
+- **THEN** its process reads as the one the launcher wrote, and then as another, the one run by hand (35, S74)
+
+#### Scenario: A pane that is gone
+
+- **WHEN** the agent's pane is closed
+- **THEN** its process reads as nothing running its program (35)
+
+### Requirement: The core reads herdr's blocked as asking for a profile that reads asking from the terminal
+
+Where the agent's profile does not build asking, the core SHALL read
+herdr's blocked, which the herdr profile reads as asking, as the agent
+asking, with no mark of its profile's, and type nothing into the pane
+(90, 96, 171).
+
+#### Scenario: Blocked for a profile that reads asking from its terminal
+
+- **WHEN** herdr reads a pane blocked whose agent's profile does not build asking
+- **THEN** the core reads the agent asking, and types nothing into the pane (90, 171)
+
+### Requirement: herdr's watched send waits on the turn
+
+herdr's watched send SHALL clear the pane's held input with `agent
+send-keys <pane> ctrl+c`, then send `agent prompt <pane> <text> --wait
+--until working --until blocked --timeout <ms>`, the bound it is given
+in milliseconds, within that bound and the profile's own past it (89,
+95, 171, C.5; core.29).
+
+#### Scenario: A turn seen
+
+- **WHEN** an agent opened through a scratch launcher under the pinned herdr, a stand-in reported to herdr as `amp` that tells herdr it works as soon as it reads a line, is sent `go` by the watched send
+- **THEN** it answers the turn seen, and the stand-in read `go` (89, 171, C.5)
+
+### Requirement: herdr reads the turn from its answer
+
+herdr's watched send SHALL answer the turn seen on herdr's answer; the
+turn not seen, in herdr's words, on `agent_prompt_stalled` or
+`timeout`; and a refusal, in herdr's words, on any other refusal, a
+pane gone, or no answer within its bound (38, 171, C.5; core.29).
+
+#### Scenario: No turn seen
+
+- **WHEN** an agent opened through a scratch launcher under the pinned herdr, a stand-in reported to herdr as `amp` that reads a line and tells herdr nothing, is sent `go` by the watched send, and then `again`
+- **THEN** each answers the turn not seen, naming `agent_prompt_stalled`, the held input cleared before the second, and nothing is left typed (38, 95, 171, C.5)

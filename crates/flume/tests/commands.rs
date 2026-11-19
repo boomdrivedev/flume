@@ -70,9 +70,12 @@ const UNSTARTED: &str = "stand-in-unstarted";
 /// The stand-in agent: it says it started, where it is `stand-in`, and
 /// received its prompt at once, never asks or keeps own work, and reads
 /// its session ended once the test writes the mark
-/// `stand-in/<stage>-<start>` in the place's folder. It maps each mode to
+/// `stand-in/<stage>-<start>` in the place's folder, building those five
+/// parts from its own marks, so the core reads none of them from its
+/// terminal (93, 171), and none of the rest. It maps each mode to
 /// its own word and reads none back, takes its program's own settings,
-/// passing them nowhere (195), and takes every effort, passing it as
+/// passing them nowhere (195), takes every model, passing it as
+/// `--model <name>` (172), and takes every effort, passing it as
 /// `--effort <word>` (197).
 struct StandInAgent {
     says_started: bool,
@@ -99,11 +102,11 @@ impl Agent for StandInAgent {
         prompt: &str,
     ) -> AgentCommand {
         let mut args = vec![];
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(|model| model.one()) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(effort) = &settings.effort {
-            args.extend(["--effort".to_string(), effort.clone()]);
+        if let Some(effort) = settings.effort.as_ref().and_then(|effort| effort.one()) {
+            args.extend(["--effort".to_string(), effort.to_string()]);
         }
         if let Some(instructions) = &settings.instructions {
             args.extend(["--instructions".to_string(), instructions.clone()]);
@@ -116,6 +119,7 @@ impl Agent for StandInAgent {
             folder_trust: None,
             kind: None,
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
     fn started(&self, _folder: &str, _agent: &Identity) -> Reading {
@@ -146,6 +150,17 @@ impl Agent for StandInAgent {
     fn last_words(&self, _folder: &str, _agent: &Identity) -> Option<String> {
         None
     }
+    /// Received, asking, own work, ended and last words, read from its
+    /// own marks.
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+        ])
+    }
     fn stop_short(&self, _agent: &Identity) -> String {
         "flume needs \"<words>\"".into()
     }
@@ -160,17 +175,14 @@ impl Agent for StandInAgent {
         Ok(())
     }
     /// Every word, passed as written.
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn effort(&self, _word: &str) -> Result<(), String> {
         Ok(())
     }
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 
@@ -921,6 +933,98 @@ fn a_refusal() {
     assert!(person.text.starts_with("refused: "), "{}", person.text);
 }
 
+/// `flume launch --kind fix --name one` with `agents` over a scratch
+/// repository under the printed command, flume's own binary and its
+/// profiles built in, the fix landing nowhere: the host, the repository
+/// and what the launch answered.
+fn launched_with(label: &str, agents: &[&str]) -> (Host, Repository, Ran) {
+    let host = Host::new(label);
+    let repository = repository(label, None);
+    let kinds = kinds_file(&host, false);
+    let mut words = vec![
+        "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds,
+    ];
+    for agent in agents {
+        words.extend(["--agent", agent]);
+    }
+    words.push("--json");
+    let ran = host.flume(&repository.dir, &words, &[]);
+    (host, repository, ran)
+}
+
+/// Nothing made for a refused launch on `host`: no place stands, listed
+/// or on disk (4, 8; core.8).
+fn nothing_made(host: &Host, repository: &Repository) {
+    let place = host.place_of(repository, "fix--one");
+    assert!(!Path::new(&place).exists(), "{place} was made");
+    let listed = host.flume(&repository.dir, &["list", "--all", "--json"], &[]);
+    let Answer::List { places, .. } = listed.answer() else {
+        panic!("the list's answer: {}", listed.text);
+    };
+    assert!(places.is_empty(), "a place stands: {}", listed.text);
+}
+
+#[test]
+fn amp_launched_with_nothing_is_taken() {
+    // The agent-programs spec's "A program the common profile binds,
+    // given nothing" (170, S73): the launch is taken, the place stands
+    // and its stage's program is amp from the launch.
+    let (host, repository, ran) = launched_with("amp-taken", &["program=amp"]);
+    assert_eq!(ran.code, 0, "{}", ran.text);
+    let place = host.place_of(&repository, "fix--one");
+    assert!(Path::new(&place).exists(), "{place} does not stand");
+    let launched = ran.json();
+    let agent = &launched["launched"]["place"]["agent"];
+    assert_eq!(agent["program"], "amp", "{launched}");
+    assert_eq!(
+        agent["settings"]["from"]["program"],
+        json!({"layer": "launch", "value": "amp"}),
+        "{launched}"
+    );
+}
+
+#[test]
+fn amp_launched_with_a_model_is_refused() {
+    // The agent-programs spec's "The same program given a model" (4, 172,
+    // S73): refused naming amp, the stage, the launch and that its entry
+    // names no way to give a model, and nothing is made.
+    let (host, repository, ran) = launched_with("amp-model", &["program=amp", "model=opus"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in [
+        "`amp`",
+        "`code`",
+        "`launch`",
+        "`opus`",
+        "names no way to give it a model",
+    ] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
+#[test]
+fn a_program_launched_with_no_entry_is_refused() {
+    // The agent-programs spec's "A program with no entry" (4, 170): the
+    // launch is refused naming nonesuch, the stage and the launch, and
+    // nothing is made.
+    let (host, repository, ran) = launched_with("no-entry", &["program=nonesuch"]);
+    assert_eq!(ran.code, 1, "{}", ran.text);
+    let reason = ran
+        .answer()
+        .refusal()
+        .map(str::to_string)
+        .expect("a refusal");
+    for named in ["nonesuch", "code", "launch"] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    nothing_made(&host, &repository);
+}
+
 #[test]
 fn hibernation_through_the_binary_a_hibernate_of_a_fix_is_refused() {
     // 61, 212: the command-line spec's "A hibernate refused through the
@@ -1504,8 +1608,20 @@ fn an_effort_for_every_stage_and_for_one_at_the_launch() {
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "change--one");
     let held = held_of(&host, &place).state.place;
-    assert_eq!(held.every_stage.effort.as_deref(), Some("high"));
-    assert_eq!(held.settings["verify"].effort.as_deref(), Some("max"));
+    assert_eq!(
+        held.every_stage
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("high")
+    );
+    assert_eq!(
+        held.settings["verify"]
+            .effort
+            .as_ref()
+            .and_then(|effort| effort.one()),
+        Some("max")
+    );
     for (stage, effort) in [("construct", "high"), ("code", "high"), ("verify", "max")] {
         let agent = current_agent(&host, &repository.dir, &place);
         assert_eq!(agent["stage"], stage, "{agent}");
@@ -4417,6 +4533,70 @@ fn the_helps_of_confirm_and_wait() {
     }
 }
 
+#[test]
+fn an_answer_naming_no_decision() {
+    // 176, section 9: a statechart kind launched over a scratch
+    // repository, `flume answer` naming a region whose state carries no
+    // decision exits non-zero naming it, and status of the place gives no
+    // answer: the command-line spec's "An answer over a scratch
+    // repository".
+    let host = Host::new("answer");
+    let repository = repository("answer", None);
+    let dir = host.scratch.path("statechart");
+    std::fs::create_dir_all(dir.join("prompts")).expect("the kinds' folder");
+    std::fs::write(
+        dir.join("prompts/work.md"),
+        "Do the work of {{name}} in {{place}}. To stop short: {{needs}}\n",
+    )
+    .expect("the prompt");
+    let declaration = dir.join("kinds.toml");
+    std::fs::write(
+        &declaration,
+        format!(
+            r#"[kinds.one]
+title = "One stage"
+
+[kinds.one.regions.main]
+initial = "work"
+
+[kinds.one.regions.main.states.work]
+machine = "stage"
+params = {{ agents = [{{ program = "{STAND_IN}" }}], deliverables = ["commits"], prompt = "prompts/work.md" }}
+transitions = [{{ when = {{ final = "passed" }}, to = "done" }}]
+
+[kinds.one.regions.main.states.done]
+final = true
+"#
+        ),
+    )
+    .expect("the declaration");
+    let kinds = declaration.to_string_lossy().into_owned();
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "one", "--name", "a", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    let place = host.place_of(&repository, "one--a");
+    let ran = host.flume(&repository.dir, &["answer", &place, "main", "retry"], &[]);
+    assert_ne!(ran.code, 0, "{}", ran.text);
+    assert!(
+        ran.text.contains("main") && ran.text.contains("no decision"),
+        "the refusal names not the region: {}",
+        ran.text
+    );
+    let status = host.flume(&repository.dir, &["status", &place, "--json"], &[]);
+    assert_eq!(status.code, 0, "{}", status.text);
+    let answer = status.answer();
+    let chart = the_place(&answer)
+        .statechart
+        .as_ref()
+        .expect("status gives the place's statechart");
+    assert!(chart.answers.is_empty(), "{:?}", chart.answers);
+}
+
 /// The replies of a scripted MCP session of `flume mcp` run in `dir` with
 /// `env`: initialize, then each of `calls`, one reply a request (section
 /// 9; design 12).
@@ -4816,4 +4996,48 @@ fn a_role_runs_launch_over_mcp_reports_to_its_address() {
         serde_json::json!({"from": "role-run"}),
         "{launched}"
     );
+}
+
+#[test]
+fn launch_keeps_the_parameters_a_file_gives() {
+    // The command-line spec's "Parameters given by a file" (224, C.7): the
+    // file read whole and kept in the place's own folder as `params`, and
+    // a file that cannot be read refusing the launch, naming it, with
+    // nothing made.
+    let host = Host::new("params-file");
+    let repository = repository("params-file", Some(STAND_IN_QUEUE));
+    let file = host.scratch.path("moves.json");
+    let text = "{\"moves\":[{\"name\":\"weir\",\"from\":\"0.4.1\",\"to\":\"0.4.2\"}]}\n";
+    std::fs::write(&file, text).expect("the parameters");
+    let launch = |name: &str, params: &str| {
+        host.stand_in(
+            &repository.dir,
+            &[
+                "launch",
+                "--kind",
+                "fix",
+                "--name",
+                name,
+                "--brief",
+                "Move the pins.",
+                "--params-file",
+                params,
+                "--agent",
+                &format!("program={STAND_IN}"),
+                "--json",
+            ],
+            &[],
+        )
+    };
+    answered(&launch("one", &file.to_string_lossy()), 0);
+    let place = host.place_of(&repository, "fix--one");
+    assert_eq!(
+        std::fs::read_to_string(Path::new(&host.folder(&place)).join("params"))
+            .expect("the place's copy of the parameters"),
+        text
+    );
+    let missing = host.scratch.path("nowhere.json");
+    let reason = reason_of(&launch("two", &missing.to_string_lossy()));
+    assert!(reason.contains(&*missing.to_string_lossy()), "{reason}");
+    made_nothing(&host, &repository, "fix--two", "fix/two");
 }

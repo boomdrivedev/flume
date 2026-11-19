@@ -108,9 +108,11 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
         }],
         fix: None,
         fix_limit: None,
+        statechart: None,
     };
     HeldState {
         place: PlaceRecord {
+            params: None,
             id: id.clone(),
             repository: repository.into(),
             address: None,
@@ -172,6 +174,7 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
             room: None,
             made_from: None,
             counts: None,
+            session: None,
         }],
         current: None,
         submission: SubmissionHeld::default(),
@@ -182,5 +185,6 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
         trace: None,
         waits: vec![],
         forecast: None,
+        chart: None,
     }
 }

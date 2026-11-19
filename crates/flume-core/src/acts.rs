@@ -5,15 +5,17 @@
 //! (31); a retry ends none whose stage it started or began under, so it
 //! never ends a working session (35, 50).
 
+use crate::accounts::{Choice, Programs};
 use crate::base::base_place;
 use crate::held::refresh_waiting;
 use crate::hibernate::{hibernated_waiting, hibernating};
 use crate::launch::and_list;
-use crate::open_sessions::waits_on_answer;
+use crate::open_sessions::{answer_index, waits_on_answer};
 use crate::start::{Start, Starts};
 use crate::status::waiting_on;
 use crate::{Act, Answer, Engine, Step, Tidied, MESSAGE_BOUND, POLL, RECEIVED_WITHIN};
 use flume_seams::*;
+use std::time::Duration;
 
 /// What a retry names (49).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +39,10 @@ pub struct Answering {
 impl Engine {
     /// The exact prompt the stage would be sent at its next start,
     /// rendered with nothing started, sent, settled or written (29,
-    /// 119).
+    /// 119). A stage whose layers name no program, on a pool, is filled
+    /// with the profile of the program of the account a start would choose
+    /// over one reading of the queue, else of the first account in the
+    /// pool's order whose program can run it (173; design 8).
     pub fn prompt(&self, place: &PlaceId, stage: &str) -> Answer {
         let Some(read) = self.store.read(place) else {
             return Answer::refused(format!("no place {place} stands on this host"));
@@ -47,11 +52,14 @@ impl Engine {
             return Answer::refused(format!("the place {place} has no stage {stage}"));
         };
         let identity = self.next_identity(&held, index);
-        let declared = &held.place.kind.stages[index];
+        let declared = held.declared(index);
         let agent = self
-            .resolve(&held.place, declared)
-            .and_then(|resolved| self.agent_for(&resolved, stage))
-            .ok();
+            .resolve(&held.place, declared, None)
+            .ok()
+            .and_then(|resolved| {
+                self.agent_on_pool(&held.place, declared, &resolved)
+                    .or_else(|| self.agent_for(&resolved, stage).ok())
+            });
         let head = self
             .history
             .head(&held.place.repository, &held.place.branch)
@@ -82,23 +90,80 @@ impl Engine {
         }
     }
 
+    /// The agent profile a start of `stage` in `place`, whose settings
+    /// `resolved` name no program above flume's default, would fill its
+    /// prompt with on its stream's pool: the program of the account
+    /// `choose_account` chooses over one reading of the queue, else the
+    /// first program in the pool's order that can run it; none where a
+    /// layer names its program, it has no pool, or no program of its pool
+    /// can run it. It writes nothing (29, 119, 145, 147, 173; design 8).
+    fn agent_on_pool(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        resolved: &crate::settings::Resolved,
+    ) -> Option<std::sync::Arc<dyn Agent>> {
+        if resolved.names_program() {
+            return None;
+        }
+        let queue = self.queue();
+        let pool = queue
+            .pool_of(&place.stream.name)
+            .and_then(|pool| queue.pools.get(pool))?;
+        let runs = self.runs_on(
+            place,
+            stage,
+            pool.accounts
+                .iter()
+                .map(|room| room.account.program.as_str()),
+        );
+        let affinity = self.affinity_unwritten(&place.intent);
+        let (chosen, _) = self.choose_account(
+            place,
+            &stage.name,
+            &Programs::of_pool(&runs),
+            affinity.as_ref(),
+            None,
+            &queue,
+            self.host.now(),
+        );
+        let chosen = match &chosen {
+            Choice::Chose { account, .. } => Some(account.program.as_str()),
+            _ => None,
+        };
+        runs.into_iter()
+            .filter(|(program, _)| chosen.is_none_or(|chosen| chosen == program))
+            .find_map(|(_, resolution)| resolution.ok())
+            .map(|resolution| resolution.agent)
+    }
+
     /// Ends the place's live agent, one that is not quiet only when
     /// forced; a stage it ran that had not ended reads stopped, and one
     /// still starting is reported never begun with what the terminal
     /// showed of it (31, 35, 51).
     fn end_agent(&self, id: &PlaceId, force: bool) -> Result<(), String> {
+        self.end_agent_at(id, None, force)
+    }
+
+    /// Ends the live agent of the stage at `at` of a statechart place, a
+    /// session's, as [`Engine::end_agent`] ends the place's; a simple
+    /// kind's place's agent, whatever `at` names (31, 175).
+    fn end_agent_at(&self, id: &PlaceId, at: Option<usize>, force: bool) -> Result<(), String> {
         let Some(read) = self.store.read(id) else {
             return Ok(());
         };
-        let Some((index, start)) = read.state.live_start() else {
+        let Some((index, start)) = live_at(&read.state, at) else {
             return Ok(());
         };
         let identity = start.identity.clone();
         let reading = self.read_agent(id, start);
         let starting = (read.state.stages[index].state == StageState::Starting)
             .then(|| self.read_out(&read.state, start, true));
+        // A command stage's run is no agent: a caller's stop ends it
+        // whether or not it works (51, 223).
+        let run = crate::command::is_run(&read.state, index);
         if reading.state != AgentState::Stopped {
-            if !reading.quiet() && !force {
+            if !reading.quiet() && !force && !run {
                 return Err(format!(
                     "the agent {identity} is not quiet; ask again forced to end it"
                 ));
@@ -129,10 +194,11 @@ impl Engine {
     /// agent said so since among them, so ending it would end a working
     /// session. The refusal names the agent and the stop that ends it
     /// first; none where the agent is not so (31, 35, 50, 51).
-    fn working(&self, id: &PlaceId) -> Option<String> {
-        self.begun_after(id);
+    fn working(&self, id: &PlaceId, at: Option<usize>) -> Option<String> {
         let read = self.store.read(id)?;
-        let (index, start) = read.state.live_start()?;
+        self.begun_after(id, at.filter(|_| read.state.chart.is_some()));
+        let read = self.store.read(id)?;
+        let (index, start) = live_at(&read.state, at)?;
         let stage = &read.state.stages[index];
         let what = match stage.state {
             StageState::Started => "said it started",
@@ -220,6 +286,21 @@ impl Engine {
             Retry::Current => Some(held.current.unwrap_or(0)),
             Retry::Stage(name) => match held.stages.iter().position(|stage| &stage.name == name) {
                 Some(index) => Some(index),
+                // A command stage by its path, on no hold: its last run
+                // runs again (49, 223).
+                None if crate::chart::is_chart_stage(&held, name)
+                    && !held.holds.iter().any(
+                        |hold| matches!(&hold.on, HoldOn::Stage { stage } if stage == name),
+                    )
+                    && crate::command::last_run(&held, name).is_some() =>
+                {
+                    crate::command::last_run(&held, name)
+                }
+                // A statechart kind's stage by its path: its hold ended and
+                // each of its sessions it held started (47, 175).
+                None if crate::chart::is_chart_stage(&held, name) => {
+                    return self.retry_chart_stage(place, name);
+                }
                 None => return Answer::refused(format!("the place {place} has no stage {name}")),
             },
             Retry::Submission if !held.place.kind.lands => {
@@ -229,6 +310,17 @@ impl Engine {
             }
             Retry::Submission => None,
         };
+        // A command stage takes no words: a retry of one runs its command
+        // again from the place's head, and one with words is refused
+        // naming it (49, 223).
+        if let (Some(index), true) = (index, words.is_some()) {
+            if crate::command::is_run(&held, index) {
+                return Answer::refused(format!(
+                    "the stage {} of the place {place} is a command stage, which takes no words; a retry of it names it alone (49, 223)",
+                    held.stages[index].name
+                ));
+            }
+        }
         // An answer naming its key is taken once, while the place waits on
         // the stop-short it names, before anything is ended, started or
         // typed (42, 49).
@@ -243,7 +335,7 @@ impl Engine {
         // An answer to the agent kept open for it: handed to its session,
         // which carries the stage on (42, 49, 198).
         if let (Some(index), Some(words)) = (index, words.as_deref()) {
-            if let Some(kept) = self.kept_open(&held).filter(|kept| kept.index() == index) {
+            if let Some(kept) = self.kept_open_at(&held, index) {
                 return self.answer(place, &kept, words, Act::Retry, None, answering);
             }
             // An answer to an agent hibernated waiting on it resumes its
@@ -263,7 +355,7 @@ impl Engine {
             },
             None => None,
         };
-        if let Some(reason) = self.working(place) {
+        if let Some(reason) = self.working(place, index) {
             return Answer::refused(reason);
         }
         // A conversation reported lost, or whose agent kept open for its
@@ -273,13 +365,11 @@ impl Engine {
         // process that runs its session, left as they are (30, 49, 77,
         // 198; core.10).
         let lost = index
-            .filter(|&index| {
-                held.place.kind.stages[index].conversation && carries_lost(&held.stages[index])
-            })
+            .filter(|&index| held.declared(index).conversation && carries_lost(&held.stages[index]))
             .and_then(|index| held.stages[index].start.as_ref())
             .map(|start| start.identity.clone());
         if lost.is_none() {
-            if let Err(reason) = self.end_agent(place, force) {
+            if let Err(reason) = self.end_agent_at(place, index, force) {
                 return Answer::refused(reason);
             }
         }
@@ -325,7 +415,14 @@ impl Engine {
             self.settle_place(place);
             return self.acted(Act::Retry, place);
         };
-        if index == 0 && held.readiness.failed().is_some() {
+        // A simple kind's first stage, or a statechart place's session,
+        // waiting on readiness runs it again (12, 49, 175).
+        let unready = if held.chart.is_some() {
+            held.stages[index].state == StageState::WaitingOnReadiness
+        } else {
+            index == 0
+        };
+        if unready && held.readiness.failed().is_some() {
             let Ok(bound) = self.bound(&held.place) else {
                 return Answer::refused(format!("the place {place}'s seams are not bound"));
             };
@@ -337,7 +434,7 @@ impl Engine {
             self.update(place, |held| {
                 held.readiness = readiness.clone();
                 if waits {
-                    held.stages[0].state = StageState::WaitingOnReadiness;
+                    held.stages[index].state = StageState::WaitingOnReadiness;
                 }
                 Step::Write(())
             });
@@ -378,12 +475,16 @@ impl Engine {
                     }
                 }
             }
-            for stage in held.stages.iter_mut().skip(index + 1) {
-                stage.state = StageState::NotReached;
-                stage.made_from = None;
+            // A statechart place's sessions stand side by side, and its run
+            // decides its submission (175, 176).
+            if held.chart.is_none() {
+                for stage in held.stages.iter_mut().skip(index + 1) {
+                    stage.state = StageState::NotReached;
+                    stage.made_from = None;
+                }
+                held.submission.due = false;
+                held.submission.waiting = None;
             }
-            held.submission.due = false;
-            held.submission.waiting = None;
             Step::Write(())
         });
         drop(room);
@@ -442,6 +543,9 @@ impl Engine {
                 HoldOn::Stage { stage } => {
                     match held.stages.iter().position(|held| &held.name == stage) {
                         Some(index) => Some(index),
+                        // A statechart kind's stage by its path holds each of
+                        // its sessions not yet started (47, 175).
+                        None if crate::chart::is_chart_stage(held, stage) => None,
                         None => {
                             return Step::Keep(Some(format!(
                                 "the place {place} has no stage {stage}"
@@ -469,6 +573,7 @@ impl Engine {
             }
             match index {
                 Some(index) => {
+                    let repeats = held.declared(index).repeats;
                     let stage = &mut held.stages[index];
                     let unstarted = matches!(
                         stage.state,
@@ -477,16 +582,31 @@ impl Engine {
                             | StageState::WaitingForRoom
                             | StageState::WaitingOnReadiness
                     );
-                    let repeats = held.place.kind.stages[index].repeats;
                     let next_repetition = repeats
                         && (stage.state.running() || stage.state == StageState::Repeating);
-                    if held.current == Some(index) && !unstarted && !next_repetition {
+                    let current = held.current == Some(index) || held.chart.is_some();
+                    if current && !unstarted && !next_repetition {
                         return Step::Keep(Some(format!(
                             "the stage {} of the place {place} has started; a hold is put on a stage not started, or on a repeating stage's next repetition while one runs",
                             stage.name
                         )));
                     }
                     if stage.state == StageState::WaitingForRoom {
+                        stage.state = StageState::OnHold;
+                        stage.room = None;
+                    }
+                }
+                None if matches!(on, HoldOn::Stage { .. }) => {
+                    let HoldOn::Stage { stage: path } = &on else {
+                        unreachable!("matched above");
+                    };
+                    for stage in held.stages.iter_mut().filter(|stage| {
+                        stage.state == StageState::WaitingForRoom
+                            && stage
+                                .session
+                                .as_ref()
+                                .is_some_and(|session| &session.stage == path)
+                    }) {
                         stage.state = StageState::OnHold;
                         stage.room = None;
                     }
@@ -678,7 +798,7 @@ impl Engine {
         let held = read.state;
         let current = held.current.filter(|index| {
             let state = held.stages[*index].state;
-            held.place.kind.stages[*index].conversation
+            held.declared(*index).conversation
                 && (state.running()
                     || state == StageState::Lost
                     || state == StageState::Hibernating)
@@ -712,6 +832,72 @@ impl Engine {
         self.ended(place, &start.identity, StageState::Finished, head, None);
         self.settle_place(place);
         self.acted(Act::Finish, place)
+    }
+
+    /// Answers the decision standing at `region` of a statechart place
+    /// with `answer`, given by `by`: taken by compare-and-set only while a
+    /// decision stands there and no answer given it is unapplied, recorded
+    /// as `<region>#<n>` with who gave it and when, and given to the tick
+    /// of the next settle, which applies it once (74, 130, 176; core.54).
+    /// Refused naming the region where no decision stands there, with the
+    /// regions where one does, and naming the answer taken, who gave it and
+    /// when, where one is not yet applied.
+    pub fn answer_decision(&self, place: &PlaceId, region: &str, answer: &str, by: &str) -> Answer {
+        self.settle_attended();
+        let now = self.host.now();
+        let refused = self.update(place, |held| {
+            if held.phase != Phase::Live {
+                return Step::Keep(Some(format!("the work of the place {place} is over")));
+            }
+            if held.chart.is_none() {
+                return Step::Keep(Some(format!(
+                    "the place {place}'s kind is no statechart kind, so it has no decision"
+                )));
+            }
+            if crate::chart::decision_at(held, region).is_none() {
+                let standing: Vec<String> = held
+                    .chart
+                    .iter()
+                    .flat_map(|chart| &chart.decisions)
+                    .map(|decision| decision.region.clone())
+                    .collect();
+                return Step::Keep(Some(format!(
+                    "the region {region} of the place {place} carries no decision standing; {}",
+                    if standing.is_empty() {
+                        "none stands".to_string()
+                    } else {
+                        format!("one stands at {}", and_list(standing))
+                    }
+                )));
+            }
+            let Some(chart) = held.chart.as_mut() else {
+                return Step::Keep(None);
+            };
+            if let Some(taken) = crate::chart::unapplied(chart, region) {
+                return Step::Keep(Some(format!(
+                    "the decision at {region} of the place {place} was answered {} by {} at {}, and the next settle applies it; an answer is taken once",
+                    taken.answer, taken.by, taken.at
+                )));
+            }
+            let n = 1 + chart
+                .answers
+                .iter()
+                .filter(|given| given.region == region)
+                .count();
+            chart.answers.push(AnswerGiven {
+                id: format!("{region}#{n}"),
+                region: region.to_string(),
+                answer: answer.to_string(),
+                by: by.to_string(),
+                at: now,
+            });
+            Step::Write(None)
+        });
+        match refused {
+            None => Answer::refused(format!("no place {place} stands on this host")),
+            Some(Some(reason)) => Answer::refused(reason),
+            Some(None) => self.acted(Act::Decide, place),
+        }
     }
 
     /// Hands the agent of the place's current stage `words` as a prompt
@@ -786,13 +972,18 @@ impl Engine {
     /// them: once it said it started, waits and asks nothing, within the
     /// bound, ten minutes where none is given, its input cleared by the
     /// terminal's send, and read received within 60 seconds of each
-    /// sending or sent once more. When it was last sent and read
-    /// received, or the message's words saying why nothing more was typed
-    /// (37, 38, 53, 54; core.11). The start is marked handing, in one
-    /// write before the agent is read, until the bound and the readings of
-    /// its receipt pass, and the mark is cleared once the hand ends
-    /// whatever it came to, so no settle hibernates the agent and no
-    /// caller's hibernate is taken unforced while it stands (212).
+    /// sending or sent once more; where its profile does not build
+    /// received, sent by the terminal's send that watches the turn and read
+    /// received on its word that it saw the turn begin, or where a reading
+    /// within the 60 seconds reads the agent working or asking. Each
+    /// sending clears when a settle read the agent waiting. When it was
+    /// last sent and read received, or the message's words saying why
+    /// nothing more was typed (37, 38, 53, 54, 89, 171; core.11). The start
+    /// is marked handing, in one write before the agent is read, until the
+    /// bound and the readings of its receipt pass, and the mark is cleared
+    /// once the hand ends whatever it came to, so no settle hibernates the
+    /// agent and no caller's hibernate is taken unforced while it stands
+    /// (212).
     pub(crate) fn hand(
         &self,
         place: &PlaceId,
@@ -816,7 +1007,7 @@ impl Engine {
         }
         loop {
             let state = self.state_of(Some(agent.as_ref()), &folder, start);
-            let asking = agent.asking(&folder, identity);
+            let asking = self.read_asking(agent.as_ref(), &folder, start);
             if state == AgentState::Asking || asking == Reading::Yes {
                 return Err(format!(
                     "the agent {identity} is asking a person; nothing was typed"
@@ -829,7 +1020,7 @@ impl Engine {
             }
             if state == AgentState::Waiting
                 && asking == Reading::No
-                && agent.started(&folder, identity) == Reading::Yes
+                && self.started(agent.as_ref(), &folder, start) == Reading::Yes
             {
                 break;
             }
@@ -840,13 +1031,44 @@ impl Engine {
             }
             self.host.sleep(POLL);
         }
+        let watched = !agent.parts().builds(Part::Received);
         for _ in 0..2 {
-            if let Sent::Refused { reason } = self.agent_on(start).send(words) {
+            self.clear_waiting(place, identity);
+            let answer = if watched {
+                let sent_at = self.host.now();
+                match self
+                    .agent_on(start)
+                    .send_watching(words, Duration::from_secs(RECEIVED_WITHIN))
+                {
+                    SentWatching::Began => {
+                        return Ok(Handed {
+                            sent_at,
+                            received_at: self.host.now(),
+                        })
+                    }
+                    SentWatching::NotSeen { .. } => Sent::Sent,
+                    SentWatching::Refused { reason } => Sent::Refused { reason },
+                }
+            } else {
+                self.agent_on(start).send(words)
+            };
+            if let Sent::Refused { reason } = answer {
                 return Err(format!("the terminal did not send the words: {reason}"));
             }
             let sent_at = self.host.now();
             loop {
-                if let Received::Received { .. } = agent.received(&folder, identity, words) {
+                let received = if watched {
+                    matches!(
+                        self.state_of(Some(agent.as_ref()), &folder, start),
+                        AgentState::Working | AgentState::Asking
+                    )
+                } else {
+                    matches!(
+                        agent.received(&folder, identity, words),
+                        Received::Received { .. }
+                    )
+                };
+                if received {
                     return Ok(Handed {
                         sent_at,
                         received_at: self.host.now(),
@@ -860,6 +1082,24 @@ impl Engine {
             }
         }
         Err(format!("the agent {identity} did not receive the words"))
+    }
+
+    /// Clears when a settle read the agent of the start under `identity`
+    /// waiting, since something is sent to it; nothing written where none
+    /// was read (31, 171; core.17).
+    pub(crate) fn clear_waiting(&self, place: &PlaceId, identity: &Identity) {
+        self.update(place, |held| {
+            let Some(index) = held.index_of(identity) else {
+                return Step::Keep(());
+            };
+            match held.stages[index].start.as_mut() {
+                Some(start) if start.waiting.is_some() => {
+                    start.waiting = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
     }
 
     /// A stop of the place's hibernating stage: no agent to end, its
@@ -919,7 +1159,7 @@ impl Engine {
         let identity = &start.identity;
         let folder = self.store.folder(place);
         let state = self.state_of(Some(agent), &folder, start);
-        if state == AgentState::Asking || agent.asking(&folder, identity) == Reading::Yes {
+        if state == AgentState::Asking || self.read_asking(agent, &folder, start) == Reading::Yes {
             return Err(format!(
                 "the agent {identity} is asking a person; nothing was typed"
             ));
@@ -1124,7 +1364,7 @@ fn answered(stage: &StageHeld, words: Option<String>) -> Option<String> {
 /// (42, 43, 131).
 pub(crate) fn waited_key(held: &HeldState) -> Option<EndKey> {
     let name = waits_on_answer(held)?;
-    let start = held.stages[held.current?].start.as_ref()?;
+    let start = held.stages[answer_index(held)?].start.as_ref()?;
     Some(EndKey::Stage {
         stage: name.to_string(),
         start: start.n,
@@ -1365,4 +1605,18 @@ fn hold_waiting(
         waiting.stalled = false;
     }
     Step::Write(None)
+}
+
+/// The live start of the stage at `at` of a statechart place, a
+/// session's; else the place's live start, a simple kind's place's one
+/// (30, 175; core.10).
+fn live_at(held: &HeldState, at: Option<usize>) -> Option<(usize, &StartHeld)> {
+    match (held.chart.is_some(), at) {
+        (true, Some(at)) => held.stages[at]
+            .start
+            .as_ref()
+            .filter(|start| start.live)
+            .map(|start| (at, start)),
+        _ => held.live_start(),
+    }
 }
