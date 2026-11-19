@@ -1493,10 +1493,11 @@ fn session_from(from: SessionFrom) -> &'static str {
 }
 
 /// A pool's lines: its strategy and threshold, then each account's
-/// program, agents running, bound and spent time, under it the words in
-/// which no reset was read where that time is the hour, its reading, and
-/// what holds it past its threshold; never a reading's path (56, 144 to
-/// 146, 184, 185).
+/// program, agents running, bound and spent time, under it its
+/// configuration home, or why it cannot be read, the words in which no
+/// reset was read where that time is the hour, its reading, and what
+/// holds it past its threshold; the home the one path it gives, and never
+/// a reading's (56, 144 to 146, 184, 185, C.4).
 fn pool_lines(pool: &PoolStatus) -> Vec<String> {
     let mut lines = vec![format!(
         "  pool {}, {}, threshold {}%:",
@@ -1519,6 +1520,12 @@ fn pool_lines(pool: &PoolStatus) -> Vec<String> {
             line.push_str(&format!(", spent until {until}"));
         }
         lines.push(line);
+        if let Some(home) = &account.home {
+            lines.push(format!("      configuration home {home}"));
+        }
+        if let Some(words) = &account.home_unread {
+            lines.push(format!("      no configuration home: {words}"));
+        }
         if let Some(words) = &account.spent_unread {
             lines.push(format!("      spent an hour: no reset read in \"{words}\""));
         }
@@ -3304,6 +3311,8 @@ mod tests {
                         spent_unread: None,
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                     AccountStatus {
                         name: "work-2".into(),
@@ -3314,6 +3323,8 @@ mod tests {
                         spent_unread: None,
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                     AccountStatus {
                         name: "work-3".into(),
@@ -3326,6 +3337,8 @@ mod tests {
                         ),
                         reading: None,
                         past: None,
+                        home: None,
+                        home_unread: None,
                     },
                 ],
             }],
@@ -3344,6 +3357,44 @@ mod tests {
                 "      spent an hour: no reset read in \"You've hit your weekly limit \u{b7} resets Nov 8, 12am (UTC)\""
                     .to_string(),
                 "  no caller keeps watch: the places where something is pending settle at each command of flume's that acts".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_accounts_configuration_home() {
+        // 56, C.4: work-1's home under its line, nothing under work-2's,
+        // which has none, and why under work-3's, whose home cannot be
+        // read.
+        let pool = PoolStatus {
+            name: "work".into(),
+            strategy: Strategy::FillFirst,
+            threshold: 90,
+            accounts: vec![
+                AccountStatus {
+                    home: Some("/home/op/.agent-work-1".into()),
+                    ..read("work-1", None, None)
+                },
+                read("work-2", None, None),
+                AccountStatus {
+                    home_unread: Some(
+                        "env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks"
+                            .into(),
+                    ),
+                    ..read("work-3", None, None)
+                },
+            ],
+        };
+        assert_eq!(
+            pool_lines(&pool),
+            vec![
+                "  pool work, fill-first, threshold 90%:".to_string(),
+                "    work-1 (agent): 0 agents running, no bound of its own".to_string(),
+                "      configuration home /home/op/.agent-work-1".to_string(),
+                "    work-2 (agent): 0 agents running, no bound of its own".to_string(),
+                "    work-3 (agent): 0 agents running, no bound of its own".to_string(),
+                "      no configuration home: env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks"
+                    .to_string(),
             ]
         );
     }
@@ -4044,6 +4095,8 @@ mod tests {
             spent_unread: None,
             reading,
             past,
+            home: None,
+            home_unread: None,
         }
     }
 

@@ -1201,15 +1201,20 @@ impl Engine {
                 accounts: pool
                     .accounts
                     .iter()
-                    .map(|room| AccountStatus {
-                        name: room.account.name.clone(),
-                        program: room.account.program.clone(),
-                        running: room.running,
-                        bound: room.account.agents,
-                        spent_until: room.spent_until,
-                        spent_unread: room.spent_unread.clone(),
-                        reading: room.reading_status(),
-                        past: room.past(),
+                    .map(|room| {
+                        let (home, home_unread) = self.account_home(&room.account);
+                        AccountStatus {
+                            name: room.account.name.clone(),
+                            program: room.account.program.clone(),
+                            running: room.running,
+                            bound: room.account.agents,
+                            spent_until: room.spent_until,
+                            spent_unread: room.spent_unread.clone(),
+                            reading: room.reading_status(),
+                            past: room.past(),
+                            home,
+                            home_unread,
+                        }
                     })
                     .collect(),
             })
