@@ -1,7 +1,7 @@
 ---
 number: 79
 title: flume runs a statechart kind on weir's engine, its stage template running each session by flume's own rules
-status: proposed
+status: accepted
 date: 2026-11-18
 decision-makers:
 - the brief of flume-runs-statechart-kinds
@@ -10,11 +10,13 @@ decision-makers:
 
 # flume runs a statechart kind on weir's engine, its stage template running each session by flume's own rules
 
-Status: proposed. The direction is the change's brief: "flume runs a statechart kind on weir's engine, taken at the weir revision it pins weir-kinds at, each settle ticking it once over evidence read at one head, beside simple kinds run as today, and stops refusing a launch of a statechart kind", drawn from records 0028 and 0029, both the user's, and queued on afterthought/crew-state's plan. Record 0029 left how each part fits to the build (ledger item T1.c). The statement's section 3, section 9, 4, 56, 130, 175, 176, 178 and C.2, amended on boomdrivedev/blueprints' branch `design/flume-runs-statechart-kinds` at 3a3b287, state what this record decides. Every choice beyond the brief is the construction agent's, made on the rules written and cheap to change, and stays proposed until the operator's yes.
+Status: accepted by boomdrive-design on 2026-11-18; its direction is the user's records 0028 and 0029, its other choices the construct's.
+
+The direction is the change's brief: "flume runs a statechart kind on weir's engine, taken at the weir revision it pins weir-kinds at, each settle ticking it once over evidence read at one head, beside simple kinds run as today, and stops refusing a launch of a statechart kind", drawn from records 0028 and 0029, both the user's, and queued on afterthought/crew-state's plan. Record 0029 left how each part fits to the build (ledger item T1.c). The statement's section 3, section 9, 4, 56, 130, 175, 176, 178 and C.2, amended on boomdrivedev/blueprints' main at f7c0440, state what this record decides. Every choice beyond the brief is the construction agent's, made on the rules written and cheap to change.
 
 Deciders: the change's brief, which decided the direction; the construction agent of `flume-runs-statechart-kinds`, for the choices of its design's decisions 1 to 12.
 
-Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da and at 3a3b287, clauses 4, 18 to 25, 30, 33, 42, 56, 74, 103, 111, 112, 114, 130, 131, 133, 175 to 178, 223, C.2, S76 and S77; `boomdrivedev/blueprints:design/weir/requirements.md` at 48a94da, clauses 94 to 99 and C.4; boomdrivedev/weir at cc9d41f, `crates/weir-engine` (`tick`, `start`, `decisions`, `names`, `ObjectState`, `Snapshot`; a template started afresh on each entry and set aside under its attempt; an effect planned only while its proof is absent, at the region where it is planned) and `crates/weir-kinds` (`StatechartKind`, `Params`, `ParamAgents`, `Join`; a package of a statechart kind refused, design 12 of weir's `a-statechart-kind-is-read-in-weirs-kind-format`); `agentplot/flywheel-next` `definitions/stage.yaml`, `session.yaml` and `place.yaml`, the original's three templates; records 0004, 0022, 0028, 0029 and 0066; rules core.1, core.2, core.4, core.9, core.10, core.16, core.17, core.22, core.41, core.42 and core.54; `crates/flume-core` (`settle.rs`'s `step`, `start.rs`'s `claim`, `end.rs`, `submit.rs`'s `fix_round`) and `crates/flume-seams/src/held.rs` (`HeldState.stages`, `StageHeld`, `StartHeld`), where a stage is an index into its kind's stages and a place has one live start.
+Sources: `boomdrivedev/blueprints:design/flume/requirements.md` at 48a94da and on its main at f7c0440, clauses 4, 18 to 25, 30, 33, 42, 56, 74, 103, 111, 112, 114, 130, 131, 133, 175 to 178, 223, C.2, S76 and S77; `boomdrivedev/blueprints:design/weir/requirements.md` at 48a94da, clauses 94 to 99 and C.4; boomdrivedev/weir at cc9d41f, `crates/weir-engine` (`tick`, `start`, `decisions`, `names`, `ObjectState`, `Snapshot`; a template started afresh on each entry and set aside under its attempt; an effect planned only while its proof is absent, at the region where it is planned) and `crates/weir-kinds` (`StatechartKind`, `Params`, `ParamAgents`, `Join`; a package of a statechart kind refused, design 12 of weir's `a-statechart-kind-is-read-in-weirs-kind-format`); `agentplot/flywheel-next` `definitions/stage.yaml`, `session.yaml` and `place.yaml`, the original's three templates; records 0004, 0022, 0028, 0029 and 0066; rules core.1, core.2, core.4, core.9, core.10, core.16, core.17, core.22, core.41, core.42 and core.54; `crates/flume-core` (`settle.rs`'s `step`, `start.rs`'s `claim`, `end.rs`, `submit.rs`'s `fix_round`) and `crates/flume-seams/src/held.rs` (`HeldState.stages`, `StageHeld`, `StartHeld`), where a stage is an index into its kind's stages and a place has one live start.
 
 ## Context and problem statement
 
@@ -54,4 +56,4 @@ Option 1.
 - Bad: two decisions standing at once whose answers share words may each take an answer given the other, since the engine reads a response for the object whole; one answer is given a tick at a time.
 - Bad: sessions share one worktree, so a deliverable that names no part reads delivered for every session started before it was made.
 - Bad: a statechart kind that lands cannot name its landing fix yet.
-- The statement's section 3, section 9, 4, 56, 130, 175, 176, 178 and C.2 say it at boomdrivedev/blueprints 3a3b287. Rules core.10, core.41 and core.42 hold as written; no rule changes.
+- The statement's section 3, section 9, 4, 56, 130, 175, 176, 178 and C.2 say it on boomdrivedev/blueprints' main at f7c0440. Rules core.10, core.41 and core.42 hold as written; no rule changes.
