@@ -558,3 +558,41 @@ refusal naming the region or the answer taken before (176, section 9).
 
 - **WHEN** a statechart kind is launched on a scratch repository and `flume answer` names a region whose state carries no decision
 - **THEN** it exits non-zero naming the region, and status of the place gives no answer (176)
+
+### Requirement: launch gives a model and an effort per program by --agent
+
+`flume launch --agent [<stage>.]model.<program>=<name>` SHALL give one
+entry of a model's table of programs, and `--agent
+[<stage>.]effort.<program>=<word>` one entry of an effort's, several
+for one stage, or for every stage, building one table; a name and a
+table for the same stage's model, or a word and a table for its effort,
+SHALL be refused naming both, and an entry naming no program SHALL be
+refused naming the form (7, 32, 172, 197).
+
+#### Scenario: A model's table and an effort's at the launch
+
+- **WHEN** `flume launch --kind fix --agent model.claude=opus --agent model.codex=gpt-5.5 --agent code.effort.claude=xhigh` runs over a scratch repository
+- **THEN** the launch's settings give every stage the model `{ claude = "opus", codex = "gpt-5.5" }` and code the effort `{ claude = "xhigh" }`, each at the `launch` layer (7, 32)
+
+#### Scenario: A name and a table for one stage
+
+- **WHEN** `flume launch --kind fix --agent code.model=opus --agent code.model.claude=sonnet` runs, and then with `--agent effort=high --agent effort.claude=max`
+- **THEN** each is refused naming both, and nothing is launched (7, 172, 197)
+
+### Requirement: launched takes the start from its environment
+
+`flume ack launched -- <program> [<argument>…]` SHALL take the start it
+runs for from `FLUME_AGENT` and `FLUME_SECRET`, refused when either is
+missing or not the current start's, running nothing and exiting
+non-zero; its help SHALL say it is run by a terminal flume opened, in
+the program's place, and becomes the program (41, 171, C.4; core.35).
+
+#### Scenario: launched from outside an agent
+
+- **WHEN** `flume ack launched -- /bin/echo hello` runs with no `FLUME_AGENT`
+- **THEN** it is refused naming `FLUME_AGENT`, nothing prints `hello`, and the exit is non-zero (41, C.4)
+
+#### Scenario: launched's help
+
+- **WHEN** `flume ack --help` runs
+- **THEN** it lists `launched` beside `started` and `received`, saying a terminal flume opened runs it in the program's place and that it becomes the program (C.4; core.35)

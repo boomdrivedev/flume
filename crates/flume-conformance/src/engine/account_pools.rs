@@ -4,8 +4,9 @@
 //! accounts in order, usable meaning not spent, not past its threshold
 //! by its reading, the windows its agent program last reported in a
 //! session flume started, kept in its own document, under its own bound
-//! and running the stage's
-//! program; with none usable the stage waits for room, its want naming
+//! and running the stage's program, or, for a stage whose layers name
+//! none, a program that can run it, which then names the stage's program
+//! (173); with none usable the stage waits for room, its want naming
 //! the pool and the soonest time an account is back, while the pool holds
 //! an account of its program, and is refused at its launch or a later
 //! start where the pool holds none (4, 32, 184, 185, 211). A live
@@ -296,6 +297,66 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "account pools: a lost talk retried while every account of its pool is spent waits for room, and the start that takes work-1 once its reset passes carries the conversation from work-1",
             cites: &["145", "179"],
             run: every_account_spent_at_a_lost_talks_retry,
+        },
+        Scenario {
+            name: "account pools: a kind's review naming no program and giving edits starts on its fill-first pool's agent-1 passed agent's value and, agent-1 full, on other-1 passed other's, and once the host gives review a table naming agent alone a third review waits for agent-1 and starts on it passed its own value",
+            cites: &["S71", "32", "144", "169", "173"],
+            run: s71_a_mode_on_a_pool_of_two_programs,
+        },
+        Scenario {
+            name: "account pools: a stage naming no program and giving a model starts on its pool's account of the program that takes it, the first account's program taking none",
+            cites: &["172", "173"],
+            run: a_model_only_one_program_takes,
+        },
+        Scenario {
+            name: "account pools: a stage naming no program starts past its pool's first account, whose program no profile binds, on the account after it",
+            cites: &["105", "173"],
+            run: a_program_no_profile_binds,
+        },
+        Scenario {
+            name: "account pools: a stage naming no program and giving an effort and own settings for agent alone starts on agent-1, passed both, past other-1, whose program takes no effort",
+            cites: &["173", "196", "197"],
+            run: effort_and_own_settings_only_one_program_takes,
+        },
+        Scenario {
+            name: "account pools: a stage naming no program with no pool named anywhere runs flume's default program, from default, under no account",
+            cites: &["32", "144", "173"],
+            run: a_stage_naming_no_program_on_no_pool,
+        },
+        Scenario {
+            name: "account pools: a review naming no program after a code naming other starts on other-1 from the intent's affinity for its last program, though fill-first's first account is agent-1, and no move is recorded",
+            cites: &["147", "173"],
+            run: a_stage_that_names_no_program_keeps_to_the_last_program,
+        },
+        Scenario {
+            name: "account pools: a review naming no program whose mode names agent alone, after a code naming other, starts on agent-1 from the strategy, no move recorded, the affinity keeping other-1 for other and agent-1 for agent, its last program agent",
+            cites: &["147", "173"],
+            run: the_last_program_cannot_run_the_stage,
+        },
+        Scenario {
+            name: "account pools: a review naming no program whose intent's last program's account other-1 is spent starts on agent-1 from the strategy, the affinity keeping other-1 for other with no move and writing agent-1 for agent, its last program agent",
+            cites: &["147", "173"],
+            run: the_last_programs_account_is_spent,
+        },
+        Scenario {
+            name: "account pools: a stage naming no program whose mode names agent alone waits for room while agent-1, its pool's only account of agent, is spent, nothing starting on usable other-1, status giving the pool with agent-1's reset as the soonest an account is back",
+            cites: &["145", "173"],
+            run: the_only_account_that_can_run_it_is_spent,
+        },
+        Scenario {
+            name: "account pools: once the host drops agent-1 while code works, a review naming no program whose mode names agent alone is refused naming the pool and other with why, no agent opened, and a retry once the pool holds agent-1 again starts review on it",
+            cites: &["32", "145", "173"],
+            run: the_account_that_could_run_it_dropped,
+        },
+        Scenario {
+            name: "account pools: a launch whose code names no program and whose mode names agent alone, on a stream whose pool holds only other-1, is refused naming code, the pool and other with why, nothing made and its terminal asked nothing",
+            cites: &["4", "145", "173"],
+            run: a_launch_no_account_can_run,
+        },
+        Scenario {
+            name: "account pools: flume prompt of a review naming no program, its intent's last program other with other-1 usable, holds other's way to stop short, writing no held state, affinity or account document",
+            cites: &["29", "119", "173"],
+            run: the_preview_of_a_stage_on_the_last_program,
         },
     ]
 }
@@ -1080,8 +1141,10 @@ fn of_other(name: &str) -> Account {
 
 /// `other` bound to the fake agent; a fill-first pool `work` of agent-1,
 /// bounded at `bound`, agent-2, other-1 and other-2, the host's own; and
-/// the repository's kinds `two`, whose code runs `agent` and whose review
-/// runs `other`, and `check`, whose one stage, review, runs `other`.
+/// the repository's kinds `two`, whose code names `agent` and whose review
+/// names `other`, and `check`, whose one stage, review, names `other`.
+/// Each stage names its program, since on a pool of two programs a stage
+/// naming none runs the program its account names (173).
 pub fn two_programs(world: &World, bound: Option<u32>) {
     world.resolver.bind_agent("other", world.agent.clone());
     pool(
@@ -1096,22 +1159,19 @@ pub fn two_programs(world: &World, bound: Option<u32>) {
         ],
     );
     world.host.set_host_pool(Some("work"));
-    let mut review = stage("review", Some(Deliverable::Commits), "{{brief}}");
-    review.agents = vec![Settings {
-        program: Some("other".into()),
-        ..Settings::default()
-    }];
+    let named = |name: &str, program: &str| {
+        let mut named = stage(name, Some(Deliverable::Commits), "{{brief}}");
+        named.agents = vec![Settings {
+            program: Some(program.into()),
+            ..Settings::default()
+        }];
+        named
+    };
+    let (code, review) = (named("code", "agent"), named("review", "other"));
     world.kinds.set_kinds(
         REPOSITORY,
         vec![
-            kind(
-                "two",
-                false,
-                vec![
-                    stage("code", Some(Deliverable::Commits), "{{brief}}"),
-                    review.clone(),
-                ],
-            ),
+            kind("two", false, vec![code, review.clone()]),
             kind("check", false, vec![review]),
         ],
     );
@@ -1301,6 +1361,7 @@ fn written_before(
             gone: None,
             pool: Some("work".into()),
             account: Some(account.into()),
+            last: None,
         }),
     );
 }
@@ -3226,5 +3287,710 @@ fn every_account_spent_at_a_lost_talks_retry(_: &()) -> Outcome {
         (by("work-1", AccountFrom::Conversation), Some("s-1".into())),
         "talk's account once work-1's reset passed and the session it resumes"
     );
+    Ok(())
+}
+
+/// A fake agent of its own bound to `other`, so `agent` and `other`
+/// answer apart; the host's own fill-first pool `work` of `accounts`; and
+/// the repository's kind `review`, landing nothing, whose one stage,
+/// review, names no program, its kind's agents given `agents` (173).
+fn a_pool_of_two_programs(
+    world: &World,
+    accounts: Vec<Account>,
+    agents: Settings,
+) -> Arc<FakeAgent> {
+    let other = Arc::new(FakeAgent::new(world.terminal.clone()));
+    world.resolver.bind_agent("other", other.clone());
+    pool(world, "work", Strategy::FillFirst, accounts);
+    world.host.set_host_pool(Some("work"));
+    let mut review = kind(
+        "review",
+        false,
+        vec![stage("review", Some(Deliverable::Commits), "{{brief}}")],
+    );
+    review.agents.every_stage = agents;
+    world.kinds.set_kinds(REPOSITORY, vec![review]);
+    other
+}
+
+/// The program the current start of the stage `stage` of the place `id`
+/// runs, as held and as status gives where it came from.
+fn program_of(world: &World, id: &PlaceId, stage: &str) -> Result<(String, Option<Given>), String> {
+    let start = world
+        .held(id)
+        .ok_or("no held state")?
+        .stages
+        .into_iter()
+        .find(|held| held.name == stage)
+        .and_then(|held| held.start)
+        .ok_or(format!("{stage} has no start"))?;
+    Ok((start.program, start.from.get("program").cloned()))
+}
+
+/// The program `program` as an account names it.
+fn from_account(program: &str) -> (String, Option<Given>) {
+    (
+        program.to_string(),
+        Some(Given {
+            layer: Layer::Account,
+            value: program.into(),
+            file: None,
+        }),
+    )
+}
+
+/// The account-pools spec's scenario "A mode on a pool of two programs"
+/// (32, 144, 169, 173, S71).
+fn s71_a_mode_on_a_pool_of_two_programs(_: &()) -> Outcome {
+    let world = World::new();
+    let other = a_pool_of_two_programs(
+        &world,
+        vec![account("agent-1", Some(1)), of_other("other-1")],
+        Settings {
+            mode: Some(ModeSetting::Flume(Mode::Edits)),
+            ..Settings::default()
+        },
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    world.agent.own_mode("own-auto");
+    other.map_mode(Mode::Edits, "other-edits");
+    let edits = Some(Given {
+        layer: Layer::Kind,
+        value: "edits".into(),
+        file: None,
+    });
+    let first = of_the_surfaces(&world, "review", "a", None)?;
+    let second = of_the_surfaces(&world, "review", "b", None)?;
+    for (id, name, account, program, value) in [
+        (&first, "a", "agent-1", "agent", "edit-files"),
+        (&second, "b", "other-1", "other", "other-edits"),
+    ] {
+        ensure_eq!(
+            account_of(&world, id, "review"),
+            on("work", account),
+            "{name}'s review's account"
+        );
+        ensure_eq!(
+            program_of(&world, id, "review")?,
+            from_account(program),
+            "{name}'s review's program"
+        );
+        ensure_eq!(
+            super::agent_modes::passed(&world, &World::identity("review", name, "review", 1))?,
+            Some(value.to_string()),
+            "{name}'s review's mode passed"
+        );
+        ensure_eq!(
+            super::agent_modes::mode_from(&world, id)?,
+            edits.clone(),
+            "{name}'s review's mode in status"
+        );
+    }
+    world.host.set_settings(
+        None,
+        "review",
+        KindSettings {
+            every_stage: Settings {
+                mode: Some(ModeSetting::Programs(BTreeMap::from([(
+                    "agent".to_string(),
+                    "own-auto".to_string(),
+                )]))),
+                ..Settings::default()
+            },
+            ..KindSettings::default()
+        },
+    );
+    let third = of_the_surfaces(&world, "review", "c", None)?;
+    ensure_eq!(
+        world.stage_state(&third, "review"),
+        Some(StageState::WaitingForRoom),
+        "the third review while agent-1 is full, other-1 unable to run it"
+    );
+    world.commit("review/a", &["fix.rs"]);
+    world.settle(&first);
+    world.engine().settle(None);
+    ensure!(
+        world
+            .stage_state(&third, "review")
+            .is_some_and(StageState::running),
+        "the third review once agent-1 has room: {:?}",
+        world.stage_state(&third, "review")
+    );
+    ensure_eq!(
+        account_of(&world, &third, "review"),
+        on("work", "agent-1"),
+        "the third review's account"
+    );
+    ensure_eq!(
+        super::agent_modes::passed(&world, &World::identity("review", "c", "review", 1))?,
+        Some("own-auto".to_string()),
+        "the third review's mode passed"
+    );
+    ensure_eq!(
+        super::agent_modes::mode_from(&world, &third)?,
+        Some(Given {
+            layer: Layer::HostKind,
+            value: "{ agent = \"own-auto\" }".into(),
+            file: None,
+        }),
+        "the third review's mode in status"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "A model only one program takes"
+/// (172, 173).
+fn a_model_only_one_program_takes(_: &()) -> Outcome {
+    let world = World::new();
+    let other = a_pool_of_two_programs(
+        &world,
+        vec![of_other("other-1"), account("agent-1", None)],
+        Settings {
+            model: Some("large".into()),
+            ..Settings::default()
+        },
+    );
+    other.take_no_model();
+    let id = of_the_surfaces(&world, "review", "a", None)?;
+    ensure_eq!(
+        account_of(&world, &id, "review"),
+        on("work", "agent-1"),
+        "the review's account"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("agent"),
+        "the review's program"
+    );
+    let command =
+        super::agent_settings::opened(&world, &World::identity("review", "a", "review", 1))?;
+    ensure!(
+        command
+            .args
+            .windows(2)
+            .any(|pair| pair == ["--model", "large"]),
+        "the review's model: {:?}",
+        command.args
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "A program no profile binds" (105,
+/// 173).
+fn a_program_no_profile_binds(_: &()) -> Outcome {
+    let world = World::new();
+    a_pool_of_two_programs(
+        &world,
+        vec![
+            Account {
+                program: "nothing-here".into(),
+                ..account("nobody-1", None)
+            },
+            account("agent-1", None),
+        ],
+        Settings::default(),
+    );
+    let id = of_the_surfaces(&world, "review", "a", None)?;
+    ensure_eq!(
+        account_of(&world, &id, "review"),
+        on("work", "agent-1"),
+        "the review's account"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("agent"),
+        "the review's program"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "Effort and own settings only one
+/// program takes" (173, 196, 197).
+fn effort_and_own_settings_only_one_program_takes(_: &()) -> Outcome {
+    let world = World::new();
+    a_pool_of_two_programs(
+        &world,
+        vec![of_other("other-1"), account("agent-1", None)],
+        Settings {
+            effort: Some("high".into()),
+            programs: BTreeMap::from([(
+                "agent".to_string(),
+                ProgramSettings {
+                    file: None,
+                    settings: BTreeMap::from([("tips".to_string(), serde_json::json!(false))]),
+                },
+            )]),
+            ..Settings::default()
+        },
+    );
+    world.agent.take_efforts(&["high"]);
+    world.agent.take_own();
+    let id = of_the_surfaces(&world, "review", "a", None)?;
+    ensure_eq!(
+        account_of(&world, &id, "review"),
+        on("work", "agent-1"),
+        "the review's account"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("agent"),
+        "the review's program"
+    );
+    let command =
+        super::agent_settings::opened(&world, &World::identity("review", "a", "review", 1))?;
+    ensure!(
+        command
+            .args
+            .windows(2)
+            .any(|pair| pair == ["--effort", "high"]),
+        "the review's effort: {:?}",
+        command.args
+    );
+    let agent = world.status(&id)?.agent.ok_or("no agent")?;
+    ensure_eq!(
+        agent
+            .settings
+            .from
+            .get("programs.agent.settings.tips")
+            .map(|given| given.layer),
+        Some(Layer::Kind),
+        "the own setting given for agent, passed"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "No pool" (32, 144, 173).
+fn a_stage_naming_no_program_on_no_pool(_: &()) -> Outcome {
+    let world = World::new();
+    let id = fix_in(&world, None, "one")?;
+    ensure!(
+        world
+            .stage_state(&id, "code")
+            .is_some_and(StageState::running),
+        "the code did not start: {:?}",
+        world.stage_state(&id, "code")
+    );
+    ensure_eq!(account_of(&world, &id, "code"), None, "the code's account");
+    ensure_eq!(
+        program_of(&world, &id, "code")?,
+        (
+            "agent".to_string(),
+            Some(Given {
+                layer: Layer::Default,
+                value: "agent".into(),
+                file: None,
+            })
+        ),
+        "the code's program"
+    );
+    Ok(())
+}
+
+/// A fake agent of its own bound to `other`; the host's own fill-first
+/// pool `work` of `accounts`; and the repository's kind `pair`, landing
+/// nothing, whose code names `other` and whose review names no program,
+/// its agent given `review` (147, 173).
+fn a_code_on_other(world: &World, accounts: Vec<Account>, review: Settings) -> Arc<FakeAgent> {
+    let other = Arc::new(FakeAgent::new(world.terminal.clone()));
+    world.resolver.bind_agent("other", other.clone());
+    pool(world, "work", Strategy::FillFirst, accounts);
+    world.host.set_host_pool(Some("work"));
+    let mut code = stage("code", Some(Deliverable::Commits), "{{brief}}");
+    code.agents = vec![Settings {
+        program: Some("other".into()),
+        ..Settings::default()
+    }];
+    let mut second = stage("review", Some(Deliverable::Commits), "{{brief}}");
+    second.agents = vec![review];
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![kind("pair", false, vec![code, second])]);
+    other
+}
+
+/// The place `id`'s code delivered on its branch `pair/<name>` and its
+/// review started.
+fn pairs_code_delivered(world: &World, id: &PlaceId, name: &str) -> Outcome {
+    world.commit(&format!("pair/{name}"), &["fix.rs"]);
+    world.settle(id);
+    ensure!(
+        world
+            .stage_state(id, "review")
+            .is_some_and(StageState::running),
+        "{name}'s review did not start: {:?}",
+        world.stage_state(id, "review")
+    );
+    Ok(())
+}
+
+/// The intent's affinity as `kept` reads it for `agent` and `other`, its
+/// last program and its moves.
+type Kept = (
+    Option<(String, String)>,
+    Option<(String, String)>,
+    Option<String>,
+    Vec<AccountMove>,
+);
+
+fn kept_with_last(world: &World, intent: &IntentKey) -> Result<Kept, String> {
+    let held = affinity(world, intent).ok_or("no affinity")?;
+    Ok((
+        kept(world, intent, "agent"),
+        kept(world, intent, "other"),
+        held.last,
+        held.moves,
+    ))
+}
+
+/// The account-pools spec's scenario "A stage that names no program keeps
+/// to the last program" (147, 173).
+fn a_stage_that_names_no_program_keeps_to_the_last_program(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings::default(),
+    );
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("other-1", AccountFrom::Affinity),
+        "the review"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("other"),
+        "the review's program"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?,
+        (None, on("work", "other-1"), Some("other".into()), vec![]),
+        "the affinity"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The last program cannot run the
+/// stage" (147, 173).
+fn the_last_program_cannot_run_the_stage(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings {
+            mode: Some(ModeSetting::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "edits".to_string(),
+            )]))),
+            ..Settings::default()
+        },
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("agent"),
+        "the review's program"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?,
+        (
+            on("work", "agent-1"),
+            on("work", "other-1"),
+            Some("agent".into()),
+            vec![]
+        ),
+        "the affinity"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The last program's account is
+/// spent" (147, 173).
+fn the_last_programs_account_is_spent(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![
+            account("agent-1", None),
+            of_other("other-1"),
+            of_other("other-2"),
+        ],
+        Settings::default(),
+    );
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    let intent = intent_of(&world, &id)?;
+    ensure_eq!(
+        kept_with_last(&world, &intent)?.2,
+        Some("other".to_string()),
+        "the last program before other-1 is spent"
+    );
+    spent(&world, "work", "other-1", world.host.now() + 3600);
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent)?,
+        (
+            on("work", "agent-1"),
+            on("work", "other-1"),
+            Some("agent".into()),
+            vec![]
+        ),
+        "the affinity"
+    );
+    Ok(())
+}
+
+/// Settings giving `mode = { agent = "edits" }`, which names no entry for
+/// `other`, so `agent` alone can run the stage (169, 173).
+fn edits_for_agent_alone() -> Settings {
+    Settings {
+        mode: Some(ModeSetting::Programs(BTreeMap::from([(
+            "agent".to_string(),
+            "edits".to_string(),
+        )]))),
+        ..Settings::default()
+    }
+}
+
+/// The refusal names the stage `stage`, which names no program, the pool
+/// `work` and `other`, its mode's table naming no entry for `other` (145,
+/// 173).
+fn no_program_can_run(refusal: &str, stage: &str) -> Outcome {
+    ensure!(
+        refusal.contains(&format!("the stage `{stage}` names no program"))
+            && refusal.contains("pool `work`")
+            && refusal.contains("`other` cannot")
+            && refusal.contains("names no entry for `other`"),
+        "the refusal does not name {stage}, the pool and other with why: {refusal}"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The only account that can run it is
+/// spent" (145, 173).
+fn the_only_account_that_can_run_it_is_spent(_: &()) -> Outcome {
+    let world = World::new();
+    a_pool_of_two_programs(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        edits_for_agent_alone(),
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let fifteen = world.host.now() + 2 * 3600;
+    spent(&world, "work", "agent-1", fifteen);
+    let id = of_the_surfaces(&world, "review", "a", None)?;
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::WaitingForRoom),
+        "the review while agent-1 is spent"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    let host = host(&world)?;
+    ensure_eq!(
+        host.queue.first().map(|queued| queued.wants.clone()),
+        Some(RoomWanted::Pool {
+            pool: "work".into(),
+            until: Some(fifteen)
+        }),
+        "what the review waits on"
+    );
+    world.engine().settle(None);
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::WaitingForRoom),
+        "the review at the next settle"
+    );
+    world.host.advance(2 * 3600 + 1);
+    world.engine().settle(None);
+    ensure_eq!(
+        account_of(&world, &id, "review"),
+        on("work", "agent-1"),
+        "the review once agent-1's reset passed"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The account that could run it
+/// dropped before a later start" (32, 145, 173).
+fn the_account_that_could_run_it_dropped(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        edits_for_agent_alone(),
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![of_other("other-1")],
+    );
+    world.terminal.log.clear();
+    world.commit("pair/a", &["fix.rs"]);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::Refused),
+        "the review once code delivered"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    let status = world.status(&id)?;
+    let refusal = status.stages[1]
+        .refused_setting
+        .clone()
+        .ok_or("no refusal given")?;
+    no_program_can_run(&refusal, "review")?;
+    let waiting = status.waiting_on.ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage.as_deref(), waiting.why),
+        (Act::Retry, Some("review"), Waits::Refused),
+        "the move the place waits on"
+    );
+    ensure!(
+        host(&world)?.queue.is_empty(),
+        "the refused review is in the queue"
+    );
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![account("agent-1", None), of_other("other-1")],
+    );
+    let answer = world
+        .engine()
+        .retry(&id, Retry::Stage("review".into()), None, false);
+    ensure!(answer.refusal().is_none(), "the retry: {answer:?}");
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review once the pool holds agent-1 again"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "A launch no account can run" (4,
+/// 145, 173; core.8).
+fn a_launch_no_account_can_run(_: &()) -> Outcome {
+    let world = World::new();
+    world.resolver.bind_agent("other", world.agent.clone());
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![of_other("other-1")],
+    );
+    stream_on(&world, "trial", Some("work"), 0);
+    let mut code = stage("code", Some(Deliverable::Commits), "{{brief}}");
+    code.agents = vec![edits_for_agent_alone()];
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![kind("solo", false, vec![code])]);
+    let reason = refused(&world.engine.launch(&Launch {
+        stream: Some("trial".into()),
+        ..launch("solo", "a", Some("x"))
+    }))?;
+    no_program_can_run(&reason, "code")?;
+    ensure_eq!(world.place.log.count("make"), 0, "places made");
+    ensure!(
+        world.held(&World::id("solo", "a")).is_none(),
+        "held state written"
+    );
+    ensure_eq!(
+        world.terminal.log.count("starts"),
+        0,
+        "the terminal asked at the launch"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The preview of a stage on the last
+/// program" (29, 119, 173).
+fn the_preview_of_a_stage_on_the_last_program(_: &()) -> Outcome {
+    let world = World::new();
+    let other = a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings::default(),
+    );
+    other.stop_short_words("to stop short, tell `other` so");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?.2,
+        Some("other".to_string()),
+        "the intent's last program"
+    );
+    world.store.log.clear();
+    let text = match world.engine().prompt(&id, "review") {
+        Answer::Prompt { text, .. } => text,
+        other => return Err(format!("the prompt answered {other:?}")),
+    };
+    ensure!(
+        text.contains("to stop short, tell `other` so") && !text.contains("flume needs --found"),
+        "the preview does not hold other's way to stop short: {text}"
+    );
+    let written: Vec<String> = world
+        .store
+        .log
+        .calls()
+        .into_iter()
+        .filter(|call| {
+            [
+                "write",
+                "remove",
+                "write_host",
+                "remove_host",
+                "made",
+                "write_file",
+            ]
+            .contains(&call.split(' ').next().unwrap_or_default())
+        })
+        .collect();
+    ensure_eq!(written, Vec::<String>::new(), "what the preview wrote");
     Ok(())
 }

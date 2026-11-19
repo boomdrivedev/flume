@@ -5,7 +5,10 @@
 //! hook's input on standard input and the agent's environment, over a
 //! fixture transcript on a scratch state directory. No Claude Code runs:
 //! the test's own process stands in for the program the hook runs under,
-//! a scratch `claude` on the hook's `PATH` naming it (161).
+//! a scratch `claude` on the hook's `PATH` naming it (161). The same
+//! binary's status gives a host's Claude Code accounts' configuration
+//! homes, each its `CLAUDE_CONFIG_DIR` read against the scratch `HOME`
+//! (56, C.4).
 
 use super::agent_claude::fixture;
 use crate::common::*;
@@ -2057,4 +2060,51 @@ fn hook_usage_outside_a_session_flume_started_writes_nothing() {
         json!([{"kind": "five_hour", "percentUsed": 42}]),
     );
     assert_eq!(host.state(), before, "hook usage wrote flume's state");
+}
+
+#[test]
+fn each_claude_code_accounts_home_in_status() {
+    // The agent-profile spec's scenario "Claude Code accounts' homes in
+    // the built binary's status" (56, C.4; core.30): a host's pool of two
+    // Claude Code accounts, work-1 whose variables give `CLAUDE_CONFIG_DIR`
+    // and a token and work-2 whose give neither; status gives work-1's
+    // home read against the host user's `HOME`, work-2's `null`, the
+    // person's form names work-1's home under its line, and neither gives
+    // the token.
+    let host = Host::new("claude-homes");
+    let token = "a-token-of-the-claude-homes-test";
+    std::fs::write(
+        host.path("config/flume/config.toml"),
+        format!(
+            "[pools.work]\nstrategy = \"fill-first\"\naccounts = [\n  {{ name = \"work-1\", program = \"claude\", env = {{ CLAUDE_CONFIG_DIR = \"~/.claude-work-1\", CLAUDE_CODE_OAUTH_TOKEN = \"{token}\" }} }},\n  {{ name = \"work-2\", program = \"claude\" }},\n]\n\n[streams.work]\npool = \"work\"\n"
+        ),
+    )
+    .expect("the host's configuration");
+    let home = host.path("home").join(".claude-work-1");
+    let home = home.to_string_lossy();
+
+    let ran = host.flume(&["status", "--json"], &[], "");
+    assert_eq!(ran.code, 0, "{}", ran.out);
+    assert!(!ran.out.contains(token), "{}", ran.out);
+    let json = ran.json();
+    let accounts = &json["status"]["host"]["pools"][0]["accounts"];
+    assert_eq!(accounts[0]["name"], json!("work-1"), "{json}");
+    assert_eq!(accounts[0]["home"], json!(home), "{json}");
+    assert_eq!(accounts[1]["name"], json!("work-2"), "{json}");
+    assert_eq!(accounts[1].get("home"), Some(&Value::Null), "{json}");
+
+    let ran = host.flume(&["status"], &[], "");
+    assert_eq!(ran.code, 0, "{}", ran.out);
+    assert!(!ran.out.contains(token), "{}", ran.out);
+    let lines: Vec<&str> = ran.out.lines().collect();
+    let work_1 = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("work-1 (claude)"))
+        .unwrap_or_else(|| panic!("no line of work-1: {}", ran.out));
+    assert_eq!(
+        lines.get(work_1 + 1).map(|line| line.trim()),
+        Some(format!("configuration home {home}").as_str()),
+        "{}",
+        ran.out
+    );
 }

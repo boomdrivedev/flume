@@ -17,7 +17,7 @@
 //! stream's the host's; a host that states no bound, in a stream that
 //! states none, has no queue.
 
-use crate::accounts::{AccountRoom, PoolRoom, Reading, Usable, THRESHOLD};
+use crate::accounts::{AccountRoom, PoolRoom, Programs, Reading, Usable, THRESHOLD};
 use crate::answer::and_list;
 use crate::live::waits_on_session;
 use crate::spent::account_document;
@@ -564,9 +564,11 @@ pub(crate) struct Waiting {
     pub stream_priority: i64,
     /// The label its place resolves to as the queue reads it (180).
     pub label: Option<String>,
-    /// The program its agent resolves to, by which its pool's accounts
-    /// are usable (144).
-    pub program: Option<String>,
+    /// The programs that can run it, by which its pool's accounts are
+    /// usable: the one a layer names, or, where none above flume's default
+    /// does, those of its pool's accounts that can run it; none where it
+    /// has no pool or its settings name no program (144, 173).
+    pub programs: Option<Vec<String>>,
     pub priority: i64,
     pub order: u64,
     pub since: Option<Seconds>,
@@ -587,12 +589,13 @@ impl Waiting {
     }
 
     /// Whether the room its claim would refuse it for has no bearing: its
-    /// pool holds an account of its program, its stream's labels are at
-    /// no fault, its stream's word for where it opens refuses it not and
-    /// its stream's multiplexer runs agents (4, 145, 182, 190, 199).
+    /// pool holds an account of a program that can run it, its stream's
+    /// labels are at no fault, its stream's word for where it opens
+    /// refuses it not and its stream's multiplexer runs agents (4, 145,
+    /// 173, 182, 190, 199).
     fn runs(&self, queue: &Queue) -> bool {
         let stream = queue.stream(&self.stream);
-        queue.runs(&self.stream, self.program.as_deref())
+        queue.runs(&self.stream, self.programs.as_deref())
             && stream.fault.is_none()
             && !self.session_refused
             && stream.uncarried.is_none()
@@ -600,7 +603,11 @@ impl Waiting {
 
     /// The room it is short of now, none where it could start (70).
     fn wants(&self, queue: &Queue) -> Option<RoomWanted> {
-        queue.wants(&self.stream, self.label.as_deref(), self.program.as_deref())
+        queue.wants(
+            &self.stream,
+            self.label.as_deref(),
+            self.programs.as_deref(),
+        )
     }
 }
 
@@ -668,31 +675,33 @@ impl Queue {
         }
     }
 
-    /// Whether a stage of `stream` whose agent runs `program` can start on
+    /// Whether a stage of `stream` that `programs` can run can start on
     /// its pool as the host's configuration declares it now: the pool
-    /// holds an account of that program, spent, full or neither; a stream
-    /// with no pool, a pool the host does not declare, or no program, can
-    /// (145).
-    pub fn runs(&self, stream: &str, program: Option<&str>) -> bool {
+    /// holds an account of one of them, spent, full or neither; a stream
+    /// with no pool, a pool the host does not declare, or no programs
+    /// read, can (145, 173).
+    pub fn runs(&self, stream: &str, programs: Option<&[String]>) -> bool {
         let pool = self.pool_of(stream).and_then(|pool| self.pools.get(pool));
-        match (pool, program) {
-            (Some(pool), Some(program)) => pool.runs(program),
+        match (pool, programs) {
+            (Some(pool), Some(programs)) => pool.runs(programs),
             _ => true,
         }
     }
 
-    /// The room a stage of `stream` and `label` whose agent runs
-    /// `program` is short of now, none where the host and the stream have
-    /// room and an account of its pool is usable: its stream's bound
+    /// The room a stage of `stream` and `label` that `programs` can run is
+    /// short of now, none where the host and the stream have room and an
+    /// account of one of them in its pool is usable: its stream's bound
     /// first, then its stream's room past what its other labels hold
-    /// reserved, then its pool's accounts, then the host's (70, 143, 145, 181). A
-    /// pool that holds no account of `program` gives no want: no room
-    /// could start the stage, and its claim refuses it (4, 32).
+    /// reserved, then its pool's accounts, the soonest time one is back
+    /// counting only accounts of them, then the host's (70, 143, 145, 173,
+    /// 181). A pool that holds no account of any of `programs` gives no
+    /// want: no room could start the stage, and its claim refuses it (4,
+    /// 32).
     pub fn wants(
         &self,
         stream: &str,
         label: Option<&str>,
-        program: Option<&str>,
+        programs: Option<&[String]>,
     ) -> Option<RoomWanted> {
         let of = self.stream(stream);
         if let (Some(0), Some(bound)) = (of.room(), of.bound) {
@@ -709,8 +718,9 @@ impl Queue {
                 });
             }
         }
-        if let (Some(pool), Some(program)) = (self.pool_of(stream), program) {
-            if let Some(Usable::None(until)) = self.pools.get(pool).map(|room| room.usable(program))
+        if let (Some(pool), Some(programs)) = (self.pool_of(stream), programs) {
+            if let Some(Usable::None(until)) =
+                self.pools.get(pool).map(|room| room.usable(programs))
             {
                 return Some(RoomWanted::Pool {
                     pool: pool.to_string(),
@@ -721,23 +731,23 @@ impl Queue {
         (self.room() == Some(0)).then_some(RoomWanted::Host)
     }
 
-    /// Whether a stage of `place` in `stream` and `label` whose agent runs
-    /// `program` at `priority` due to start waits: the host or its stream
+    /// Whether a stage of `place` in `stream` and `label` that `programs`
+    /// can run at `priority` due to start waits: the host or its stream
     /// is full, the room its stream's other labels hold reserved is all it has
-    /// left, its pool has no usable account, or a stage of another place
-    /// waits that stands before it in the order stages start and could
-    /// start now, its pool holding an account of its program and no
-    /// process last read running the conversation it would carry (70, 143,
-    /// 145, 181, 207; core.26).
+    /// left, its pool has no usable account of them, or a stage of another
+    /// place waits that stands before it in the order stages start and
+    /// could start now, its pool holding an account of a program that can
+    /// run it and no process last read running the conversation it would
+    /// carry (70, 143, 145, 173, 181, 207; core.26).
     pub fn must_wait(
         &self,
         place: &PlaceId,
         stream: &str,
         label: Option<&str>,
-        program: Option<&str>,
+        programs: Option<&[String]>,
         priority: i64,
     ) -> bool {
-        if self.wants(stream, label, program).is_some() {
+        if self.wants(stream, label, programs).is_some() {
             return true;
         }
         let others: Vec<&Waiting> = self
@@ -954,8 +964,37 @@ impl Engine {
                     .filter(|(_, stage)| stage.state == StageState::WaitingForRoom)
                     .map(move |(index, stage)| {
                         let room = stage.room.clone().unwrap_or_default();
-                        let settings = self
-                            .resolve(&held.place, held.declared(index))
+                        let declared = held.declared(index);
+                        let resolved = self.resolve(&held.place, declared, None).ok();
+                        // The programs that can run it, read once here: the
+                        // one a layer names, or, where none above flume's
+                        // default does, its pool's that can run it; none
+                        // where its settings cannot be read, its claim
+                        // refusing it (173; design 7).
+                        let pool = as_read
+                            .pool_of(&stream)
+                            .and_then(|pool| as_read.pools.get(pool));
+                        let programs = match (pool, &resolved) {
+                            (None, _) | (_, None) => None,
+                            (Some(_), Some(resolved)) if resolved.names_program() => resolved
+                                .settings
+                                .program
+                                .clone()
+                                .map(|program| vec![program]),
+                            (Some(pool), Some(_)) => Some(
+                                Programs::of_pool(
+                                    &self.runs_on(
+                                        &held.place,
+                                        declared,
+                                        pool.accounts
+                                            .iter()
+                                            .map(|room| room.account.program.as_str()),
+                                    ),
+                                )
+                                .able,
+                            ),
+                        };
+                        let settings = resolved
                             .map(|resolved| resolved.settings)
                             .unwrap_or_default();
                         let session_refused = as_read
@@ -968,7 +1007,7 @@ impl Engine {
                             stream: stream.clone(),
                             stream_priority,
                             label: self.label_of(&held.place).map(|label| label.name),
-                            program: settings.program,
+                            programs,
                             priority: held.priority,
                             order: room.order,
                             since: stage.since,
@@ -1162,15 +1201,20 @@ impl Engine {
                 accounts: pool
                     .accounts
                     .iter()
-                    .map(|room| AccountStatus {
-                        name: room.account.name.clone(),
-                        program: room.account.program.clone(),
-                        running: room.running,
-                        bound: room.account.agents,
-                        spent_until: room.spent_until,
-                        spent_unread: room.spent_unread.clone(),
-                        reading: room.reading_status(),
-                        past: room.past(),
+                    .map(|room| {
+                        let (home, home_unread) = self.account_home(&room.account);
+                        AccountStatus {
+                            name: room.account.name.clone(),
+                            program: room.account.program.clone(),
+                            running: room.running,
+                            bound: room.account.agents,
+                            spent_until: room.spent_until,
+                            spent_unread: room.spent_unread.clone(),
+                            reading: room.reading_status(),
+                            past: room.past(),
+                            home,
+                            home_unread,
+                        }
                     })
                     .collect(),
             })

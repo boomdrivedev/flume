@@ -101,7 +101,14 @@
 //! through `flume relay`, its first line a screen, the text written to its
 //! input shown on a later screen, its input's close ending it by its
 //! caller, the place's held state unwritten and no file of flume's state
-//! holding what was typed (107, 221, 222, C.5).
+//! holding what was typed (107, 221, 222, C.5); and amp, a program with no
+//! profile of its own, a stand-in in the walk's `bin` under the pinned
+//! herdr, runs in the process flume's launcher became, takes its prompt on
+//! herdr's word that its turn began, and, once herdr reads it idle at two
+//! settles a minute or more apart, status naming received, asking and own
+//! work degraded between them, its fix lands, while a fix asking amp a
+//! model is refused naming it with nothing made (S73; 35, 38, 170, 171,
+//! 172, C.4, C.5).
 
 use super::walk::*;
 use flume::profiles::agent::claude::carry::{UNREACHED, UNREADABLE};
@@ -1705,11 +1712,12 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
     // fixes land. A fix then starts on the second. Its agent reports past
     // ninety percent in its 5-hour window, and the intent's next fix starts
     // on the first, the intent moving off the second for `claude` with the
-    // window and its reset. Status gives the pool's threshold, each reading
-    // with when flume took it and the agent and session that reported it,
-    // and the second past its threshold, in the JSON form and the person's,
-    // with no path of an account's document; the fix already running on
-    // the second goes on and lands under its account.
+    // window and its reset. Status gives the pool's threshold, each
+    // account's configuration home, its scratch `CLAUDE_CONFIG_DIR` (56,
+    // C.4), each reading with when flume took it and the agent and session
+    // that reported it, and the second past its threshold, in the JSON form
+    // and the person's, with no path of an account's document; the fix
+    // already running on the second goes on and lands under its account.
     let walk = Walk::new("walk-most-left");
     let first = walk.account().to_path_buf();
     let second = walk.account_folder("account-2");
@@ -1858,9 +1866,14 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         "{pool}"
     );
     let accounts = &pool["accounts"];
+    let (first_home, second_home) = (first.display().to_string(), second.display().to_string());
     assert_eq!(
-        (&accounts[0]["name"], &accounts[0]["running"]),
-        (&json!("stand-in-1"), &json!(1)),
+        (
+            &accounts[0]["name"],
+            &accounts[0]["running"],
+            &accounts[0]["home"]
+        ),
+        (&json!("stand-in-1"), &json!(1), &json!(first_home)),
         "{pool}"
     );
     assert_eq!(
@@ -1879,8 +1892,12 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
     );
     assert!(accounts[0].get("past").is_none(), "{pool}");
     assert_eq!(
-        (&accounts[1]["name"], &accounts[1]["running"]),
-        (&json!("stand-in-2"), &json!(1)),
+        (
+            &accounts[1]["name"],
+            &accounts[1]["running"],
+            &accounts[1]["home"]
+        ),
+        (&json!("stand-in-2"), &json!(1), &json!(second_home)),
         "{pool}"
     );
     let session = accounts[1]["reading"]["session"].clone();
@@ -1909,8 +1926,8 @@ fn a_most_left_pool_starts_on_the_account_with_most_left_and_none_past_its_thres
         coding.as_str().expect("one's agent"),
     );
     for lines in [
-        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      five_hour 40% (resets {reset}) · seven_day 55% · taken at {read} from {warmed}\n"),
-        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      five_hour 93% (resets {reset}) · seven_day 30% · taken at {past} from {coding}\n      past its threshold in five_hour until {reset}\n"),
+        format!("  pool stand-in, most-left, threshold 90%:\n    stand-in-1 (claude): 1 agents running, no bound of its own\n      configuration home {first_home}\n      five_hour 40% (resets {reset}) · seven_day 55% · taken at {read} from {warmed}\n"),
+        format!("    stand-in-2 (claude): 1 agents running, no bound of its own\n      configuration home {second_home}\n      five_hour 93% (resets {reset}) · seven_day 30% · taken at {past} from {coding}\n      past its threshold in five_hour until {reset}\n"),
         format!("stand-in-2 past its threshold in five_hour until {reset}"),
     ] {
         assert!(said.contains(&lines), "{lines} in {said}");
@@ -5013,4 +5030,122 @@ fn repository_id(host: &Walk) -> String {
         .output()
         .expect("git runs");
     flume_core::repository_id(String::from_utf8_lossy(&common.stdout).trim())
+}
+
+/// amp as S73's walkthrough runs it: a stand-in that tells herdr it is
+/// idle, reads its prompt with no line limit and ctrl+c read as a key, as
+/// an agent's own input does, keeps each line it read in `log`, and on the
+/// first tells herdr it works, commits `parser.rs` in its place and tells
+/// herdr it is idle again (C.5).
+fn amp_stand_in(log: &Path) -> String {
+    format!(
+        r#"#!/bin/sh
+pane="$HERDR_PANE_ID"
+report() {{
+  env -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_ENV \
+    "$HERDR_BIN_PATH" pane report-agent "$pane" --source flume-test --agent amp --state "$1" >/dev/null 2>&1
+}}
+stty -icanon -isig min 1 2>/dev/null
+report idle
+took=
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> '{log}'
+  if [ -z "$took" ]; then
+    took=1
+    report working
+    sleep 1
+    printf 'fn parse() {{}}\n' > parser.rs
+    git add -A && git -c user.name=amp -c user.email=amp@example.invalid commit --quiet -m 'fix the parser'
+    report idle
+  fi
+done
+"#,
+        log = log.display()
+    )
+}
+
+#[test]
+fn s73_amp_under_herdr_takes_its_prompt_goes_quiet_and_lands() {
+    // S73, the terminal-readings spec's scenario "amp under the pinned
+    // herdr" (35, 38, 170, 171, 172, C.4, C.5): a fix launched with
+    // `--agent program=amp` runs amp under the common profile through
+    // flume's launcher; its prompt is received on herdr's word that the
+    // turn began, its own work read none once herdr reads it idle at two
+    // settles a minute or more apart, and it lands; a fix asking amp a
+    // model is refused naming amp, making nothing.
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+    let host = UnderHerdr::new(
+        Walk::with_its_own_agent("walk-s73"),
+        flume::profiles::terminal::herdr::SESSION,
+    );
+    host.configure("", "");
+    let log = host.repository.scratch.path("amp.log");
+    let amp = host.repository.scratch.path("bin/amp");
+    std::fs::write(&amp, amp_stand_in(&log)).expect("the stand-in for amp");
+    std::fs::set_permissions(&amp, std::fs::Permissions::from_mode(0o755))
+        .expect("the stand-in made runnable");
+    let place = host.launch(
+        "fix@1",
+        "one",
+        &["--brief", "fix the parser", "--agent", "program=amp"],
+    );
+    let status = host.until(&place, "amp took its prompt and is idle", |status| {
+        stage(status, "code")["state"] == "begun"
+            && status["agent"]["state"] == "waiting"
+            && host.repository.scratch.path("amp.log").exists()
+    });
+    assert_eq!(status["agent"]["program"], "amp", "{status}");
+    assert!(
+        status["unsettled"].as_array().is_none_or(Vec::is_empty),
+        "amp read begun otherwise than its start recorded: {status}"
+    );
+    let took = std::fs::read_to_string(&log).expect("what amp read");
+    assert!(took.contains("fix the parser"), "amp read: {took}");
+    host.settle(&place);
+    let between = host.status(&place);
+    assert_eq!(
+        stage(&between, "code")["state"],
+        "begun",
+        "code, a settle after amp went idle: {between}"
+    );
+    let degraded: Vec<&str> = between["agent"]["degraded"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part["part"].as_str())
+        .collect();
+    for part in ["received", "asking", "own_work"] {
+        assert!(
+            degraded.contains(&part),
+            "{part} is not named degraded: {between}"
+        );
+    }
+    std::thread::sleep(Duration::from_secs(61));
+    host.settle(&place);
+    until_landed(&host, &place);
+    assert_eq!(
+        host.on_remote("parser.rs").as_deref(),
+        Some("fn parse() {}\n"),
+        "{}",
+        host.logs()
+    );
+
+    let (answer, refused) = host.flume_ran(&[
+        "launch",
+        "--kind",
+        "fix@1",
+        "--name",
+        "two",
+        "--brief",
+        "fix the printer",
+        "--agent",
+        "program=amp",
+        "--agent",
+        "model=opus",
+    ]);
+    assert!(refused, "a model asked of amp was taken: {answer}");
+    assert!(answer.to_string().contains("amp"), "{answer}");
+    assert!(host.status("fix--two").is_null(), "a place was made");
+    assert!(!host.has_branch("fix/two"), "a branch was made");
 }

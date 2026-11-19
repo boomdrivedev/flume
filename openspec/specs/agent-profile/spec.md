@@ -640,3 +640,53 @@ profile that reads none SHALL give none (217, 128).
 
 - **WHEN** the profile reads a start whose word that it started names the session `s-1`, and a start that has said nothing
 - **THEN** it gives `s-1` for the first and none for the second (217)
+
+### Requirement: Claude Code's profile builds every part
+
+Claude Code's profile SHALL build every part of the agent seam a
+profile may degrade, each from Claude Code's own record or its
+plugin's hooks as C.4 says: received, asking, own work, ended, last
+words, spent, windows, send-back, guard, on-quiet, the mode read back,
+carry and own settings, so status names no part of a Claude Code agent
+degraded and the core reads none of them from its terminal; and it
+SHALL pass the agent seam's parts scenarios (170, 171, 174, C.4).
+
+#### Scenario: Claude Code's parts
+
+- **WHEN** Claude Code's profile is asked its parts
+- **THEN** each of the thirteen is built and none is degraded, and it offers send-back and on-quiet, reports windows and reads its mode back (174, C.4)
+
+#### Scenario: The seam's parts scenarios
+
+- **WHEN** the agent seam's scenarios run against Claude Code's profile
+- **THEN** the parts scenarios pass, each of its answers agreeing with its parts (174)
+
+### Requirement: Claude Code takes every model name
+
+Claude Code's profile SHALL take every name as its model, since its
+release's model names are open, and its command SHALL pass the agent's
+entry by `--model` as written; its program's kind SHALL be `claude`
+(88, 170, 172, C.4).
+
+#### Scenario: A table's entry passed by --model
+
+- **WHEN** the profile is asked of `opus` and of `claude-opus-4-5[1m]`, and gives the command for a stage whose settings hand it the entry `opus` of `{ claude = "opus", codex = "gpt-5.5" }`
+- **THEN** it takes each name, and runs `claude` with `--model opus` and no other model (172, C.4)
+
+### Requirement: Claude Code's configuration home is CLAUDE_CONFIG_DIR
+
+The Claude Code profile SHALL name `CLAUDE_CONFIG_DIR` as the variable
+whose value is an account's configuration home, the folder Claude Code
+keeps its settings and sign-in in, so status gives each Claude Code
+account the `CLAUDE_CONFIG_DIR` its variables give, and none where they
+give none (56, 144, C.4).
+
+#### Scenario: The variable the profile names
+
+- **WHEN** the Claude Code profile is asked which variable names an account's configuration home
+- **THEN** it names `CLAUDE_CONFIG_DIR` (C.4)
+
+#### Scenario: Claude Code accounts' homes in the built binary's status
+
+- **WHEN** a host's pool declares the Claude Code accounts work-1, whose `env` gives `CLAUDE_CONFIG_DIR = "~/.claude-work-1"` and `CLAUDE_CODE_OAUTH_TOKEN`, and work-2, whose `env` gives neither, and `flume status --json` and `flume status` are run with the host user's `HOME` a scratch folder
+- **THEN** the JSON form's `host.pools[0].accounts` give work-1 `home` the scratch folder's `.claude-work-1` and work-2 `home` `null`, the person's form gives `configuration home` with that folder under work-1's line, and neither form gives the token's value (56, C.4; core.30)

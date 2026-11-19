@@ -179,8 +179,9 @@ threshold, and each account with its agents running, its bound, the
 time it stops being spent, the words in which no reset was read while
 it is spent for the hour 146 gives, its reading and whether it is
 fresh, or why it has none, and, while it is past its threshold, the
-window that holds it and until when; and never an account's
-environment's value or a path (56, 144 to 146, 184, 185; core.14).
+window that holds it and until when; and no value of an account's
+environment and no path but its configuration home (56, 144 to 146,
+184, 185, C.4; core.14).
 
 #### Scenario: A pool with a spent account
 
@@ -454,8 +455,8 @@ read; each terminal and session read once per status, and nothing kept
 ### Requirement: Status gives an agent's effort
 
 Status SHALL give the current agent's effort as its layer wrote it,
-with the layer it came from, the value its profile passed, and that it
-was not read back; an agent whose settings give no effort SHALL be given
+with its layer, the program whose table entry it took, the value
+passed, and that it was not read back; none where its settings give
 none. Where the agent's account's environment names the variable its
 program reads over the effort, status SHALL name that variable as
 outranking it, never its value, in the JSON form and the person's (56,
@@ -465,6 +466,11 @@ outranking it, never its value, in the JSON form and the person's (56,
 
 - **WHEN** status is asked of a place whose agent took `xhigh` from `--agent effort=xhigh`
 - **THEN** the agent's settings give the effort `xhigh` from `launch`, passed and not read back, in the JSON and the person's form (S103, 56)
+
+#### Scenario: An effort's table entry
+
+- **WHEN** status is asked of a place whose agent took the `agent` entry of `{ agent = "high", other = "max" }` from `kind`
+- **THEN** the agent's effort reads the table as written from `kind`, the entry `agent` and `high` passed, and the person's form names the entry (56, 197)
 
 #### Scenario: An account's variable that outranks it
 
@@ -644,6 +650,99 @@ core.14).
 - **WHEN** two sessions of a statechart place run
 - **THEN** status gives both agents, each with its identity naming its session, its account and its settings with where each came from, and a simple kind's place gives the same JSON it gave before with an empty list (56, core.14)
 
+### Requirement: Status names each degraded part of an agent
+
+Status SHALL give, with the current agent, each part of the agent seam
+its program's profile does not build, in 171's order, with how flume
+reads it: in the JSON form as `degraded`, each with its `part` and
+`read`, left out where none is, and in the person's form as a line for
+each. It SHALL name no part degraded that the profile builds (56, 170,
+174; core.14).
+
+#### Scenario: A profile that offers no hooks
+
+- **WHEN** status is asked of a place whose fake agent's profile offers no send-back, guard or on-quiet and builds every other part
+- **THEN** the agent's `degraded` gives `send_back`, `guard` and `on_quiet` in that order, each with how flume reads it, and the person's form a line for each, as `send-back degraded: not offered, so it may go quiet with its deliverable missing` (56, 174)
+
+#### Scenario: A profile that builds every part
+
+- **WHEN** status is asked of a place whose agent's profile builds every part
+- **THEN** the agent's JSON holds no `degraded`, and the person's form names no part degraded (56, 174; core.14)
+
+#### Scenario: A profile that reads the five from its terminal
+
+- **WHEN** status is asked of a place whose fake agent reads received, asking, own work, ended and last words from its terminal and builds every other part
+- **THEN** the agent's `degraded` gives `received`, `asking`, `own_work`, `ended` and `last_words` in that order, each with how flume reads it from the terminal, and the person's form a line for each, as `own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then` (56, 171, 174)
+
+### Requirement: Status gives an agent's model
+
+Status SHALL give the current agent's model as its layer wrote it, a
+table of programs as written, with the layer it came from, the program
+whose entry of a table the agent took, none for a name given whole, and
+the name its command passed; an agent whose settings give no model
+SHALL be given none, in the JSON form and the person's (56, 172;
+core.14).
+
+#### Scenario: A model given whole
+
+- **WHEN** status is asked of a place whose agent took `large` from `--agent model=large`
+- **THEN** the agent gives the model `large` from `launch`, no entry and `large` passed, in the JSON and the person's form (56, 172)
+
+#### Scenario: A table's entry
+
+- **WHEN** status is asked of a place whose agent took the `agent` entry of `{ agent = "large", other = "small" }` from `host-kind`
+- **THEN** the agent's model reads the table as written from `host-kind`, the entry `agent` and `large` passed, and the person's form names the entry and the name passed (56, 172)
+
+#### Scenario: No model
+
+- **WHEN** status is asked of a place whose agent's settings give no model
+- **THEN** the JSON form holds no `model` for the agent beyond its settings', and the person's form names none (172)
+
+### Requirement: Status gives each account's configuration home
+
+Status SHALL give each account of a pool its configuration home: the
+value of the variable its program's profile names, its `~` and each
+`$VAR` read against the host user's login environment as a start reads
+the account's `env`; and none where the profile names no variable, the
+account's variables give none or give it empty. The JSON form SHALL
+give `home` on every account, a path or `null` (56, 144, C.4; core.14).
+
+#### Scenario: Each account's home
+
+- **WHEN** the agent profile names `FAKE_HOME` as its home's variable, the login environment's `HOME` is `/home/op`, and status is asked of a pool whose work-1 gives `FAKE_HOME = "~/.agent-work-1"` and a token, work-2 gives no `FAKE_HOME`, work-3 gives it empty, and other-1, of a program whose profile names no variable, gives `FAKE_HOME = "~/.other"`
+- **THEN** work-1 gives `home` `/home/op/.agent-work-1`, and work-2, work-3 and other-1 give `home` `null`, in the JSON form; the person's form gives `configuration home /home/op/.agent-work-1` under work-1's line and no home under the others; and neither form gives the token (56, C.4; core.30)
+
+#### Scenario: The home among the fields the form holds
+
+- **WHEN** the answers' suite reads a status whose pool holds an account with a home and one with `home_unread`
+- **THEN** `status.host.pools[].accounts[].home` and `status.host.pools[].accounts[].home_unread` are among the fields it holds, so a form that drops either fails naming it (61; core.14)
+
+### Requirement: Status says why it cannot read an account's home
+
+Where the value of an account's home's variable names a variable the
+host user's login environment lacks, status SHALL give the account no
+home and `home_unread`, words naming the account's variable and the
+one the login environment lacks and no value, in the JSON form and the
+person's; and SHALL leave `home_unread` out of the JSON form while it
+holds no words (56, C.4; core.14, core.30).
+
+#### Scenario: A home the login environment cannot read
+
+- **WHEN** status is asked of a pool whose work-4 gives `FAKE_HOME = "$WORK_HOMES/four"`, the agent profile naming `FAKE_HOME`, and the login environment gives no `WORK_HOMES`
+- **THEN** work-4 gives `home` `null` and `home_unread` reading `env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks`, the person's form gives `no configuration home:` with those words under its line, and no account that has a home or none gives `home_unread` (56, C.4)
+
+### Requirement: An account's variables stay masked beside its home
+
+Status SHALL give an account's configuration home with its account
+among the host's pools alone, and SHALL give the variable that names
+it as `<set>` wherever it gives an account's variables: in an agent's
+settings and in the host's configuration values (56, C.4; core.30).
+
+#### Scenario: The home given and its variable masked
+
+- **WHEN** status is asked of a place whose code agent runs on work-1, whose `FAKE_HOME = "~/.agent-work-1"` names its home
+- **THEN** the host's pools give work-1's home `/home/op/.agent-work-1`, and the agent's settings give the variable `FAKE_HOME` from `account` as `<set>`, and no other part of the answer gives its value as written or read (56; core.30)
+
 ### Requirement: Status gives a role's messages and the places reporting to it
 
 For each address it gives, status SHALL give each message pending at
@@ -712,3 +811,15 @@ core.14, core.15).
 
 - **WHEN** status of a fix's place is asked
 - **THEN** it gives no checkouts, and its JSON's other fields are as before
+
+### Requirement: Status gives the program an account named
+
+Status SHALL give the current agent of a stage whose layers name no
+program, run on a pool, with its program from `account`, beside the
+account and where it came from, in the JSON form and the person's
+(56, 144, 173; core.30).
+
+#### Scenario: A review on the account's program
+
+- **WHEN** status is asked of a place whose review names no program and started on other-1 of `other` from the strategy
+- **THEN** the agent's program reads `other` with its layer `account`, its account other-1 from the strategy, and the person's form says the program came from the account, in both forms (56, 173)

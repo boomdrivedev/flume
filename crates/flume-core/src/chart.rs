@@ -41,6 +41,9 @@ impl Engine {
             return self.end_left(id, held, index);
         }
         let at = Some(index);
+        // When this settle read the session's agent waiting, for a profile
+        // that does not build own work, before its stage is read (31, 171).
+        self.read_waiting(id, at);
         match held.stages[index].state {
             // A session waiting on readiness a retry has since passed starts
             // (12, 49).

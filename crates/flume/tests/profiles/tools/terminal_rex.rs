@@ -534,6 +534,7 @@ impl Fixture {
             }),
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2376,6 +2377,7 @@ impl Agent for StandIn {
             folder_trust: None,
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2418,16 +2420,8 @@ impl Agent for StandIn {
         "name it by flume needs --to".into()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
-
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 

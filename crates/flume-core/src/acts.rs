@@ -5,6 +5,7 @@
 //! (31); a retry ends none whose stage it started or began under, so it
 //! never ends a working session (35, 50).
 
+use crate::accounts::{Choice, Programs};
 use crate::base::base_place;
 use crate::held::refresh_waiting;
 use crate::hibernate::{hibernated_waiting, hibernating};
@@ -14,6 +15,7 @@ use crate::start::{Start, Starts};
 use crate::status::waiting_on;
 use crate::{Act, Answer, Engine, Step, Tidied, MESSAGE_BOUND, POLL, RECEIVED_WITHIN};
 use flume_seams::*;
+use std::time::Duration;
 
 /// What a retry names (49).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +39,10 @@ pub struct Answering {
 impl Engine {
     /// The exact prompt the stage would be sent at its next start,
     /// rendered with nothing started, sent, settled or written (29,
-    /// 119).
+    /// 119). A stage whose layers name no program, on a pool, is filled
+    /// with the profile of the program of the account a start would choose
+    /// over one reading of the queue, else of the first account in the
+    /// pool's order whose program can run it (173; design 8).
     pub fn prompt(&self, place: &PlaceId, stage: &str) -> Answer {
         let Some(read) = self.store.read(place) else {
             return Answer::refused(format!("no place {place} stands on this host"));
@@ -49,9 +54,12 @@ impl Engine {
         let identity = self.next_identity(&held, index);
         let declared = held.declared(index);
         let agent = self
-            .resolve(&held.place, declared)
-            .and_then(|resolved| self.agent_for(&resolved, stage))
-            .ok();
+            .resolve(&held.place, declared, None)
+            .ok()
+            .and_then(|resolved| {
+                self.agent_on_pool(&held.place, declared, &resolved)
+                    .or_else(|| self.agent_for(&resolved, stage).ok())
+            });
         let head = self
             .history
             .head(&held.place.repository, &held.place.branch)
@@ -80,6 +88,53 @@ impl Engine {
                 part.name()
             )),
         }
+    }
+
+    /// The agent profile a start of `stage` in `place`, whose settings
+    /// `resolved` name no program above flume's default, would fill its
+    /// prompt with on its stream's pool: the program of the account
+    /// `choose_account` chooses over one reading of the queue, else the
+    /// first program in the pool's order that can run it; none where a
+    /// layer names its program, it has no pool, or no program of its pool
+    /// can run it. It writes nothing (29, 119, 145, 147, 173; design 8).
+    fn agent_on_pool(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        resolved: &crate::settings::Resolved,
+    ) -> Option<std::sync::Arc<dyn Agent>> {
+        if resolved.names_program() {
+            return None;
+        }
+        let queue = self.queue();
+        let pool = queue
+            .pool_of(&place.stream.name)
+            .and_then(|pool| queue.pools.get(pool))?;
+        let runs = self.runs_on(
+            place,
+            stage,
+            pool.accounts
+                .iter()
+                .map(|room| room.account.program.as_str()),
+        );
+        let affinity = self.affinity_unwritten(&place.intent);
+        let (chosen, _) = self.choose_account(
+            place,
+            &stage.name,
+            &Programs::of_pool(&runs),
+            affinity.as_ref(),
+            None,
+            &queue,
+            self.host.now(),
+        );
+        let chosen = match &chosen {
+            Choice::Chose { account, .. } => Some(account.program.as_str()),
+            _ => None,
+        };
+        runs.into_iter()
+            .filter(|(program, _)| chosen.is_none_or(|chosen| chosen == program))
+            .find_map(|(_, resolution)| resolution.ok())
+            .map(|resolution| resolution.agent)
     }
 
     /// Ends the place's live agent, one that is not quiet only when
@@ -893,13 +948,18 @@ impl Engine {
     /// them: once it said it started, waits and asks nothing, within the
     /// bound, ten minutes where none is given, its input cleared by the
     /// terminal's send, and read received within 60 seconds of each
-    /// sending or sent once more. When it was last sent and read
-    /// received, or the message's words saying why nothing more was typed
-    /// (37, 38, 53, 54; core.11). The start is marked handing, in one
-    /// write before the agent is read, until the bound and the readings of
-    /// its receipt pass, and the mark is cleared once the hand ends
-    /// whatever it came to, so no settle hibernates the agent and no
-    /// caller's hibernate is taken unforced while it stands (212).
+    /// sending or sent once more; where its profile does not build
+    /// received, sent by the terminal's send that watches the turn and read
+    /// received on its word that it saw the turn begin, or where a reading
+    /// within the 60 seconds reads the agent working or asking. Each
+    /// sending clears when a settle read the agent waiting. When it was
+    /// last sent and read received, or the message's words saying why
+    /// nothing more was typed (37, 38, 53, 54, 89, 171; core.11). The start
+    /// is marked handing, in one write before the agent is read, until the
+    /// bound and the readings of its receipt pass, and the mark is cleared
+    /// once the hand ends whatever it came to, so no settle hibernates the
+    /// agent and no caller's hibernate is taken unforced while it stands
+    /// (212).
     pub(crate) fn hand(
         &self,
         place: &PlaceId,
@@ -923,7 +983,7 @@ impl Engine {
         }
         loop {
             let state = self.state_of(Some(agent.as_ref()), &folder, start);
-            let asking = agent.asking(&folder, identity);
+            let asking = self.read_asking(agent.as_ref(), &folder, start);
             if state == AgentState::Asking || asking == Reading::Yes {
                 return Err(format!(
                     "the agent {identity} is asking a person; nothing was typed"
@@ -936,7 +996,7 @@ impl Engine {
             }
             if state == AgentState::Waiting
                 && asking == Reading::No
-                && agent.started(&folder, identity) == Reading::Yes
+                && self.started(agent.as_ref(), &folder, start) == Reading::Yes
             {
                 break;
             }
@@ -947,13 +1007,44 @@ impl Engine {
             }
             self.host.sleep(POLL);
         }
+        let watched = !agent.parts().builds(Part::Received);
         for _ in 0..2 {
-            if let Sent::Refused { reason } = self.agent_on(start).send(words) {
+            self.clear_waiting(place, identity);
+            let answer = if watched {
+                let sent_at = self.host.now();
+                match self
+                    .agent_on(start)
+                    .send_watching(words, Duration::from_secs(RECEIVED_WITHIN))
+                {
+                    SentWatching::Began => {
+                        return Ok(Handed {
+                            sent_at,
+                            received_at: self.host.now(),
+                        })
+                    }
+                    SentWatching::NotSeen { .. } => Sent::Sent,
+                    SentWatching::Refused { reason } => Sent::Refused { reason },
+                }
+            } else {
+                self.agent_on(start).send(words)
+            };
+            if let Sent::Refused { reason } = answer {
                 return Err(format!("the terminal did not send the words: {reason}"));
             }
             let sent_at = self.host.now();
             loop {
-                if let Received::Received { .. } = agent.received(&folder, identity, words) {
+                let received = if watched {
+                    matches!(
+                        self.state_of(Some(agent.as_ref()), &folder, start),
+                        AgentState::Working | AgentState::Asking
+                    )
+                } else {
+                    matches!(
+                        agent.received(&folder, identity, words),
+                        Received::Received { .. }
+                    )
+                };
+                if received {
                     return Ok(Handed {
                         sent_at,
                         received_at: self.host.now(),
@@ -967,6 +1058,24 @@ impl Engine {
             }
         }
         Err(format!("the agent {identity} did not receive the words"))
+    }
+
+    /// Clears when a settle read the agent of the start under `identity`
+    /// waiting, since something is sent to it; nothing written where none
+    /// was read (31, 171; core.17).
+    pub(crate) fn clear_waiting(&self, place: &PlaceId, identity: &Identity) {
+        self.update(place, |held| {
+            let Some(index) = held.index_of(identity) else {
+                return Step::Keep(());
+            };
+            match held.stages[index].start.as_mut() {
+                Some(start) if start.waiting.is_some() => {
+                    start.waiting = None;
+                    Step::Write(())
+                }
+                _ => Step::Keep(()),
+            }
+        });
     }
 
     /// A stop of the place's hibernating stage: no agent to end, its
@@ -1026,7 +1135,7 @@ impl Engine {
         let identity = &start.identity;
         let folder = self.store.folder(place);
         let state = self.state_of(Some(agent), &folder, start);
-        if state == AgentState::Asking || agent.asking(&folder, identity) == Reading::Yes {
+        if state == AgentState::Asking || self.read_asking(agent, &folder, start) == Reading::Yes {
             return Err(format!(
                 "the agent {identity} is asking a person; nothing was typed"
             ));

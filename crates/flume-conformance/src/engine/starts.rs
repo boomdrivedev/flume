@@ -91,6 +91,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: blocked_without_a_mark,
         },
         Scenario {
+            name: "state: a terminal's blocked, for an agent whose profile reads asking from its terminal, reads asking, and nothing is typed",
+            cites: &["90", "96", "171"],
+            run: blocked_reading_asking_from_the_terminal,
+        },
+        Scenario {
             name: "start: no prompt is sent while another command still opens the agent, and a start whose opener is gone reads opened",
             cites: &["34", "35", "37", "75"],
             run: opened_by_another_command,
@@ -608,6 +613,34 @@ fn blocked_without_a_mark(_: &()) -> Outcome {
         agent_status(&world, &id)?.state,
         AgentState::Asking,
         "the agent's state, with the mark"
+    );
+    Ok(())
+}
+
+/// The terminal-profiles spec's scenario "Blocked for a profile that
+/// reads asking from its terminal", a terminal's blocked read as asking by
+/// its profile as C.5 says, over the fake terminal reading it asking (90,
+/// 96, 171).
+fn blocked_reading_asking_from_the_terminal(_: &()) -> Outcome {
+    let world = World::new();
+    let id = World::id("fix", "one");
+    let code = World::identity("fix", "one", "code", 1);
+    world.agent.reads_from_its_terminal(&[Part::Asking]);
+    world.terminal.comes_up(AgentState::Asking);
+    launched(&world.engine.launch(&launch("fix", "one", Some("x"))))?;
+    world.settle(&id);
+    ensure_eq!(world.terminal.log.count("send"), 0, "prompts sent");
+    let agent = agent_status(&world, &id)?;
+    ensure_eq!(agent.state, AgentState::Asking, "the agent's state");
+    ensure_eq!(agent.asking, Reading::Yes, "the agent's asking");
+    let told = world.engine().message(&id, "go on", Some(30));
+    ensure!(
+        told.refusal().is_some(),
+        "a message into a question was taken"
+    );
+    ensure!(
+        world.terminal.sent_to(&code).is_empty(),
+        "flume typed into an asking agent"
     );
     Ok(())
 }

@@ -1,7 +1,8 @@
-//! The agent seam's answers (88 to 93, 115, 116, 121, 134, 135, 151, 161, 179, 196, 207), an
-//! agent's identity and its start's secret (33, 41). Every reading of an agent's
-//! own record is handed the place's own folder with the identity, where
-//! the agent profile keeps its marks (128).
+//! The agent seam's answers (88 to 93, 115, 116, 121, 134, 135, 151, 161, 179, 196, 207), the
+//! parts a profile builds (171, 174), an agent's identity and its start's
+//! secret (33, 41). Every reading of an agent's own record is handed the
+//! place's own folder with the identity, where the agent profile keeps its
+//! marks (128).
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -95,6 +96,13 @@ pub struct AgentCommand {
     /// command needs none, and in a command written before (196).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub files: BTreeMap<String, String>,
+    /// The words that run the program through flume's launcher, its
+    /// program by its absolute path and then its arguments, after which a
+    /// terminal puts the program and its arguments; none where the profile
+    /// starts its program itself, and in a command written before (88, C.4,
+    /// C.5; core.60).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub launcher: Vec<String>,
 }
 
 /// A key of its program's settings that another of flume's settings or
@@ -116,6 +124,13 @@ pub const NO_OWN: &str = "its agent profile passes no settings of its program's 
 /// its program an effort (170, 197).
 pub fn no_effort(word: &str) -> String {
     format!("its agent profile names no way to give an effort, `{word}` among them")
+}
+
+/// What a profile that keeps the agent seam's default says of the model
+/// `name` asked of it, which it refuses, since it names no way to give
+/// its program a model (170, 172).
+pub fn no_model(name: &str) -> String {
+    format!("its agent profile names no way to give a model, `{name}` among them")
 }
 
 /// A yes or no the agent's own record may not give (93).
@@ -209,7 +224,9 @@ pub const READS_NO_SESSION: &str = "its agent profile reads no running session";
 /// both by name alone, whether it runs another program, whether it came
 /// up in another conversation than the one its start resumes, and the
 /// mode it began in where it is not the one its start asked, none in a
-/// word written before (135, 161, 162, 179).
+/// word written before, and whether its program runs in another process
+/// than the one its start's launcher became, false in a word written
+/// before (135, 161, 162, 179, S74).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unsettled {
     #[serde(default)]
@@ -222,6 +239,8 @@ pub struct Unsettled {
     pub session: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ModeBegan>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub process: bool,
 }
 
 /// The mode a start asked, as its profile passed it, and the one the
@@ -235,8 +254,8 @@ pub struct ModeBegan {
 
 impl Unsettled {
     /// How the agent began otherwise, naming each variable and never a
-    /// value, no session, and both modes where it began in another (56,
-    /// 161, 162).
+    /// value, no session, both modes where it began in another, and no
+    /// process's id where it runs in another (56, 161, 162, S74).
     pub fn words(&self) -> String {
         let mut words = vec![];
         if !self.missing.is_empty() {
@@ -257,6 +276,9 @@ impl Unsettled {
                 None => format!("in a mode its word did not name, where its start asked `{asked}`"),
             });
         }
+        if self.process {
+            words.push("in another process than the one its start's launcher became".to_string());
+        }
         if words.is_empty() {
             return "otherwise than its start recorded".to_string();
         }
@@ -270,6 +292,145 @@ impl Unsettled {
 pub enum Offered {
     Offered,
     NotOffered,
+}
+
+/// A part of the agent seam a profile may build for its program from the
+/// program's own record, or degrade, flume then reading it a lesser way:
+/// the parts flume reads a lesser way, in 171's order, each written as its
+/// word, any other word refused naming it (171, 174). Received, asking,
+/// own work, ended and last words, where the profile does not build them,
+/// the core reads from the agent's terminal, asking the profile nothing of
+/// them (93, 171; core.2). Command, started and stop-short are never
+/// degraded, and every other part is answered from the program's own
+/// record by every profile (93).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Part {
+    Received,
+    Asking,
+    OwnWork,
+    Ended,
+    LastWords,
+    Spent,
+    Windows,
+    SendBack,
+    Guard,
+    OnQuiet,
+    Mode,
+    Carry,
+    OwnSettings,
+}
+
+impl Part {
+    /// The thirteen, in 171's order.
+    pub const ALL: [Part; 13] = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+        Part::Spent,
+        Part::Windows,
+        Part::SendBack,
+        Part::Guard,
+        Part::OnQuiet,
+        Part::Mode,
+        Part::Carry,
+        Part::OwnSettings,
+    ];
+
+    /// The part's name as the statement writes it (171).
+    pub fn name(self) -> &'static str {
+        match self {
+            Part::Received => "received",
+            Part::Asking => "asking",
+            Part::OwnWork => "own work",
+            Part::Ended => "ended",
+            Part::LastWords => "last words",
+            Part::Spent => "spent",
+            Part::Windows => "windows",
+            Part::SendBack => "send-back",
+            Part::Guard => "guard",
+            Part::OnQuiet => "on-quiet",
+            Part::Mode => "mode",
+            Part::Carry => "carry",
+            Part::OwnSettings => "own settings",
+        }
+    }
+
+    /// How flume reads the part where its profile does not build it, the
+    /// same for every profile, naming no program and no terminal (93, 171;
+    /// core.1).
+    pub fn read(self) -> &'static str {
+        match self {
+            Part::Received => {
+                "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds"
+            }
+            Part::Asking => {
+                "read from the terminal, asking while it reads the agent waiting on a question"
+            }
+            Part::OwnWork => {
+                "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then"
+            }
+            Part::Ended => "read from the terminal, ended once it reads the agent stopped",
+            Part::LastWords => "read from the terminal, what it shows of the agent",
+            Part::Spent => "unknown, so the account it runs under is never recorded spent",
+            Part::Windows => "unknown, so the account it runs under has no reading",
+            Part::SendBack => "not offered, so it may go quiet with its deliverable missing",
+            Part::Guard => {
+                "not offered, so nothing refuses its submitting, merging or pushing its place's branch"
+            }
+            Part::OnQuiet => {
+                "not offered, so the host's watch, or a command where none keeps watch, settles its place"
+            }
+            Part::Mode => "recorded and not compared with the mode it began in",
+            Part::Carry => {
+                "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
+            }
+            Part::OwnSettings => {
+                "none reserved and none taken, so own settings given for its program are refused"
+            }
+        }
+    }
+}
+
+/// The parts a profile builds for its program; every other part is
+/// degraded (171, 174).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Parts(std::collections::BTreeSet<Part>);
+
+impl Parts {
+    /// No part built, every part degraded: the seam's default (174).
+    pub fn none() -> Parts {
+        Parts::default()
+    }
+
+    /// The parts `built`, each named once or more.
+    pub fn of(built: &[Part]) -> Parts {
+        Parts(built.iter().copied().collect())
+    }
+
+    /// Whether the profile builds `part`.
+    pub fn builds(&self, part: Part) -> bool {
+        self.0.contains(&part)
+    }
+
+    /// The parts the profile does not build, in 171's order.
+    pub fn degraded(&self) -> Vec<Part> {
+        Part::ALL
+            .into_iter()
+            .filter(|part| !self.builds(*part))
+            .collect()
+    }
+
+    /// Whether the profile offers `part`, which it does where it builds it.
+    fn offered(&self, part: Part) -> Offered {
+        if self.builds(part) {
+            Offered::Offered
+        } else {
+            Offered::NotOffered
+        }
+    }
 }
 
 /// guard: each act the agent would have taken that submits, merges or
@@ -308,7 +469,10 @@ pub struct StopShort {
 
 /// The agent seam (B.4). The guarantee: each answer is what the agent's
 /// own record shows, and an answer the record does not give is unknown,
-/// never guessed from the terminal (93).
+/// never guessed from the terminal (93). A part the profile does not build
+/// is read by the core as 171 says, received, asking, own work, ended and
+/// last words from the agent's terminal, and the profile is asked nothing
+/// of it (171; core.2).
 pub trait Agent: Send + Sync {
     /// How to start the agent with its settings and `env`, its account's
     /// variables read against the login environment, in the place under
@@ -316,9 +480,13 @@ pub trait Agent: Send + Sync {
     /// `folder` is the place's own folder, under which each file the
     /// command lists lies (128, 196); `mode` is the value [`Agent::mode`]
     /// mapped, passed as its program's setting, and nothing is passed
-    /// where it is none (162, 169); `settings.effort` is a word
-    /// [`Agent::effort`] took, passed as its profile gives its program an
-    /// effort, and nothing is passed where it is none (88, 197); `own` is
+    /// where it is none (162, 169); `settings.model` is the agent's entry,
+    /// a name [`Agent::model`] took, given whole, passed as its profile
+    /// gives its program a model, and nothing is passed where it is none
+    /// (88, 172); `settings.effort` is the agent's entry, a word
+    /// [`Agent::effort`] took, given whole, passed as its profile gives its
+    /// program an effort, and nothing is passed where it is none (88,
+    /// 197); `own` is
     /// its program's own settings as the layers resolved them, its
     /// program's alone and taken by [`Agent::own`], passed its program's
     /// way, and nothing is passed where they are empty (195, 196);
@@ -348,6 +516,23 @@ pub trait Agent: Send + Sync {
     /// from its record in the place's own `folder` (135, 35, 128).
     fn started(&self, folder: &str, agent: &Identity) -> Reading;
 
+    /// Whether the profile starts its program through flume's launcher,
+    /// which checks the start, writes its word with its process once and
+    /// becomes the program, so the core takes its start only once the
+    /// terminal reads the program running in that process, waiting; not by
+    /// default (35, 171, C.4).
+    fn launches(&self) -> bool {
+        false
+    }
+
+    /// The process the launcher of the start under `agent` wrote it
+    /// became, read in the place's own `folder`: none before the
+    /// launcher's word, and none by default, for a profile that starts its
+    /// program itself (35, 128, 171, C.4).
+    fn launched(&self, _folder: &str, _agent: &Identity) -> Option<u32> {
+        None
+    }
+
     /// Whether the agent under `agent` received `text` as a prompt, read
     /// from its record in the place's own `folder` (89, 128).
     fn received(&self, folder: &str, agent: &Identity, text: &str) -> Received;
@@ -365,6 +550,20 @@ pub trait Agent: Send + Sync {
     /// lost or never-begun end carries; none where the record holds none
     /// or cannot be read (43, 128).
     fn last_words(&self, folder: &str, agent: &Identity) -> Option<String>;
+
+    /// The parts of the seam the profile builds for its program from the
+    /// program's own record, every other degraded and read as
+    /// [`Part::read`] says; none by default, so a profile that declares
+    /// nothing shows every part degraded and none is read as built (170,
+    /// 171, 174). Whether it offers send-back and on-quiet, reports
+    /// windows and reads its mode back is read from them, and each answer
+    /// of a part it does not build is the lesser one where it is asked:
+    /// received, asking, own work, ended, spent and windows unknown, last
+    /// words none, guard and carry not offered, no own settings taken and
+    /// no key reserved (93).
+    fn parts(&self) -> Parts {
+        Parts::none()
+    }
 
     /// Whether the agent's own record shows its account reached a usage
     /// limit, and the reset it names, read in the place's own `folder`
@@ -388,9 +587,9 @@ pub trait Agent: Send + Sync {
     }
 
     /// Whether the profile builds the windows' part, so its accounts can
-    /// have a reading (171, 174, 211); not by default.
+    /// have a reading, read from its [`Agent::parts`] (171, 174, 211).
     fn reports_windows(&self) -> Offered {
-        Offered::NotOffered
+        self.parts().offered(Part::Windows)
     }
 
     /// Whether its program can carry the conversation of `earlier`, the
@@ -456,6 +655,23 @@ pub trait Agent: Send + Sync {
         ))
     }
 
+    /// Whether the agent's program takes `name` as its model, which its
+    /// command passes as written; words naming the program where its
+    /// profile names no way to give one, and every name refused by
+    /// default, in [`no_model`]'s words, since a profile that names no way
+    /// to give a model refuses one (88, 170, 172).
+    fn model(&self, name: &str) -> Result<(), String> {
+        Err(no_model(name))
+    }
+
+    /// The terminal's kind for the agent's program, by which a terminal
+    /// that starts a known agent program names it and is asked whether it
+    /// starts it; none by default, so nothing is asked (88, 170, C.4,
+    /// C.5).
+    fn kind(&self) -> Option<&str> {
+        None
+    }
+
     /// Whether the agent's program takes `word` as its effort, which its
     /// command passes as written; words naming the effort, the program
     /// and the words it takes where it does not, and every word refused by
@@ -473,12 +689,23 @@ pub trait Agent: Send + Sync {
         None
     }
 
+    /// The variable of an account's environment whose value is its
+    /// program's configuration home, the folder the program keeps its
+    /// settings in under that account, which status gives with the
+    /// account's variables read against the host user's login environment
+    /// as a start reads them, and no other value of them (56, C.4;
+    /// core.30); none by default, so a profile that names none gives its
+    /// accounts no home.
+    fn home_variable(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Whether the program's word at its start, its word that it started
     /// or at its start's first prompt, names the mode it began in, so its
-    /// start is compared with the mode it asked (161, 169); not by
-    /// default.
+    /// start is compared with the mode it asked, read from its
+    /// [`Agent::parts`] (161, 169, 174).
     fn mode_read_back(&self) -> Offered {
-        Offered::NotOffered
+        self.parts().offered(Part::Mode)
     }
 
     /// Whether the program takes words as one prompt the next time its
@@ -540,14 +767,20 @@ pub trait Agent: Send + Sync {
     fn stop_short_to(&self) -> String;
 
     /// Whether the program lets flume keep an agent about to go quiet at
-    /// work, with words naming its deliverable (115).
-    fn send_back(&self) -> Offered;
+    /// work, with words naming its deliverable, read from its
+    /// [`Agent::parts`] (115, 174).
+    fn send_back(&self) -> Offered {
+        self.parts().offered(Part::SendBack)
+    }
 
     /// Each act the agent would have taken that submits, merges or pushes
     /// its place's branch, refused and reported (116, 108, 128).
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded;
 
     /// Whether the program tells flume at once each time the agent goes
-    /// quiet, so that flume settles its place (121).
-    fn on_quiet(&self) -> Offered;
+    /// quiet, so that flume settles its place, read from its
+    /// [`Agent::parts`] (121, 174).
+    fn on_quiet(&self) -> Offered {
+        self.parts().offered(Part::OnQuiet)
+    }
 }

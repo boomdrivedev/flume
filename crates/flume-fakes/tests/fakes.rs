@@ -312,6 +312,169 @@ fn the_agents_windows_are_scripted() {
     );
 }
 
+/// The seam-fakes spec's scenario "The fake as a new fake makes it"
+/// (174).
+#[test]
+fn a_new_fakes_parts() {
+    let host = Arc::new(FakeHost::default());
+    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    let parts = agent.parts();
+    for part in [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+        Part::SendBack,
+        Part::Guard,
+        Part::OnQuiet,
+        Part::Windows,
+        Part::Spent,
+    ] {
+        assert!(parts.builds(part), "a new fake degraded {}", part.name());
+    }
+    assert_eq!(
+        parts.degraded(),
+        [Part::Mode, Part::Carry, Part::OwnSettings]
+    );
+    assert_eq!(agent.send_back(), Offered::Offered);
+    assert_eq!(agent.on_quiet(), Offered::Offered);
+    assert_eq!(agent.reports_windows(), Offered::Offered);
+    assert_eq!(agent.mode_read_back(), Offered::NotOffered);
+}
+
+/// The fake scripted as the conformance suite's harness scripts it by
+/// default, reading its mode back, carrying a conversation and taking own
+/// settings, or left carrying none or taking none (179, 195, 169).
+fn scripted_as_a_harness(carries: bool, takes_own: bool) -> FakeAgent {
+    let host = Arc::new(FakeHost::default());
+    scripted_over(Arc::new(FakeTerminal::new(host)), carries, takes_own)
+}
+
+/// The fake over `terminal`, scripted as [`scripted_as_a_harness`] says.
+fn scripted_over(terminal: Arc<FakeTerminal>, carries: bool, takes_own: bool) -> FakeAgent {
+    let agent = FakeAgent::new(terminal);
+    agent.read_mode_back();
+    if carries {
+        agent.carry_to(
+            FakeAgent::LOGIN,
+            Carry::Yes {
+                session: "s-1".into(),
+            },
+        );
+    }
+    if takes_own {
+        agent.take_own();
+    }
+    agent
+}
+
+/// The seam-fakes spec's scenario "The fake scripted as each harness
+/// scripts it" (174).
+#[test]
+fn each_script_degrades_its_own_part() {
+    let agent = scripted_as_a_harness(true, true);
+    assert_eq!(agent.parts().degraded(), vec![], "by default");
+    assert_eq!(agent.mode_read_back(), Offered::Offered);
+    assert_eq!(
+        scripted_as_a_harness(false, true).parts().degraded(),
+        [Part::Carry],
+        "carrying none"
+    );
+    assert_eq!(
+        scripted_as_a_harness(true, false).parts().degraded(),
+        [Part::OwnSettings],
+        "taking no own settings"
+    );
+    let agent = scripted_as_a_harness(true, true);
+    agent.reports_no_windows();
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::Windows],
+        "reporting no windows"
+    );
+    assert_eq!(agent.reports_windows(), Offered::NotOffered);
+    let agent = scripted_as_a_harness(true, true);
+    agent.no_send_back();
+    agent.no_guard();
+    agent.no_on_quiet();
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::SendBack, Part::Guard, Part::OnQuiet],
+        "offering no hooks"
+    );
+    assert_eq!(agent.send_back(), Offered::NotOffered);
+    assert_eq!(agent.on_quiet(), Offered::NotOffered);
+
+    // Asking alone read from its terminal, then the five, each it is
+    // scripted for answering the lesser way while the record says
+    // otherwise, every read logged (171, 174).
+    let (agent, _terminal, who, folder) = an_agent_that_has_said_everything();
+    agent.reads_from_its_terminal(&[Part::Asking]);
+    assert_eq!(
+        agent.parts().degraded(),
+        [Part::Asking],
+        "reading asking from its terminal"
+    );
+    assert_eq!(agent.asking(folder, &who), Reading::Unknown);
+    assert_eq!(agent.own_work(folder, &who), Reading::Yes);
+    agent.reads_from_its_terminal(&FakeAgent::FROM_TERMINAL);
+    assert_eq!(
+        agent.parts().degraded(),
+        [
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords
+        ],
+        "reading the five from its terminal"
+    );
+    assert_eq!(agent.received(folder, &who, "go"), Received::Unknown);
+    assert_eq!(agent.asking(folder, &who), Reading::Unknown);
+    assert_eq!(agent.own_work(folder, &who), Reading::Unknown);
+    assert_eq!(agent.ended(folder, &who), Reading::Unknown);
+    assert_eq!(agent.last_words(folder, &who), None);
+    for operation in ["received", "asking", "own_work", "ended", "last_words"] {
+        assert!(
+            !agent.log.of(operation).is_empty(),
+            "{operation} read and not logged"
+        );
+    }
+}
+
+/// An agent opened in its terminal that received `go`, asks, runs own
+/// work, ended and said `I could not sign in`, as its record says.
+fn an_agent_that_has_said_everything() -> (FakeAgent, Arc<FakeTerminal>, Identity, &'static str) {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let agent = scripted_over(terminal.clone(), true, true);
+    let who = identity("code", 1);
+    let folder = "/state/fix--one";
+    terminal.open(
+        &place_ref(),
+        folder,
+        &AgentCommand::default(),
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    terminal.send(&who, "go");
+    agent.set_asking(&who, Reading::Yes);
+    agent.set_own_work(&who, Reading::Yes);
+    agent.set_ended(&who, Reading::Yes);
+    agent.set_last_words(&who, "I could not sign in");
+    assert!(matches!(
+        agent.received(folder, &who, "go"),
+        Received::Received { .. }
+    ));
+    assert_eq!(
+        agent.last_words(folder, &who),
+        Some("I could not sign in".into())
+    );
+    (agent, terminal, who, folder)
+}
+
 #[test]
 fn the_agents_modes_are_scripted() {
     // Unscripted, the fake maps no mode and reads none back, as the
@@ -874,7 +1037,7 @@ fn the_agents_efforts_are_scripted() {
         agent.command(
             "/state/fix--one",
             &Settings {
-                effort: effort.map(str::to_string),
+                effort: effort.map(Into::into),
                 ..Settings::default()
             },
             None,
@@ -901,6 +1064,20 @@ fn the_agents_efforts_are_scripted() {
         "{:?}",
         none.args
     );
+}
+
+#[test]
+fn the_agents_home_is_scripted() {
+    // Unscripted, the fake names no variable as an account's
+    // configuration home; scripted to name `FAKE_HOME`, it names it, so
+    // the engine's scenarios read a home through the seam as a profile
+    // gives it (56, 106, C.4).
+    let host = Arc::new(FakeHost::default());
+    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    assert_eq!(agent.home_variable(), None);
+
+    agent.read_home_from("FAKE_HOME");
+    assert_eq!(agent.home_variable(), Some("FAKE_HOME"));
 }
 
 #[test]
@@ -995,6 +1172,90 @@ fn the_agent_gives_both_stop_shorts() {
     let way = agent.stop_short(&identity("code", 1));
     assert!(way.contains("flume needs \""), "{way}");
     assert!(way.contains("flume needs --found"), "{way}");
+}
+
+/// The seam-fakes spec's scenario "Two fake programs' ways": the fake
+/// resolver binds `agent` to a fake agent scripted with no way to stop
+/// short and `other` to one scripted with its own words, and each
+/// profile gives its own, the same for every start (41, 92).
+#[test]
+fn two_fake_programs_ways() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let resolver = FakeResolver::new(Arc::new(FakeKinds::default()));
+    resolver.bind_agent("agent", Arc::new(FakeAgent::new(terminal.clone())));
+    let other = FakeAgent::new(terminal);
+    other.stop_short_words("to stop short, tell `other` so");
+    resolver.bind_agent("other", Arc::new(other));
+    let agent = resolver.agent("agent").expect("agent bound");
+    let other = resolver.agent("other").expect("other bound");
+    for start in [1, 2] {
+        let way = agent.stop_short(&identity("code", start));
+        assert!(way.contains("flume needs \""), "{way}");
+        assert!(way.contains("flume needs --found"), "{way}");
+        assert_eq!(
+            other.stop_short(&identity("code", start)),
+            "to stop short, tell `other` so"
+        );
+    }
+}
+
+/// The seam-fakes spec's scenario "A turn seen, then not" (171, C.5).
+#[test]
+fn a_watched_sends_turn_seen_then_not() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let who = identity("code", 1);
+    terminal.open(
+        &place_ref(),
+        "/state/fix--one",
+        &AgentCommand::default(),
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    let within = std::time::Duration::from_secs(60);
+    assert_eq!(
+        terminal.send_watching(&who, "go", within),
+        SentWatching::Began
+    );
+    terminal.watch_as(
+        &who,
+        SentWatching::NotSeen {
+            why: "no turn began".into(),
+        },
+    );
+    assert_eq!(
+        terminal.send_watching(&who, "again", within),
+        SentWatching::NotSeen {
+            why: "no turn began".into()
+        }
+    );
+    assert_eq!(terminal.sent_to(&who), vec!["go", "again"]);
+    let stopped = identity("code", 2);
+    terminal.open(
+        &place_ref(),
+        "/state/fix--one",
+        &AgentCommand::default(),
+        &stopped,
+        &OpenIn::Own,
+        None,
+    );
+    terminal.kill(&stopped);
+    assert!(matches!(
+        terminal.send_watching(&stopped, "anyone", within),
+        SentWatching::Refused { .. }
+    ));
+    assert!(terminal.sent_to(&stopped).is_empty(), "nothing delivered");
+    assert_eq!(
+        terminal.log.of("send-watching"),
+        vec![
+            format!("send-watching {who}"),
+            format!("send-watching {who}"),
+            format!("send-watching {stopped}"),
+        ]
+    );
+    assert!(terminal.log.of("send").is_empty(), "no plain send logged");
 }
 
 #[test]
@@ -3090,6 +3351,119 @@ fn shows_clues_in_the_log() {
     assert_eq!(
         terminal.shown(),
         vec![("/r/places/fix--one".to_string(), clues)]
+    );
+}
+
+/// The seam-fakes spec's scenario "A kind refused, then started" (C.5).
+#[test]
+fn the_fake_terminal_scripts_a_kind_it_cannot_start() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let env = BTreeMap::from([("AGENT_HOME".to_string(), "/scratch/work-2".to_string())]);
+    let words = "install the agent's integration first";
+    terminal.refuse_kind("agent", words);
+    assert_eq!(terminal.starts("agent", &env), Err(words.to_string()));
+    assert_eq!(terminal.starts("other", &BTreeMap::new()), Ok(()));
+    terminal.start_kind("agent");
+    assert_eq!(terminal.starts("agent", &env), Ok(()));
+    assert_eq!(
+        terminal.log.of("starts"),
+        vec![
+            "starts agent AGENT_HOME",
+            "starts other",
+            "starts agent AGENT_HOME"
+        ]
+    );
+    assert!(
+        terminal
+            .log
+            .calls()
+            .iter()
+            .all(|line| !line.contains("/scratch")),
+        "a value logged: {:?}",
+        terminal.log.calls()
+    );
+}
+
+/// The seam-fakes spec's scenario "A launcher's start scripted" (C.4).
+#[test]
+fn the_fake_agent_scripts_a_start_through_the_launcher() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let agent = FakeAgent::new(terminal);
+    let (first, second) = (identity("code", 1), identity("code", 2));
+    let folder = "/state/fix--one";
+    let command = |who: &Identity| {
+        agent.command(
+            folder,
+            &Settings::default(),
+            None,
+            &BTreeMap::new(),
+            None,
+            &BTreeMap::new(),
+            &place_ref(),
+            who,
+            &Secret("s1".into()),
+            "go",
+        )
+    };
+    assert!(
+        !agent.launches(),
+        "the fake launched before it was scripted to"
+    );
+    assert!(command(&first).launcher.is_empty());
+    agent.start_through_launcher();
+    assert!(agent.launches());
+    assert_eq!(
+        command(&first).launcher,
+        vec!["/fake/flume", "ack", "launched", "--"]
+    );
+    assert_eq!(agent.launched(folder, &first), None, "before its word");
+    agent.set_launched(&first, 41);
+    assert_eq!(agent.launched(folder, &first), Some(41));
+    assert_eq!(agent.launched(folder, &second), None, "another start");
+    assert_eq!(
+        agent.log.of("launched"),
+        vec![
+            format!("launched {first}"),
+            format!("launched {first}"),
+            format!("launched {second}"),
+        ]
+    );
+}
+
+/// The seam-fakes spec's scenario "A process read, then another" (C.5).
+#[test]
+fn the_fake_terminal_scripts_the_process_it_reads() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = FakeTerminal::new(host);
+    let (who, other) = (identity("code", 1), identity("code", 2));
+    terminal.set_process(&who, ProgramProcess::Runs { pid: 41 });
+    assert_eq!(
+        terminal.program_process(&who),
+        ProgramProcess::Runs { pid: 41 }
+    );
+    terminal.set_process(&who, ProgramProcess::Runs { pid: 42 });
+    assert_eq!(
+        terminal.program_process(&who),
+        ProgramProcess::Runs { pid: 42 }
+    );
+    assert_eq!(
+        terminal.program_process(&other),
+        ProgramProcess::Unknown {
+            why: "the terminal reads no process".into()
+        }
+    );
+    terminal.set_process(&other, ProgramProcess::Nothing);
+    assert_eq!(terminal.program_process(&other), ProgramProcess::Nothing);
+    assert_eq!(
+        terminal.log.of("process"),
+        vec![
+            format!("process {who}"),
+            format!("process {who}"),
+            format!("process {other}"),
+            format!("process {other}"),
+        ]
     );
 }
 
