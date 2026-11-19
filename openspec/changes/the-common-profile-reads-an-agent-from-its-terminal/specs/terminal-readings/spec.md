@@ -1,6 +1,5 @@
-# terminal-readings Specification
-
 ## Purpose
+
 What flume reads from an agent's terminal where its profile builds no
 part of its program's own for it: whether it received a prompt, whether
 it asks, whether its own work runs, whether it ended and its last words,
@@ -8,7 +7,7 @@ each read by the core from the terminal and never asked of the profile,
 so a stage of a program with no profile of its own runs through (31,
 38, 89 to 93, 134, 136, 171).
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: A part its profile does not build is read from the terminal
 
@@ -26,12 +25,12 @@ profile alone, and never from the terminal (93, 171; core.2, core.39).
 #### Scenario: A profile that builds them reads no question from the terminal
 
 - **WHEN** a begun fix's fake agent, as a new fake makes it, holds no asking mark while the fake terminal reads it asking
-- **THEN** its state reads unknown and its asking no, and a tell to it is refused with nothing typed (90; core.39)
+- **THEN** its state reads unknown and its asking no, and a message to it is refused with nothing typed (90; core.39)
 
 ### Requirement: A prompt is sent by the send that watches its turn
 
 Where the agent's profile does not build received, the core SHALL send
-the prompt, and a tell's words, by the terminal's send that watches the
+the prompt, and a message's words, by the terminal's send that watches the
 turn, within 60 seconds, and such a start SHALL name no record of its
 agent's (38, 77, 95, 171).
 
@@ -40,10 +39,10 @@ agent's (38, 77, 95, 171).
 - **WHEN** the fake terminal refuses the watched send, saying it reads no turn a sending began
 - **THEN** code is reported never begun, its failure naming the terminal's words, and nothing is typed (38, 95)
 
-#### Scenario: A tell handed on the turn
+#### Scenario: A message handed on the turn
 
-- **WHEN** a caller tells a begun fix's agent, waiting and reading received and asking from its terminal, `look again`, and the fake terminal answers that it saw the turn begin
-- **THEN** the tell is handed, sent once by the watched send (53, 54, 171)
+- **WHEN** a caller messages a begun fix's agent, waiting and reading received and asking from its terminal, `look again`, and the fake terminal answers that it saw the turn begin
+- **THEN** the message is handed, sent once by the watched send (53, 54, 171)
 
 ### Requirement: A prompt is received on the terminal's word that its turn began
 
@@ -79,8 +78,8 @@ asks (37, 90, 171).
 
 #### Scenario: Asking as the terminal shows it
 
-- **WHEN** a begun fix's agent reads asking from its terminal, the fake terminal reads it asking, a settle runs and a caller tells it `go on`; then the terminal reads it waiting and a settle runs
-- **THEN** status reads it asking and its state asking, and the tell is refused with nothing typed; after the second settle status reads it neither (37, 90, 171)
+- **WHEN** a begun fix's agent reads asking from its terminal, the fake terminal reads it asking, a settle runs and a caller messages it `go on`; then the terminal reads it waiting and a settle runs
+- **THEN** status reads it asking and its state asking, and the message is refused with nothing typed; after the second settle status reads it neither (37, 90, 171)
 
 ### Requirement: Each settle records when it read the agent waiting
 

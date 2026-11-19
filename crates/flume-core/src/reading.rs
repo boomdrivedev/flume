@@ -282,7 +282,7 @@ impl Engine {
     /// yet waiting; and unknown where the terminal cannot read the process,
     /// so the start stays starting and is never read failed for it (35,
     /// 135, 171, C.4; core.10). Every reading of a start's started is this
-    /// one, so a settle, a tell and the stop check read it alike.
+    /// one, so a settle, a message and the stop check read it alike.
     pub(crate) fn started(&self, agent: &dyn Agent, folder: &str, start: &StartHeld) -> Reading {
         let said = agent.started(folder, &start.identity);
         if !agent.launches() || said != Reading::Yes {
@@ -432,7 +432,7 @@ impl Engine {
     /// asking; otherwise the terminal's reading, asking as yes, working,
     /// waiting and stopped as no and unknown as unknown, the profile asked
     /// nothing (90, 171; core.2, core.39). Every reading of an agent's
-    /// asking is this one, so a settle, a tell and the stop check read it
+    /// asking is this one, so a settle, a message and the stop check read it
     /// alike.
     pub(crate) fn read_asking(
         &self,

@@ -27,7 +27,7 @@ from its terminal; this design decides how it is built.
   only with the profile's mark; `read_out` takes last words from the
   agent seam; `deliver.rs` reads a prompt received from
   `Agent::received`, within 60 seconds of each sending, and sends once
-  more; `acts.rs`'s `hand` reads a tell's words received the same way;
+  more; `acts.rs`'s `hand` reads a message's words received the same way;
   `agent_acts.rs`'s stop check, `line.rs`'s asking and `status.rs`'s
   last words each ask the agent seam.
 - **The terminal seam's send** (`terminal.rs`) delivers text, its held
@@ -103,14 +103,14 @@ itself, which would put a terminal's reading inside an agent profile
 ### 2. The core's readings, each in one place
 
 `reading.rs` gains one reading for each part the core reads, used
-wherever the core reads it now, so a settle, status, a tell and the
+wherever the core reads it now, so a settle, status, a message and the
 stop check read alike:
 
 - `Engine::read_asking(agent, folder, start)`: the profile's answer
   where it builds asking; otherwise the terminal's state, asking as yes,
   working, waiting and stopped as no, unknown as unknown. It takes the
   place of every `agent.asking` the core reads: `read_agent`, the
-  prompt's sending in `deliver.rs`, the tell's wait in `acts.rs` and the
+  prompt's sending in `deliver.rs`, the message's wait in `acts.rs` and the
   stop check in `agent_acts.rs`.
 - `state_of`: the terminal's asking is asking where the profile's mark
   says so, as now, or where the profile does not build asking (90, 171
@@ -158,7 +158,7 @@ never begun, its failure naming why. Rex opens no program but `claude`,
 and the printed command sends nothing, so neither needs it.
 
 Where the agent's profile does not build received, the core sends the
-prompt, and a tell's words in `hand`, by `send_watching` with
+prompt, and a message's words in `hand`, by `send_watching` with
 `RECEIVED_WITHIN`, and reads them received:
 
 - on `Began`, at once: the prompt's `received_at` and the start's
@@ -175,7 +175,7 @@ prompt, and a tell's words in `hand`, by `send_watching` with
 Such a start names no record, so `own_record` reads it its start's, as
 for a start not yet received (77): a program started otherwise in its
 pane is found by its process (S74). Every sending to the agent, its
-prompt or a tell, clears its `waiting`.
+prompt or a message, clears its `waiting`.
 
 Not taken: a flag on `send`, which would change every terminal profile
 and fake for one profile's need; and the reading of the agent working
@@ -259,7 +259,7 @@ its words.
 - core.9: a stage's end is still read from its deliverable; the
   terminal's readings decide only whether its agent is quiet, asking or
   stopped.
-- core.11: a prompt or a tell is sent only to a waiting agent that
+- core.11: a prompt or a message is sent only to a waiting agent that
   started, its input cleared first, read received within 60 seconds or
   sent once more.
 - core.14: status's form gains five words of `part`, and nothing else.

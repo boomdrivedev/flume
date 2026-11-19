@@ -559,7 +559,7 @@ pub trait Terminal: Send + Sync {
     /// `text` delivered as `send` delivers it, any text the agent holds
     /// typed cleared first, with the terminal's word whether it saw the
     /// turn the sending began, the agent working or asking, within
-    /// `within`: the send the core reads a prompt or a tell received by
+    /// `within`: the send the core reads a prompt or a message received by
     /// where the agent's profile does not build received (89, 95, 171,
     /// C.5). Refused by default with [`NO_TURN`], nothing typed, so a
     /// terminal that reads no turn sends nothing by it.

@@ -634,7 +634,10 @@ fn blocked_reading_asking_from_the_terminal(_: &()) -> Outcome {
     ensure_eq!(agent.state, AgentState::Asking, "the agent's state");
     ensure_eq!(agent.asking, Reading::Yes, "the agent's asking");
     let told = world.engine().message(&id, "go on", Some(30));
-    ensure!(told.refusal().is_some(), "a tell into a question was taken");
+    ensure!(
+        told.refusal().is_some(),
+        "a message into a question was taken"
+    );
     ensure!(
         world.terminal.sent_to(&code).is_empty(),
         "flume typed into an asking agent"

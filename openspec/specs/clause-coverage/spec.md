@@ -19,7 +19,7 @@ removes SHALL change this list in the commit that adopts it.
 #### Scenario: The clauses listed
 
 - **WHEN** the suite's list is read
-- **THEN** it names the revision it named before this change, 48a94da; Parts A and B hold every clause that revision states; and it names as unbuilt what it named before this change but 171 and S73, 173, S71 and S72 among it, each left to record 0026's change of a pool's program, and nothing of 171 or S73
+- **THEN** it names the revision it named before this change, 48a94da; Parts A and B hold every clause that revision states; and it names as unbuilt what it named before this change but S74, 171, 173 and S71 to S73 among it, each left to record 0026's changes, and nothing of S74
 
 ### Requirement: Every scenario cites its clauses
 
@@ -48,7 +48,7 @@ and SHALL fail naming any of those a scenario cites.
 #### Scenario: The suite as this change leaves it
 
 - **WHEN** the coverage check runs over the suite as this change lands it
-- **THEN** it passes: every clause of Parts A and B, I1 to I8 and every scenario the list holds but those named as unbuilt is cited, 171 and S73 by the engine's scenarios of an agent read from its terminal
+- **THEN** it passes: every clause of Parts A and B, I1 to I8 and every scenario the list holds but those named as unbuilt is cited, S74 by the engine's scenarios of a start through the launcher
 
 ### Requirement: Seam scenarios run against any profile
 

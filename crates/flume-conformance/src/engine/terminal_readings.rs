@@ -18,12 +18,12 @@ use flume_seams::*;
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
-            name: "terminal readings: a begun fix's agent that reads asking from its terminal is read asking while the terminal reads it asking, a tell to it refused with nothing typed, and read neither once the terminal reads it waiting",
+            name: "terminal readings: a begun fix's agent that reads asking from its terminal is read asking while the terminal reads it asking, a message to it refused with nothing typed, and read neither once the terminal reads it waiting",
             cites: &["37", "90", "171"],
             run: asking_as_the_terminal_shows_it,
         },
         Scenario {
-            name: "terminal readings: a begun fix's agent whose profile builds asking, holding no asking mark while the terminal reads it asking, reads unknown and not asking, and a tell to it is refused with nothing typed",
+            name: "terminal readings: a begun fix's agent whose profile builds asking, holding no asking mark while the terminal reads it asking, reads unknown and not asking, and a message to it is refused with nothing typed",
             cites: &["90"],
             run: a_profile_that_builds_them_reads_no_question,
         },
@@ -53,9 +53,9 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_terminal_that_reads_no_turn,
         },
         Scenario {
-            name: "terminal readings: a tell to a begun fix's agent, waiting and reading received and asking from its terminal, is handed on the turn the terminal saw, sent once by the watched send",
+            name: "terminal readings: a message to a begun fix's agent, waiting and reading received and asking from its terminal, is handed on the turn the terminal saw, sent once by the watched send",
             cites: &["53", "54", "171"],
-            run: a_tell_handed_on_the_turn,
+            run: a_message_handed_on_the_turn,
         },
         Scenario {
             name: "terminal readings: a begun fix's agent that reads the five from its terminal, its deliverable committed and the terminal reading it waiting, settled now and 30 seconds later reads its own work running, and is quiet and delivers at the settle 60 seconds later",
@@ -192,7 +192,7 @@ fn asking_as_the_terminal_shows_it(_: &()) -> Outcome {
     let told = world.engine().message(&id, "go on", Some(30));
     ensure!(
         told.refusal().is_some(),
-        "a tell to an asking agent was taken"
+        "a message to an asking agent was taken"
     );
     ensure_eq!(
         world.terminal.sent_to(&code),
@@ -226,7 +226,7 @@ fn a_profile_that_builds_them_reads_no_question(_: &()) -> Outcome {
     let told = world.engine().message(&id, "go on", Some(30));
     ensure!(
         told.refusal().is_some(),
-        "a tell into a question flume cannot name was taken"
+        "a message into a question flume cannot name was taken"
     );
     ensure_eq!(
         world.terminal.sent_to(&code),
@@ -413,9 +413,9 @@ fn a_terminal_that_reads_no_turn(_: &()) -> Outcome {
     Ok(())
 }
 
-/// The terminal-readings spec's scenario "A tell handed on the turn" (53,
+/// The terminal-readings spec's scenario "A message handed on the turn" (53,
 /// 54, 171).
-fn a_tell_handed_on_the_turn(_: &()) -> Outcome {
+fn a_message_handed_on_the_turn(_: &()) -> Outcome {
     let world = World::new();
     let (id, code) = fix_reading(&world, "one", &[Part::Received, Part::Asking])?;
     ensure_eq!(
@@ -427,13 +427,13 @@ fn a_tell_handed_on_the_turn(_: &()) -> Outcome {
     let told = world.engine().message(&id, "look again", Some(30));
     ensure!(
         told.refusal().is_none(),
-        "the tell was refused: {:?}",
+        "the message was refused: {:?}",
         told.refusal()
     );
     ensure_eq!(
         world.terminal.log.count("send-watching"),
         watched + 1,
-        "watched sends of the tell"
+        "watched sends of the message"
     );
     ensure_eq!(world.terminal.log.count("send"), 0, "plain sends");
     ensure_eq!(

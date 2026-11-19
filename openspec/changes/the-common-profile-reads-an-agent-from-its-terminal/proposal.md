@@ -42,7 +42,7 @@ of it changes here.
   terminal**, and asks the profile nothing of it, so no part is read
   from the terminal where its profile builds it (93, 171; core.2,
   core.39):
-  - **received**: the prompt, or a tell's words, sent by a send that
+  - **received**: the prompt, or a message's words, sent by a send that
     watches for the turn it began; received on the terminal's word that
     it saw the agent working or asking, or on a reading of the agent so
     within 60 seconds of the sending, and sent once more otherwise (38,
@@ -121,7 +121,7 @@ of it changes here.
   `StartHeld::waiting`, only added.
 - `crates/flume-core`: the readings of a degraded part from the
   terminal, read wherever the core reads asking, own work, ended, last
-  words or received; the watched send of a prompt and a tell; the
+  words or received; the watched send of a prompt and a message; the
   settle's writing of `waiting`; the line's asking.
 - `crates/flume`: Claude Code's parts; the common profile's doc
   comment; herdr's `send_watching`.
