@@ -7,7 +7,7 @@
 //! into the place's folder before the terminal opens the agent, and a
 //! start whose command lists one outside it is not opened (196).
 
-use crate::accounts::Choice;
+use crate::accounts::{Choice, Programs};
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
@@ -530,7 +530,7 @@ impl Engine {
             Ok(_) => self.choose_account(
                 place,
                 stage_name,
-                program.as_deref(),
+                &Programs::named(program.as_deref()),
                 affinity.as_ref(),
                 lost_start.as_ref().and_then(|start| start.account.as_ref()),
                 queue,

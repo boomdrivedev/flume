@@ -655,7 +655,6 @@ impl Engine {
 /// Each program a stage whose layers name none may run on, in the order
 /// given, with its resolution, or the words that refuse it (145, 173;
 /// design 2).
-#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
 pub(crate) type RunsOn = Vec<(String, Result<Resolution, String>)>;
 
 #[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
@@ -704,7 +703,6 @@ pub(crate) fn refused(runs: &RunsOn) -> Vec<(String, String)> {
 /// words a launch and a start refuse it in, naming the stage, the pool
 /// and each program with the words that refuse it (4, 32, 145, 173;
 /// design 2).
-#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
 pub(crate) fn cannot_run(stage: &str, pool: &str, refused: &[(String, String)]) -> String {
     let why = if refused.is_empty() {
         "it holds no account".to_string()

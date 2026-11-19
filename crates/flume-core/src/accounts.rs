@@ -4,9 +4,11 @@
 //! reading as that document holds it, the windows its agent program last
 //! reported in a session flume started, and the threshold that reading
 //! holds it past, and the choice of an account at a start, the strategy
-//! over the usable accounts in order (184, 185, 211; core.32).
+//! over the usable accounts in order, an account usable only where its
+//! program can run the stage (173, 184, 185, 211; core.32).
 
 use crate::room::Queue;
+use crate::settings::{cannot_run, refused, RunsOn};
 use crate::{Engine, Past, ReadingStatus, WindowStatus};
 use flume_seams::*;
 use std::collections::BTreeMap;
@@ -200,11 +202,11 @@ impl AccountRoom {
             .then_some(MoveWhy::Full)
     }
 
-    /// Whether a start of `program` may take it: not spent, not past its
-    /// threshold, under its own bound, and running that program (144,
-    /// 145, 185).
-    pub fn usable(&self, program: &str) -> bool {
-        self.account.program == program && self.short().is_none()
+    /// Whether a start of a stage that `programs` can run may take it:
+    /// not spent, not past its threshold, under its own bound, and running
+    /// one of them (144, 145, 173, 185).
+    pub fn usable(&self, programs: &[String]) -> bool {
+        programs.contains(&self.account.program) && self.short().is_none()
     }
 
     /// The move of `on` off it to `to` at `at`, where it cannot take a
@@ -251,54 +253,59 @@ impl AccountRoom {
 
 /// What a start of a pool's stage may take.
 pub(crate) enum Usable {
-    /// An account of the pool runs the program and may take it.
+    /// An account of the pool runs a program that can run the stage and
+    /// may take it.
     Some,
-    /// No account of the pool runs the program (144).
+    /// No account of the pool runs a program that can run the stage (144,
+    /// 173).
     NoProgram,
-    /// Every account of the pool that runs the program is spent, past its
-    /// threshold or full; the soonest time one is back, none where each is
-    /// only full (145, 146, 185).
+    /// Every account of the pool that runs a program that can run the
+    /// stage is spent, past its threshold or full; the soonest time one is
+    /// back, none where each is only full (145, 146, 173, 185).
     None(Option<Seconds>),
 }
 
 impl PoolRoom {
-    /// The pool's accounts that run `program`.
-    fn running_program<'a>(&'a self, program: &'a str) -> impl Iterator<Item = &'a AccountRoom> {
+    /// The pool's accounts that run one of `programs`.
+    fn running_any<'a>(&'a self, programs: &'a [String]) -> impl Iterator<Item = &'a AccountRoom> {
         self.accounts
             .iter()
-            .filter(move |room| room.account.program == program)
+            .filter(move |room| programs.contains(&room.account.program))
     }
 
-    /// Whether the pool holds an account that runs `program`, spent, full
-    /// or neither (145).
-    pub fn runs(&self, program: &str) -> bool {
-        self.running_program(program).next().is_some()
+    /// Whether the pool holds an account that runs one of `programs`, the
+    /// programs that can run a stage, spent, full or neither (145, 173).
+    pub fn runs(&self, programs: &[String]) -> bool {
+        self.running_any(programs).next().is_some()
     }
 
-    /// Whether a start of `program` may take an account of the pool.
-    pub fn usable(&self, program: &str) -> Usable {
-        if !self.runs(program) {
+    /// Whether a start of a stage that `programs` can run may take an
+    /// account of the pool, the soonest time one is back counting only
+    /// accounts of them (145, 173).
+    pub fn usable(&self, programs: &[String]) -> Usable {
+        if !self.runs(programs) {
             return Usable::NoProgram;
         }
-        if self.accounts.iter().any(|room| room.usable(program)) {
+        if self.accounts.iter().any(|room| room.usable(programs)) {
             return Usable::Some;
         }
         Usable::None(
-            self.running_program(program)
+            self.running_any(programs)
                 .filter_map(AccountRoom::back)
                 .min(),
         )
     }
 
-    /// The account the strategy chooses for a start of `program`: under
-    /// fill-first the first usable in order; under least-busy the usable
-    /// one with fewest of flume's agents, equals in order; under most-left
-    /// the usable one with the most left by a fresh reading, then each with
-    /// no fresh reading, equals in either by fewest of flume's agents and
-    /// then in order, so that with no fresh reading anywhere it chooses as
-    /// least-busy does (145, 184).
-    pub fn strategy(&self, program: &str) -> Option<&AccountRoom> {
-        let mut usable = self.accounts.iter().filter(|room| room.usable(program));
+    /// The account the strategy chooses for a start of a stage that
+    /// `programs` can run, over every usable account of any of them in
+    /// the pool's order: under fill-first the first usable in order; under
+    /// least-busy the usable one with fewest of flume's agents, equals in
+    /// order; under most-left the usable one with the most left by a fresh
+    /// reading, then each with no fresh reading, equals in either by
+    /// fewest of flume's agents and then in order, so that with no fresh
+    /// reading anywhere it chooses as least-busy does (145, 173, 184).
+    pub fn strategy(&self, programs: &[String]) -> Option<&AccountRoom> {
+        let mut usable = self.accounts.iter().filter(|room| room.usable(programs));
         match self.strategy {
             Strategy::FillFirst => usable.next(),
             Strategy::LeastBusy => {
@@ -349,6 +356,49 @@ pub(crate) enum Choice {
     NoAccount(String),
 }
 
+/// The programs that can run a stage, as the choice of its account reads
+/// them (32 item 8, 144, 145, 173; design 4).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Programs {
+    /// The one a layer names, none where its settings name none; or, where
+    /// no layer above flume's default names one, each program of its
+    /// pool's accounts that can run it, in the pool's order.
+    pub able: Vec<String>,
+    /// Whether a layer above flume's default names the program, or, before
+    /// a stage reads its pool, the program its settings resolve (32 item
+    /// 8, 173).
+    pub named: bool,
+    /// Where no layer names one, each program of its pool's accounts that
+    /// cannot run it, with the words that refuse it (145, 173).
+    pub refused: Vec<(String, String)>,
+}
+
+impl Programs {
+    /// The program a layer names, none where the settings name none.
+    pub fn named(program: Option<&str>) -> Programs {
+        Programs {
+            able: program.map(str::to_string).into_iter().collect(),
+            named: true,
+            refused: vec![],
+        }
+    }
+
+    /// The programs of a pool, as `runs` read each of them, for a stage
+    /// whose layers name none (173).
+    #[allow(dead_code)] // read by the start from task 3.2
+    pub fn of_pool(runs: &RunsOn) -> Programs {
+        Programs {
+            able: runs
+                .iter()
+                .filter(|(_, resolution)| resolution.is_ok())
+                .map(|(program, _)| program.clone())
+                .collect(),
+            named: false,
+            refused: refused(runs),
+        }
+    }
+}
+
 /// Why a stage whose agent runs `program` cannot start on the pool `pool`,
 /// which holds no account of that program: the words a launch and a start
 /// refuse it in (4, 32, 145).
@@ -359,26 +409,32 @@ pub(crate) fn no_account(stage: &str, pool: &str, program: &str) -> String {
 }
 
 impl Engine {
-    /// The account a start of `place`'s stage `stage` whose agent runs
-    /// `program` takes: the intent's affinity's for `program` while it is
-    /// usable, else the strategy's choice over its pool's usable accounts,
-    /// in order; and, where the strategy chose because the affinity's
-    /// account for `program` was spent, past its threshold or full, the
-    /// intent's move to it for `program`, off a threshold with the window
-    /// and its end, unless it is an account the affinity for `program`
-    /// once left. A program the affinity keeps no account for moves nothing, and
-    /// a pool that holds no account of `program` refuses the stage (4, 32,
-    /// 144, 145, 147; core.32). A start that carries a conversation lost
-    /// with its terminal or its host takes `conversation`, the account its
-    /// lost start ran under, first, where the pool declares it under the
-    /// same pool, of `program` and usable, moving no intent's affinity by
-    /// it (49, 145, 147, 179).
+    /// The account a start of `place`'s stage `stage` takes, among the
+    /// accounts whose program is one of `programs`, those that can run it:
+    /// the intent's affinity's for its program while it is usable, else
+    /// the strategy's choice over its pool's usable accounts of any of
+    /// them, in order; and, where the strategy chose an account of that
+    /// program because the affinity's was spent, past its threshold or
+    /// full, the intent's move to it for that program, off a threshold
+    /// with the window and its end, unless it is an account the affinity
+    /// for that program once left. The program is the one a layer names,
+    /// or, where no layer above flume's default names one, the program the
+    /// intent's last agent ran while it can run the stage. A program the
+    /// affinity keeps no account for moves nothing, a start on another
+    /// program moves nothing, and a pool that holds no account of any of
+    /// `programs` refuses the stage, in [`no_account`]'s words for a named
+    /// program and [`cannot_run`]'s for none (4, 32, 144, 145, 147, 173;
+    /// core.32). A start that carries a conversation lost with its
+    /// terminal or its host takes `conversation`, the account its lost
+    /// start ran under, first, where the pool declares it under the same
+    /// pool, of one of `programs` and usable, moving no intent's affinity
+    /// by it (49, 145, 147, 179).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn choose_account(
         &self,
         place: &PlaceRecord,
         stage: &str,
-        program: Option<&str>,
+        programs: &Programs,
         affinity: Option<&Affinity>,
         conversation: Option<&AccountHeld>,
         queue: &Queue,
@@ -396,14 +452,30 @@ impl Engine {
                 None,
             );
         };
-        let Some(program) = program else {
-            return (Choice::Wait, None);
+        let able = &programs.able;
+        let last = if programs.named {
+            let Some(program) = able.first() else {
+                return (Choice::Wait, None);
+            };
+            if !room.runs(able) {
+                return (Choice::NoAccount(no_account(stage, pool, program)), None);
+            }
+            Some(program.clone())
+        } else {
+            if !room.runs(able) {
+                return (
+                    Choice::NoAccount(cannot_run(stage, pool, &programs.refused)),
+                    None,
+                );
+            }
+            affinity
+                .and_then(|affinity| affinity.last.clone())
+                .filter(|last| able.contains(last))
         };
-        if let Usable::NoProgram = room.usable(program) {
-            return (Choice::NoAccount(no_account(stage, pool, program)), None);
-        }
-        let kept = affinity
-            .and_then(|affinity| affinity.accounts.get(program))
+        let kept = last
+            .as_ref()
+            .zip(affinity)
+            .and_then(|(last, affinity)| affinity.accounts.get(last))
             .filter(|kept| kept.pool == pool)
             .and_then(|kept| room.account(&kept.account));
         let chose = |chosen: &AccountRoom, from| Choice::Chose {
@@ -417,29 +489,34 @@ impl Engine {
         let holds = conversation
             .filter(|held| held.pool == pool)
             .and_then(|held| room.account(&held.name))
-            .filter(|holds| holds.usable(program));
+            .filter(|holds| holds.usable(able));
         if let Some(holds) = holds {
             return (chose(holds, AccountFrom::Conversation), None);
         }
-        if let Some(kept) = kept.filter(|kept| kept.usable(program)) {
+        let of_last = |room: &AccountRoom| last.as_ref() == Some(&room.account.program);
+        if let Some(kept) = kept.filter(|kept| of_last(kept) && kept.usable(able)) {
             return (chose(kept, AccountFrom::Affinity), None);
         }
-        let Some(chosen) = room.strategy(program) else {
+        let Some(chosen) = room.strategy(able) else {
             return (Choice::Wait, None);
         };
-        let moved = kept.zip(affinity).and_then(|(kept, affinity)| {
-            if affinity.left(program, &chosen.account.name) {
-                return None;
-            }
-            kept.move_off(
-                MoveOn::Intent {
-                    program: Some(program.to_string()),
-                },
-                &chosen.account.name,
-                now,
-                None,
-            )
-        });
+        let moved = kept
+            .zip(affinity)
+            .zip(last.as_ref())
+            .filter(|_| of_last(chosen))
+            .and_then(|((kept, affinity), last)| {
+                if affinity.left(last, &chosen.account.name) {
+                    return None;
+                }
+                kept.move_off(
+                    MoveOn::Intent {
+                        program: Some(last.clone()),
+                    },
+                    &chosen.account.name,
+                    now,
+                    None,
+                )
+            });
         (chose(chosen, AccountFrom::Strategy), moved)
     }
 
@@ -447,7 +524,7 @@ impl Engine {
     /// `program` under `account`: written at the intent's first start
     /// with a pool, its account for `program` kept at the first start on
     /// `program` and moved by `moved`, every other program's as it stands,
-    /// and no longer gone (147).
+    /// its last program `program`, and no longer gone (147, 173).
     pub(crate) fn affinity_after(
         &self,
         place: &PlaceRecord,
@@ -484,6 +561,7 @@ impl Engine {
                 .accounts
                 .entry(program.to_string())
                 .or_insert_with(|| kept.clone());
+            affinity.last = Some(program.to_string());
             affinity.gone = None;
             Some(affinity)
         });
@@ -828,6 +906,125 @@ mod tests {
             threshold: THRESHOLD,
             now: NOW,
         }
+    }
+
+    /// A pool under `strategy` of agent-1 of `agent`, running two agents,
+    /// other-1 of `other`, running one, and agent-2 of `agent`, running
+    /// none, in that order, none with a reading.
+    fn two_programs(strategy: Strategy) -> PoolRoom {
+        let account = |name: &str, program: &str, running| AccountRoom {
+            account: Account {
+                name: name.into(),
+                program: program.into(),
+                env: BTreeMap::new(),
+                agents: None,
+            },
+            running,
+            ..room(None, Reading::None(NONE_REPORTED.into()), None)
+        };
+        PoolRoom {
+            strategy,
+            threshold: THRESHOLD,
+            accounts: vec![
+                account("agent-1", "agent", 2),
+                account("other-1", "other", 1),
+                account("agent-2", "agent", 0),
+            ],
+        }
+    }
+
+    fn programs(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn an_account_of_a_program_that_cannot_run_it_is_not_usable() {
+        // Only `other` can run the stage: agent-1 and agent-2 are usable
+        // for no start of it under any strategy, and spent other-1 leaves
+        // the pool none, its back time counting only other-1 (144, 145,
+        // 173).
+        for strategy in [Strategy::FillFirst, Strategy::LeastBusy, Strategy::MostLeft] {
+            let mut pool = two_programs(strategy);
+            let other = programs(&["other"]);
+            assert!(!pool.accounts[0].usable(&other));
+            assert!(pool.accounts[1].usable(&other));
+            assert!(!pool.accounts[2].usable(&other));
+            assert_eq!(
+                pool.strategy(&other).map(|room| room.account.name.as_str()),
+                Some("other-1")
+            );
+            assert!(pool.runs(&other));
+            assert!(!pool.runs(&programs(&["nothing-here"])));
+            assert!(!pool.runs(&[]));
+            assert!(matches!(
+                pool.usable(&programs(&["nothing-here"])),
+                Usable::NoProgram
+            ));
+            pool.accounts[1].spent_until = Some(NOW + 600);
+            pool.accounts[0].spent_until = Some(NOW + 60);
+            assert!(pool.strategy(&other).is_none());
+            assert!(matches!(
+                pool.usable(&other),
+                Usable::None(Some(until)) if until == NOW + 600
+            ));
+            assert!(matches!(pool.usable(&programs(&["agent"])), Usable::Some));
+        }
+    }
+
+    #[test]
+    fn the_strategy_over_every_program_that_can_run_it() {
+        // Both programs can run the stage, so each strategy chooses over
+        // every usable account of either, in the pool's order: fill-first
+        // agent-1, least-busy agent-2, with fewest agents, and most-left,
+        // with no fresh reading anywhere, as least-busy; with only `agent`
+        // able, the same but for other-1 (145, 173).
+        let both = programs(&["agent", "other"]);
+        let chosen = |strategy, able: &[String]| {
+            two_programs(strategy)
+                .strategy(able)
+                .map(|room| room.account.name.clone())
+        };
+        assert_eq!(
+            chosen(Strategy::FillFirst, &both).as_deref(),
+            Some("agent-1")
+        );
+        assert_eq!(
+            chosen(Strategy::LeastBusy, &both).as_deref(),
+            Some("agent-2")
+        );
+        assert_eq!(
+            chosen(Strategy::MostLeft, &both).as_deref(),
+            Some("agent-2")
+        );
+        let mut pool = two_programs(Strategy::FillFirst);
+        pool.accounts[0].spent_until = Some(NOW + 600);
+        assert_eq!(
+            pool.strategy(&both).map(|room| room.account.name.as_str()),
+            Some("other-1")
+        );
+        let mut pool = two_programs(Strategy::LeastBusy);
+        pool.accounts[2].running = 3;
+        assert_eq!(
+            pool.strategy(&both).map(|room| room.account.name.as_str()),
+            Some("other-1")
+        );
+        assert_eq!(
+            pool.strategy(&programs(&["agent"]))
+                .map(|room| room.account.name.as_str()),
+            Some("agent-1")
+        );
+        let mut pool = two_programs(Strategy::MostLeft);
+        pool.accounts[1].reading =
+            Reading::Taken(taken(NOW, vec![window("5-hour", 1_000, Some(NOW + 3600))]));
+        assert_eq!(
+            pool.strategy(&both).map(|room| room.account.name.as_str()),
+            Some("other-1")
+        );
+        assert_eq!(
+            pool.strategy(&programs(&["agent"]))
+                .map(|room| room.account.name.as_str()),
+            Some("agent-2")
+        );
     }
 
     #[test]

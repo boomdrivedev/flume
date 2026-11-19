@@ -676,7 +676,7 @@ impl Queue {
     pub fn runs(&self, stream: &str, program: Option<&str>) -> bool {
         let pool = self.pool_of(stream).and_then(|pool| self.pools.get(pool));
         match (pool, program) {
-            (Some(pool), Some(program)) => pool.runs(program),
+            (Some(pool), Some(program)) => pool.runs(&[program.to_string()]),
             _ => true,
         }
     }
@@ -710,7 +710,10 @@ impl Queue {
             }
         }
         if let (Some(pool), Some(program)) = (self.pool_of(stream), program) {
-            if let Some(Usable::None(until)) = self.pools.get(pool).map(|room| room.usable(program))
+            if let Some(Usable::None(until)) = self
+                .pools
+                .get(pool)
+                .map(|room| room.usable(&[program.to_string()]))
             {
                 return Some(RoomWanted::Pool {
                     pool: pool.to_string(),
