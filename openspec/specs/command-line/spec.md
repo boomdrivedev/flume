@@ -596,3 +596,14 @@ the program's place, and becomes the program (41, 171, C.4; core.35).
 
 - **WHEN** `flume ack --help` runs
 - **THEN** it lists `launched` beside `started` and `received`, saying a terminal flume opened runs it in the program's place and that it becomes the program (C.4; core.35)
+
+### Requirement: launch carries parameters from a file
+
+`flume launch --params-file <file>` SHALL read the file whole and give
+it to the core as the launch's parameters, as written; a file that
+cannot be read SHALL refuse the launch naming it (224).
+
+#### Scenario: Parameters given by a file
+
+- **WHEN** `flume launch update a --params-file moves.json` runs where update@1's move asks for `{{params}}`
+- **THEN** the place's own folder holds `params` with the file's text whole (224, C.7)

@@ -25,9 +25,10 @@ at the launch (2, 21, 175, 176).
 ### Requirement: A launch naming what flume does not bind is refused
 
 A launch of a statechart kind SHALL be refused, naming it and making
-nothing, where its statechart names a template other than `stage`, a
-rule other than `every-file`, an evidence other than `region.entered`,
-`place.submission` and `place.submissions`, or any effect (4, 175, 178).
+nothing, where its statechart names a template other than `stage` and
+`command`, a rule other than `every-file`, an evidence other than
+`region.entered`, `place.submission` and `place.submissions`, or any
+effect (4, 175, 178, 223).
 
 #### Scenario: A template flume does not bind
 
