@@ -385,7 +385,6 @@ impl Programs {
 
     /// The programs of a pool, as `runs` read each of them, for a stage
     /// whose layers name none (173).
-    #[allow(dead_code)] // read by the start from task 3.2
     pub fn of_pool(runs: &RunsOn) -> Programs {
         Programs {
             able: runs

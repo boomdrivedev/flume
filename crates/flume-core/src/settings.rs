@@ -631,7 +631,15 @@ impl Engine {
         stage: &Stage,
         account: Option<&str>,
     ) -> Result<Resolution, String> {
-        let resolved = self.resolve(place, stage, account)?;
+        self.checked(self.resolve(place, stage, account)?, stage)
+    }
+
+    /// `stage`'s agent with `resolved` as its settings: the agent profile
+    /// that runs its program, the value it passes for its mode, its model
+    /// and its effort, which the profile takes, and its program's own
+    /// settings, which the profile takes; or why the stage is refused (27,
+    /// 32, 169, 172, 195, 197).
+    pub(crate) fn checked(&self, resolved: Resolved, stage: &Stage) -> Result<Resolution, String> {
         let agent = self.agent_for(&resolved, &stage.name)?;
         let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
@@ -657,7 +665,6 @@ impl Engine {
 /// design 2).
 pub(crate) type RunsOn = Vec<(String, Result<Resolution, String>)>;
 
-#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
 impl Engine {
     /// For each distinct program of `programs`, in order, `stage`'s agent
     /// in `place` resolved with that program as its account's, or the
@@ -686,7 +693,6 @@ impl Engine {
 
 /// The programs of `runs` that cannot run the stage, each with the words
 /// that refuse it, in order (145, 173).
-#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
 pub(crate) fn refused(runs: &RunsOn) -> Vec<(String, String)> {
     runs.iter()
         .filter_map(|(program, resolution)| {
