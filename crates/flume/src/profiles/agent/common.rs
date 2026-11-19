@@ -16,13 +16,15 @@
 //! and the process the launcher became, the word's, so the core takes the
 //! start only once the terminal reads the program in that process (35,
 //! 161, 171, C.4). A model, an effort or a mode its entry names no way to
-//! pass is refused naming the program (170, 172, 197; core.39). Every
-//! other part of the agent seam it reads nothing of answers as the seam's
-//! default, so nothing is read from the terminal in a part's stead (93,
-//! 171, 195; core.39): received, asking, own work and ended unknown, last
-//! words none, send-back, on-quiet and guard not offered. It builds none
-//! of the agent seam's parts, the seam's default, so status names each
-//! degraded with the agent (174).
+//! pass is refused naming the program (170, 172, 197; core.39). It builds
+//! none of the agent seam's parts, the seam's default, so the core reads
+//! its received, asking, own work, ended and last words from its terminal
+//! as 171 says, asking it nothing of them, and status names all thirteen
+//! degraded with the agent (171, 174; core.2). Every part it reads
+//! nothing of answers as the seam's default where it is asked, and
+//! nothing of the terminal is read here (93, 171, 195; core.2, core.39):
+//! received, asking, own work and ended unknown, last words none,
+//! send-back, on-quiet and guard not offered.
 //!
 //! [`launcher`]: super::launcher
 //!
@@ -391,8 +393,9 @@ mod tests {
         assert!(amp().launches(), "amp starts through the launcher");
     }
 
-    /// The agent-programs spec's scenario "Nothing read of amp" (93, 195):
-    /// every reading but its start's, which the launcher's word gives.
+    /// The agent-programs spec's scenario "Nothing read of amp" (93, 171,
+    /// 174, 195): every reading but its start's, which the launcher's word
+    /// gives.
     #[test]
     fn nothing_is_read_of_amp() {
         let amp = amp();
@@ -418,7 +421,25 @@ mod tests {
         assert_eq!(amp.send_back(), Offered::NotOffered);
         assert_eq!(amp.on_quiet(), Offered::NotOffered);
         assert_eq!(amp.guard(folder, &agent), Guarded::NotOffered);
-        assert_eq!(amp.parts().degraded(), Part::ALL.to_vec());
+        assert_eq!(
+            amp.parts().degraded(),
+            [
+                Part::Received,
+                Part::Asking,
+                Part::OwnWork,
+                Part::Ended,
+                Part::LastWords,
+                Part::Spent,
+                Part::Windows,
+                Part::SendBack,
+                Part::Guard,
+                Part::OnQuiet,
+                Part::Mode,
+                Part::Carry,
+                Part::OwnSettings,
+            ],
+            "all thirteen degraded, in 171's order"
+        );
         assert_eq!(amp.reserved(), vec![]);
         assert_eq!(amp.withheld(), Vec::<String>::new());
         assert_eq!(amp.effort_variable(), None);

@@ -448,6 +448,7 @@ fn held() -> HeldState {
                 }),
                 span: None,
                 asking_since: None,
+                waiting: None,
             }),
             since: Some(120),
         }],
@@ -2444,6 +2445,11 @@ impl Agent for Bare {
 #[test]
 fn each_part_written_and_read() {
     let words = [
+        "received",
+        "asking",
+        "own_work",
+        "ended",
+        "last_words",
         "spent",
         "windows",
         "send_back",
@@ -2453,6 +2459,7 @@ fn each_part_written_and_read() {
         "carry",
         "own_settings",
     ];
+    assert_eq!(Part::ALL.len(), words.len());
     for (part, word) in Part::ALL.into_iter().zip(words) {
         assert_eq!(serde_json::to_value(part).unwrap(), serde_json::json!(word));
         assert_eq!(
@@ -2472,15 +2479,28 @@ fn each_part_written_and_read() {
 #[test]
 fn a_parts_name_and_its_lesser_reading() {
     assert_eq!(Part::SendBack.name(), "send-back");
+    assert_eq!(Part::OwnWork.name(), "own work");
     assert_eq!(Part::OwnSettings.name(), "own settings");
     assert_eq!(
         Part::Carry.read(),
         "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
     );
+    assert!(
+        Part::OwnWork.read().starts_with(
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting"
+        ),
+        "{}",
+        Part::OwnWork.read()
+    );
     let names: Vec<&str> = Part::ALL.into_iter().map(Part::name).collect();
     assert_eq!(
         names,
         [
+            "received",
+            "asking",
+            "own work",
+            "ended",
+            "last words",
             "spent",
             "windows",
             "send-back",
@@ -2508,6 +2528,11 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(
         reads,
         [
+            "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+            "read from the terminal, asking while it reads the agent waiting on a question",
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+            "read from the terminal, ended once it reads the agent stopped",
+            "read from the terminal, what it shows of the agent",
             "unknown, so the account it runs under is never recorded spent",
             "unknown, so the account it runs under has no reading",
             "not offered, so it may go quiet with its deliverable missing",
@@ -2522,6 +2547,25 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(Bare.on_quiet(), Offered::NotOffered);
     assert_eq!(Bare.reports_windows(), Offered::NotOffered);
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+    // No part's lesser reading names a terminal (core.1), the names spelled
+    // in pieces so this file names none of them.
+    for part in Part::ALL {
+        for name in [
+            ["her", "dr"].concat(),
+            ["R", "ex"].concat(),
+            ["tm", "ux"].concat(),
+        ] {
+            assert!(!part.read().contains(&name), "{}", part.read());
+        }
+    }
+    assert_eq!(
+        Bare.received("/folder", &identity(), "go"),
+        Received::Unknown
+    );
+    assert_eq!(Bare.asking("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.own_work("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.ended("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.last_words("/folder", &identity()), None);
     assert_eq!(Bare.spent("/folder", &identity()), Spent::Unknown);
     assert_eq!(Bare.windows("/folder", &identity()), Windows::Unknown);
     assert_eq!(Bare.guard("/folder", &identity()), Guarded::NotOffered);
@@ -2540,6 +2584,11 @@ fn a_profile_that_builds_no_part() {
     assert_eq!(
         parts.degraded(),
         [
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
             Part::Spent,
             Part::Windows,
             Part::Guard,
@@ -2731,6 +2780,34 @@ fn the_processs_answers_round_trip() {
     assert_eq!(
         serde_json::to_value(ProgramProcess::Nothing).unwrap(),
         serde_json::json!("nothing")
+    );
+}
+
+/// The seam-contracts spec's scenario "A watched send's answers in JSON"
+/// (95, 171, C.5).
+#[test]
+fn a_watched_sends_answers_round_trip() {
+    for watched in [
+        SentWatching::Began,
+        SentWatching::NotSeen {
+            why: "agent_prompt_stalled: no turn began within 5000 ms".into(),
+        },
+        SentWatching::Refused {
+            reason: "the pane is gone".into(),
+        },
+    ] {
+        round_trips(watched);
+    }
+    assert_eq!(
+        serde_json::to_value(SentWatching::Began).unwrap(),
+        serde_json::json!("began")
+    );
+    assert_eq!(
+        serde_json::to_value(SentWatching::NotSeen {
+            why: "timeout".into()
+        })
+        .unwrap(),
+        serde_json::json!({ "not_seen": { "why": "timeout" } })
     );
 }
 
@@ -6344,6 +6421,52 @@ fn a_held_state_with_its_trace_and_waits() {
             serde_json::json!(party.word())
         );
     }
+}
+
+/// The seam-contracts spec's scenario "A start read waiting" (171).
+#[test]
+fn a_start_read_waiting() {
+    let mut held = held();
+    let start = held.stages[0].start.as_mut().expect("a start");
+    start.waiting = Some(WaitingRead {
+        since: 100,
+        at: 160,
+    });
+    round_trips(held.clone());
+    let json = serde_json::to_value(&held).expect("as JSON");
+    assert_eq!(
+        json["stages"][0]["start"]["waiting"],
+        serde_json::json!({ "since": 100, "at": 160 })
+    );
+    let read: HeldState = serde_json::from_value(json).expect("read back");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        Some(WaitingRead {
+            since: 100,
+            at: 160
+        })
+    );
+}
+
+/// The seam-contracts spec's scenario "A start written before" (171;
+/// core.16).
+#[test]
+fn a_start_written_before_reads_no_waiting() {
+    let before = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(
+        before["stages"][0]["start"].get("waiting").is_none(),
+        "waiting written while none"
+    );
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        None
+    );
+    assert_eq!(
+        serde_json::to_value(&read).expect("written again"),
+        before,
+        "no waiting written where none is held"
+    );
 }
 
 #[test]

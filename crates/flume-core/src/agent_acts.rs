@@ -245,8 +245,16 @@ impl Engine {
         {
             return None;
         }
-        if agent.own_work(&folder, &start.identity) != Reading::No
-            || agent.asking(&folder, &start.identity) != Reading::No
+        // The terminal is read for own work only where the profile does
+        // not build it (171; core.39).
+        let own_work = if agent.parts().builds(Part::OwnWork) {
+            agent.own_work(&folder, &start.identity)
+        } else {
+            let state = self.state_of(Some(agent.as_ref()), &folder, start);
+            self.read_own_work(agent.as_ref(), &folder, start, state)
+        };
+        if own_work != Reading::No
+            || self.read_asking(agent.as_ref(), &folder, start) != Reading::No
         {
             return None;
         }

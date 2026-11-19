@@ -47,7 +47,16 @@
 //! recorded before anything is sent (30, 98).
 //!
 //! send clears what the agent holds typed with one ctrl+c, then hands the
-//! text to herdr's agent prompt (95). state reads herdr's working as
+//! text to herdr's agent prompt (95). send_watching finds the pane as send
+//! does, clears it the same way, then hands the text to `agent prompt
+//! <pane> <text> --wait --until working --until blocked --timeout <ms>`,
+//! the bound it is given in milliseconds, under that bound and
+//! [`PAST_TIMEOUT`] past it, so herdr's own timeout answers first: an
+//! answer is the turn seen; `agent_prompt_stalled`, which herdr 0.9.5
+//! answers where the agent shows neither working nor blocked within 5000
+//! milliseconds of the submission, and `timeout` the turn not seen, in
+//! herdr's words; any other refusal, a pane gone, or no answer within the
+//! bound a refusal in herdr's words (89, 95, 171, C.5; core.29). state reads herdr's working as
 //! working, idle and done as waiting, blocked as asking, which the core
 //! takes as asking only with the agent's mark (90), and herdr's unknown
 //! as unknown; stopped only when the pane is gone, herdr lists it with a
@@ -153,7 +162,8 @@ use crate::host::process::program_path;
 use flume_seams::{
     AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, FolderTrust, Identity, Key,
     KeyName, NamedAgent, OpenIn, Opened, PlaceRef, ProgramProcess, Relay, RelayScreen, Sent,
-    SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
+    SentWatching, SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View,
+    ViewCommand,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -232,6 +242,11 @@ const TRUST_REDRAW: Duration = Duration::from_secs(2);
 
 /// How far past the timeout it passes a call that states one is bounded.
 const PAST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What herdr 0.9.5's `agent prompt --wait` answers where the agent shows
+/// neither working nor blocked within 5000 milliseconds of a submission
+/// from a state not working: no turn seen (C.5).
+const STALLED: &str = "agent_prompt_stalled";
 
 /// The kinds herdr 0.9.5's agent start takes, each its program's
 /// canonical name (`herdr agent`).
@@ -2242,6 +2257,55 @@ impl Terminal for Herdr {
                 why: format!("herdr refused ({code}): {words}"),
             },
             Call::Unanswered(why) => ProgramProcess::Unknown { why },
+        }
+    }
+
+    /// As the module's doc says: the turn seen on herdr's answer, not seen
+    /// on `agent_prompt_stalled` or `timeout`, and refused otherwise (89,
+    /// 95, 171, C.5; core.29).
+    fn send_watching(&self, agent: &Identity, text: &str, within: Duration) -> SentWatching {
+        let pane = match self.found(agent) {
+            Found::At(pane) => pane,
+            Found::Gone => {
+                return SentWatching::Refused {
+                    reason: format!("no agent runs under {agent}"),
+                }
+            }
+            Found::Unknown(reason) => return SentWatching::Refused { reason },
+        };
+        if let Err(reason) =
+            self.answered(&pane.socket, &["agent", "send-keys", &pane.id, "ctrl+c"])
+        {
+            return SentWatching::Refused { reason };
+        }
+        let timeout = within.as_millis().to_string();
+        match self.call(
+            &pane.socket,
+            &[
+                "agent",
+                "prompt",
+                &pane.id,
+                text,
+                "--wait",
+                "--until",
+                "working",
+                "--until",
+                "blocked",
+                "--timeout",
+                &timeout,
+            ],
+            within + PAST_TIMEOUT,
+        ) {
+            Call::Answered(_) => SentWatching::Began,
+            Call::Refused { code, words } if code == STALLED || code == "timeout" => {
+                SentWatching::NotSeen {
+                    why: format!("herdr answered ({code}): {words}"),
+                }
+            }
+            Call::Refused { code, words } => SentWatching::Refused {
+                reason: format!("herdr refused ({code}): {words}"),
+            },
+            Call::Unanswered(reason) => SentWatching::Refused { reason },
         }
     }
 

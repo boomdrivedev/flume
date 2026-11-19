@@ -629,6 +629,7 @@ fn the_profile_builds_every_part() {
     let harness = Harness::new();
     let seam = &harness.seam;
     let parts = seam.parts();
+    assert_eq!(Part::ALL.len(), 13);
     for part in Part::ALL {
         assert!(
             parts.builds(part),

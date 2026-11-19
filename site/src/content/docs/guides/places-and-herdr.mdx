@@ -261,6 +261,28 @@ nothing, ends it once it is quiet and starts the stage afresh, and
 `flume status` names the start begun in another process than the one
 its launcher became.
 
+Once such a program started, flume reads it from herdr, since it keeps
+no record flume can read:
+
+- **Its prompt** is received once herdr sees the turn its sending
+  began, the agent working or blocked within a minute, and sent once
+  more where it is not.
+- **It asks** while herdr reads it blocked, and nothing is typed into
+  it then.
+- **Its own work** is done once two settles a minute or more apart read
+  it waiting, so its stage delivers no sooner than a minute after it
+  goes quiet.
+- **It ended** once herdr reads it stopped, and **its last words** are
+  what its pane shows.
+
+Usage limits, plans, send-backs, guards and carrying a session over are
+not offered for such a program. `flume status` names each part so read
+with the agent, `degraded` in its JSON form, with how flume reads it:
+
+```text
+    own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then
+```
+
 ### Programs herdr reads through its integration
 
 herdr reads the state of OMP and MastraCode only through an integration

@@ -289,7 +289,7 @@ impl Engine {
                 if let Guarded::Refused { acts } = agent.guard(&folder, &start.identity) {
                     refused_acts.extend(acts);
                 }
-                last_words = agent.last_words(&folder, &start.identity);
+                last_words = self.read_last_words(agent.as_ref(), &folder, start);
                 notes = agent.notes(&folder, &start.identity);
                 read_back = agent.mode_read_back() == Offered::Offered;
                 reserved = agent.reserved();

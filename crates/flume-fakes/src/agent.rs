@@ -5,7 +5,7 @@ use flume_seams::{
     Received, Reserved, Seconds, Secret, Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN,
     READS_NO_SESSION,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 /// The agent seam: each agent's own record by identity. An agent says
@@ -45,8 +45,12 @@ use std::sync::{Arc, Mutex};
 /// with the session its word names, the later of two reports standing,
 /// each read logged `windows`, until it is scripted to report none, after
 /// which its profile builds no windows (171, 211). Its parts follow its
-/// scripts: send-back, guard and on-quiet built unless scripted off,
-/// windows unless scripted to report none, spent always, the mode once
+/// scripts: received, asking, own work, ended and last words built unless
+/// scripted to be read from its terminal, each it is so scripted for then
+/// answering the seam's lesser way, unknown or none for last words, its
+/// read logged as any other; send-back, guard and on-quiet built unless
+/// scripted off, windows unless scripted to report none, spent always,
+/// the mode once
 /// scripted to read it back, carry once a carry is scripted and own
 /// settings once scripted to take them, every other degraded, and the
 /// seam reads whether it offers send-back and on-quiet, reports windows
@@ -111,6 +115,9 @@ struct AgentModel {
     /// The profile starts its program through flume's launcher, as
     /// scripted (C.4).
     launches: bool,
+    /// The parts of the five the core reads from the terminal, which the
+    /// profile does not build, as scripted (171, 174).
+    from_terminal: BTreeSet<Part>,
 }
 
 #[derive(Clone)]
@@ -358,6 +365,36 @@ impl FakeAgent {
     /// which `launched` answers for that start alone (C.4).
     pub fn set_launched(&self, agent: &Identity, pid: u32) {
         self.with(agent, |record| record.launched = Some(pid));
+    }
+
+    /// The program's profile builds none of `parts` among received,
+    /// asking, own work, ended and last words, so the core reads each from
+    /// its terminal: its parts name none of them, and each answers the
+    /// seam's lesser way where it is asked, received, asking, own work and
+    /// ended unknown and last words none, its read logged as now (106,
+    /// 171, 174). Any other part given is left as it was.
+    pub fn reads_from_its_terminal(&self, parts: &[Part]) {
+        lock(&self.state).from_terminal.extend(
+            parts
+                .iter()
+                .copied()
+                .filter(|part| FakeAgent::FROM_TERMINAL.contains(part)),
+        );
+    }
+
+    /// The five parts a profile may leave the core to read from its
+    /// terminal (171).
+    pub const FROM_TERMINAL: [Part; 5] = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+    ];
+
+    /// Whether the profile leaves `part` to be read from the terminal.
+    fn leaves_to_terminal(&self, part: Part) -> bool {
+        lock(&self.state).from_terminal.contains(&part)
     }
 
     /// The program's profile builds no windows: `reports_windows` answers
@@ -783,6 +820,9 @@ impl Agent for FakeAgent {
         let Some(model) = self.read_in("received", folder, agent) else {
             return Received::Unknown;
         };
+        if self.leaves_to_terminal(Part::Received) {
+            return Received::Unknown;
+        }
         let Some((command, carried)) = self.on(agent).opened(agent) else {
             return Received::Unknown;
         };
@@ -815,16 +855,19 @@ impl Agent for FakeAgent {
 
     fn asking(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("asking", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::Asking))
             .map_or(Reading::Unknown, |record| record.asking)
     }
 
     fn own_work(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("own_work", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::OwnWork))
             .map_or(Reading::Unknown, |record| record.own_work)
     }
 
     fn ended(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("ended", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::Ended))
             .map_or(Reading::Unknown, |record| {
                 if self.ends_unfound(agent) {
                     Reading::Yes
@@ -836,25 +879,28 @@ impl Agent for FakeAgent {
 
     fn last_words(&self, folder: &str, agent: &Identity) -> Option<String> {
         self.read_in("last_words", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::LastWords))
             .and_then(|record| record.last_words)
     }
 
     /// Each part its scripts give it, every other degraded (174).
     fn parts(&self) -> Parts {
         let state = lock(&self.state);
-        let built: Vec<Part> = [
-            (Part::Spent, true),
-            (Part::Windows, !state.no_windows),
-            (Part::SendBack, !state.no_send_back),
-            (Part::Guard, !state.no_guard),
-            (Part::OnQuiet, !state.no_on_quiet),
-            (Part::Mode, state.mode_read_back),
-            (Part::Carry, !state.carries.is_empty()),
-            (Part::OwnSettings, state.takes_own),
-        ]
-        .into_iter()
-        .filter_map(|(part, built)| built.then_some(part))
-        .collect();
+        let built: Vec<Part> = FakeAgent::FROM_TERMINAL
+            .into_iter()
+            .map(|part| (part, !state.from_terminal.contains(&part)))
+            .chain([
+                (Part::Spent, true),
+                (Part::Windows, !state.no_windows),
+                (Part::SendBack, !state.no_send_back),
+                (Part::Guard, !state.no_guard),
+                (Part::OnQuiet, !state.no_on_quiet),
+                (Part::Mode, state.mode_read_back),
+                (Part::Carry, !state.carries.is_empty()),
+                (Part::OwnSettings, state.takes_own),
+            ])
+            .filter_map(|(part, built)| built.then_some(part))
+            .collect();
         Parts::of(&built)
     }
 

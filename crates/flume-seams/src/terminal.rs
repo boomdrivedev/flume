@@ -100,6 +100,23 @@ pub enum Sent {
     Refused { reason: String },
 }
 
+/// send, watching the turn: the text delivered as `send` delivers it,
+/// with the terminal's word that it saw the turn the sending began, the
+/// agent working or asking, within the bound it was given; that it saw
+/// none, in its words; or a refusal, with nothing left typed (89, 95, 171,
+/// C.5).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SentWatching {
+    Began,
+    NotSeen { why: String },
+    Refused { reason: String },
+}
+
+/// What the seam's default `send_watching` answers: the terminal reads no
+/// turn a sending began (95, 171).
+pub const NO_TURN: &str = "the terminal reads no turn a sending began";
+
 /// send to a recipient's session by its name: the text delivered as
 /// input, no session found by that name, or a refusal; never left typed
 /// (43, 95).
@@ -539,6 +556,24 @@ pub trait Terminal: Send + Sync {
     /// typed cleared first, so no answer leaves text typed (95).
     fn send(&self, agent: &crate::Identity, text: &str) -> Sent;
 
+    /// `text` delivered as `send` delivers it, any text the agent holds
+    /// typed cleared first, with the terminal's word whether it saw the
+    /// turn the sending began, the agent working or asking, within
+    /// `within`: the send the core reads a prompt or a message received by
+    /// where the agent's profile does not build received (89, 95, 171,
+    /// C.5). Refused by default with [`NO_TURN`], nothing typed, so a
+    /// terminal that reads no turn sends nothing by it.
+    fn send_watching(
+        &self,
+        _agent: &crate::Identity,
+        _text: &str,
+        _within: std::time::Duration,
+    ) -> SentWatching {
+        SentWatching::Refused {
+            reason: NO_TURN.into(),
+        }
+    }
+
     /// Whether the terminal delivers text to a running agent at all, as a
     /// tell's send does: where it does not, every send is refused with
     /// nothing typed, and no agent is kept open for an answer (53, 95,
@@ -848,5 +883,25 @@ mod tests {
             }
         );
         assert_eq!(NO_PROCESS, "the terminal reads no process");
+    }
+
+    /// The seam-contracts scenario "A terminal that keeps the seam's
+    /// default reads no turn" (95, 171).
+    #[test]
+    fn a_terminal_that_keeps_the_seams_default_reads_no_turn() {
+        let agent = crate::Identity {
+            repository: "r1".into(),
+            place: "fix--one".into(),
+            stage: "code".into(),
+            start: 1,
+            resume: 0,
+        };
+        assert_eq!(
+            NoRelay.send_watching(&agent, "go", std::time::Duration::from_secs(60)),
+            SentWatching::Refused {
+                reason: "the terminal reads no turn a sending began".into()
+            }
+        );
+        assert_eq!(NO_TURN, "the terminal reads no turn a sending began");
     }
 }
