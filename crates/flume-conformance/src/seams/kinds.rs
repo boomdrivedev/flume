@@ -117,6 +117,7 @@ pub fn bump(agents: usize) -> Kind {
         }],
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 

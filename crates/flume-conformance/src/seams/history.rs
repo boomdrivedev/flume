@@ -83,7 +83,44 @@ pub fn scenarios<H: HistoryHarness>() -> Vec<Scenario<H>> {
             cites: &["143"],
             run: the_origin_url_as_written::<H>,
         },
+        Scenario {
+            name: "history: a revision's files, each a commit at or before it added, and none for a revision the repository does not hold",
+            cites: &["178"],
+            run: a_revisions_files::<H>,
+        },
     ]
+}
+
+/// The files of two revisions, the second adding one to the first's, read
+/// as every-file reads them at a settle's head; a revision the repository
+/// does not hold gives none (178, section 9).
+fn a_revisions_files<H: HistoryHarness>(harness: &H) -> Outcome {
+    let (repository, branch, _) = harness.branch();
+    let first = harness.commit(&repository, &branch, "personas/a.md");
+    let second = harness.commit(&repository, &branch, "personas/b.md");
+    let named = |revision: &Revision| {
+        let files = harness.seam().files(&repository, revision);
+        (
+            files.contains(&"personas/a.md".to_string()),
+            files.contains(&"personas/b.md".to_string()),
+        )
+    };
+    ensure_eq!(named(&first), (true, false), "the first revision's files");
+    ensure_eq!(named(&second), (true, true), "the second revision's files");
+    ensure_eq!(
+        harness.seam().files(&repository, &second),
+        harness.seam().files(&repository, &second),
+        "the same revision read twice"
+    );
+    ensure_eq!(
+        harness.seam().files(
+            &repository,
+            &Revision::new("0123456789abcdef0123456789abcdef01234567")
+        ),
+        Vec::<String>::new(),
+        "a revision the repository does not hold"
+    );
+    Ok(())
 }
 
 /// The origin's URL read as `remote.origin.url` holds it, a user and a

@@ -345,7 +345,12 @@ fn settings_resolved(_: &()) -> Outcome {
     let agent = place.agent.ok_or("no agent")?;
     ensure_eq!(agent.program, "agent", "the program");
     ensure_eq!(
-        agent.settings.settings.model.as_deref(),
+        agent
+            .settings
+            .settings
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("large"),
         "the model"
     );

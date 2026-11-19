@@ -1,10 +1,11 @@
 use crate::{lock, FakeTerminal, Log};
 use flume_seams::{
-    no_effort, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, LiveProcess, Mode,
-    ModeBegan, ModeEntry, Offered, PlaceRef, Reading, Received, Reserved, Seconds, Secret,
-    Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN, READS_NO_SESSION,
+    no_effort, no_model, Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live,
+    LiveProcess, Mode, ModeBegan, ModeEntry, Offered, Part, Parts, PerProgram, PlaceRef, Reading,
+    Received, Reserved, Seconds, Secret, Settings, Spent, Unsettled, UsageWindow, Windows, NO_OWN,
+    READS_NO_SESSION,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 /// The agent seam: each agent's own record by identity. An agent says
@@ -33,13 +34,31 @@ use std::sync::{Arc, Mutex};
 /// refusing every word in the seam's default words, and names no
 /// variable read over the effort until scripted to; its command passes
 /// the effort its settings give as `--effort <word>`, and each effort
-/// asked of it is logged (197). An agent scripted to end its session
+/// asked of it is logged (197). It takes every model until scripted to
+/// take none, then refusing every name in the seam's default words; its
+/// command passes the model its settings give as `--model <name>`, each
+/// model asked of it is logged, and its program's kind is `agent` (88,
+/// 172). An agent scripted to end its session
 /// after a stop-short reads stopped and ended once a test says it
 /// stopped short (96, 134). Its program reports the windows a test
 /// scripts for a start, read in the folder the start's record is kept in
 /// with the session its word names, the later of two reports standing,
 /// each read logged `windows`, until it is scripted to report none, after
-/// which its profile builds no windows (171, 211).
+/// which its profile builds no windows (171, 211). Its parts follow its
+/// scripts: received, asking, own work, ended and last words built unless
+/// scripted to be read from its terminal, each it is so scripted for then
+/// answering the seam's lesser way, unknown or none for last words, its
+/// read logged as any other; send-back, guard and on-quiet built unless
+/// scripted off, windows unless scripted to report none, spent always,
+/// the mode once
+/// scripted to read it back, carry once a carry is scripted and own
+/// settings once scripted to take them, every other degraded, and the
+/// seam reads whether it offers send-back and on-quiet, reports windows
+/// and reads its mode back from them (174). It starts its program itself
+/// until scripted to start it through flume's launcher, its command then
+/// carrying [`FakeAgent::LAUNCHER`]'s words, and names, for each start a
+/// test scripts, the process its launcher's word names, none until
+/// scripted, each read logged `launched <identity>` (106, C.4).
 pub struct FakeAgent {
     terminal: Arc<FakeTerminal>,
     /// The other terminals its agents may open in, a stream's (190).
@@ -88,11 +107,23 @@ struct AgentModel {
     efforts: Vec<String>,
     /// The variable the program reads over its effort, as scripted (197).
     effort_variable: Option<&'static str>,
+    /// The program takes no model, as a profile that names no way to give
+    /// one, as scripted (172).
+    no_model: bool,
     /// The variable of an account's environment whose value is the
     /// program's configuration home, as scripted (56, C.4).
     home_variable: Option<&'static str>,
     /// The profile builds no windows, as scripted (171, 211).
     no_windows: bool,
+    /// The profile starts its program through flume's launcher, as
+    /// scripted (C.4).
+    launches: bool,
+    /// The parts of the five the core reads from the terminal, which the
+    /// profile does not build, as scripted (171, 174).
+    from_terminal: BTreeSet<Part>,
+    /// The way to stop short the profile gives in place of its fixed
+    /// words, as scripted (41, 92).
+    stop_short: Option<String>,
 }
 
 #[derive(Clone)]
@@ -126,6 +157,8 @@ struct Record {
     /// as scripted; else the session its word that it started names
     /// (217).
     conversation: Option<String>,
+    /// The process its launcher's word names, as scripted (C.4).
+    launched: Option<u32>,
 }
 
 impl Default for Record {
@@ -149,6 +182,7 @@ impl Default for Record {
             submitted: vec![],
             windows: None,
             conversation: None,
+            launched: None,
         }
     }
 }
@@ -162,6 +196,11 @@ impl FakeAgent {
     /// no [`FakeAgent::HOME`], the login environment's under no pool, as a
     /// program reads its own configuration home there (49, 179).
     pub const LOGIN: &'static str = "no home";
+
+    /// The words a command of a profile scripted to start its program
+    /// through flume's launcher carries, as a binary at `/fake/flume`
+    /// would build them (C.4; core.60).
+    pub const LAUNCHER: [&'static str; 4] = ["/fake/flume", "ack", "launched", "--"];
 
     pub fn new(terminal: Arc<FakeTerminal>) -> FakeAgent {
         FakeAgent {
@@ -319,6 +358,49 @@ impl FakeAgent {
                 record.windows = Some((taken_at, windows));
             }
         });
+    }
+
+    /// The profile starts its program through flume's launcher: `launches`
+    /// answers true, and its command carries [`FakeAgent::LAUNCHER`]'s
+    /// words (C.4).
+    pub fn start_through_launcher(&self) {
+        lock(&self.state).launches = true;
+    }
+
+    /// The launcher's word of `agent`'s start names the process `pid`,
+    /// which `launched` answers for that start alone (C.4).
+    pub fn set_launched(&self, agent: &Identity, pid: u32) {
+        self.with(agent, |record| record.launched = Some(pid));
+    }
+
+    /// The program's profile builds none of `parts` among received,
+    /// asking, own work, ended and last words, so the core reads each from
+    /// its terminal: its parts name none of them, and each answers the
+    /// seam's lesser way where it is asked, received, asking, own work and
+    /// ended unknown and last words none, its read logged as now (106,
+    /// 171, 174). Any other part given is left as it was.
+    pub fn reads_from_its_terminal(&self, parts: &[Part]) {
+        lock(&self.state).from_terminal.extend(
+            parts
+                .iter()
+                .copied()
+                .filter(|part| FakeAgent::FROM_TERMINAL.contains(part)),
+        );
+    }
+
+    /// The five parts a profile may leave the core to read from its
+    /// terminal (171).
+    pub const FROM_TERMINAL: [Part; 5] = [
+        Part::Received,
+        Part::Asking,
+        Part::OwnWork,
+        Part::Ended,
+        Part::LastWords,
+    ];
+
+    /// Whether the profile leaves `part` to be read from the terminal.
+    fn leaves_to_terminal(&self, part: Part) -> bool {
+        lock(&self.state).from_terminal.contains(&part)
     }
 
     /// The program's profile builds no windows: `reports_windows` answers
@@ -486,6 +568,12 @@ impl FakeAgent {
         lock(&self.state).efforts = words.iter().map(|word| word.to_string()).collect();
     }
 
+    /// The program takes no model, refusing every name in the seam's
+    /// default words, as a profile that names no way to give one (172).
+    pub fn take_no_model(&self) {
+        lock(&self.state).no_model = true;
+    }
+
     /// The program reads the variable `name` of its environment over the
     /// effort its command passes (197).
     pub fn read_effort_over(&self, name: &'static str) {
@@ -502,6 +590,13 @@ impl FakeAgent {
     /// The program keeps `names` from every process it starts (161).
     pub fn withhold(&self, names: &[&str]) {
         lock(&self.state).withheld = names.iter().map(|name| name.to_string()).collect();
+    }
+
+    /// The profile gives `words` as its way to stop short in place of its
+    /// fixed words, the same for every start, so two fake programs give
+    /// two ways (41, 92).
+    pub fn stop_short_words(&self, words: &str) {
+        lock(&self.state).stop_short = Some(words.to_string());
     }
 
     fn record(&self, agent: &Identity) -> Record {
@@ -646,11 +741,11 @@ impl Agent for FakeAgent {
             None => format!("command {identity}"),
         });
         let mut args = vec![];
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(PerProgram::one) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(effort) = &settings.effort {
-            args.extend(["--effort".to_string(), effort.clone()]);
+        if let Some(effort) = settings.effort.as_ref().and_then(PerProgram::one) {
+            args.extend(["--effort".to_string(), effort.to_string()]);
         }
         if let Some(mode) = mode {
             args.extend(["--mode".to_string(), mode.to_string()]);
@@ -695,8 +790,13 @@ impl Agent for FakeAgent {
                 next: "down".into(),
                 confirm: "enter".into(),
             }),
-            kind: Some("agent".into()),
+            kind: self.kind().map(str::to_string),
             files,
+            launcher: if lock(&self.state).launches {
+                Self::LAUNCHER.iter().map(|word| word.to_string()).collect()
+            } else {
+                vec![]
+            },
         }
     }
 
@@ -719,10 +819,30 @@ impl Agent for FakeAgent {
             })
     }
 
+    /// As scripted (C.4).
+    fn launches(&self) -> bool {
+        lock(&self.state).launches
+    }
+
+    /// The process scripted for the start, none until scripted or where
+    /// its record is kept in another folder, each read logged `launched
+    /// <identity>` (C.4).
+    fn launched(&self, folder: &str, agent: &Identity) -> Option<u32> {
+        self.log.push(format!("launched {agent}"));
+        let record = self.record(agent);
+        if record.folder.as_deref().is_some_and(|kept| kept != folder) {
+            return None;
+        }
+        record.launched
+    }
+
     fn received(&self, folder: &str, agent: &Identity, text: &str) -> Received {
         let Some(model) = self.read_in("received", folder, agent) else {
             return Received::Unknown;
         };
+        if self.leaves_to_terminal(Part::Received) {
+            return Received::Unknown;
+        }
         let Some((command, carried)) = self.on(agent).opened(agent) else {
             return Received::Unknown;
         };
@@ -755,16 +875,19 @@ impl Agent for FakeAgent {
 
     fn asking(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("asking", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::Asking))
             .map_or(Reading::Unknown, |record| record.asking)
     }
 
     fn own_work(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("own_work", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::OwnWork))
             .map_or(Reading::Unknown, |record| record.own_work)
     }
 
     fn ended(&self, folder: &str, agent: &Identity) -> Reading {
         self.read_in("ended", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::Ended))
             .map_or(Reading::Unknown, |record| {
                 if self.ends_unfound(agent) {
                     Reading::Yes
@@ -776,7 +899,29 @@ impl Agent for FakeAgent {
 
     fn last_words(&self, folder: &str, agent: &Identity) -> Option<String> {
         self.read_in("last_words", folder, agent)
+            .filter(|_| !self.leaves_to_terminal(Part::LastWords))
             .and_then(|record| record.last_words)
+    }
+
+    /// Each part its scripts give it, every other degraded (174).
+    fn parts(&self) -> Parts {
+        let state = lock(&self.state);
+        let built: Vec<Part> = FakeAgent::FROM_TERMINAL
+            .into_iter()
+            .map(|part| (part, !state.from_terminal.contains(&part)))
+            .chain([
+                (Part::Spent, true),
+                (Part::Windows, !state.no_windows),
+                (Part::SendBack, !state.no_send_back),
+                (Part::Guard, !state.no_guard),
+                (Part::OnQuiet, !state.no_on_quiet),
+                (Part::Mode, state.mode_read_back),
+                (Part::Carry, !state.carries.is_empty()),
+                (Part::OwnSettings, state.takes_own),
+            ])
+            .filter_map(|(part, built)| built.then_some(part))
+            .collect();
+        Parts::of(&built)
     }
 
     fn spent(&self, folder: &str, agent: &Identity) -> Spent {
@@ -805,14 +950,6 @@ impl Agent for FakeAgent {
                 session,
             },
             Some(_) => Windows::NoneYet,
-        }
-    }
-
-    fn reports_windows(&self) -> Offered {
-        if lock(&self.state).no_windows {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
         }
     }
 
@@ -947,6 +1084,22 @@ impl Agent for FakeAgent {
         }
     }
 
+    /// Every name taken, or every name refused in the seam's default words
+    /// once scripted to take none, each asking logged (172).
+    fn model(&self, name: &str) -> Result<(), String> {
+        self.log.push(format!("model {name}"));
+        if lock(&self.state).no_model {
+            Err(no_model(name))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// `agent`, by which the fake terminal names it (C.4).
+    fn kind(&self) -> Option<&str> {
+        Some("agent")
+    }
+
     /// Each word scripted taken, any other refused naming it and the
     /// words taken, and every word refused in the seam's default words
     /// where none is scripted, each asking logged (197).
@@ -971,14 +1124,6 @@ impl Agent for FakeAgent {
 
     fn home_variable(&self) -> Option<&'static str> {
         lock(&self.state).home_variable
-    }
-
-    fn mode_read_back(&self) -> Offered {
-        if lock(&self.state).mode_read_back {
-            Offered::Offered
-        } else {
-            Offered::NotOffered
-        }
     }
 
     fn deliver(&self) -> Offered {
@@ -1009,21 +1154,16 @@ impl Agent for FakeAgent {
     }
 
     /// Both ways to stop short, a found being work a stage before this
-    /// one must do again, the same for every start (41, 92; core.31).
+    /// one must do again, the same for every start, or the words
+    /// scripted in their place (41, 92; core.31).
     fn stop_short(&self, _agent: &Identity) -> String {
-        "to stop short needing an answer, run `flume needs \"<what you need>\"`; having found work a stage before this one must do again, run `flume needs --found \"<the work you found>\"`".into()
+        lock(&self.state).stop_short.clone().unwrap_or_else(|| {
+            "to stop short needing an answer, run `flume needs \"<what you need>\"`; having found work a stage before this one must do again, run `flume needs --found \"<the work you found>\"`".into()
+        })
     }
 
     fn stop_short_to(&self) -> String {
         "add `--to <name>` to `flume needs`".into()
-    }
-
-    fn send_back(&self) -> Offered {
-        if lock(&self.state).no_send_back {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
-        }
     }
 
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded {
@@ -1033,14 +1173,6 @@ impl Agent for FakeAgent {
         }
         Guarded::Refused {
             acts: record.map(|record| record.refused).unwrap_or_default(),
-        }
-    }
-
-    fn on_quiet(&self) -> Offered {
-        if lock(&self.state).no_on_quiet {
-            Offered::NotOffered
-        } else {
-            Offered::Offered
         }
     }
 }

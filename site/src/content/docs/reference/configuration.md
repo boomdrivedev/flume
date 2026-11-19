@@ -186,6 +186,13 @@ may pin either, or a table holding them, as `"streams.work.kinds"`.
 
 A pool of accounts
 ([pools of accounts](/flume/guides/agent-settings/#pools-of-accounts)).
+It may hold accounts of several programs. A stage whose layers name its
+program takes only that program's accounts. A stage whose layers name
+none takes the accounts whose program can run it, its mode mapped and
+its model, effort and own settings taken, and runs the program of the
+account chosen. flume's default, `claude`, names the program only for an
+agent with no pool. The intent keeps to the program its last agent ran,
+and a conversation goes to no other program.
 
 | Key | Values | Meaning |
 |---|---|---|
@@ -198,7 +205,7 @@ Each account:
 | Key | Values | Meaning | Left out |
 |---|---|---|---|
 | `name` | a string | the account's name, unique in its pool | refused |
-| `program` | a string | the program it runs, such as `claude`; it takes only stages of that program, and a pool with no account of a stage's program refuses that stage | refused |
+| `program` | a string | the program it runs, such as `claude` or `codex`; it takes only stages of that program. A stage whose layers name no program takes it where that program can run the stage, and then runs that program ([a pool chooses the program](/flume/guides/agent-settings/#a-pool-chooses-the-program)). A pool with no account of a program that can run a stage refuses that stage | refused |
 | `env` | a table of strings | its agents' environment, over the login environment | no variable |
 | `agents` | a whole number from 1 | the bound on agents running under it at once | no bound of its own |
 
@@ -350,9 +357,13 @@ else by its folder. The address's table comes first, whole
 Settings for a kind's agents in every repository: `model`, `effort`,
 `instructions`, `mode`, `keep_open`, `hibernate_after` and `programs`, with
 `[kinds.<kind>.agents.stages.<stage>]` for one stage's. A stage's own
-setting comes before one for every stage. `model` and `instructions`
-are strings. `effort` is a string, its agent program's own word, as
-Claude Code's `low`, `medium`, `high`, `xhigh` and `max`
+setting comes before one for every stage. `instructions` is a string.
+`model` is a string, its agent program's own name for a model, or a
+table of programs whose values are strings, as `model = { claude =
+"opus", codex = "gpt-5.5" }`, the agent's entry its program's
+([the model](/flume/guides/agent-settings/#the-model)). `effort` is a
+string, its agent program's own word, as Claude Code's `low`, `medium`,
+`high`, `xhigh` and `max`, or a table of programs as a model's is
 ([the effort](/flume/guides/agent-settings/#the-effort)). `mode` is one of `plan`, `ask`, `edits` and `full`, or a
 table of programs whose values are strings, as `mode = { claude =
 "auto" }`. `keep_open` is a string, `<n>` or `<n>s` seconds, `<n>m`
@@ -466,8 +477,9 @@ flume refuses the file, naming the key, for:
 - an `agents` of the host, a stream or an account that is not a whole
   number from 1, naming it, `[host] agents is not a whole number from
   1` say;
-- an `effort` in an agents table that is not a string, a table of
-  programs among them, naming the table and `effort`;
+- a `model` or an `effort` in an agents table that is neither a string
+  nor a table of programs whose values are strings, a table that names
+  no program among them, naming the table and `model` or `effort`;
 - a `mode` in an agents table that is neither one of `plan`, `ask`,
   `edits` and `full` nor a table of programs whose values are strings,
   naming the table and `mode`;
@@ -832,7 +844,7 @@ known fields fail, naming every field that does.
 | `branch` | a non-empty string | the prefix of its places' branches | the kind's name |
 | `starts_unready` | `true`, `false` | its first stage starts in a place whose readiness failed | `false` |
 | `lands` | `true`, `false` | its work is submitted to the merge queue after the last stage | `false` |
-| `agents` | a table | settings for every stage's agents, and `agents.stages.<stage>` for one stage's: `program`, `model`, `effort`, `instructions`, `beside`, `mode`, `programs`; an `env`, a `keep_open` or a `hibernate_after` refuses the launch | none |
+| `agents` | a table | settings for every stage's agents, and `agents.stages.<stage>` for one stage's: `program`, `model`, `effort`, `instructions`, `beside`, `mode`, `programs`, `model` and `effort` each a string or a table of programs; an `env`, a `keep_open` or a `hibernate_after` refuses the launch | none |
 | `stages` | an array of tables | its stages, at least one, or `[]` on a kind that lands, a kind with no stages | refused |
 | `landing_fix` | a kind's identity with its version, as `"flume/fix@1"` | on a kind that lands with no stages, the kind its fixes run as when the merge queue sends its branch back, resolved when its place launches. A bare name, an identity with no version, or either field on a kind with stages refuses the launch | no fix |
 | `max_landing_fixes` | a whole number from 0 | on such a kind, how many fixes it runs before its place waits for you | 3 |
@@ -845,13 +857,30 @@ known fields fail, naming every field that does.
 | `prompt` | a path | its prompt, relative to the declaring file's folder; for a repository, read from git at the same revision | refused |
 | `deliverables` | a list of one spelling | what ends it: `commits`, `change`, `tasks`, `archived`, `report:<path>` or `committed:<path>` | refused, unless a conversation |
 | `conversation` | `true`, `false` | a stage with no deliverable, ended by `flume finish` | `false` |
-| `agents` | a list of one table | its agent's settings: `program`, `model`, `effort`, `instructions`, `beside`, `mode`, `programs`; an `env`, a `keep_open` or a `hibernate_after` refuses the launch | refused by flume, which runs one agent per stage |
+| `agents` | a list of one table | its agent's settings: `program`, `model`, `effort`, `instructions`, `beside`, `mode`, `programs`, `model` and `effort` each a string or a table of programs; an `env`, a `keep_open` or a `hibernate_after` refuses the launch | refused by flume, which runs one agent per stage |
 | `hibernate` | `true`, `false` | flume hibernates the stage: a conversation once it idles its `hibernate_after`, any such stage's agent kept open for an answer once its time passes, and either at `flume hibernate` | `false` |
 | `makes` | a list of names | what it makes besides its deliverable, each recorded as a line of `made.jsonl` | none |
 | `wait` | `true`, `false` | the stage is held before it starts until a retry names it | `false` |
 | `quiet` | a whole number then `s`, `m` or `h`, as `"45m"` | how long its agent may be quiet with nothing delivered before it is stuck | 30 minutes |
 | `on_fail` | a stage's name | read from the last stage: where a failed or conflicting submission sends the place back, and found work from the last stage where it names a stage before the last; found work from a last stage that names itself or none waits on an answer | the last stage |
 | `max_send_backs` | a whole number from 0 | read from the last stage: how many times the place may go back before it waits for you | 3 |
+
+### A statechart kind
+
+A kind whose table holds `regions` in place of `stages` is a statechart
+kind. A table holding both refuses the launch, naming the field.
+
+| Field | Values | Meaning | Left out |
+|---|---|---|---|
+| `title` | a string | the words a person reads for the kind | refused |
+| `version`, `branch`, `lands`, `label` | as a kind's | as a kind's | as a kind's |
+| `regions.<region>` | a table | a region: `initial`, the state it starts at, and `states.<state>`, its states | refused |
+| `states.<state>.machine` | `"stage"` | the state is a stage, running flume's stage template; any other template refuses the launch | not a stage |
+| `states.<state>.params` | a table | a stage's parameters: `agents`, `join`, `deliverables`, `prompt`, `on_fail`, `max_send_backs` ([a stage's sessions](/flume/guides/kinds/#a-stages-sessions)); keys flume does not name are ignored | refused on a stage |
+| `states.<state>.final` | `true`, `false` | its region's run is over once it holds the state | `false` |
+| `states.<state>.decision` | `{ kind, answers }` | a question its caller answers while the region holds the state | none |
+| `states.<state>.transitions` | an array of `{ when, to }` | where the region moves, and on what: `final`, a stage's end; `response`, an answer; `ev`, one of `region.entered`, `place.submission` and `place.submissions` | none |
+| `landing_fix` | a kind's identity | refuses the launch, until a statechart kind's landing fix is designed | none |
 
 [Kinds](/flume/guides/kinds/) says what each deliverable needs and how
 a kind runs through, and [prompt parts](/flume/reference/prompt-parts/)

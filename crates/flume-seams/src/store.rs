@@ -241,9 +241,9 @@ pub struct AccountSpent {
 }
 
 /// An intent's affinity: the stream its agents keep to, the pool and
-/// account they keep to for each program they run, each move it made
-/// between accounts, and when its last place went, none while a place of
-/// it stands (147).
+/// account they keep to for each program they run, the program its last
+/// agent ran, each move it made between accounts, and when its last
+/// place went, none while a place of it stands (147, 173).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Affinity {
     pub stream: String,
@@ -260,6 +260,12 @@ pub struct Affinity {
     pub pool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// The program the intent's last agent ran, which a stage whose
+    /// layers name no program keeps to while an account of it can run
+    /// the stage; none in a document written before it was kept (147,
+    /// 173).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<String>,
 }
 
 /// The account an intent's agents on one program keep to, and its pool

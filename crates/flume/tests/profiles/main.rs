@@ -11,6 +11,7 @@ mod built_in;
 mod change_openspec;
 mod hooks_claude;
 mod kinds_weir;
+mod launcher_common;
 mod place_git_worktree;
 mod store_state_dir;
 mod terminal_printed;

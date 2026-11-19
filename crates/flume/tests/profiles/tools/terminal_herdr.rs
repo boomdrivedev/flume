@@ -17,7 +17,8 @@
 //! name taken, the last place on a base (S47), two bases, a person's pane
 //! (S48), titles that follow the stage (S49), a conversation beside a
 //! named pane, a launch from a herdr pane, herdr's readings, a prompt
-//! left typed (S43), a pane herdr could not bring back, long
+//! left typed (S43), a watched send that sees its turn begin and one that
+//! sees none, a pane herdr could not bring back, long
 //! instructions to a shell not yet at its prompt, a start the terminal
 //! cannot yet take, a shell never at its prompt, a herdr call that never
 //! answers, a quiet pane not ended,
@@ -72,7 +73,9 @@ use std::time::{Duration, Instant};
 /// The stand-in agent, run as `claude`: herdr takes it for a Claude Code
 /// agent by its kind, and it reports its state to herdr with the pane's
 /// own `HERDR_*` left out, as herdr's reading of the screen would give
-/// it, so herdr lists no agent once it exits.
+/// it, so herdr lists no agent once it exits. With `STAND_IN_WORKS` set,
+/// it tells herdr it works as soon as it reads a line, and otherwise tells
+/// herdr nothing then.
 /// Once up, it reads ctrl+c as a key, as Claude Code does, clearing what
 /// the line held before it, never as a signal the shell would take while
 /// it reads the line that follows.
@@ -171,7 +174,8 @@ while :; do
           *) break ;;
         esac
       done
-      printf '%s\n' "$line" >> "$log/got" ;;
+      printf '%s\n' "$line" >> "$log/got"
+      if [ -n "$STAND_IN_WORKS" ]; then report working; fi ;;
     1) exit 0 ;;
   esac
 done
@@ -468,6 +472,7 @@ impl TestServer {
             }),
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -897,6 +902,54 @@ impl Harness {
             .cloned()
             .unwrap_or_else(|| self.seam.pane(identity).expect("the pane recorded").id)
     }
+}
+
+/// The terminal-profiles spec's scenario "omp's integration not
+/// installed, then installed" (4, S75): under a scratch home, given over
+/// a login environment whose home is another, the pinned herdr reports
+/// omp's integration not installed and the profile refuses omp naming the
+/// install; once `herdr integration install omp` runs there, with the
+/// home's `.omp/agent/extensions` made, it starts omp.
+#[test]
+fn omp_starts_once_its_integration_is_installed() {
+    let scratch = Scratch::new("herdr-integration");
+    let home = scratch.path("home");
+    let other = scratch.path("other");
+    for dir in [&home, &other] {
+        fs::create_dir_all(dir).expect("a scratch home");
+    }
+    let herdr = herdr_program();
+    let profile = Herdr::new(
+        Server::Socket(scratch.path("h.sock")),
+        scratch.path("records"),
+    )
+    .with_program(&herdr)
+    .with_login(&[("HOME".into(), other.display().to_string())]);
+    let env = BTreeMap::from([("HOME".to_string(), home.display().to_string())]);
+    let refused = profile
+        .starts("omp", &env)
+        .expect_err("omp started with its integration not installed");
+    assert!(
+        refused.contains("herdr integration install omp"),
+        "{refused}"
+    );
+    fs::create_dir_all(home.join(".omp/agent/extensions")).expect("omp's extensions folder");
+    let installed = Command::new(&herdr)
+        .args(["integration", "install", "omp"])
+        .env_clear()
+        .env("HOME", &home)
+        .output()
+        .expect("herdr integration install runs");
+    assert!(
+        installed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&installed.stderr)
+    );
+    assert_eq!(profile.starts("omp", &env), Ok(()));
+    assert!(
+        profile.starts("omp", &BTreeMap::new()).is_err(),
+        "the login environment's home holds no integration"
+    );
 }
 
 #[test]
@@ -1477,6 +1530,234 @@ fn startup_files_that_put_another_claude_first_leave_the_program_the_settings_na
         let closed = profile.close(&who);
         assert_eq!(closed, Closed::Closed, "under {shell}");
     }
+}
+
+/// A scratch launcher at `bin/launcher`, as flume's own runs in the
+/// program's place: it writes its process id to `log/launcher.pid` and its
+/// arguments to `log/launcher.argv`, then execs what follows its `--`; and
+/// a stand-in at `bin/amp` that reports itself to herdr as amp, writing
+/// its process id to `log/amp.pid` each time it runs (C.4, C.5).
+fn through_a_launcher(server: &TestServer) -> AgentCommand {
+    through_a_launcher_with(server, &[])
+}
+
+/// As [`through_a_launcher`], with `env` over the stand-in's environment.
+fn through_a_launcher_with(server: &TestServer, env: &[(&str, &str)]) -> AgentCommand {
+    let log = server.scratch.path("log");
+    let executable = |path: PathBuf, text: &str| {
+        fs::write(&path, text).expect("a script written");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("the script made executable");
+    };
+    executable(
+        server.scratch.path("bin/launcher"),
+        &format!(
+            "#!/bin/sh\necho $$ > '{log}/launcher.pid'\nprintf '%s\\0' \"$@\" > '{log}/launcher.argv'\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n",
+            log = log.display()
+        ),
+    );
+    executable(
+        server.scratch.path("bin/amp"),
+        &STAND_IN
+            .replacen(
+                "#!/bin/sh\n",
+                &format!("#!/bin/sh\necho $$ > '{}/amp.pid'\n", log.display()),
+                1,
+            )
+            .replace("--agent claude", "--agent amp"),
+    );
+    AgentCommand {
+        program: server.scratch.path("bin/amp").to_string_lossy().into(),
+        args: vec!["x".into(), "y".into()],
+        kind: Some("amp".into()),
+        folder_trust: None,
+        launcher: vec![
+            server.scratch.path("bin/launcher").to_string_lossy().into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+        ..server.command(env)
+    }
+}
+
+/// The process id the scratch `name`, the launcher or amp, last wrote.
+fn pid_of(server: &TestServer, name: &str) -> Option<u32> {
+    fs::read_to_string(server.scratch.path(&format!("log/{name}.pid")))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// The terminal-profiles spec's scenario "A program started through the
+/// launcher" (C.4, C.5).
+#[test]
+fn a_program_started_through_the_launcher() {
+    let server = TestServer::start("herdr-launcher");
+    let profile = server.profile();
+    let who = identity(1);
+    let command = through_a_launcher(&server);
+    let opened = profile.open(
+        &server.place("fix--one"),
+        &server.folder(),
+        &command,
+        &who,
+        &OpenIn::Own,
+        None,
+    );
+    assert!(
+        matches!(opened, Opened::Opened { .. }),
+        "open through the launcher gave {opened:?}"
+    );
+    let link = Path::new(&server.folder())
+        .join("herdr")
+        .join(flume::profiles::terminal::common::digest(&who.to_string()))
+        .join("bin/amp");
+    assert_eq!(
+        fs::read_link(&link).expect("the kind's link"),
+        server.scratch.path("bin/launcher"),
+        "the kind's link"
+    );
+    let argv = fs::read_to_string(server.scratch.path("log/launcher.argv"))
+        .expect("the launcher's arguments");
+    let amp = server
+        .scratch
+        .path("bin/amp")
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        argv.split('\0')
+            .filter(|arg| !arg.is_empty())
+            .collect::<Vec<_>>(),
+        vec!["ack", "launched", "--", amp.as_str(), "x", "y"],
+        "the launcher's arguments"
+    );
+    let launcher = pid_of(&server, "launcher").expect("the launcher's process");
+    server.within("amp did not run", || pid_of(&server, "amp").is_some());
+    assert_eq!(
+        pid_of(&server, "amp"),
+        Some(launcher),
+        "amp runs in another process than the launcher's"
+    );
+    let pane = profile.pane(&who).expect("the pane recorded");
+    assert_eq!(
+        server.kept(&pane.id, "argv").join(""),
+        "x\0y\0",
+        "amp's arguments"
+    );
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// An agent opened through the scratch launcher under `who`, waiting, and
+/// its pane.
+fn opened_through_a_launcher(server: &TestServer, profile: &Herdr, who: &Identity) -> Pane {
+    opened(server, profile, who, &through_a_launcher(server))
+}
+
+/// The terminal-profiles spec's scenario "A turn seen" (89, 171, C.5): a
+/// stand-in reported to herdr as amp, opened through a scratch launcher,
+/// that tells herdr it works as soon as it reads a line.
+#[test]
+fn a_watched_send_sees_the_turn_begin() {
+    let server = TestServer::start("herdr-turn-seen");
+    let profile = server.profile();
+    let who = identity(1);
+    let command = through_a_launcher_with(&server, &[("STAND_IN_WORKS", "1")]);
+    let pane = opened(&server, &profile, &who, &command);
+    assert_eq!(
+        profile.send_watching(&who, "go", Duration::from_secs(60)),
+        SentWatching::Began,
+        "the watched send of `go`"
+    );
+    server.within("the stand-in did not read `go`", || {
+        server.kept(&pane.id, "got") == ["go"]
+    });
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "No turn seen" (38, 95, 171,
+/// C.5): a stand-in reported to herdr as amp, opened through a scratch
+/// launcher, that reads a line and tells herdr nothing.
+#[test]
+fn a_watched_send_sees_no_turn() {
+    let server = TestServer::start("herdr-turn-unseen");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    for text in ["go", "again"] {
+        match profile.send_watching(&who, text, Duration::from_secs(60)) {
+            SentWatching::NotSeen { why } => assert!(
+                why.contains("agent_prompt_stalled"),
+                "the turn not seen of `{text}` names {why}"
+            ),
+            other => panic!("the watched send of `{text}` gave {other:?}"),
+        }
+    }
+    server.within("the stand-in did not read both", || {
+        server.kept(&pane.id, "got") == ["go", "again"]
+    });
+    assert_eq!(
+        server.kept(&pane.id, "events"),
+        ["cleared", "cleared"],
+        "the held input cleared before each sending"
+    );
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "The launcher's process, then
+/// one started by hand" (35, S74).
+#[test]
+fn launched_process_then_one_started_by_hand() {
+    let server = TestServer::start("herdr-process");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    let launcher = pid_of(&server, "launcher").expect("the launcher's process");
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Runs { pid: launcher },
+        "the process the launcher became"
+    );
+    // amp ends, and a person runs it again by its path in the same pane.
+    server.herdr(&["pane", "send-keys", &pane.id, "ctrl+d"]);
+    server.within("amp did not end", || {
+        profile.program_process(&who) == ProgramProcess::Nothing
+    });
+    let amp = server
+        .scratch
+        .path("bin/amp")
+        .to_string_lossy()
+        .into_owned();
+    server.herdr(&["pane", "run", &pane.id, &amp]);
+    server.within("amp was not run again by hand", || {
+        pid_of(&server, "amp").is_some_and(|pid| pid != launcher)
+    });
+    let by_hand = pid_of(&server, "amp").expect("amp's process");
+    server.within("the process run by hand was not read", || {
+        profile.program_process(&who) == ProgramProcess::Runs { pid: by_hand }
+    });
+    assert_ne!(by_hand, launcher, "amp ran again in the launcher's process");
+    assert_eq!(profile.close(&who), Closed::Closed);
+}
+
+/// The terminal-profiles spec's scenario "A pane that is gone" (35).
+#[test]
+fn launched_process_of_a_gone_pane_reads_nothing() {
+    let server = TestServer::start("herdr-process-gone");
+    let profile = server.profile();
+    let who = identity(1);
+    let pane = opened_through_a_launcher(&server, &profile, &who);
+    assert!(
+        matches!(profile.program_process(&who), ProgramProcess::Runs { .. }),
+        "the launcher's process was not read"
+    );
+    server.herdr(&["pane", "close", &pane.id]);
+    assert_eq!(
+        profile.program_process(&who),
+        ProgramProcess::Nothing,
+        "the process of a gone pane"
+    );
 }
 
 #[test]
@@ -2298,6 +2579,7 @@ impl Agent for StandIn {
             folder_trust: None,
             kind: Some("claude".into()),
             files: BTreeMap::new(),
+            launcher: vec![],
         }
     }
 
@@ -2340,16 +2622,20 @@ impl Agent for StandIn {
         "name it by flume needs --to".into()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
+    /// Received, asking, own work, ended and last words, read from its
+    /// own record, so none is read from the terminal (171, 174).
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+        ])
     }
 
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
     }
 }
 

@@ -20,7 +20,11 @@
 //! types the kind's name into the pane's shell; once the pane's screen
 //! shows the shell's first output, its prompt, agent start runs it with
 //! the command's arguments whole, under the agent's herdr name, and
-//! nothing is typed (94, 107). Until the shell's line editor takes the
+//! nothing is typed (94, 107). Where the command carries the words of
+//! flume's launcher, the kind's name is linked to the launcher's program
+//! instead, and agent start runs it with the launcher's arguments, the
+//! program's absolute path and the command's arguments, so the launcher
+//! becomes the program in that process (C.4, C.5). Until the shell's line editor takes the
 //! pane's terminal, herdr refuses a line past the terminal's canonical
 //! limit, `agent_start_input_failed`: that is the shell not yet at its
 //! prompt, and agent start is asked again within the start's bound, a
@@ -33,13 +37,26 @@
 //! ready, with no trust question on its screen, is not come up with the
 //! screen (34, 35). The
 //! program in the pane's foreground must be the one the settings name,
-//! or the start is closed and refused naming what ran (32). A pane is
+//! or the start is closed and refused naming what ran (32); the agent's
+//! record keeps that program by its absolute path, and the process that
+//! runs it is read again, by `pane process-info`, as the foreground
+//! process running it, by its id, nothing where none does or the pane is
+//! gone (35, C.5). A pane is
 //! held by its id and its server's socket, and found again by the
 //! agent's herdr name where its id no longer answers, its new id
 //! recorded before anything is sent (30, 98).
 //!
 //! send clears what the agent holds typed with one ctrl+c, then hands the
-//! text to herdr's agent prompt (95). state reads herdr's working as
+//! text to herdr's agent prompt (95). send_watching finds the pane as send
+//! does, clears it the same way, then hands the text to `agent prompt
+//! <pane> <text> --wait --until working --until blocked --timeout <ms>`,
+//! the bound it is given in milliseconds, under that bound and
+//! [`PAST_TIMEOUT`] past it, so herdr's own timeout answers first: an
+//! answer is the turn seen; `agent_prompt_stalled`, which herdr 0.9.5
+//! answers where the agent shows neither working nor blocked within 5000
+//! milliseconds of the submission, and `timeout` the turn not seen, in
+//! herdr's words; any other refusal, a pane gone, or no answer within the
+//! bound a refusal in herdr's words (89, 95, 171, C.5; core.29). state reads herdr's working as
 //! working, idle and done as waiting, blocked as asking, which the core
 //! takes as asking only with the agent's mark (90), and herdr's unknown
 //! as unknown; stopped only when the pane is gone, herdr lists it with a
@@ -121,19 +138,32 @@
 //! nothing in herdr, and no words of its repeat what was typed (107, 221,
 //! 222, C.5's relay row).
 //!
+//! starts starts every kind herdr 0.9.5 reads on its own with no call to
+//! herdr; for a kind of [`INTEGRATED`], whose state herdr reads only
+//! through its integration, it runs `herdr integration status` within
+//! the profile's bound under the host user's login environment with the
+//! given one over it, so herdr reads the home the pane will hold, and
+//! reads the kind's line, `<kind>: <state> (<path>)`: `not installed`
+//! refused naming `herdr integration install <kind>`, a status that does
+//! not answer within the bound or names no line for the kind refused
+//! naming what herdr gave, and any other state started (4, C.5;
+//! core.29).
+//!
 //! Every herdr call runs under a bound, ten seconds where the call states
 //! none, and one that does not answer within it is unknown or a refusal
 //! naming the bound; each runs with the caller's `HERDR_*` stripped and
 //! the recorded server's socket passed (98, core.29).
 
 use super::common::{
-    asks, base_label, digest, focused, quoted, read_json, runs_program, write_json, Running,
+    asks, base_label, digest, focused, program_process, quoted, read_json, runs_program,
+    write_json, Running,
 };
 use crate::host::process::program_path;
 use flume_seams::{
     AgentCommand, AgentState, AgentsIn, Attached, Closed, Clues, FolderTrust, Identity, Key,
-    KeyName, NamedAgent, OpenIn, Opened, PlaceRef, Relay, RelayScreen, Sent, SessionRuns, Shown,
-    ShownAt, Terminal, TerminalTidy, ToSession, Typed, View, ViewCommand,
+    KeyName, NamedAgent, OpenIn, Opened, PlaceRef, ProgramProcess, Relay, RelayScreen, Sent,
+    SentWatching, SessionRuns, Shown, ShownAt, Terminal, TerminalTidy, ToSession, Typed, View,
+    ViewCommand,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -213,6 +243,11 @@ const TRUST_REDRAW: Duration = Duration::from_secs(2);
 /// How far past the timeout it passes a call that states one is bounded.
 const PAST_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// What herdr 0.9.5's `agent prompt --wait` answers where the agent shows
+/// neither working nor blocked within 5000 milliseconds of a submission
+/// from a state not working: no turn seen (C.5).
+const STALLED: &str = "agent_prompt_stalled";
+
 /// The kinds herdr 0.9.5's agent start takes, each its program's
 /// canonical name (`herdr agent`).
 pub const KINDS: [&str; 24] = [
@@ -241,6 +276,39 @@ pub const KINDS: [&str; 24] = [
     "maki",
     "muse",
 ];
+
+/// The kinds whose state herdr 0.9.5 reads only through its integration,
+/// which a pane of theirs needs installed under the home it runs in (C.5;
+/// core.39's details).
+pub const INTEGRATED: [&str; 2] = ["omp", "mastracode"];
+
+/// What `herdr integration status` gives a kind whose integration is not
+/// installed.
+const NOT_INSTALLED: &str = "not installed";
+
+/// Whether `herdr integration status`'s answer `status` starts `kind`:
+/// refused naming the install where its line reads `not installed`, and
+/// naming what herdr gave where it holds no line for the kind; started in
+/// any other state (C.5).
+pub fn integration_read(status: &str, kind: &str) -> Result<(), String> {
+    let prefix = format!("{kind}:");
+    let Some(line) = status
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(&prefix))
+    else {
+        return Err(format!(
+            "herdr integration status names no integration for `{kind}`: {}",
+            status.trim()
+        ));
+    };
+    if line[prefix.len()..].trim_start().starts_with(NOT_INSTALLED) {
+        return Err(format!(
+            "herdr reports the integration for `{kind}` not installed, which it reads `{kind}` through: run `herdr integration install {kind}`"
+        ));
+    }
+    Ok(())
+}
 
 /// The herdr session flume opens its places' panes in, where the settings
 /// name no pane and the core names no session of its own.
@@ -346,7 +414,38 @@ struct Kept {
     /// The folder-trust question the open was given, which a settle
     /// answers where the program asks it after the open (34).
     trust: Option<FolderTrust>,
+    /// The program the open checked running in the pane, by its absolute
+    /// path; none in a record written before (35, C.5).
+    program: Option<PathBuf>,
 }
+
+/// The foreground processes `pane process-info` answered with (32, 35,
+/// C.5).
+fn foreground(info: &Value) -> Vec<Running> {
+    info["process_info"]["foreground_processes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|process| {
+            Some(Running {
+                pid: u32::try_from(process["pid"].as_u64()?).ok()?,
+                args: process["argv"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|arg| arg.as_str().map(str::to_string))
+                    .collect(),
+                cwd: process["cwd"].as_str().map(PathBuf::from),
+                cmdline: process["cmdline"].as_str().map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+/// What [`Terminal::program_process`] answers for an agent whose record,
+/// written before, names no program (35, C.5).
+pub const NO_PROGRAM_KEPT: &str =
+    "the agent's record, written before herdr kept its program, names no program";
 
 /// Where a pane was found: there, gone, or not readable now.
 enum Found {
@@ -552,12 +651,29 @@ impl Herdr {
         args: &[&str],
         bound: Duration,
     ) -> Result<(bool, String, String), String> {
+        self.run_in(None, socket, args, bound)
+    }
+
+    /// As [`Herdr::run`], under exactly `env` where one is given, every
+    /// `HERDR_*` of it stripped, and otherwise under the caller's.
+    fn run_in(
+        &self,
+        env: Option<&BTreeMap<String, String>>,
+        socket: Option<&Path>,
+        args: &[&str],
+        bound: Duration,
+    ) -> Result<(bool, String, String), String> {
         let mut command = Command::new(&self.program);
         command
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(env) = env {
+            command
+                .env_clear()
+                .envs(env.iter().filter(|(name, _)| !name.starts_with("HERDR_")));
+        }
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().starts_with("HERDR_") {
                 command.env_remove(name);
@@ -743,6 +859,10 @@ impl Herdr {
             trust: record
                 .get("trust")
                 .and_then(|trust| serde_json::from_value(trust.clone()).ok()),
+            program: record
+                .get("program")
+                .and_then(Value::as_str)
+                .map(PathBuf::from),
         })
     }
 
@@ -755,6 +875,7 @@ impl Herdr {
                 "name": kept.name,
                 "place": kept.place,
                 "trust": kept.trust,
+                "program": kept.program,
             }),
         )
     }
@@ -1365,25 +1486,7 @@ impl Herdr {
     /// arguments; or what ran in its place (32; record 0018).
     fn runs(&self, pane: &Pane, program: &Path) -> Result<(), String> {
         let info = self.answered(&pane.socket, &["pane", "process-info", "--pane", &pane.id])?;
-        let processes: Vec<Running> = info["process_info"]["foreground_processes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|process| {
-                Some(Running {
-                    pid: u32::try_from(process["pid"].as_u64()?).ok()?,
-                    args: process["argv"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|arg| arg.as_str().map(str::to_string))
-                        .collect(),
-                    cwd: process["cwd"].as_str().map(PathBuf::from),
-                    cmdline: process["cmdline"].as_str().map(str::to_string),
-                })
-            })
-            .collect();
-        match runs_program(&processes, program) {
+        match runs_program(&foreground(&info), program) {
             Ok(()) => Ok(()),
             Err(ran) if ran.is_empty() => Err(format!(
                 "herdr shows nothing running in the pane {}, not {}",
@@ -1895,6 +1998,20 @@ impl Terminal for Herdr {
                 reason: format!("the program {} is on no folder of PATH", command.program),
             };
         };
+        // Where the command carries flume's launcher, the kind's name runs
+        // the launcher, given the program's absolute path, so it becomes
+        // the program in that process (C.4, C.5).
+        let (linked_to, launcher_args) = match command.launcher.split_first() {
+            None => (program.clone(), &[][..]),
+            Some((launcher, args)) => match program_path(launcher, &path) {
+                Some(launcher) => (launcher, args),
+                None => {
+                    return Opened::Refused {
+                        reason: format!("flume's launcher {launcher} is on no folder of PATH"),
+                    }
+                }
+            },
+        };
         // A folder named by the identity's digest, since an identity's
         // `:` would split `PATH`.
         let start = Path::new(folder)
@@ -1907,7 +2024,7 @@ impl Terminal for Herdr {
                 Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
                 _ => Ok(()),
             })
-            .and_then(|()| std::os::unix::fs::symlink(&program, &link));
+            .and_then(|()| std::os::unix::fs::symlink(&linked_to, &link));
         if let Err(error) = linked {
             return Opened::Refused {
                 reason: format!("{}: {error}", link.display()),
@@ -1929,6 +2046,7 @@ impl Terminal for Herdr {
                 .folder_trust
                 .clone()
                 .filter(|trust| !trust.question.is_empty()),
+            program: Some(program.clone()),
         };
         if let Err(reason) = self.keep(identity, &kept) {
             self.abandon(identity, &pane, &bin);
@@ -1966,6 +2084,7 @@ impl Terminal for Herdr {
         // yet take the line, as the shell may draw its prompt, or say
         // something as it starts, before its line editor takes the
         // terminal; nothing was typed.
+        let program_word = program.to_string_lossy().into_owned();
         let started = loop {
             let left = deadline
                 .saturating_duration_since(Instant::now())
@@ -1983,6 +2102,10 @@ impl Terminal for Herdr {
                 &timeout,
                 "--",
             ];
+            if !command.launcher.is_empty() {
+                args.extend(launcher_args.iter().map(String::as_str));
+                args.push(&program_word);
+            }
             args.extend(command.args.iter().map(String::as_str));
             match self.call(&pane.socket, &args, left + PAST_TIMEOUT) {
                 Call::Refused { code, .. }
@@ -2099,6 +2222,90 @@ impl Terminal for Herdr {
         Opened::Opened {
             carried: false,
             printed: None,
+        }
+    }
+
+    /// The process in the agent's pane's foreground that runs the program
+    /// its open checked, by its id, as the open's check reads it, by
+    /// `pane process-info` within the profile's bound: nothing where none
+    /// runs it or the pane is gone; unknown in herdr's words where herdr
+    /// does not answer, and where the agent's record, written before,
+    /// names no program (35, C.5; core.29).
+    fn program_process(&self, agent: &Identity) -> ProgramProcess {
+        let program = self.kept(agent).and_then(|kept| kept.program);
+        let pane = match self.found(agent) {
+            Found::At(pane) => pane,
+            Found::Gone => return ProgramProcess::Nothing,
+            Found::Unknown(why) => return ProgramProcess::Unknown { why },
+        };
+        let Some(program) = program else {
+            return ProgramProcess::Unknown {
+                why: NO_PROGRAM_KEPT.into(),
+            };
+        };
+        match self.ask(&pane.socket, &["pane", "process-info", "--pane", &pane.id]) {
+            Call::Answered(info) => match program_process(&foreground(&info), &program) {
+                Ok(pid) => ProgramProcess::Runs { pid },
+                Err(_) => ProgramProcess::Nothing,
+            },
+            Call::Refused { code, .. }
+                if code == "pane_not_found" || code == "server_not_running" =>
+            {
+                ProgramProcess::Nothing
+            }
+            Call::Refused { code, words } => ProgramProcess::Unknown {
+                why: format!("herdr refused ({code}): {words}"),
+            },
+            Call::Unanswered(why) => ProgramProcess::Unknown { why },
+        }
+    }
+
+    /// As the module's doc says: the turn seen on herdr's answer, not seen
+    /// on `agent_prompt_stalled` or `timeout`, and refused otherwise (89,
+    /// 95, 171, C.5; core.29).
+    fn send_watching(&self, agent: &Identity, text: &str, within: Duration) -> SentWatching {
+        let pane = match self.found(agent) {
+            Found::At(pane) => pane,
+            Found::Gone => {
+                return SentWatching::Refused {
+                    reason: format!("no agent runs under {agent}"),
+                }
+            }
+            Found::Unknown(reason) => return SentWatching::Refused { reason },
+        };
+        if let Err(reason) =
+            self.answered(&pane.socket, &["agent", "send-keys", &pane.id, "ctrl+c"])
+        {
+            return SentWatching::Refused { reason };
+        }
+        let timeout = within.as_millis().to_string();
+        match self.call(
+            &pane.socket,
+            &[
+                "agent",
+                "prompt",
+                &pane.id,
+                text,
+                "--wait",
+                "--until",
+                "working",
+                "--until",
+                "blocked",
+                "--timeout",
+                &timeout,
+            ],
+            within + PAST_TIMEOUT,
+        ) {
+            Call::Answered(_) => SentWatching::Began,
+            Call::Refused { code, words } if code == STALLED || code == "timeout" => {
+                SentWatching::NotSeen {
+                    why: format!("herdr answered ({code}): {words}"),
+                }
+            }
+            Call::Refused { code, words } => SentWatching::Refused {
+                reason: format!("herdr refused ({code}): {words}"),
+            },
+            Call::Unanswered(reason) => SentWatching::Refused { reason },
         }
     }
 
@@ -2567,6 +2774,28 @@ impl Terminal for Herdr {
         }
     }
 
+    /// Every kind herdr reads on its own, with no call; a kind of
+    /// [`INTEGRATED`] only while `herdr integration status`, run within the
+    /// profile's bound under the login environment with `env` over it,
+    /// reports its integration in a state other than not installed (4,
+    /// C.5; core.29).
+    fn starts(&self, kind: &str, env: &BTreeMap<String, String>) -> Result<(), String> {
+        if !INTEGRATED.contains(&kind) {
+            return Ok(());
+        }
+        let mut under = self.login().clone();
+        under.extend(env.clone());
+        let (success, stdout, stderr) =
+            self.run_in(Some(&under), None, &["integration", "status"], self.bound)?;
+        if !success {
+            return Err(format!(
+                "herdr integration status failed: {}",
+                stderr.trim()
+            ));
+        }
+        integration_read(&stdout, kind)
+    }
+
     /// A relay of the agent's pane, found as every operation finds it,
     /// refused where herdr holds none of the agent or answers unknown, in
     /// herdr's words; its handle's calls bounded at one second (221, 222,
@@ -2648,6 +2877,46 @@ impl Herdr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The terminal-profiles spec's scenario "herdr's status lines read"
+    /// (C.5).
+    #[test]
+    fn integration_status_lines_read() {
+        let path = "/home/u/.omp/agent/extensions/herdr-omp-agent-state.ts";
+        let refused = integration_read(&format!("omp: not installed ({path})\n"), "omp")
+            .expect_err("not installed");
+        assert!(
+            refused.contains("herdr integration install omp"),
+            "{refused}"
+        );
+        for state in ["current (v10)", "outdated (v8 < v10)"] {
+            let status = format!("pi: current (v3) (/p)\nomp: {state} ({path})\n");
+            assert_eq!(integration_read(&status, "omp"), Ok(()), "{state}");
+        }
+        let only = "mastracode: not installed (/home/u/.mastracode/x.ts)\n";
+        let refused = integration_read(only, "omp").expect_err("no line for omp");
+        assert!(
+            refused.contains("`omp`") && refused.contains(only.trim()),
+            "{refused}"
+        );
+    }
+
+    /// The terminal-profiles spec's scenario "A kind herdr reads on its
+    /// own" (C.5): no herdr is asked, so none need run.
+    #[test]
+    fn integration_not_asked_of_a_kind_herdr_reads_on_its_own() {
+        let (herdr, _) = over_records("integration-own");
+        let herdr = herdr
+            .with_program("/nonexistent/no-herdr-here")
+            .with_login(&[("PATH".into(), "/nonexistent".into())]);
+        for kind in ["amp", "claude"] {
+            assert_eq!(herdr.starts(kind, &BTreeMap::new()), Ok(()), "{kind}");
+        }
+        let refused = herdr
+            .starts("omp", &BTreeMap::new())
+            .expect_err("omp asked of a herdr that cannot run");
+        assert!(refused.contains("herdr"), "{refused}");
+    }
 
     /// The profile over records in a scratch directory of its own.
     fn over_records(name: &str) -> (Herdr, PathBuf) {
@@ -3013,6 +3282,7 @@ mod tests {
                     name: herdr_name(&identity()),
                     place: Some(place().location),
                     trust: None,
+                    program: None,
                 },
             )
             .unwrap();

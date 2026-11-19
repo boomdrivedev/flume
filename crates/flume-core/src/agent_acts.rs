@@ -27,9 +27,13 @@ impl Engine {
     pub(crate) fn current_start(&self, identity: &str) -> Option<(HeldState, usize)> {
         self.store.read_every().into_iter().find_map(|read| {
             let held = read.state;
-            let (index, start) = held.live_start()?;
-            (held.current == Some(index) && start.identity.to_string() == identity)
-                .then_some((held, index))
+            // A statechart place's sessions run side by side, each its own
+            // live start; a simple kind's place has its current one (30,
+            // 175).
+            let (index, _) = held
+                .live_starts()
+                .find(|(_, start)| start.identity.to_string() == identity)?;
+            (held.chart.is_some() || held.current == Some(index)).then_some((held, index))
         })
     }
 
@@ -111,8 +115,10 @@ impl Engine {
         }
         let id = held.place.id.clone();
         let made = self.stage_made(&held, &start);
-        let answers =
-            kind == StopKind::NeedsAnswer || !crate::submit::found_goes_back(&held, index);
+        // Found work from a statechart kind's session ends its stage, sent
+        // back or stopped, and asks no answer (131, 175).
+        let answers = kind == StopKind::NeedsAnswer
+            || (held.chart.is_none() && !crate::submit::found_goes_back(&held, index));
         let open_until = (answers && self.sends(&start))
             .then(|| self.host.now().saturating_add(keep_open(&start)));
         let taken = self
@@ -232,18 +238,29 @@ impl Engine {
     fn stop_words(&self, identity: &str) -> Option<String> {
         let (held, index) = self.current_start(identity)?;
         let place = &held.place;
-        let declared = &place.kind.stages[index];
+        let declared = held.declared(index);
         if declared.conversation || !held.stages[index].state.running() {
             return None;
         }
         let start = held.stages[index].start.as_ref()?;
         let agent = self.agent(&start.program)?;
         let folder = self.store.folder(&place.id);
-        if agent.started_without(&folder, &start.identity).is_some() {
+        if self
+            .began_otherwise(agent.as_ref(), &folder, start)
+            .is_some()
+        {
             return None;
         }
-        if agent.own_work(&folder, &start.identity) != Reading::No
-            || agent.asking(&folder, &start.identity) != Reading::No
+        // The terminal is read for own work only where the profile does
+        // not build it (171; core.39).
+        let own_work = if agent.parts().builds(Part::OwnWork) {
+            agent.own_work(&folder, &start.identity)
+        } else {
+            let state = self.state_of(Some(agent.as_ref()), &folder, start);
+            self.read_own_work(agent.as_ref(), &folder, start, state)
+        };
+        if own_work != Reading::No
+            || self.read_asking(agent.as_ref(), &folder, start) != Reading::No
         {
             return None;
         }

@@ -42,6 +42,120 @@ pub struct Kind {
     /// default for a stage's bound then (23, 58, 203; weir record 0005).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_limit: Option<u32>,
+    /// For a statechart kind, its statechart, its `stages` then empty and
+    /// its own fields the statechart kind's; none for a simple kind, and in
+    /// a kind read before (21, 175, 177).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statechart: Option<KindStatechart>,
+}
+
+impl Kind {
+    /// Whether it is a statechart kind, run on the family's engine and never
+    /// by a simple kind's stages (175 to 177; core.41, core.42).
+    pub fn is_statechart(&self) -> bool {
+        self.statechart.is_some()
+    }
+}
+
+/// A statechart kind as its kinds profile read it: its title, its table
+/// spelled as a declaration of it alone, which the kinds seam reads back
+/// into the engine's types at each settle, and the stage template's
+/// parameters of each state that gives them, by the state's path (21, 84,
+/// 175; core.4). Its fields are the statement's, never the format's:
+/// the engine's statechart is read only from `text`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KindStatechart {
+    /// The words a person reads for the kind (175).
+    pub title: String,
+    /// The kind's table spelled as a declaration of it alone, as the kinds
+    /// profile read it (21).
+    pub text: String,
+    /// Each state that gives stage parameters, by its path: its regions'
+    /// names and its own joined by `.`, as `stages.test` (175).
+    #[serde(default)]
+    pub stages: BTreeMap<String, ChartStage>,
+}
+
+/// The stage template's parameters a state gives (175, C.2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStage {
+    /// The agents it runs its sessions as: entries it lists, or a rule
+    /// read against the place.
+    pub agents: ChartAgents,
+    /// How its sessions join: all where it names none.
+    #[serde(default)]
+    pub join: Join,
+    /// What each session delivers, each one of the forms of 24, a path
+    /// naming `{{session}}` or `{{file}}` filled for each.
+    #[serde(default)]
+    pub deliverables: Vec<Deliverable>,
+    /// Its sessions' prompt's text, read beside the declaration, with its
+    /// parts unfilled; none where it names none (27).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// The state of its own region a send-back returns to, as written
+    /// (112).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_fail: Option<String>,
+    /// How many times it is sent back before the place waits on its
+    /// caller; none where it names none, flume's default then (112).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send_back_limit: Option<u32>,
+}
+
+/// A statechart kind read back into the engine's types: its statechart,
+/// and the templates its states run by the name a state's `machine` gives
+/// them, the stage template's among them (175, 176; core.42).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Charts {
+    pub chart: weir_engine::Statechart,
+    pub templates: BTreeMap<String, weir_engine::Statechart>,
+}
+
+/// A stage's agents: entries, one session each with its settings, or a
+/// rule read against the place with its pattern (175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChartAgents {
+    Entries(Vec<Settings>),
+    Rule {
+        rule: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pattern: Option<String>,
+    },
+}
+
+/// How a stage's sessions join: every one, any one, or a count (175).
+/// Its [`Display`](std::fmt::Display) is its spelling, `all`, `any` or
+/// `count:<n>`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Join {
+    #[default]
+    All,
+    Any,
+    Count(u32),
+}
+
+impl Join {
+    /// How many sessions that delivered meet it, of `sessions`.
+    pub fn needs(self, sessions: usize) -> usize {
+        match self {
+            Join::All => sessions,
+            Join::Any => 1.min(sessions),
+            Join::Count(n) => n as usize,
+        }
+    }
+}
+
+impl std::fmt::Display for Join {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Join::All => f.write_str("all"),
+            Join::Any => f.write_str("any"),
+            Join::Count(n) => write!(f, "count:{n}"),
+        }
+    }
 }
 
 /// One step of a kind (23), as declared: every agent and every
@@ -114,13 +228,17 @@ pub enum Deliverable {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub program: Option<String>,
-    pub model: Option<String>,
+    /// The agent's model, its program's own name or a table of programs
+    /// as its layer wrote it, the agent's entry its program's, which its
+    /// profile takes or refuses; a held state written before reads its
+    /// name as one value (172).
+    pub model: Option<PerProgram>,
     /// How hard the agent's model works on each turn, its program's own
-    /// word as its layer wrote it, which its profile takes or refuses;
-    /// none where the layer gives none, and in settings written before
-    /// (197).
+    /// word or a table of programs as its layer wrote it, the agent's
+    /// entry its program's, which its profile takes or refuses; none
+    /// where the layer gives none, and in settings written before (197).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
+    pub effort: Option<PerProgram>,
     pub instructions: Option<String>,
     /// The pane the agent opens beside, named by the launch's settings.
     pub beside: Option<String>,
@@ -341,6 +459,111 @@ impl std::fmt::Display for ModeEntry {
     }
 }
 
+/// A setting as a layer gives it: one value for every program, or a
+/// table of programs, each entry as written, the agent's taken by its
+/// program's name (172, 197). It is written as the string or the object
+/// it was written as, and read through [`PerProgram::from_programs`], so
+/// a held state written before reads its value unchanged and a table
+/// naming no program is refused where it is read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "WrittenPerProgram", into = "WrittenPerProgram")]
+pub enum PerProgram {
+    One(String),
+    Programs(BTreeMap<String, String>),
+}
+
+/// A per-program setting as JSON spells it, before it is read.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum WrittenPerProgram {
+    One(String),
+    Programs(BTreeMap<String, String>),
+}
+
+impl TryFrom<WrittenPerProgram> for PerProgram {
+    type Error = String;
+
+    fn try_from(written: WrittenPerProgram) -> Result<PerProgram, String> {
+        match written {
+            WrittenPerProgram::One(value) => Ok(PerProgram::One(value)),
+            WrittenPerProgram::Programs(programs) => PerProgram::from_programs(programs),
+        }
+    }
+}
+
+impl From<PerProgram> for WrittenPerProgram {
+    fn from(setting: PerProgram) -> WrittenPerProgram {
+        match setting {
+            PerProgram::One(value) => WrittenPerProgram::One(value),
+            PerProgram::Programs(programs) => WrittenPerProgram::Programs(programs),
+        }
+    }
+}
+
+impl From<&str> for PerProgram {
+    fn from(value: &str) -> PerProgram {
+        PerProgram::One(value.to_string())
+    }
+}
+
+impl From<String> for PerProgram {
+    fn from(value: String) -> PerProgram {
+        PerProgram::One(value)
+    }
+}
+
+impl PerProgram {
+    /// A table of programs, each entry as written; one that names no
+    /// program refused (172, 197).
+    pub fn from_programs(programs: BTreeMap<String, String>) -> Result<PerProgram, String> {
+        if programs.is_empty() {
+            return Err("the table of programs names no program".into());
+        }
+        Ok(PerProgram::Programs(programs))
+    }
+
+    /// The entry of the agent whose program is named `program`: the value
+    /// given whole, or the table's entry for it; none where the table
+    /// names no entry for it, since the table is taken whole (172, 197).
+    pub fn entry(&self, program: &str) -> Option<&str> {
+        match self {
+            PerProgram::One(value) => Some(value),
+            PerProgram::Programs(programs) => programs.get(program).map(String::as_str),
+        }
+    }
+
+    /// The value given whole, as a profile's command passes it; none for
+    /// a table of programs, whose entry the core hands it whole (172,
+    /// 197).
+    pub fn one(&self) -> Option<&str> {
+        match self {
+            PerProgram::One(value) => Some(value),
+            PerProgram::Programs(_) => None,
+        }
+    }
+
+    /// Whether it is a table of programs, whose entry status names.
+    pub fn is_table(&self) -> bool {
+        matches!(self, PerProgram::Programs(_))
+    }
+
+    /// The setting as a layer would write it, `opus` or `{ agent =
+    /// "opus", other = "gpt-5.5" }`, its programs in order, as
+    /// [`ModeSetting::written`] writes a mode's (56).
+    pub fn written(&self) -> String {
+        match self {
+            PerProgram::One(value) => value.clone(),
+            PerProgram::Programs(programs) => {
+                let entries: Vec<String> = programs
+                    .iter()
+                    .map(|(program, value)| format!("{program} = {value:?}"))
+                    .collect();
+                format!("{{ {} }}", entries.join(", "))
+            }
+        }
+    }
+}
+
 /// What stands in a record or an answer for an environment variable's
 /// value: a value may be a secret, a token or a password, so no status,
 /// log line, refusal or record of a start holds one, only that the
@@ -349,10 +572,11 @@ pub const SET: &str = "<set>";
 
 impl Settings {
     /// These settings with `over`'s fields set over them, field by field,
-    /// each taken whole, the effort as the model (197): a mode's table of programs is never merged with
-    /// another's (32, 169). Own settings are taken whole too, `over`'s
-    /// where they give any: folding them key by key, each table's file
-    /// kept beneath its own keys, is the core's (195).
+    /// each taken whole: a model's, an effort's or a mode's table of
+    /// programs is never merged with another's (32, 169, 172, 197). Own
+    /// settings are taken whole too, `over`'s where they give any: folding
+    /// them key by key, each table's file kept beneath its own keys, is
+    /// the core's (195).
     pub fn under(&self, over: &Settings) -> Settings {
         Settings {
             program: over.program.clone().or_else(|| self.program.clone()),
@@ -428,7 +652,8 @@ pub enum Layer {
     /// flume's own default.
     Default,
     /// The account the agent runs under, which alone gives its
-    /// environment (144).
+    /// environment, and its program where no layer above flume's default
+    /// names one (32 item 8, 144, 173).
     Account,
 }
 
@@ -693,6 +918,17 @@ pub trait Kinds: Send + Sync {
     /// The repository's binding, read at its default branch's current
     /// revision (20, 105).
     fn read_binding(&self, repository: &str) -> BindingRead;
+
+    /// A held statechart kind's text and the stage template's text read back into the engine's statechart and templates, the same texts
+    /// always giving the same statechart; refused naming why where either
+    /// cannot be read. A profile that reads no statechart kind refuses
+    /// every one, naming it (21, 84, 85, 176; core.2).
+    fn read_statechart(&self, kind: &KindStatechart, _template: &str) -> Result<Charts, String> {
+        Err(format!(
+            "its kinds profile reads no statechart kind, \"{}\" among them",
+            kind.title
+        ))
+    }
 
     /// read-named: the parts of `text`, a kind as a launch or a role
     /// writes it, or why it names no kind (154; weir C.4).

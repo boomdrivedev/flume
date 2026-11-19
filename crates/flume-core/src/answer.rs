@@ -529,11 +529,72 @@ pub struct PlaceStatus {
     /// the fix's number and its cause (56, 203).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_of: Option<FixOf>,
+    /// For a place of a statechart kind, its statechart's run: its
+    /// regions, counters, decisions, answers and stages; none for a simple
+    /// kind's place (56, 175, 176).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statechart: Option<ChartStatus>,
+    /// For a place of a statechart kind, each live session's agent, as
+    /// `agent` gives a simple kind's current stage's; empty for a simple
+    /// kind's place (30, 56; core.14).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<AgentStatus>,
     /// For a standing role's place, which has no branch, each of its
     /// checkouts, as its held state keeps it and as the place seam reads
     /// it at the ask; none for any other place (56, 80, 193; core.15).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checkouts: Vec<CheckoutStatus>,
+}
+
+/// A statechart place's run as status gives it (56, 175, 176): each live
+/// region with the state it holds, since when and whether it is final;
+/// its counters; whether its run is over; each decision standing; each
+/// answer given with whether the engine applied it; and each stage entered
+/// with its entry, join, send-backs and sessions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStatus {
+    pub regions: Vec<RegionStatus>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub counters: BTreeMap<String, u64>,
+    pub over: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<DecisionHeld>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<AnswerStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<ChartStageStatus>,
+}
+
+/// A live region of a statechart place: its path, the state it holds,
+/// since when, and whether that state is final (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionStatus {
+    pub region: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<Seconds>,
+    #[serde(rename = "final")]
+    pub is_final: bool,
+}
+
+/// An answer given a decision, with whether the engine applied it (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnswerStatus {
+    #[serde(flatten)]
+    pub given: AnswerGiven,
+    pub applied: bool,
+}
+
+/// A stage of a statechart place entered: its path, the entry its
+/// sessions run, how they join, how many times it was sent back, and its
+/// sessions of every entry by name, in order (175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStageStatus {
+    pub stage: String,
+    pub entry: u32,
+    pub join: Join,
+    pub send_backs: u32,
+    pub sessions: Vec<String>,
 }
 
 /// A checkout of a standing role's place as status gives it: its
@@ -1604,11 +1665,44 @@ pub struct AgentStatus {
     /// (56, 197).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<EffortStatus>,
+    /// Its model as its start passed it, with its layer and the program
+    /// whose table entry it took; none where no layer gave one (56, 172).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelStatus>,
+    /// Each part of the agent seam its program's profile does not build,
+    /// in 171's order, with how flume reads it; none where its profile
+    /// builds every part or no profile binds its program (56, 170, 174).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<DegradedPart>,
 }
 
-/// An agent's effort at its start: `word`, as its layer wrote it, and
-/// `layer`, the first of the eight that gave it; `passed`, the value its
-/// profile passed, which takes its program's words as written; `read_back`,
+/// A part of the agent seam an agent's profile does not build: the part,
+/// by its word, and how flume reads it (171, 174).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DegradedPart {
+    pub part: Part,
+    pub read: String,
+}
+
+/// An agent's model at its start: `name`, as its layer wrote it, a table
+/// of programs as written; `layer`, the first of the eight that gave it;
+/// `entry`, the program whose entry of a table it took, none for a name
+/// given whole; and `passed`, the name its command passed, as written
+/// (56, 172).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelStatus {
+    pub name: String,
+    pub layer: Layer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    pub passed: String,
+}
+
+/// An agent's effort at its start: `word`, as its layer wrote it, a table
+/// of programs as written, and `layer`, the first of the eight that gave
+/// it; `entry`, the program whose entry of a table it took, none for a
+/// word given whole; `passed`, the value its profile passed, which takes
+/// its program's words as written; `read_back`,
 /// whether its program read it back, which no profile does; and
 /// `outranked_by`, the variable its program reads over the effort where
 /// the agent's account's environment names it, by its name and never its
@@ -1617,6 +1711,8 @@ pub struct AgentStatus {
 pub struct EffortStatus {
     pub word: String,
     pub layer: Layer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
     pub passed: String,
     pub read_back: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

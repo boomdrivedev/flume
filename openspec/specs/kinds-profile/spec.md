@@ -266,10 +266,10 @@ and a package's SHALL not be read for the table (4, 32, C.2).
 The kinds profile SHALL read `effort` from every agents table a
 declaration holds, a kind's, a stage's, the repository's for a kind it
 does not declare and the repository's `[agents]` for every kind, from
-the table weir's crate returns as written: a
-string, kept as written; any other, a table of programs among it until
-the model's is built with it, SHALL fail the declaration naming the
-field (23, 158, 172, 197, C.2; core.4).
+the table weir's crate returns as written: a string, or a table of
+programs whose entries are strings, each kept as written; any other, a
+table that names no program among it, SHALL fail the declaration
+naming the field (23, 158, 172, 197, C.2; core.4).
 
 #### Scenario: An effort for every stage and one for a stage
 
@@ -278,12 +278,12 @@ field (23, 158, 172, 197, C.2; core.4).
 
 #### Scenario: An effort for every kind of a repository
 
-- **WHEN** a scratch repository's `.config/flume.toml` gives `[agents] effort = "medium"` beside a `[kinds.fix.agents]` table giving `effort = "high"`
-- **THEN** the kinds read give the repository's settings for every kind with `medium`, and its settings for fix with `high` (32, 197, C.2)
+- **WHEN** a scratch repository's `.config/flume.toml` gives `[agents] effort = "medium"` beside a `[kinds.fix.agents]` table giving `effort = { claude = "high" }`
+- **THEN** the kinds read give the repository's settings for every kind with `medium`, and its settings for fix with the table (32, 197, C.2)
 
 #### Scenario: An effort that is no word
 
-- **WHEN** a declaration's agents table gives `effort = 3` or `effort = { claude = "high" }`
+- **WHEN** a declaration's agents table gives `effort = 3`, `effort = {}` or `effort = { claude = 3 }`
 - **THEN** the declaration cannot be read, naming the table's `effort` (4, 197, C.2)
 
 ### Requirement: A declaration gives no keep_open
@@ -563,3 +563,67 @@ having found work (22, 131, C.2, C.3).
 
 - **WHEN** change@5's verify prompt is rendered for a place
 - **THEN** it asks that where the whole checks fail, the work falls short or the archive refuses, nothing be archived and the agent stop short having found work, naming what fails (131)
+
+### Requirement: A statechart kind read through weir's crate
+
+The kinds profile SHALL read a statechart kind of a repository's or a
+launch's declaration through `weir-kinds` at the revision the workspace
+pins for weir's four crates, giving the seam's kind its title, label,
+branch, whether it lands, its landing fix, the kind's table spelled as a
+declaration of it alone, and each state's stage parameters (19, 84, 85,
+175, core.4, core.22).
+
+#### Scenario: Persona read
+
+- **WHEN** a scratch repository's `.config/flume.toml` declares weir C.4's persona kind with a `prompt` beside each stage's parameters
+- **THEN** read-kinds gives persona with its title, its branch, its statechart's text and the parameters of `stages.build` and `stages.test`, the test stage's agents its rule and pattern and its join all (84, 175, S76)
+
+#### Scenario: A simple kind and a statechart kind side by side
+
+- **WHEN** one declaration holds a simple kind and a statechart kind, and another a table holding both `stages` and `regions`
+- **THEN** the first gives both kinds, each in its format, and the second is answered as could not be read, naming the field (85, 177; weir 95)
+
+### Requirement: A stage's prompt is read beside its declaration
+
+The kinds profile SHALL read the `prompt` a stage-template state gives
+as a simple stage's prompt is read, beside the declaration at the base's
+revision or beside the launch's file, naming `<path>.params.prompt` where
+it cannot be read, and SHALL ignore every other key of `params` weir does
+not name (20, 23, C.2).
+
+#### Scenario: A prompt the revision lacks
+
+- **WHEN** a statechart kind's stage names `prompt = "prompts/test.md"` and the base's revision holds no such file
+- **THEN** read-kinds answers could not be read, naming `kinds.persona.regions.stages.states.test.params.prompt` (20, C.2)
+
+### Requirement: A held statechart kind is read back the same
+
+The kinds profile SHALL read a held statechart kind's text and the stage
+template's text back into the engine's types through `weir-kinds`, the
+same texts always giving the same statechart and templates, or refuse
+naming why (21, 85, 176).
+
+#### Scenario: Read back twice
+
+- **WHEN** persona's held text and the stage template's are read back twice
+- **THEN** each read gives the same statechart and the template `stage`, equal to the statechart read-kinds gave at the launch (21, 85)
+
+### Requirement: A declaration's agents tables give a model
+
+The kinds profile SHALL read `model` from every agents table a
+declaration holds, a kind's, a stage's, the repository's for a kind it
+does not declare and the repository's `[agents]` for every kind, from
+the table weir's crate returns as written: a string, or a table of
+programs whose entries are strings, each kept as written; any other, a
+table that names no program among it, SHALL fail the declaration
+naming the field (23, 158, 172, C.2; core.4).
+
+#### Scenario: A model for every stage and a table for one
+
+- **WHEN** a scratch repository's `.config/flume.toml` gives `[kinds.bump.agents] model = "sonnet"` and a stage's `agents = [{ model = { claude = "opus", codex = "gpt-5.5" } }]`
+- **THEN** the kind's settings read `sonnet` for every stage and the table for that stage (23, 172, C.2)
+
+#### Scenario: A model that is neither
+
+- **WHEN** a declaration's agents table gives `model = 3`, `model = {}` or `model = { claude = 3 }`
+- **THEN** the declaration cannot be read, naming the table's `model` (4, 172, C.2)
