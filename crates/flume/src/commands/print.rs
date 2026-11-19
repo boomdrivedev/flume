@@ -12,7 +12,7 @@ use flume_core::{
 use flume_seams::{
     AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
     Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
-    Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
+    Kept, KindFrom, LabelHeld, Layer, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
     PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
     StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
     Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
@@ -1212,8 +1212,9 @@ fn own_lines(own: &OwnStatus) -> Vec<String> {
     lines
 }
 
-/// The current agent's line: its identity, program, account and state,
-/// the account from the intent's affinity for the agent's program, the
+/// The current agent's line: its identity, program, said to come from its
+/// account where its account named it, account and state, the account
+/// from the intent's affinity for the agent's program, the
 /// strategy, or the account a lost conversation's start ran under, its
 /// conversation's, its mode as written with its layer, the entry it took of
 /// a table and the value passed, where a layer gave one, its model as
@@ -1221,9 +1222,21 @@ fn own_lines(own: &OwnStatus) -> Vec<String> {
 /// passed, where a layer gave one, and its effort as written with its
 /// layer, the entry it took of a table, the value passed and the
 /// account's variable that outranks it, by its name alone, where a layer
-/// gave one (56, 145, 147, 169, 172, 197).
+/// gave one (56, 145, 147, 169, 172, 173, 197).
 fn agent_line(agent: &AgentStatus) -> String {
-    let mut line = format!("  agent {} ({})", agent.identity, agent.program);
+    let named_by_account = agent
+        .settings
+        .from
+        .get("program")
+        .is_some_and(|given| given.layer == Layer::Account);
+    let mut line = if named_by_account {
+        format!(
+            "  agent {} ({}, from its account)",
+            agent.identity, agent.program
+        )
+    } else {
+        format!("  agent {} ({})", agent.identity, agent.program)
+    };
     if let Some(account) = &agent.account {
         let from = match account.from {
             AccountFrom::Affinity => format!("from the affinity for {}", agent.program),
@@ -2152,6 +2165,73 @@ mod tests {
         StreamHeld, Unsettled, View, ViewHeld,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn an_agent_whose_account_names_its_program() {
+        // The place-status spec's person's form of "A review on the
+        // account's program": the program `other`, from the layer
+        // `account`, said to come from its account (56, 173).
+        let mut settings = AgentSettings::default();
+        settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Account,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        let agent = AgentStatus {
+            left_in_pane: false,
+            identity: "flume:r:look--a:review:1".into(),
+            stage: "review".into(),
+            program: "other".into(),
+            settings,
+            account: Some(AccountHeld {
+                pool: "work".into(),
+                name: "other-1".into(),
+                from: AccountFrom::Strategy,
+            }),
+            state: AgentState::Working,
+            started: Reading::Yes,
+            asking: Reading::No,
+            own_work: Reading::No,
+            past_limit: false,
+            screen: None,
+            dialog: None,
+            printed: None,
+            last_words: None,
+            notes: vec![],
+            mode: None,
+            conversation: None,
+            session: None,
+            terminal: None,
+            own: None,
+            effort: None,
+            model: None,
+            degraded: vec![],
+        };
+        assert_eq!(
+            agent_line(&agent),
+            "  agent flume:r:look--a:review:1 (other, from its account) on the account other-1 of work (from the strategy): working"
+        );
+        assert_eq!(
+            setting_line("program", &agent.settings.from["program"]),
+            "    program = other (from account)"
+        );
+        let mut named = agent.clone();
+        named.settings.from.insert(
+            "program".into(),
+            Given {
+                layer: Layer::Kind,
+                value: "other".into(),
+                file: None,
+            },
+        );
+        assert_eq!(
+            agent_line(&named),
+            "  agent flume:r:look--a:review:1 (other) on the account other-1 of work (from the strategy): working"
+        );
+    }
 
     #[test]
     fn an_agents_account() {
