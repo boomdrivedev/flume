@@ -338,6 +338,16 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["147", "173"],
             run: the_last_programs_account_is_spent,
         },
+        Scenario {
+            name: "account pools: a stage naming no program whose mode names agent alone waits for room while agent-1, its pool's only account of agent, is spent, nothing starting on usable other-1, status giving the pool with agent-1's reset as the soonest an account is back",
+            cites: &["145", "173"],
+            run: the_only_account_that_can_run_it_is_spent,
+        },
+        Scenario {
+            name: "account pools: once the host drops agent-1 while code works, a review naming no program whose mode names agent alone is refused naming the pool and other with why, no agent opened, and a retry once the pool holds agent-1 again starts review on it",
+            cites: &["32", "145", "173"],
+            run: the_account_that_could_run_it_dropped,
+        },
     ]
 }
 
@@ -3753,6 +3763,141 @@ fn the_last_programs_account_is_spent(_: &()) -> Outcome {
             vec![]
         ),
         "the affinity"
+    );
+    Ok(())
+}
+
+/// Settings giving `mode = { agent = "edits" }`, which names no entry for
+/// `other`, so `agent` alone can run the stage (169, 173).
+fn edits_for_agent_alone() -> Settings {
+    Settings {
+        mode: Some(ModeSetting::Programs(BTreeMap::from([(
+            "agent".to_string(),
+            "edits".to_string(),
+        )]))),
+        ..Settings::default()
+    }
+}
+
+/// The refusal names the stage `stage`, which names no program, the pool
+/// `work` and `other`, its mode's table naming no entry for `other` (145,
+/// 173).
+fn no_program_can_run(refusal: &str, stage: &str) -> Outcome {
+    ensure!(
+        refusal.contains(&format!("the stage `{stage}` names no program"))
+            && refusal.contains("pool `work`")
+            && refusal.contains("`other` cannot")
+            && refusal.contains("names no entry for `other`"),
+        "the refusal does not name {stage}, the pool and other with why: {refusal}"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The only account that can run it is
+/// spent" (145, 173).
+fn the_only_account_that_can_run_it_is_spent(_: &()) -> Outcome {
+    let world = World::new();
+    a_pool_of_two_programs(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        edits_for_agent_alone(),
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let fifteen = world.host.now() + 2 * 3600;
+    spent(&world, "work", "agent-1", fifteen);
+    let id = of_the_surfaces(&world, "review", "a", None)?;
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::WaitingForRoom),
+        "the review while agent-1 is spent"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    let host = host(&world)?;
+    ensure_eq!(
+        host.queue.first().map(|queued| queued.wants.clone()),
+        Some(RoomWanted::Pool {
+            pool: "work".into(),
+            until: Some(fifteen)
+        }),
+        "what the review waits on"
+    );
+    world.engine().settle(None);
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::WaitingForRoom),
+        "the review at the next settle"
+    );
+    world.host.advance(2 * 3600 + 1);
+    world.engine().settle(None);
+    ensure_eq!(
+        account_of(&world, &id, "review"),
+        on("work", "agent-1"),
+        "the review once agent-1's reset passed"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The account that could run it
+/// dropped before a later start" (32, 145, 173).
+fn the_account_that_could_run_it_dropped(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        edits_for_agent_alone(),
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![of_other("other-1")],
+    );
+    world.terminal.log.clear();
+    world.commit("pair/a", &["fix.rs"]);
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "review"),
+        Some(StageState::Refused),
+        "the review once code delivered"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
+    let status = world.status(&id)?;
+    let refusal = status.stages[1]
+        .refused_setting
+        .clone()
+        .ok_or("no refusal given")?;
+    no_program_can_run(&refusal, "review")?;
+    let waiting = status.waiting_on.ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (waiting.act, waiting.stage.as_deref(), waiting.why),
+        (Act::Retry, Some("review"), Waits::Refused),
+        "the move the place waits on"
+    );
+    ensure!(
+        host(&world)?.queue.is_empty(),
+        "the refused review is in the queue"
+    );
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![account("agent-1", None), of_other("other-1")],
+    );
+    let answer = world
+        .engine()
+        .retry(&id, Retry::Stage("review".into()), None, false);
+    ensure!(answer.refusal().is_none(), "the retry: {answer:?}");
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review once the pool holds agent-1 again"
     );
     Ok(())
 }

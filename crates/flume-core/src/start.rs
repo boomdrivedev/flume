@@ -888,13 +888,12 @@ impl Engine {
                 return Step::Write(Err(Start::WaitingForRoom));
             }
             if let Admit::Queue(queue) = admit {
-                let program = resolution.resolved.settings.program.as_deref();
                 if matches!(chosen, Choice::Wait)
                     || queue.must_wait(
                         id,
                         &held.place.stream.name,
                         label.as_ref().map(|label| label.name.as_str()),
-                        program,
+                        Some(&programs.able),
                         held.priority,
                     )
                 {

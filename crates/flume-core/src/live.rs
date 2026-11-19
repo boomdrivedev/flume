@@ -139,14 +139,22 @@ impl Engine {
             .start
             .as_ref()
             .filter(|start| after.cause == CarryCause::Lost && start.identity == after.start);
-        let (session, standing) = self.session_holds(
-            &waiting.place,
-            &after,
-            lost,
-            waiting.program.as_deref().unwrap_or_default(),
-            queue,
-            true,
-        );
+        // Live is asked of the program of the start whose conversation it
+        // is, which its profile alone reads (179, 207; design 6).
+        let program = stage
+            .start
+            .as_ref()
+            .filter(|start| start.identity == after.start)
+            .map(|start| start.program.clone())
+            .or_else(|| {
+                waiting
+                    .programs
+                    .as_ref()
+                    .and_then(|programs| programs.first().cloned())
+            })
+            .unwrap_or_default();
+        let (session, standing) =
+            self.session_holds(&waiting.place, &after, lost, &program, queue, true);
         let lost = lost.map(|start| start.identity.clone());
         self.update(&waiting.place, |held| {
             if held.phase != Phase::Live
