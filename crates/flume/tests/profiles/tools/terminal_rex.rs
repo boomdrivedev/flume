@@ -2420,6 +2420,18 @@ impl Agent for StandIn {
         "name it by flume needs --to".into()
     }
 
+    /// Received, asking, own work, ended and last words, read from its
+    /// own record, so none is read from the terminal (171, 174).
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+        ])
+    }
+
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
     }
