@@ -348,6 +348,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["32", "145", "173"],
             run: the_account_that_could_run_it_dropped,
         },
+        Scenario {
+            name: "account pools: a launch whose code names no program and whose mode names agent alone, on a stream whose pool holds only other-1, is refused naming code, the pool and other with why, nothing made and its terminal asked nothing",
+            cites: &["4", "145", "173"],
+            run: a_launch_no_account_can_run,
+        },
     ]
 }
 
@@ -3899,5 +3904,42 @@ fn the_account_that_could_run_it_dropped(_: &()) -> Outcome {
         by("agent-1", AccountFrom::Strategy),
         "the review once the pool holds agent-1 again"
     );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "A launch no account can run" (4,
+/// 145, 173; core.8).
+fn a_launch_no_account_can_run(_: &()) -> Outcome {
+    let world = World::new();
+    world.resolver.bind_agent("other", world.agent.clone());
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![of_other("other-1")],
+    );
+    stream_on(&world, "trial", Some("work"), 0);
+    let mut code = stage("code", Some(Deliverable::Commits), "{{brief}}");
+    code.agents = vec![edits_for_agent_alone()];
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![kind("solo", false, vec![code])]);
+    let reason = refused(&world.engine.launch(&Launch {
+        stream: Some("trial".into()),
+        ..launch("solo", "a", Some("x"))
+    }))?;
+    no_program_can_run(&reason, "code")?;
+    ensure_eq!(world.place.log.count("make"), 0, "places made");
+    ensure!(
+        world.held(&World::id("solo", "a")).is_none(),
+        "held state written"
+    );
+    ensure_eq!(
+        world.terminal.log.count("starts"),
+        0,
+        "the terminal asked at the launch"
+    );
+    ensure_eq!(world.terminal.log.count("open"), 0, "agents opened");
     Ok(())
 }
