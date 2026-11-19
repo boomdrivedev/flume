@@ -1654,18 +1654,26 @@ pin, or, where it was not taken, each key it may not set or its fault:
 ### A pool's accounts and their readings
 
 A pool gives its strategy and its threshold, then each account with its
-reading under it. A reading gives each window's use and reset, then
-when flume took it and from which agent, `stale` where it is no longer
-fresh. An account with no reading says `no reading:` and why. An
-account past its threshold says which window holds it and until when.
-Status gives no path.
+configuration home and its reading under it. The home is the folder
+its program keeps its settings in under that account, Claude Code's
+`CLAUDE_CONFIG_DIR`, read against your login environment as a start
+reads the account's `env`; an account whose `env` gives none shows
+none, and one whose value names a variable your login environment
+lacks says `no configuration home:` and why. A reading gives each
+window's use and reset, then when flume took it and from which agent,
+`stale` where it is no longer fresh. An account with no reading says
+`no reading:` and why. An account past its threshold says which window
+holds it and until when. Status gives no path but each account's
+configuration home.
 
 ```text
   pool work, most-left, threshold 90%:
     work-1 (claude): 2 agents running of 4
+      configuration home /home/op/.claude-work-1
       five_hour 93% (resets 1793304000) · seven_day 55% (resets 1793520000) · taken at 1793291300 from flume:b3e4c15d5ebe:fix--parser:code:1
       past its threshold in five_hour until 1793304000
     work-2 (claude): 1 agents running, no bound of its own
+      configuration home /home/op/.claude-work-2
       five_hour 40% (resets 1793304000) · seven_day 35% (resets 1793520000) · stale, taken at 1793290280 from flume:b3e4c15d5ebe:fix--lexer:code:1
     work-3 (claude): 0 agents running, no bound of its own
       no reading: no session flume started has reported its windows

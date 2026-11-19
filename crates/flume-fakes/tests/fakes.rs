@@ -904,6 +904,20 @@ fn the_agents_efforts_are_scripted() {
 }
 
 #[test]
+fn the_agents_home_is_scripted() {
+    // Unscripted, the fake names no variable as an account's
+    // configuration home; scripted to name `FAKE_HOME`, it names it, so
+    // the engine's scenarios read a home through the seam as a profile
+    // gives it (56, 106, C.4).
+    let host = Arc::new(FakeHost::default());
+    let agent = FakeAgent::new(Arc::new(FakeTerminal::new(host)));
+    assert_eq!(agent.home_variable(), None);
+
+    agent.read_home_from("FAKE_HOME");
+    assert_eq!(agent.home_variable(), Some("FAKE_HOME"));
+}
+
+#[test]
 fn the_agents_own_settings_are_scripted() {
     // Unscripted, the fake reserves no key and refuses own settings in the
     // seam's default words, taking an empty entry, and its command lists

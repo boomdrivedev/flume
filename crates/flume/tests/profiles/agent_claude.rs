@@ -855,6 +855,15 @@ fn each_of_the_five_and_two_the_release_reads_otherwise() {
 }
 
 #[test]
+fn the_profile_names_claude_config_dir_as_its_home() {
+    // The profile names `CLAUDE_CONFIG_DIR` as the variable whose value
+    // is an account's configuration home, the folder 2.1.296 keeps its
+    // settings and sign-in in (56, C.4).
+    let seam = Harness::new().seam;
+    assert_eq!(seam.home_variable(), Some("CLAUDE_CONFIG_DIR"));
+}
+
+#[test]
 fn the_command_for_a_stage_in_edits() {
     // Settings giving `edits` start `claude` with `--permission-mode
     // acceptEdits`: the entry the program's name takes, mapped by the
