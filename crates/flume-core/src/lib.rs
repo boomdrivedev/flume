@@ -17,6 +17,7 @@ mod base;
 mod batch;
 mod chart;
 mod clues;
+mod command;
 mod deliver;
 pub mod deliveries;
 mod end;
@@ -306,6 +307,7 @@ mod tests {
 
     pub(crate) fn record(binding: Binding) -> PlaceRecord {
         PlaceRecord {
+            params: None,
             id: PlaceId::new("/r/places/fix--one"),
             repository: "/r".into(),
             address: None,

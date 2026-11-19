@@ -2171,6 +2171,67 @@ fn a_command_in_a_herdr_sessions_pane_is_named_as_its_agents_are_given() {
     );
 }
 
+/// The command-stages spec's "A command stage runs as a program" under
+/// the pinned herdr: the link named for the kind runs the launcher by
+/// `pane run`, given its words, the program and its arguments, and the
+/// run reads stopped once its command exited, with no agent of herdr's
+/// (223, C.5).
+#[test]
+fn a_command_runs_in_a_pane_as_a_program_never_an_agent() {
+    let server = TestServer::start("herdr-run");
+    let profile = server.profile();
+    let who = identity(1);
+    let ran = server.scratch.path("ran");
+    let launcher = server.scratch.path("bin/launcher");
+    fs::create_dir_all(launcher.parent().expect("a folder")).expect("the launcher's folder");
+    fs::write(
+        &launcher,
+        format!(
+            "#!/bin/sh\necho \"$(basename \"$0\") $*\" > {}\n",
+            ran.display()
+        ),
+    )
+    .expect("the launcher");
+    fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).expect("the launcher's mode");
+    let command = AgentCommand {
+        program: "bin/move".into(),
+        args: vec!["the params".into()],
+        env: BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
+        prompt_args: vec![],
+        folder_trust: None,
+        kind: Some("update".into()),
+        files: BTreeMap::new(),
+        launcher: vec![
+            launcher.to_string_lossy().into_owned(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+    };
+    let opened = profile.run(
+        &server.place("fix--one"),
+        &server.folder(),
+        &command,
+        &who,
+        &OpenIn::Own,
+    );
+    assert!(
+        matches!(opened, Opened::Opened { .. }),
+        "run gave {opened:?}"
+    );
+    server.within("the launcher did not run", || ran.exists());
+    assert_eq!(
+        fs::read_to_string(&ran)
+            .expect("what the launcher wrote")
+            .trim(),
+        "update ack launched -- bin/move the params",
+        "the link and its words"
+    );
+    server.within("the run does not read stopped once it exited", || {
+        profile.state(&who) == AgentState::Stopped
+    });
+}
+
 #[test]
 fn herdrs_readings_as_the_profile_reads_them() {
     let server = TestServer::start("herdr-states");

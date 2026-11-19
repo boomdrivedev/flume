@@ -283,6 +283,16 @@ impl Engine {
             Retry::Current => Some(held.current.unwrap_or(0)),
             Retry::Stage(name) => match held.stages.iter().position(|stage| &stage.name == name) {
                 Some(index) => Some(index),
+                // A command stage by its path, on no hold: its last run
+                // runs again (49, 223).
+                None if crate::chart::is_chart_stage(&held, name)
+                    && !held.holds.iter().any(
+                        |hold| matches!(&hold.on, HoldOn::Stage { stage } if stage == name),
+                    )
+                    && crate::command::last_run(&held, name).is_some() =>
+                {
+                    crate::command::last_run(&held, name)
+                }
                 // A statechart kind's stage by its path: its hold ended and
                 // each of its sessions it held started (47, 175).
                 None if crate::chart::is_chart_stage(&held, name) => {
@@ -297,6 +307,17 @@ impl Engine {
             }
             Retry::Submission => None,
         };
+        // A command stage takes no words: a retry of one runs its command
+        // again from the place's head, and one with words is refused
+        // naming it (49, 223).
+        if let (Some(index), true) = (index, words.is_some()) {
+            if crate::command::is_run(&held, index) {
+                return Answer::refused(format!(
+                    "the stage {} of the place {place} is a command stage, which takes no words; a retry of it names it alone (49, 223)",
+                    held.stages[index].name
+                ));
+            }
+        }
         // An answer naming its key is taken once, while the place waits on
         // the stop-short it names, before anything is ended, started or
         // typed (42, 49).

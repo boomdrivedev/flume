@@ -690,7 +690,10 @@ pub(crate) fn group_status(
         | StageState::WaitingOnReadiness
         | StageState::Refused
         | StageState::Repeating => facts.first_unticked_group()?,
-        StageState::NotReached | StageState::Delivered | StageState::Finished => return None,
+        StageState::NotReached
+        | StageState::Delivered
+        | StageState::Finished
+        | StageState::Failed => return None,
     };
     let group = &facts.groups[at];
     Some(GroupStatus {

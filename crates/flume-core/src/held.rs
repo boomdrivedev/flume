@@ -180,7 +180,8 @@ fn record_ends(next: &mut HeldState, now: Seconds) {
             | StageState::EndedShort
             | StageState::Finished
             | StageState::Lost
-            | StageState::NeverBegun => true,
+            | StageState::NeverBegun
+            | StageState::Failed => true,
             StageState::Stuck => stage.end.is_some(),
             _ => false,
         };

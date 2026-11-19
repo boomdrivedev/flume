@@ -4023,7 +4023,7 @@ fn a_held_statechart_reads_back_the_same() {
     let words = Weir
         .read_statechart(&held, "[kinds.bump]\nstages = []\nlands = true\n")
         .expect_err("a template that is no statechart kind read");
-    assert!(words.contains("stage template"), "{words}");
+    assert!(words.contains("templates"), "{words}");
     let unreadable = KindStatechart {
         text: "[kinds.persona".into(),
         ..held

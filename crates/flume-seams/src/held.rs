@@ -274,6 +274,11 @@ pub struct ChartSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
     pub declared: Stage,
+    /// Of a command stage's session, the command it runs, its program
+    /// and arguments with `{{params}}` filled: none for an agent's (223,
+    /// 224, C.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<String>>,
 }
 
 impl ChartSession {
@@ -1395,6 +1400,11 @@ pub struct PlaceRecord {
     /// The repository's binding as it resolved at the launch (21).
     pub binding: Binding,
     pub brief: Option<String>,
+    /// The launch's parameters, as its caller wrote them, kept for a
+    /// command stage's command, which reads them from the place's own
+    /// folder; flume never reads them (8, 224).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<String>,
     pub mark: Option<String>,
     /// The launch's settings by stage, kept since each later start reads
     /// the launch's layer as the launch gave it and the caller who gave
@@ -1688,10 +1698,14 @@ pub enum StageState {
     /// the stage neither ended nor moved on, and a resume, a message or a
     /// caller's word resumes it (212, 213).
     Hibernating,
+    /// Of a command stage, its command exited other than with success,
+    /// exited with nothing committed, or stopped with no exit recorded
+    /// (223).
+    Failed,
 }
 
 impl StageState {
-    const ALL: [StageState; 17] = [
+    const ALL: [StageState; 18] = [
         StageState::NotReached,
         StageState::OnHold,
         StageState::WaitingOnReadiness,
@@ -1709,6 +1723,7 @@ impl StageState {
         StageState::EndedShort,
         StageState::Finished,
         StageState::Hibernating,
+        StageState::Failed,
     ];
 
     /// The state's word in an end's key, `ended-short` for
@@ -1732,6 +1747,7 @@ impl StageState {
             StageState::EndedShort => "ended-short",
             StageState::Finished => "finished",
             StageState::Hibernating => "hibernating",
+            StageState::Failed => "failed",
         }
     }
 
@@ -1741,11 +1757,15 @@ impl StageState {
             .find(|state| state.word() == word)
     }
 
-    /// The stage ended: delivered, ended short or finished.
+    /// The stage ended: delivered, ended short, finished or, of a command
+    /// stage, failed.
     pub fn ended(self) -> bool {
         matches!(
             self,
-            StageState::Delivered | StageState::EndedShort | StageState::Finished
+            StageState::Delivered
+                | StageState::EndedShort
+                | StageState::Finished
+                | StageState::Failed
         )
     }
 
@@ -1966,6 +1986,61 @@ pub struct StageEnd {
     /// one did (198).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<SessionClosed>,
+    /// For a command stage's end, how its command exited and where its
+    /// output lies; none for an agent's end (223).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ran: Option<Ran>,
+}
+
+/// How a command stage's command exited, as its launcher recorded it:
+/// its exit code, none where it stopped with no exit recorded or was
+/// ended by a signal, and the path of its whole output (223, C.2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ran {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit: Option<i32>,
+    pub output: String,
+}
+
+/// What a command stage's launcher writes beside the start's record once
+/// its command exits: its exit code, none where a signal ended it (223,
+/// C.2). Kept in the place's own folder at [`ran_exit`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Exited {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit: Option<i32>,
+}
+
+/// The folder under a place's own folder `folder` that holds what the
+/// command of the start `identity` wrote, its identity's `/` written `%`
+/// (223, C.2, C.7).
+pub fn ran_dir(folder: &str, identity: &str) -> String {
+    format!("{folder}/ran/{}", identity.replace('/', "%"))
+}
+
+/// Where flume's launcher writes its word of the start `identity` under
+/// the place's own folder `folder`: its process, the program's absolute
+/// path, and how the start began otherwise (35, 161, 171, C.4).
+pub fn launched_word(folder: &str, identity: &str) -> String {
+    format!("{folder}/launched/{}.json", identity.replace('/', "%"))
+}
+
+/// Where the launcher writes the exit of the start `identity`'s command
+/// (223, C.2).
+pub fn ran_exit(folder: &str, identity: &str) -> String {
+    format!("{}/exit.json", ran_dir(folder, identity))
+}
+
+/// Where the launcher writes the whole output of the start `identity`'s
+/// command (223, C.2).
+pub fn ran_output(folder: &str, identity: &str) -> String {
+    format!("{}/output.log", ran_dir(folder, identity))
+}
+
+/// The launch's parameters in a place's own folder `folder`, which a
+/// command's `{{params}}` names (224, C.2, C.7).
+pub fn params_path(folder: &str) -> String {
+    format!("{folder}/params")
 }
 
 /// One line a stage's run wrote of what it made (129): a JSON object
@@ -2313,6 +2388,10 @@ pub struct StartRecord {
     pub mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// Whether the start is a command stage's, whose launcher runs its
+    /// command as its child in place of becoming it (223, C.2).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub command: bool,
 }
 
 /// The account a start runs under: its pool, its name, and whether the

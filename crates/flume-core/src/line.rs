@@ -351,6 +351,7 @@ mod tests {
     /// with no stages (202).
     fn spring() -> HeldState {
         let place = PlaceRecord {
+            params: None,
             id: PlaceId::new("/d/places/1/train--spring"),
             repository: "/r".into(),
             address: None,

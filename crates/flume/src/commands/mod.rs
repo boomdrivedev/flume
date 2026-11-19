@@ -485,6 +485,11 @@ struct LaunchArgs {
     brief: Option<String>,
     #[arg(long, value_name = "FILE")]
     brief_file: Option<PathBuf>,
+    /// The parameters the launch carries beside its brief, a file read
+    /// whole, for a command stage's command to read; flume never reads
+    /// them (224).
+    #[arg(long, value_name = "FILE")]
+    params_file: Option<PathBuf>,
     /// A declaration of kinds the launch carries (19).
     #[arg(long, value_name = "FILE")]
     kinds: Option<PathBuf>,
@@ -972,6 +977,14 @@ fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> 
         ),
         (None, None) => None,
     };
+    let params = args
+        .params_file
+        .as_ref()
+        .map(|file| {
+            std::fs::read_to_string(file)
+                .map_err(|error| format!("the parameters {}: {error}", file.display()))
+        })
+        .transpose()?;
     let declaration = args
         .kinds
         .as_ref()
@@ -1003,6 +1016,7 @@ fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> 
         name: args.name.clone(),
         base,
         brief,
+        params,
         declaration,
         settings,
         every_stage,

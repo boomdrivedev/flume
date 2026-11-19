@@ -84,6 +84,7 @@ pub(crate) fn start_record(
         env,
         mode: None,
         session: None,
+        command: false,
     }
 }
 

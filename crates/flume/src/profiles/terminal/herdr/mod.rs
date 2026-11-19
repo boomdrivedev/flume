@@ -2225,6 +2225,137 @@ impl Terminal for Herdr {
         }
     }
 
+    /// A command stage's command as a program of a pane, never an agent of
+    /// herdr's (223, C.5): the pane made as an agent's is, its `PATH` led
+    /// by a folder of the start's own holding the stage's kind's name linked
+    /// to flume's launcher; once its shell is at its prompt, herdr's own way
+    /// of running a program in a pane, `pane run`, runs the link with the
+    /// launcher's arguments, the program and its arguments, each quoted
+    /// whole, never `agent start`. The pane is held by its id and its
+    /// server's socket, and left showing the command's output until the
+    /// place's tidy closes it.
+    fn run(
+        &self,
+        place: &PlaceRef,
+        folder: &str,
+        command: &AgentCommand,
+        identity: &Identity,
+        at: &OpenIn,
+    ) -> Opened {
+        if self.state(identity) != AgentState::Stopped {
+            return Opened::Refused {
+                reason: format!("a run is live under {identity}"),
+            };
+        }
+        let Some(kind) = command.kind.as_deref() else {
+            return Opened::Refused {
+                reason: format!("the command {} names no kind for its link", command.program),
+            };
+        };
+        let path = command
+            .env
+            .get("PATH")
+            .cloned()
+            .or_else(|| std::env::var("PATH").ok())
+            .unwrap_or_default();
+        let Some((launcher, launcher_args)) = command.launcher.split_first() else {
+            return Opened::Refused {
+                reason: format!(
+                    "the command {} carries no launcher, and herdr runs a command through flume's",
+                    command.program
+                ),
+            };
+        };
+        let Some(launcher) = program_path(launcher, &path) else {
+            return Opened::Refused {
+                reason: format!("flume's launcher {launcher} is on no folder of PATH"),
+            };
+        };
+        let start = Path::new(folder)
+            .join("herdr")
+            .join(digest(&identity.to_string()));
+        let bin = start.join("bin");
+        let link = bin.join(kind);
+        let linked = fs::create_dir_all(&bin)
+            .and_then(|()| match fs::remove_file(&link) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+                _ => Ok(()),
+            })
+            .and_then(|()| std::os::unix::fs::symlink(&launcher, &link));
+        if let Err(error) = linked {
+            return Opened::Refused {
+                reason: format!("{}: {error}", link.display()),
+            };
+        }
+        let made = match self.made(place, command, &start) {
+            Ok(made) => made,
+            Err(reason) => return Opened::Refused { reason },
+        };
+        let pane = match self.new_pane(place, &identity.place, at, &made) {
+            Ok(pane) => pane,
+            Err(reason) => return Opened::Refused { reason },
+        };
+        let kept = Kept {
+            pane: pane.clone(),
+            name: herdr_name(identity),
+            place: Some(place.location.clone()),
+            trust: None,
+            program: None,
+        };
+        if let Err(reason) = self.keep(identity, &kept) {
+            self.abandon(identity, &pane, &bin);
+            return Opened::Refused { reason };
+        }
+        let deadline = Instant::now() + self.start_timeout;
+        match self.prompt(&pane, deadline) {
+            Call::Answered(_) => {}
+            Call::Refused { code, words } if code == "timeout" => {
+                return Opened::NotComeUp {
+                    screen: format!(
+                        "{}\nthe pane's shell showed no prompt: herdr refused ({code}): {words}",
+                        self.visible(&pane)
+                    ),
+                }
+            }
+            Call::Refused { code, words } => {
+                self.abandon(identity, &pane, &bin);
+                return Opened::Refused {
+                    reason: format!("herdr refused ({code}): {words}"),
+                };
+            }
+            Call::Unanswered(words) => {
+                self.abandon(identity, &pane, &bin);
+                return Opened::Refused { reason: words };
+            }
+        }
+        let line = crate::shell::words(
+            std::iter::once(kind)
+                .chain(launcher_args.iter().map(String::as_str))
+                .chain(std::iter::once(command.program.as_str()))
+                .chain(command.args.iter().map(String::as_str)),
+        );
+        match self.call(
+            &pane.socket,
+            &["pane", "run", &pane.id, &line],
+            self.start_timeout + PAST_TIMEOUT,
+        ) {
+            Call::Answered(_) => Opened::Opened {
+                carried: false,
+                printed: None,
+            },
+            Call::Refused { code, words } => {
+                self.abandon(identity, &pane, &bin);
+                Opened::Refused {
+                    reason: format!("herdr refused ({code}): {words}"),
+                }
+            }
+            Call::Unanswered(words) => {
+                self.abandon(identity, &pane, &bin);
+                Opened::Refused { reason: words }
+            }
+        }
+    }
+
     /// The process in the agent's pane's foreground that runs the program
     /// its open checked, by its id, as the open's check reads it, by
     /// `pane process-info` within the profile's bound: nothing where none

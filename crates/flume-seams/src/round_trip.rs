@@ -143,6 +143,7 @@ fn statechart_kind() -> Kind {
                 (
                     "stages.build".into(),
                     ChartStage {
+                        command: None,
                         agents: ChartAgents::Entries(vec![settings(), Settings::default()]),
                         join: Join::Count(2),
                         deliverables: vec![Deliverable::Commits],
@@ -154,6 +155,7 @@ fn statechart_kind() -> Kind {
                 (
                     "stages.test".into(),
                     ChartStage {
+                        command: None,
                         agents: ChartAgents::Rule {
                             rule: "every-file".into(),
                             pattern: Some("personas/*.md".into()),
@@ -272,6 +274,7 @@ fn prompt() -> Prompt {
 fn held() -> HeldState {
     HeldState {
         place: PlaceRecord {
+            params: None,
             id: PlaceId::new("/r/places/bump--one"),
             repository: "/r".into(),
             address: Some("acme/acme".into()),
@@ -334,6 +337,7 @@ fn held() -> HeldState {
             refused_part: Some("words".into()),
             refused_setting: Some("the program nothing-here, from host-kind".into()),
             end: Some(StageEnd {
+                ran: None,
                 left_in_pane: false,
                 head: Some(Revision::new("c3")),
                 report: Some("/s/conclusion.md".into()),
@@ -602,6 +606,7 @@ fn held() -> HeldState {
 /// 179).
 fn start_record() -> StartRecord {
     StartRecord {
+        command: false,
         program: "agent".into(),
         account: Some("work-2".into()),
         env: BTreeMap::from([
@@ -754,6 +759,7 @@ fn ends() -> Vec<EndHeld> {
 #[test]
 fn a_launch() {
     round_trips(Launch {
+        params: None,
         repository: "/r".into(),
         kind: "bump".into(),
         name: "one".into(),
@@ -810,6 +816,7 @@ fn a_statechart_places_held_state() {
         let mut held_stage = held().stages[0].clone();
         held_stage.name = format!("stages.test#1/{n}");
         held_stage.session = Some(ChartSession {
+            command: None,
             stage: "stages.test".into(),
             entry: 1,
             n,

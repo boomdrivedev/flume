@@ -53,6 +53,11 @@ pub trait Store: Send + Sync {
     /// core.17).
     fn write_file(&self, place: &crate::PlaceId, path: &str, text: &str) -> Result<(), String>;
 
+    /// The file at `path`, an absolute path under the place's own folder,
+    /// as written: none where there is none; why not where it cannot be
+    /// read, a path outside the folder among them (223, C.7).
+    fn read_file(&self, place: &crate::PlaceId, path: &str) -> Result<Option<String>, String>;
+
     /// The host's own document under `key` and the version it was read
     /// at; none where there is none (153).
     fn read_host(&self, key: &HostKey) -> Option<HostVersioned>;

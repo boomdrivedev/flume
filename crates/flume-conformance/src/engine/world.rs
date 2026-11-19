@@ -363,6 +363,7 @@ pub fn chart_kind(name: &str, text: &str, stages: Vec<(&str, ChartStage)>) -> Ki
 /// `deliverable`, its sessions' prompt `prompt` (175, C.2).
 pub fn chart_stage(agents: ChartAgents, deliverable: Deliverable, prompt: &str) -> ChartStage {
     ChartStage {
+        command: None,
         agents,
         join: Join::All,
         deliverables: vec![deliverable],

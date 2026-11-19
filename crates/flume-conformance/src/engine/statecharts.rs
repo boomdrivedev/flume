@@ -229,10 +229,11 @@ fn a_statechart_kind_launched(_: &()) -> Outcome {
         "the kind's statechart held"
     );
     let chart = held.chart.ok_or("the place holds no statechart")?;
+    let templates = flume_core::atoms::templates();
     ensure_eq!(
         chart.template.as_str(),
-        flume_core::atoms::STAGE_TEMPLATE,
-        "the stage template held"
+        templates.as_str(),
+        "the templates held"
     );
     ensure_eq!(
         chart.state.regions.get("main").map(String::as_str),

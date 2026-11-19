@@ -14,6 +14,7 @@ pub mod batches;
 pub mod caller_acts;
 pub mod caller_waits;
 pub mod carried_conversations;
+pub mod command_stages;
 pub mod end_delivery;
 pub mod held_state;
 pub mod hibernation;
@@ -101,6 +102,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(relay::scenarios());
     every.extend(telemetry::scenarios());
     every.extend(statecharts::scenarios());
+    every.extend(command_stages::scenarios());
     every.extend(terminal_readings::scenarios());
     every
 }

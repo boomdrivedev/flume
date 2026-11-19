@@ -40,6 +40,11 @@ impl Engine {
         if held.stages[index].session.is_some() && !works(held, index) {
             return self.end_left(id, held, index);
         }
+        // A command stage's session is its command's run, read from its
+        // launcher's word and recorded exit (223).
+        if crate::command::is_run(held, index) {
+            return self.step_run(id, held, index);
+        }
         let at = Some(index);
         // When this settle read the session's agent waiting, for a profile
         // that does not build own work, before its stage is read (31, 171).
@@ -217,11 +222,16 @@ impl Engine {
             })
             .collect();
         // Each stage the tick sent back, by its path, with the words of the
-        // session that found work (112, 131, 175).
+        // session that found work, and each command stage it failed, with
+        // its run's failure, which the next stage that runs an agent starts
+        // with (112, 131, 175, 223).
         let sent_back: Vec<(String, Option<String>)> = tick
             .fired
             .iter()
-            .filter(|fired| fired.to == atoms::SENT_BACK && fired.from != fired.to)
+            .filter(|fired| {
+                (fired.to == atoms::SENT_BACK || fired.to == atoms::FAILED)
+                    && fired.from != fired.to
+            })
             .filter_map(|fired| stage_of(&fired.region))
             .map(|path| {
                 let words = ends.get(&path).and_then(|end| end.words.clone());
@@ -295,7 +305,12 @@ impl Engine {
                         ));
                     }
                 }
-                let words = (!sessions.is_empty()).then(|| chart.words.take()).flatten();
+                // A command stage takes no words: they wait for the next
+                // stage that runs an agent (223).
+                let words = (!sessions.is_empty()
+                    && sessions.iter().all(|session| session.command.is_none()))
+                .then(|| chart.words.take())
+                .flatten();
                 for session in sessions {
                     // A hold naming the stage's path, or the session, holds
                     // it until a retry names either (47, 175).
@@ -353,6 +368,20 @@ impl Engine {
         stage: &ChartStage,
         head: &Revision,
     ) -> Vec<ChartSession> {
+        // A command stage's one session is its command's run, filled from
+        // the launch's parameters alone (223, 224, C.2).
+        if let Some(command) = &stage.command {
+            let params = params_path(&self.store.folder(&held.place.id));
+            let mut run = session(path, entry, 1, None, Settings::default(), stage);
+            run.declared.agents = vec![];
+            run.command = Some(command_words(
+                command,
+                held.place.kind_from.as_ref(),
+                &held.place.declared,
+                &params,
+            ));
+            return vec![run];
+        }
         let given: Vec<(Settings, Option<String>)> = match &stage.agents {
             ChartAgents::Entries(entries) => entries
                 .iter()
@@ -497,6 +526,7 @@ fn session(
         entry,
         n,
         file,
+        command: None,
         declared: Stage {
             name: String::new(),
             prompt: stage.prompt.clone().unwrap_or_default(),
@@ -514,6 +544,50 @@ fn session(
     };
     session.declared.name = session.name();
     session
+}
+
+/// A command stage's words as its session runs them: `{{params}}` filled
+/// with `params`, the path of the place's copy of the launch's
+/// parameters, and no other word filled; its program, where it is a path,
+/// found from the declaration's file, the repository's within the place
+/// and a launch's where it lies, or within its package's folder, and,
+/// where it is a name, left for the launcher to find on the login `PATH`
+/// (157, 223, 224, C.2).
+pub(crate) fn command_words(
+    command: &[String],
+    from: Option<&KindFrom>,
+    declared: &Declared,
+    params: &str,
+) -> Vec<String> {
+    let mut words: Vec<String> = command
+        .iter()
+        .map(|word| {
+            if word == atoms::PARAMS {
+                params.to_string()
+            } else {
+                word.clone()
+            }
+        })
+        .collect();
+    if let Some(program) = words.first_mut() {
+        if program.contains('/') {
+            let folder = match (declared, from) {
+                (Declared::Repository | Declared::Launch, Some(from)) => from
+                    .declaration_file
+                    .as_deref()
+                    .and_then(|file| file.rsplit_once('/'))
+                    .map(|(folder, _)| folder.to_string()),
+                (Declared::Host, Some(from)) => from.kind_dir.clone(),
+                _ => None,
+            };
+            let relative = program.trim_start_matches("./");
+            *program = match folder {
+                Some(folder) if !folder.is_empty() => format!("{folder}/{relative}"),
+                _ => format!("./{relative}"),
+            };
+        }
+    }
+    words
 }
 
 /// Whether `name` is a stage of `held`'s statechart kind, by its path
@@ -624,6 +698,25 @@ pub(crate) fn stage_ends(
         let needed = stage.join.needs(sessions.len());
         let limit = stage.send_back_limit.unwrap_or(send_backs);
         let ended = |end: &'static str, words: Option<String>| StageEnded { end, words };
+        // A command stage passes once its run delivered, and fails once it
+        // failed while its failures taken on are under its bound; past it,
+        // its stage keeps working and the place waits on its caller (23,
+        // 223).
+        if stage.command.is_some() {
+            let run = sessions.last();
+            let end = match run.map(|run| run.state) {
+                Some(StageState::Delivered) => Some(ended(atoms::PASSED, None)),
+                Some(StageState::Failed) if recorded.send_backs < limit => Some(ended(
+                    atoms::FAILED,
+                    run.and_then(|run| run.end.as_ref()?.words.clone()),
+                )),
+                _ => None,
+            };
+            if let Some(end) = end {
+                ends.insert(path.clone(), end);
+            }
+            continue;
+        }
         let end = match found {
             Some(found) => {
                 let words = found.end.as_ref().and_then(|end| end.words.clone());

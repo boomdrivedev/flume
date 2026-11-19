@@ -881,6 +881,53 @@ impl Terminal for FakeTerminal {
         answer
     }
 
+    /// A command stage's command run as a program of a tab, logged `run
+    /// <identity> <location>`, kept working as its open would keep an
+    /// agent, refused as an open is: while one is live under the identity
+    /// or where opens are refused (223, C.5).
+    fn run(
+        &self,
+        place: &PlaceRef,
+        folder: &str,
+        command: &AgentCommand,
+        identity: &Identity,
+        at: &OpenIn,
+    ) -> Opened {
+        self.log.push(format!("run {identity} {}", place.location));
+        let key = identity.to_string();
+        if self.read(&key) != AgentState::Stopped {
+            return Opened::Refused {
+                reason: format!("a run is live under {key}"),
+            };
+        }
+        let mut state = lock(&self.state);
+        if let Some(reason) = &state.open_refusal {
+            return Opened::Refused {
+                reason: reason.clone(),
+            };
+        }
+        if let Some(in_session) = session_of(at) {
+            let made = Workspace::of(place, in_session);
+            state
+                .tabs
+                .retain(|tab| tab.location != place.location || tab.workspace != made);
+            state.tabs.push(Tab {
+                location: place.location.clone(),
+                name: identity.place.clone(),
+                workspace: made.clone(),
+            });
+            state.workspaces.insert(made);
+        }
+        let mut running = Running::new(AgentState::Working, command.clone());
+        running.at = at.clone();
+        running.folder = Some(folder.to_string());
+        state.agents.insert(key, running);
+        Opened::Opened {
+            carried: false,
+            printed: None,
+        }
+    }
+
     fn send(&self, agent: &Identity, text: &str) -> Sent {
         self.log.push(format!("send {agent}"));
         self.deliver(agent, text)

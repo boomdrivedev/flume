@@ -112,6 +112,7 @@ pub fn sample_held(id: &PlaceId, repository: &str) -> HeldState {
     };
     HeldState {
         place: PlaceRecord {
+            params: None,
             id: id.clone(),
             repository: repository.into(),
             address: None,

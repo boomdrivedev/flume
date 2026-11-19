@@ -437,6 +437,20 @@ impl Engine {
     /// the agent is opened once the lock is released; otherwise the stage
     /// waits for room with its words.
     pub(crate) fn start_stage(&self, id: &PlaceId, index: usize, words: Option<String>) -> Start {
+        // A command stage's session runs its command, taking no room and
+        // no words (223).
+        let command = self.store.read(id).and_then(|read| {
+            read.state
+                .stages
+                .get(index)?
+                .session
+                .as_ref()?
+                .command
+                .clone()
+        });
+        if let Some(command) = command {
+            return self.start_command(id, index, &command);
+        }
         let claimed = {
             let _room = self.host.room();
             let queue = self.queue();

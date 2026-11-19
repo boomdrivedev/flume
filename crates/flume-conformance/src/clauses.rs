@@ -110,12 +110,6 @@ pub const HIBERNATE: &str =
 pub const RELAY: &str =
     "the change that builds the relay of a place's live agent, which no record of flume's holds yet";
 
-/// What builds clauses 223 and 224 and S130: a statechart kind's command
-/// stage and a launch's parameters, from the update-ladder talk of
-/// 2026-11-12, after statechart kinds.
-pub const COMMAND_STAGES: &str =
-    "the update ladder's change, command stages and a launch's parameters, after statechart kinds";
-
 /// The change that builds record 0065: a stage counts what any of its
 /// starts made since it last delivered.
 pub const MADE_SINCE: &str =
@@ -149,11 +143,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
     let origin = std::iter::once(("S92".to_string(), ORIGIN));
     let hibernate = ["214", "215", "S126", "S128"].map(|clause| (clause.to_string(), HIBERNATE));
     let relay = [221, 222].map(|clause| (clause.to_string(), RELAY));
-    let command_stages = [223, 224]
-        .map(|clause| clause.to_string())
-        .into_iter()
-        .chain(["S130".to_string()])
-        .map(|clause| (clause, COMMAND_STAGES));
     let made_since = std::iter::once(("S131".to_string(), MADE_SINCE));
     let deliveries = (121..=123).map(|scenario| (format!("S{scenario}"), DELIVERIES));
     standing
@@ -163,7 +152,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .chain(origin)
         .chain(hibernate)
         .chain(relay)
-        .chain(command_stages)
         .chain(made_since)
         .chain(deliveries)
         .collect()
@@ -229,7 +217,7 @@ mod tests {
     #[test]
     fn the_clauses_unbuilt_are_named_by_the_changes_that_build_them() {
         let unbuilt = unbuilt();
-        assert_eq!(unbuilt.len(), 3 + 2 + 4 + 6 + 1 + 1 + 4 + 2 + 3 + 1 + 3);
+        assert_eq!(unbuilt.len(), 3 + 2 + 4 + 6 + 1 + 1 + 4 + 2 + 1 + 3);
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
             "140", "141", "142", "143", "144", "145", "146", "147", "151", "153", "154", "157",
@@ -243,7 +231,7 @@ mod tests {
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
             "S119", "211", "216", "217", "218", "219", "220", "S129", "175", "176", "177", "178",
             "S76", "S77", "170", "172", "S75", "174", "S74", "171", "S73", "212", "213", "S124",
-            "S125", "S127", "173", "S71",
+            "S125", "S127", "173", "S71", "223", "224", "S130",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),

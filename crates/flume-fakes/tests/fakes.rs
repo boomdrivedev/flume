@@ -3696,5 +3696,5 @@ fn the_fake_kinds_reads_a_held_statechart() {
     let words = kinds
         .read_statechart(&statechart, "[kinds.stage")
         .expect_err("an unreadable template read");
-    assert!(words.contains("stage template"), "{words}");
+    assert!(words.contains("templates"), "{words}");
 }

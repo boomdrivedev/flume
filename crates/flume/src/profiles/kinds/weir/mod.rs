@@ -332,12 +332,8 @@ impl Kinds for Weir {
     fn read_statechart(&self, kind: &KindStatechart, template: &str) -> Result<Charts, String> {
         let chart = one_statechart(&kind.text)
             .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
-        let template =
-            one_statechart(template).map_err(|why| format!("the stage template {why}"))?;
-        Ok(Charts {
-            chart,
-            templates: BTreeMap::from([(template.name.clone(), template)]),
-        })
+        let templates = statecharts(template).map_err(|why| format!("the templates {why}"))?;
+        Ok(Charts { chart, templates })
     }
 
     fn read_named(&self, text: &str) -> Result<KindNamed, String> {
@@ -988,6 +984,24 @@ fn one_statechart(text: &str) -> Result<weir_kinds::weir_engine::Statechart, Str
     }
 }
 
+/// Every statechart kind `text` declares, keyed by its name, read by
+/// weir-kinds; or why it gives none: refused by weir, declaring a simple
+/// kind, or declaring none (175, 223, C.2).
+fn statecharts(
+    text: &str,
+) -> Result<BTreeMap<String, weir_kinds::weir_engine::Statechart>, String> {
+    let declaration = weir_kinds::read_kinds(text)
+        .map_err(|refusal| format!("could not be read: {}", refused(&refusal)))?;
+    if !declaration.kinds.is_empty() || declaration.statecharts.is_empty() {
+        return Err("hold other than statechart kinds".into());
+    }
+    Ok(declaration
+        .statecharts
+        .into_values()
+        .map(|kind| (kind.statechart.name.clone(), kind.statechart))
+        .collect())
+}
+
 /// Where the state at `path`, `<region>.<state>` and so on down, lies in
 /// its kind's table at `at`: `kinds.persona` and `stages.test` give
 /// `kinds.persona.regions.stages.states.test`.
@@ -1079,7 +1093,36 @@ fn map_chart_stage(
             None
         }
     };
+    // A command stage's command, read only where its state runs the
+    // command template: the program and its arguments as a list of words
+    // (223, C.2).
+    let command = match state
+        .filter(|state| state.machine.as_deref() == Some("command"))
+        .and_then(|state| state.params.as_ref())
+        .and_then(|params| params.get("command"))
+    {
+        None => None,
+        Some(Value::Array(words)) => {
+            let read: Option<Vec<String>> = words
+                .iter()
+                .map(|word| word.as_str().map(str::to_string))
+                .collect();
+            if read.is_none() {
+                problems.push(format!(
+                    "{at}.params.command: must be the program and its arguments, a list of strings"
+                ));
+            }
+            read
+        }
+        Some(_) => {
+            problems.push(format!(
+                "{at}.params.command: must be the program and its arguments, a list of strings"
+            ));
+            None
+        }
+    };
     ChartStage {
+        command,
         agents,
         join,
         deliverables: params

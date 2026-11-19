@@ -148,6 +148,20 @@ impl Terminal for Printed {
         }
     }
 
+    /// A command stage's command printed for a person to run in the
+    /// place, through flume's launcher, as an agent's command is (223,
+    /// C.5).
+    fn run(
+        &self,
+        place: &PlaceRef,
+        folder: &str,
+        command: &AgentCommand,
+        identity: &Identity,
+        at: &OpenIn,
+    ) -> Opened {
+        self.open(place, folder, command, identity, at, None)
+    }
+
     fn send(&self, _agent: &Identity, _text: &str) -> Sent {
         Sent::Refused {
             reason: "the printed command sends nothing to a running agent; nothing was typed"

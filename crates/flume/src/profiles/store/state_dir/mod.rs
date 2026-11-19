@@ -354,6 +354,24 @@ impl Store for StateDir {
         written.map_err(|error| format!("{path} could not be written: {error}"))
     }
 
+    fn read_file(&self, place: &PlaceId, path: &str) -> Result<Option<String>, String> {
+        let folder = self.folder_path(place);
+        let file = Path::new(path);
+        let under = file.starts_with(&folder)
+            && file != folder
+            && !file
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir));
+        if !under {
+            return Err(format!("{path} lies outside the place's folder"));
+        }
+        match fs::read_to_string(file) {
+            Ok(text) => Ok(Some(text)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("{path} could not be read: {error}")),
+        }
+    }
+
     fn read_host(&self, key: &HostKey) -> Option<HostVersioned> {
         read_json(&self.host_path(key).0)
     }

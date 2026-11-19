@@ -552,6 +552,31 @@ pub trait Terminal: Send + Sync {
         session: Option<&str>,
     ) -> Opened;
 
+    /// A command stage's command run under `identity` as a program of a
+    /// pane or block where `at` says, never as an agent of the terminal:
+    /// `command`'s program and arguments after its launcher's words, by a
+    /// link of the start's own named for `command`'s kind and leading to
+    /// flume's launcher, which runs the command as its child in the place;
+    /// left showing the command's output once it exits, until the place's
+    /// tidy closes it; refused where an agent or a run is live under
+    /// `identity`. A terminal that runs no program but an agent refuses it
+    /// (94, 98, 223, C.5).
+    fn run(
+        &self,
+        _place: &crate::PlaceRef,
+        _folder: &str,
+        command: &crate::AgentCommand,
+        _identity: &crate::Identity,
+        _at: &OpenIn,
+    ) -> Opened {
+        Opened::Refused {
+            reason: format!(
+                "this terminal runs no command stage's command, {} among them",
+                command.program
+            ),
+        }
+    }
+
     /// `text` delivered as input the agent receives, any text it holds
     /// typed cleared first, so no answer leaves text typed (95).
     fn send(&self, agent: &crate::Identity, text: &str) -> Sent;
@@ -852,6 +877,39 @@ mod tests {
             Ok(_) => panic!("a terminal that builds no relay relayed"),
         }
         assert_eq!(NO_RELAY, "the terminal offers no relay");
+    }
+
+    /// The seam-contracts scenario "A terminal that runs no command"
+    /// (223, C.5).
+    #[test]
+    fn a_terminal_that_keeps_the_seams_default_runs_no_command() {
+        let agent = crate::Identity {
+            repository: "r1".into(),
+            place: "update--one".into(),
+            stage: "main.move#1/1".into(),
+            start: 1,
+            resume: 0,
+        };
+        let command = crate::AgentCommand {
+            program: "bin/move".into(),
+            args: vec![],
+            env: BTreeMap::new(),
+            prompt_args: vec![],
+            folder_trust: None,
+            kind: Some("update".into()),
+            files: BTreeMap::new(),
+            launcher: vec![],
+        };
+        let place = crate::PlaceRef {
+            repository: "/r".into(),
+            location: "/r/places/update--one".into(),
+            branch: "update/one".into(),
+            base: "main".into(),
+        };
+        match NoRelay.run(&place, "/f", &command, &agent, &OpenIn::Own) {
+            Opened::Refused { reason } => assert!(reason.contains("bin/move"), "{reason}"),
+            other => panic!("a terminal that runs no command ran one: {other:?}"),
+        }
     }
 
     /// The seam-contracts scenario "A terminal that keeps the seam's

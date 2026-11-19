@@ -15,6 +15,11 @@ pub struct Launch {
     pub name: String,
     pub base: String,
     pub brief: Option<String>,
+    /// The parameters the launch carries beside its brief, as its caller
+    /// wrote them, for a command stage's command to read; flume never
+    /// reads them (224).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<String>,
     /// A declaration the launch carries, as the kinds seam reads it (19).
     pub declaration: Option<String>,
     /// Settings for each stage's agent, by stage name (32).

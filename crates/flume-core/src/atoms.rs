@@ -7,9 +7,31 @@
 /// seam (175, C.2; core.4).
 pub const STAGE_TEMPLATE: &str = include_str!("stage@1.toml");
 
-/// The one template flume binds, by the name a state's `machine` gives it
-/// (175, 178).
+/// The command template's text, `command@1.toml`, read only through the
+/// kinds seam (223, C.2; core.4).
+pub const COMMAND_TEMPLATE_TEXT: &str = include_str!("command@1.toml");
+
+/// The templates' text a statechart place holds from its launch: the stage
+/// template's, then the command template's, each a statechart kind of its
+/// own, which the kinds seam reads back keyed by its name (175, 223, C.2).
+pub fn templates() -> String {
+    format!("{STAGE_TEMPLATE}\n{COMMAND_TEMPLATE_TEXT}")
+}
+
+/// The stage template, by the name a state's `machine` gives it (175,
+/// 178).
 pub const TEMPLATE: &str = "stage";
+
+/// The command template, by the name a state's `machine` gives it: a
+/// command stage's (223, C.2).
+pub const COMMAND_TEMPLATE: &str = "command";
+
+/// The templates flume binds (175, 223).
+pub const TEMPLATES: [&str; 2] = [TEMPLATE, COMMAND_TEMPLATE];
+
+/// The word of a command that a command stage's command fills with the
+/// path of the place's copy of the launch's parameters (224, C.2).
+pub const PARAMS: &str = "{{params}}";
 
 /// The stage template's one region, under each stage's path (175).
 pub const TEMPLATE_REGION: &str = "run";
@@ -55,3 +77,5 @@ pub const PASSED: &str = "passed";
 pub const SENT_BACK: &str = "sent-back";
 /// A stage stopped (175).
 pub const STOPPED: &str = "stopped";
+/// A command stage failed (223).
+pub const FAILED: &str = "failed";

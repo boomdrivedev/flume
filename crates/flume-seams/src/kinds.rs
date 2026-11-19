@@ -101,6 +101,11 @@ pub struct ChartStage {
     /// caller; none where it names none, flume's default then (112).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub send_back_limit: Option<u32>,
+    /// Of a command stage, a state that runs the command template: its
+    /// command, the program and its arguments as a list of words, as
+    /// written; none for a state that runs the stage template (223, C.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<String>>,
 }
 
 /// A statechart kind read back into the engine's types: its statechart,

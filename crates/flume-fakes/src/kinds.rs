@@ -381,12 +381,8 @@ impl Kinds for FakeKinds {
         self.log.push(format!("read_statechart {}", kind.title));
         let chart = one_statechart(&kind.text)
             .map_err(|why| format!("the held statechart kind \"{}\" {why}", kind.title))?;
-        let template =
-            one_statechart(template).map_err(|why| format!("the stage template {why}"))?;
-        Ok(Charts {
-            chart,
-            templates: BTreeMap::from([(template.name.clone(), template)]),
-        })
+        let templates = statecharts(template).map_err(|why| format!("the templates {why}"))?;
+        Ok(Charts { chart, templates })
     }
 
     fn read_named(&self, text: &str) -> Result<KindNamed, String> {
@@ -570,6 +566,23 @@ fn read(kinds: Vec<Kind>) -> KindsRead {
 
 /// The one statechart kind `text` declares, read through weir-kinds; or why
 /// it gives none (21, 85).
+fn statecharts(
+    text: &str,
+) -> Result<BTreeMap<String, weir_kinds::weir_engine::Statechart>, String> {
+    let declaration = weir_kinds::read_kinds(text).map_err(|refusal| {
+        let problems: Vec<String> = refusal.problems.iter().map(ToString::to_string).collect();
+        format!("could not be read: {}", problems.join("; "))
+    })?;
+    if !declaration.kinds.is_empty() || declaration.statecharts.is_empty() {
+        return Err("hold other than statechart kinds".into());
+    }
+    Ok(declaration
+        .statecharts
+        .into_values()
+        .map(|kind| (kind.statechart.name.clone(), kind.statechart))
+        .collect())
+}
+
 fn one_statechart(text: &str) -> Result<weir_kinds::weir_engine::Statechart, String> {
     let declaration = weir_kinds::read_kinds(text).map_err(|refusal| {
         let problems: Vec<String> = refusal.problems.iter().map(ToString::to_string).collect();

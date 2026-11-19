@@ -157,6 +157,10 @@ pub fn what_ended(of: &EndOf) -> String {
                     None => format!("{stage} never begun"),
                 },
                 StageState::Stuck => format!("{stage} stuck"),
+                StageState::Failed => match end.ran.as_ref().and_then(|ran| ran.exit) {
+                    Some(exit) => format!("{stage} failed, its command exiting {exit}"),
+                    None => format!("{stage} failed"),
+                },
                 other => format!("{stage} {other:?}"),
             }
         }

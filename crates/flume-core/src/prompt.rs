@@ -271,6 +271,7 @@ mod tests {
         // both; a simple kind's stage, which has no session, refuses it as
         // asking for a part with nothing to fill it (27, 175, C.2).
         let session = ChartSession {
+            command: None,
             stage: "stages.test".into(),
             entry: 2,
             n: 3,

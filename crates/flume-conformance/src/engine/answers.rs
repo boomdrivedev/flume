@@ -200,6 +200,7 @@ fn place_status() -> PlaceStatus {
             state: StageState::EndedShort,
             starts: 2,
             end: Some(StageEnd {
+                ran: None,
                 left_in_pane: true,
                 open_until: Some(3720),
                 closed: Some(SessionClosed {

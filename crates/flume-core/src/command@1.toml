@@ -1,0 +1,29 @@
+# The command template flume binds, `command`, a statechart of flume's own
+# in the family's kind format, version 1 (223, C.2). A state of a statechart
+# kind that runs it is a command stage of the kind: its region `run` starts
+# at `working`, asks for the stage's one session, its command's run, by
+# `start_sessions` until `stage.started` proves it recorded, and moves to
+# the final state its `stage.end` names. The core reads it only through the
+# kinds seam (core.4).
+
+[kinds.command]
+version = 1
+title = "A stage's command, run"
+
+[kinds.command.regions.run]
+initial = "working"
+
+[kinds.command.regions.run.states.working]
+transitions = [
+  { when = { ev = "stage.end", is = "passed" }, to = "passed" },
+  { when = { ev = "stage.end", is = "failed" }, to = "failed" },
+  { when = { always = true }, to = "working", effects = [
+    { do = "start_sessions" },
+  ] },
+]
+
+[kinds.command.regions.run.states.passed]
+final = true
+
+[kinds.command.regions.run.states.failed]
+final = true

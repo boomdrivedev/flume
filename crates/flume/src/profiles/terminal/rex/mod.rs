@@ -1942,6 +1942,135 @@ impl Terminal for Rex {
         }
     }
 
+    /// A command stage's command as a program of a block, never an agent
+    /// of Rex's (223, C.5): the block made as an agent's is, running a link
+    /// of the start's own named for the stage's kind and leading to flume's
+    /// launcher, given the launcher's arguments, the program and its
+    /// arguments whole, with no shell; Rex runs it as it runs any program,
+    /// and no Program Status is waited on, since a command reports none.
+    /// The block is left showing the command's output until the place's
+    /// tidy closes it.
+    fn run(
+        &self,
+        place: &PlaceRef,
+        folder: &str,
+        command: &AgentCommand,
+        identity: &Identity,
+        at: &OpenIn,
+    ) -> Opened {
+        let refused = |reason: String| Opened::Refused { reason };
+        let Some(kind) = command.kind.as_deref() else {
+            return refused(format!(
+                "the command {} names no kind for its link",
+                command.program
+            ));
+        };
+        match at {
+            OpenIn::Own => {
+                if let Err(reason) = self.socket(None) {
+                    return refused(reason);
+                }
+            }
+            OpenIn::Session { name } => {
+                if let Err(reason) = self.socket(Some(name)) {
+                    return refused(reason);
+                }
+            }
+            OpenIn::Beside { pane } => {
+                if Block::named(pane).is_none() {
+                    return refused(format!(
+                        "Rex opens beside a block named rex:<block>@<socket>, and {pane} names none"
+                    ));
+                }
+            }
+        }
+        let path = command
+            .env
+            .get("PATH")
+            .cloned()
+            .or_else(|| std::env::var("PATH").ok())
+            .unwrap_or_default();
+        let Some((launcher, launcher_args)) = command.launcher.split_first() else {
+            return refused(format!(
+                "the command {} carries no launcher, and Rex runs a command through flume's",
+                command.program
+            ));
+        };
+        let Some(launcher) = program_path(launcher, &path) else {
+            return refused(format!(
+                "flume's launcher {launcher} is on no folder of PATH"
+            ));
+        };
+        let beside = matches!(at, OpenIn::Beside { .. });
+        let name = rex_name(identity);
+        let start = Path::new(folder)
+            .join("rex")
+            .join(digest(&identity.to_string()));
+        let mut record = json!({
+            "identity": identity,
+            "name": name,
+            "place": (!beside).then(|| place.location.clone()),
+            "start": start,
+            "trust": Value::Null,
+            "named": Value::Null,
+            "claimed_by": std::process::id(),
+        });
+        if let Err(reason) = self.claim(identity, &record) {
+            return refused(reason);
+        }
+        let bin = start.join("bin");
+        let link = bin.join(kind);
+        let script = start.join("start");
+        let mut run = command.clone();
+        run.args = launcher_args
+            .iter()
+            .cloned()
+            .chain(std::iter::once(command.program.clone()))
+            .chain(command.args.iter().cloned())
+            .collect();
+        let written = fs::create_dir_all(&bin)
+            .and_then(|()| fs::set_permissions(&start, fs::Permissions::from_mode(0o700)))
+            .and_then(|()| match fs::remove_file(&link) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+                _ => Ok(()),
+            })
+            .and_then(|()| std::os::unix::fs::symlink(&launcher, &link))
+            .and_then(|()| {
+                let _ = fs::remove_file(&script);
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o700)
+                    .open(&script)
+            })
+            .and_then(|mut file| {
+                file.write_all(self.start_script(&script, &link, &run, &bin).as_bytes())
+            });
+        if let Err(error) = written {
+            self.forget(identity);
+            return refused(format!("{}: {error}", start.display()));
+        }
+        let layout = self.block_layout(&name, place, &script);
+        let located = match self.new_block(place, at, &layout) {
+            Ok(located) => located,
+            Err(reason) => {
+                self.forget(identity);
+                return refused(reason);
+            }
+        };
+        record["block"] = json!(located.block.id);
+        record["socket"] = json!(located.block.socket);
+        record["session"] = json!(located.session);
+        if let Err(reason) = write_json(&self.agent_record(identity), &record) {
+            self.abandon(identity, &located);
+            return refused(reason);
+        }
+        Opened::Opened {
+            carried: false,
+            printed: None,
+        }
+    }
+
     fn send(&self, agent: &Identity, text: &str) -> Sent {
         let Some(located) = self.located(agent) else {
             return Sent::Refused {

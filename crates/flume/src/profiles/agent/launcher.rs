@@ -40,9 +40,7 @@ pub struct Word {
 /// Where the word of the start `identity` lies under the place's own
 /// `folder`.
 pub fn path(folder: &str, identity: &str) -> PathBuf {
-    Path::new(folder)
-        .join(DIR)
-        .join(format!("{}.json", identity.replace('/', "%")))
+    PathBuf::from(flume_seams::launched_word(folder, identity))
 }
 
 /// The word of the start `identity`, read in the place's own `folder`:
@@ -145,11 +143,14 @@ impl Launching {
 }
 
 /// The program the launcher becomes, by its absolute path, with its
-/// arguments whole.
+/// arguments whole; or, for a command stage's start, runs as its child,
+/// with the place's own folder its exit and output are written in (223,
+/// C.2).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Become {
     pub program: PathBuf,
     pub args: Vec<String>,
+    pub runs: Option<String>,
 }
 
 /// The launcher of the start `launching` names, given `program` and its
@@ -207,7 +208,88 @@ pub fn launch(
     Ok(Become {
         program: found,
         args: args.to_vec(),
+        runs: recorded.command.then_some(folder),
     })
+}
+
+/// A command stage's command run as the launcher's child in the place
+/// (223, C.2): its output shown as it comes and kept whole in `output.log`
+/// beside the start's record, its exit written there once it exits, none
+/// where a signal ended it, and a settle of the place started detached
+/// through `binary`. Gives the command's exit code, 1 where none was, or
+/// why it could not be run.
+pub fn run(
+    becomes: &Become,
+    folder: &str,
+    identity: &str,
+    place: Option<&str>,
+    binary: &Path,
+) -> Result<i32, String> {
+    use std::io::Read as _;
+    use std::process::{Command, Stdio};
+    let output_at = flume_seams::ran_output(folder, identity);
+    let exit_at = flume_seams::ran_exit(folder, identity);
+    if let Some(dir) = Path::new(&output_at).parent() {
+        std::fs::create_dir_all(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+    }
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&output_at)
+        .map_err(|error| format!("{output_at}: {error}"))?;
+    let log = std::sync::Arc::new(std::sync::Mutex::new(log));
+    let mut child = Command::new(&becomes.program)
+        .args(&becomes.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{} could not be run: {error}", becomes.program.display()))?;
+    let tee = |mut from: Box<dyn std::io::Read + Send>, to_err: bool| {
+        let log = log.clone();
+        std::thread::spawn(move || {
+            let mut buffer = [0u8; 8192];
+            while let Ok(read) = from.read(&mut buffer) {
+                if read == 0 {
+                    break;
+                }
+                let chunk = &buffer[..read];
+                if to_err {
+                    let _ = std::io::stderr().write_all(chunk);
+                } else {
+                    let _ = std::io::stdout().write_all(chunk);
+                }
+                if let Ok(mut file) = log.lock() {
+                    let _ = file.write_all(chunk);
+                }
+            }
+        })
+    };
+    let readers: Vec<_> = [
+        child.stdout.take().map(|out| tee(Box::new(out), false)),
+        child.stderr.take().map(|err| tee(Box::new(err), true)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let status = child
+        .wait()
+        .map_err(|error| format!("{} was not waited on: {error}", becomes.program.display()));
+    for reader in readers {
+        let _ = reader.join();
+    }
+    let exit = status
+        .as_ref()
+        .ok()
+        .and_then(std::process::ExitStatus::code);
+    let exited = flume_seams::Exited { exit };
+    let text = serde_json::to_string(&exited).expect("an exit is written as JSON");
+    std::fs::write(&exit_at, text).map_err(|error| format!("{exit_at}: {error}"))?;
+    if let Some(place) = place {
+        start::settle_detached(binary, place, false);
+    }
+    status?;
+    Ok(exit.unwrap_or(1))
 }
 
 #[cfg(test)]
@@ -260,6 +342,42 @@ mod tests {
         // A path is taken as given.
         let given = bin.join("amp").display().to_string();
         assert_eq!(find(&given, "", &launcher), Some(found));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The command-stages spec's scenario "A command run by the
+    /// launcher" (223, C.2).
+    #[test]
+    fn a_command_run_by_the_launcher() {
+        let dir = scratch("ran");
+        let program = dir.join("move");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\necho moved \"$1\"\necho warned >&2\nexit 3\n",
+        )
+        .expect("a scratch program");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("a scratch program's mode");
+        let folder = dir.join("folder").display().to_string();
+        let identity = "flume:/r:update--one:main.move#1/1:1";
+        let becomes = Become {
+            program: program.clone(),
+            args: vec!["weir".into()],
+            runs: Some(folder.clone()),
+        };
+        let code =
+            run(&becomes, &folder, identity, None, &dir.join("flume")).expect("the command ran");
+        assert_eq!(code, 3, "the command's exit");
+        let output = std::fs::read_to_string(flume_seams::ran_output(&folder, identity))
+            .expect("the output kept");
+        assert!(output.contains("moved weir"), "{output}");
+        assert!(output.contains("warned"), "{output}");
+        let exited: flume_seams::Exited = serde_json::from_str(
+            &std::fs::read_to_string(flume_seams::ran_exit(&folder, identity))
+                .expect("the exit written"),
+        )
+        .expect("the exit reads");
+        assert_eq!(exited.exit, Some(3));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

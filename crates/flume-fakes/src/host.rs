@@ -580,6 +580,13 @@ impl FakeHost {
 }
 
 impl Host for FakeHost {
+    /// flume's launcher, by the name the fake host gives its binary (C.4).
+    fn launcher(&self) -> Vec<String> {
+        ["/fake/bin/flume", "ack", "launched", "--"]
+            .map(str::to_string)
+            .to_vec()
+    }
+
     fn now(&self) -> Seconds {
         lock(&self.state).now
     }

@@ -1686,6 +1686,15 @@ fn stage_lines(stage: &StageStatus) -> Vec<String> {
         if let Some(words) = &end.words {
             line.push_str(&format!(", saying: {words}"));
         }
+        // A command stage's run: how its command exited and where its
+        // output lies (56, 223).
+        if let Some(ran) = &end.ran {
+            match ran.exit {
+                Some(exit) => line.push_str(&format!(", its command exiting {exit}")),
+                None => line.push_str(", its command with no exit"),
+            }
+            line.push_str(&format!(", its output at {}", ran.output));
+        }
     }
     if let Some(part) = &stage.refused_part {
         line.push_str(&format!(", refused for want of {part}"));

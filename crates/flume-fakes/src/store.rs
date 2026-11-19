@@ -357,6 +357,21 @@ impl Store for FakeStore {
         Ok(())
     }
 
+    /// The text kept at `path`, none where none was written; a path
+    /// outside the place's folder refused (223).
+    fn read_file(&self, place: &PlaceId, path: &str) -> Result<Option<String>, String> {
+        self.log.push(format!("read_file {place} {path}"));
+        let under = format!("{}/", self.folder(place));
+        if !path.starts_with(&under) || path.split('/').any(|part| part == "..") {
+            return Err(format!("{path} lies outside the place's folder"));
+        }
+        Ok(lock(&self.state)
+            .files
+            .get(place)
+            .and_then(|files| files.get(path))
+            .map(|(text, _)| text.clone()))
+    }
+
     fn read_host(&self, key: &HostKey) -> Option<HostVersioned> {
         self.log.push(format!("read_host {key}"));
         lock(&self.state).host.get(key).cloned()

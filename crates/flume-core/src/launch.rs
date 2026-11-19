@@ -676,7 +676,7 @@ impl Engine {
             from,
         } = self.resolve_kind(launch, &base_revision)?;
         Self::runs(&kind, &from.identity)?;
-        let chart = self.chart_runs(&kind, &from.identity)?;
+        let chart = self.chart_runs(&kind, &from.identity, launch.params.is_some())?;
         if let Some(address) = role {
             if let Some(reason) =
                 crate::standing_role::refused(address, &kind, &from.identity, checkouts.is_some())
@@ -778,7 +778,7 @@ impl Engine {
                     .map_err(unstarted)?;
                 Some(ChartHeld {
                     state: ObjectHeld::of(&state),
-                    template: atoms::STAGE_TEMPLATE.to_string(),
+                    template: atoms::templates(),
                     answers: vec![],
                     stages: BTreeMap::new(),
                     words: None,
@@ -864,6 +864,7 @@ impl Engine {
                 location: location.clone(),
                 binding,
                 brief: launch.brief.clone(),
+                params: launch.params.clone(),
                 mark: launch.mark.clone(),
                 settings,
                 every_stage,
@@ -972,6 +973,16 @@ impl Engine {
         }
         if self.create(&held).is_none() {
             return Err(format!("the place {id} already stands"));
+        }
+        // The launch's parameters, kept in the place's own folder as its
+        // caller gave them, for a command stage's command to read (224,
+        // C.7).
+        if let Some(params) = &launch.params {
+            let at = params_path(&self.store.folder(&id));
+            if let Err(reason) = self.store.write_file(&id, &at, params) {
+                self.remove_held(&id);
+                return Err(format!("the launch's parameters were not kept: {reason}"));
+            }
         }
         if let (true, Some(queue)) = (crate::base::base_place(&kind), &merge_queue) {
             return self.open_base_place(&held, queue.as_ref());
@@ -1438,12 +1449,16 @@ impl Engine {
     /// prompt, no agent listed, no deliverable or one flume cannot read, a
     /// rule other than `every-file` or one with no pattern, `{{file}}` in a
     /// deliverable while its agents are listed, or a count above the agents
-    /// it lists. Gives its statechart read back; a simple kind passes with
-    /// none (4, 177).
+    /// it lists; and for each command stage, a state that runs the command
+    /// template, what [`chart_command_runs`] refuses, a command asking for
+    /// `{{params}}` where the launch gives `params` none, and a stage that
+    /// sends a place back to a command stage. Gives its statechart read
+    /// back; a simple kind passes with none (4, 177, 223, 224).
     pub(crate) fn chart_runs(
         &self,
         kind: &Kind,
         identity: &KindIdentity,
+        params: bool,
     ) -> Result<Option<Charts>, String> {
         let Some(statechart) = &kind.statechart else {
             return Ok(None);
@@ -1457,17 +1472,18 @@ impl Engine {
         let charts = self
             .resolver
             .kinds()
-            .read_statechart(statechart, atoms::STAGE_TEMPLATE)
+            .read_statechart(statechart, &atoms::templates())
             .map_err(|reason| format!("{named} could not be read back: {reason}"))?;
         let names = weir_engine::names(&charts.chart);
         if let Some(machine) = names
             .machines
             .iter()
-            .find(|machine| *machine != atoms::TEMPLATE)
+            .find(|machine| !atoms::TEMPLATES.contains(&machine.as_str()))
         {
             return Err(format!(
-                "{named} runs the template `{machine}`, which flume does not bind: flume binds `{}` alone (4, 175)",
-                atoms::TEMPLATE
+                "{named} runs the template `{machine}`, which flume does not bind: flume binds `{}` and `{}` (4, 175, 223)",
+                atoms::TEMPLATE,
+                atoms::COMMAND_TEMPLATE
             ));
         }
         if let Some(ev) = names
@@ -1485,24 +1501,89 @@ impl Engine {
                 "{named} performs the effect `{effect}`, an atom flume does not bind: a kind names no effect (4, 178)"
             ));
         }
-        for path in stage_paths(&charts.chart) {
+        let commands = command_paths(&charts.chart);
+        let stages = stage_paths(&charts.chart);
+        for path in stages.clone() {
             let at = format!("{named}'s stage {path}");
+            let command = commands.contains(&path);
             let Some(stage) = statechart.stages.get(&path) else {
                 return Err(format!(
-                    "{at} runs `{}` and gives no stage parameters (4, 175)",
-                    atoms::TEMPLATE
+                    "{at} runs `{}` and gives no stage parameters (4, 175, 223)",
+                    if command {
+                        atoms::COMMAND_TEMPLATE
+                    } else {
+                        atoms::TEMPLATE
+                    }
                 ));
             };
-            chart_stage_runs(stage, &at)?;
+            if command {
+                chart_command_runs(stage, &at)?;
+                let asks = stage
+                    .command
+                    .iter()
+                    .flatten()
+                    .any(|word| word == atoms::PARAMS);
+                if asks && !params {
+                    return Err(format!(
+                        "{at} runs a command that asks for the launch's parameters, {}, and the launch gives none (4, 224)",
+                        atoms::PARAMS
+                    ));
+                }
+            } else {
+                chart_stage_runs(stage, &at)?;
+            }
+        }
+        // A command stage takes no words, so no stage sends a place back
+        // to one, for a failed submission or a finding (4, 223).
+        for (path, stage) in &statechart.stages {
+            let Some(to) = &stage.on_fail else {
+                continue;
+            };
+            let region = path.rsplit_once('.').map_or("", |(region, _)| region);
+            let target = if region.is_empty() {
+                to.clone()
+            } else {
+                format!("{region}.{to}")
+            };
+            if commands.contains(&target) && !commands.contains(path) {
+                return Err(format!(
+                    "{named}'s stage {path} sends a place back to the command stage {target}, which takes no words (4, 223)"
+                ));
+            }
+            if commands.contains(path) && (!stages.contains(&target) || commands.contains(&target))
+            {
+                return Err(format!(
+                    "{named}'s command stage {path} names {to} for its on_fail, which is no state running `{}` (4, 223)",
+                    atoms::TEMPLATE
+                ));
+            }
         }
         Ok(Some(charts))
     }
 }
 
-/// The path of every state of `chart` that runs the stage template,
-/// through its states' own regions, in path order (175).
+/// The path of every state of `chart` that runs the stage template or the
+/// command template, through its states' own regions, in path order (175,
+/// 223).
 pub(crate) fn stage_paths(chart: &weir_engine::Statechart) -> Vec<String> {
-    fn walk(regions: &BTreeMap<String, weir_engine::Region>, above: &str, paths: &mut Vec<String>) {
+    paths_running(chart, &atoms::TEMPLATES)
+}
+
+/// The path of every command stage of `chart`, a state that runs the
+/// command template, in path order (223).
+pub(crate) fn command_paths(chart: &weir_engine::Statechart) -> Vec<String> {
+    paths_running(chart, &[atoms::COMMAND_TEMPLATE])
+}
+
+/// The path of every state of `chart` that runs one of `machines`,
+/// through its states' own regions, in path order.
+fn paths_running(chart: &weir_engine::Statechart, machines: &[&str]) -> Vec<String> {
+    fn walk(
+        regions: &BTreeMap<String, weir_engine::Region>,
+        machines: &[&str],
+        above: &str,
+        paths: &mut Vec<String>,
+    ) {
         for (name, region) in regions {
             let region_path = if above.is_empty() {
                 name.clone()
@@ -1511,17 +1592,61 @@ pub(crate) fn stage_paths(chart: &weir_engine::Statechart) -> Vec<String> {
             };
             for (state_name, state) in &region.states {
                 let path = format!("{region_path}.{state_name}");
-                if state.machine.as_deref() == Some(atoms::TEMPLATE) {
+                if state
+                    .machine
+                    .as_deref()
+                    .is_some_and(|machine| machines.contains(&machine))
+                {
                     paths.push(path.clone());
                 }
-                walk(&state.regions, &path, paths);
+                walk(&state.regions, machines, &path, paths);
             }
         }
     }
     let mut paths = vec![];
-    walk(&chart.regions, "", &mut paths);
+    walk(&chart.regions, machines, "", &mut paths);
     paths.sort();
     paths
+}
+
+/// Refuses a command stage flume cannot run, naming it as `at` (4, 157,
+/// 158, 223, C.2): no command, or an empty program; a prompt or agents,
+/// which a command stage has none of; a deliverable other than its
+/// commits alone; and a program by a path outside the repository or the
+/// package, by `..` or an absolute path.
+fn chart_command_runs(stage: &ChartStage, at: &str) -> Result<(), String> {
+    let Some((program, _)) = stage.command.as_deref().and_then(<[String]>::split_first) else {
+        return Err(format!(
+            "{at} runs `{}` and names no command (4, 223)",
+            atoms::COMMAND_TEMPLATE
+        ));
+    };
+    if program.is_empty() {
+        return Err(format!(
+            "{at} names an empty program for its command (4, 223)"
+        ));
+    }
+    if stage.prompt.is_some() {
+        return Err(format!(
+            "{at} is a command stage and names a prompt, which it has none of (4, 223)"
+        ));
+    }
+    if !matches!(&stage.agents, ChartAgents::Entries(entries) if entries.is_empty()) {
+        return Err(format!(
+            "{at} is a command stage and names agents, which it runs none of (4, 223)"
+        ));
+    }
+    if stage.deliverables != [Deliverable::Commits] {
+        return Err(format!(
+            "{at} is a command stage, which delivers its commits alone: its deliverables are [\"commits\"] (4, 24, 223)"
+        ));
+    }
+    if program.starts_with('/') || program.split('/').any(|part| part == "..") {
+        return Err(format!(
+            "{at} runs the program {program}, a path outside the repository or the package (4, 157, 158, 223)"
+        ));
+    }
+    Ok(())
 }
 
 /// Refuses a stage the stage template runs that flume cannot run, naming

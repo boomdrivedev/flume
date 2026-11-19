@@ -707,6 +707,23 @@ pub fn ack_launched(command: &[String], build: &dyn Fn() -> Result<Engine, Strin
         &std::env::var("PATH").unwrap_or_default(),
         std::process::id(),
     ) {
+        Ok(becomes) if becomes.runs.is_some() => {
+            // A command stage's command runs as the launcher's child, its
+            // exit written and the place settled once it exits (223, C.2).
+            let launching = agent::launcher::Launching::of_process();
+            let folder = becomes.runs.clone().unwrap_or_default();
+            let identity = launching.agent.clone().unwrap_or_default();
+            match agent::launcher::run(
+                &becomes,
+                &folder,
+                &identity,
+                launching.place.as_deref(),
+                &binary,
+            ) {
+                Ok(code) => std::process::exit(code),
+                Err(why) => why,
+            }
+        }
         Ok(becomes) => {
             let error = std::process::Command::new(&becomes.program)
                 .args(&becomes.args)
