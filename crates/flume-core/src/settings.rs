@@ -574,7 +574,8 @@ impl Engine {
     }
 
     /// The agent profile `resolved`'s program names, or why there is
-    /// none, naming the program, the stage and its layer (4, 32).
+    /// none, naming the program, the stage and its layer, or that its
+    /// account names it (4, 32, 105, 173).
     pub(crate) fn agent_for(
         &self,
         resolved: &Resolved,
@@ -584,10 +585,13 @@ impl Engine {
         let Some(program) = &resolved.settings.program else {
             return Err(format!("no agent program is named for the stage {stage}"));
         };
-        self.agent(program).ok_or_else(|| {
-            format!(
+        self.agent(program).ok_or_else(|| match layer {
+            Layer::Account => format!(
+                "no agent profile runs the program {program} its account names for the stage {stage}"
+            ),
+            _ => format!(
                 "no agent profile runs the program {program} the stage {stage} names, from the layer {layer}"
-            )
+            ),
         })
     }
 
@@ -646,6 +650,74 @@ impl Engine {
             effort,
         })
     }
+}
+
+/// Each program a stage whose layers name none may run on, in the order
+/// given, with its resolution, or the words that refuse it (145, 173;
+/// design 2).
+#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
+pub(crate) type RunsOn = Vec<(String, Result<Resolution, String>)>;
+
+#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
+impl Engine {
+    /// For each distinct program of `programs`, in order, `stage`'s agent
+    /// in `place` resolved with that program as its account's, or the
+    /// words that refuse it: a program no profile binds, or whose profile
+    /// maps not the stage's mode or takes not its model, its effort or its
+    /// own settings, refused as a start refuses it, so one reading serves
+    /// the choice, the wait, the refusal and the start (105, 145, 169, 172,
+    /// 173, 196, 197; design 2).
+    pub(crate) fn runs_on<'a>(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        programs: impl IntoIterator<Item = &'a str>,
+    ) -> RunsOn {
+        let mut read: RunsOn = Vec::new();
+        for program in programs {
+            if read.iter().any(|(seen, _)| seen == program) {
+                continue;
+            }
+            let resolution = self.resolution(place, stage, Some(program));
+            read.push((program.to_string(), resolution));
+        }
+        read
+    }
+}
+
+/// The programs of `runs` that cannot run the stage, each with the words
+/// that refuse it, in order (145, 173).
+#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
+pub(crate) fn refused(runs: &RunsOn) -> Vec<(String, String)> {
+    runs.iter()
+        .filter_map(|(program, resolution)| {
+            resolution
+                .as_ref()
+                .err()
+                .map(|words| (program.clone(), words.clone()))
+        })
+        .collect()
+}
+
+/// Why the stage `stage`, whose layers name no program, cannot start on
+/// the pool `pool`, none of whose accounts' programs can run it: the
+/// words a launch and a start refuse it in, naming the stage, the pool
+/// and each program with the words that refuse it (4, 32, 145, 173;
+/// design 2).
+#[cfg_attr(not(test), allow(dead_code))] // read by the start from task 3.2
+pub(crate) fn cannot_run(stage: &str, pool: &str, refused: &[(String, String)]) -> String {
+    let why = if refused.is_empty() {
+        "it holds no account".to_string()
+    } else {
+        refused
+            .iter()
+            .map(|(program, words)| format!("`{program}` cannot, as {words}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    format!(
+        "the stage `{stage}` names no program, and no account of the pool `{pool}` can run it: {why}; so no room it gives could start it (145, 173)"
+    )
 }
 
 /// flume's own table of the default layer: its one hour kept open for an
@@ -805,6 +877,48 @@ mod tests {
             .unwrap_or_else(|words| panic!("{words}"));
         assert_eq!(resolution.agent.stop_short(&identity()), "other's way");
         assert_eq!(resolution.resolved, account);
+    }
+
+    #[test]
+    fn the_programs_that_can_run_a_stage() {
+        // `mode = { agent = "edits" }` names no entry for `other`, so
+        // `agent` alone can run the stage, and a program no profile binds
+        // is refused naming it; each program is read once, in order (105,
+        // 145, 169, 173).
+        let (engine, agent, _) = engine();
+        agent.map_mode(Mode::Edits, "agent-edits");
+        let place = crate::tests::record(Binding::default());
+        let stage = stage(Settings {
+            mode: Some(flume_seams::ModeSetting::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "edits".to_string(),
+            )]))),
+            ..Settings::default()
+        });
+        let runs = engine.runs_on(&place, &stage, ["other", "agent", "nothing-here", "other"]);
+        let programs: Vec<&str> = runs.iter().map(|(program, _)| program.as_str()).collect();
+        assert_eq!(programs, ["other", "agent", "nothing-here"]);
+        let able = runs[1].1.as_ref().unwrap_or_else(|words| panic!("{words}"));
+        assert_eq!(able.mode.as_deref(), Some("agent-edits"));
+        assert_eq!(able.resolved.from["program"].layer, Layer::Account);
+        let refused = refused(&runs);
+        assert_eq!(
+            refused,
+            [
+                (
+                    "other".to_string(),
+                    "the stage `review`'s mode `{ agent = \"edits\" }`, from the layer `kind`, names no entry for `other`".to_string()
+                ),
+                (
+                    "nothing-here".to_string(),
+                    "no agent profile runs the program nothing-here its account names for the stage review".to_string()
+                ),
+            ]
+        );
+        let words = cannot_run("review", "work", &refused);
+        assert!(words.starts_with("the stage `review` names no program, and no account of the pool `work` can run it: `other` cannot, as the stage `review`'s mode"), "{words}");
+        assert!(words.contains("names no entry for `other`; `nothing-here` cannot, as no agent profile runs the program nothing-here"), "{words}");
+        assert!(words.ends_with("(145, 173)"), "{words}");
     }
 
     #[test]
