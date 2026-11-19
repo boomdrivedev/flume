@@ -70,7 +70,9 @@ const UNSTARTED: &str = "stand-in-unstarted";
 /// The stand-in agent: it says it started, where it is `stand-in`, and
 /// received its prompt at once, never asks or keeps own work, and reads
 /// its session ended once the test writes the mark
-/// `stand-in/<stage>-<start>` in the place's folder. It maps each mode to
+/// `stand-in/<stage>-<start>` in the place's folder, building those five
+/// parts from its own marks, so the core reads none of them from its
+/// terminal (93, 171), and none of the rest. It maps each mode to
 /// its own word and reads none back, takes its program's own settings,
 /// passing them nowhere (195), takes every model, passing it as
 /// `--model <name>` (172), and takes every effort, passing it as
@@ -147,6 +149,17 @@ impl Agent for StandInAgent {
     }
     fn last_words(&self, _folder: &str, _agent: &Identity) -> Option<String> {
         None
+    }
+    /// Received, asking, own work, ended and last words, read from its
+    /// own marks.
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+        ])
     }
     fn stop_short(&self, _agent: &Identity) -> String {
         "flume needs \"<words>\"".into()
