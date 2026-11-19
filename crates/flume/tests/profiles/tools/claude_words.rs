@@ -65,25 +65,25 @@ fn pinned_program() -> (PathBuf, String) {
 /// Each of `fragments` the pinned release's program does not hold, as
 /// its name and the fragment.
 fn missing(fragments: &[(&'static str, String)]) -> (Vec<String>, PathBuf, String) {
-    let (program, version) = pinned_program();
-    let bytes =
-        std::fs::read(&program).unwrap_or_else(|error| panic!("{}: {error}", program.display()));
-    let mut found = vec![false; fragments.len()];
-    for at in 0..bytes.len() {
-        for (index, (_, fragment)) in fragments.iter().enumerate() {
-            let fragment = fragment.as_bytes();
-            if !found[index] && bytes[at] == fragment[0] && bytes[at..].starts_with(fragment) {
-                found[index] = true;
-            }
-        }
-    }
+    let (program, version, bytes) = pinned_bytes();
     let missing = fragments
         .iter()
-        .zip(&found)
-        .filter(|(_, found)| !**found)
-        .map(|((name, fragment), _)| format!("{name}: {fragment}"))
+        .filter(|(_, fragment)| memchr::memmem::find(bytes, fragment.as_bytes()).is_none())
+        .map(|(name, fragment)| format!("{name}: {fragment}"))
         .collect();
-    (missing, program, version)
+    (missing, program.clone(), version.clone())
+}
+
+/// The pinned release's program, its version and its bytes, read once
+/// for every test of this module.
+fn pinned_bytes() -> &'static (PathBuf, String, Vec<u8>) {
+    static PINNED: std::sync::OnceLock<(PathBuf, String, Vec<u8>)> = std::sync::OnceLock::new();
+    PINNED.get_or_init(|| {
+        let (program, version) = pinned_program();
+        let bytes = std::fs::read(&program)
+            .unwrap_or_else(|error| panic!("{}: {error}", program.display()));
+        (program, version, bytes)
+    })
 }
 
 #[test]
