@@ -636,6 +636,11 @@ each. It SHALL name no part degraded that the profile builds (56, 170,
 - **WHEN** status is asked of a place whose agent's profile builds every part
 - **THEN** the agent's JSON holds no `degraded`, and the person's form names no part degraded (56, 174; core.14)
 
+#### Scenario: A profile that reads the five from its terminal
+
+- **WHEN** status is asked of a place whose fake agent reads received, asking, own work, ended and last words from its terminal and builds every other part
+- **THEN** the agent's `degraded` gives `received`, `asking`, `own_work`, `ended` and `last_words` in that order, each with how flume reads it from the terminal, and the person's form a line for each, as `own work degraded: read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then` (56, 171, 174)
+
 ### Requirement: Status gives an agent's model
 
 Status SHALL give the current agent's model as its layer wrote it, a
