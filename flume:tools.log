@@ -1,0 +1,65 @@
+--- stdout ---
+
+running 190 tests
+test claude_words::the_pinned_release_holds_the_usage_limit_words ... ok
+test claude_words::the_pinned_release_holds_the_modes_the_map_rests_on ... ok
+test claude_words::the_pinned_release_names_its_running_sessions_as_live_reads_them ... ok
+test claude_words::the_pinned_release_keeps_its_credentials_from_its_hooks ... ok
+test claude_words::the_pinned_release_resumes_as_the_carry_reads_it ... ok
+test claude_words::the_pinned_release_takes_the_efforts_the_profile_passes ... ok
+test merge_queue_sluice::a_base_places_branch_forecast_over_a_scratch_repository ... ok
+test merge_queue_sluice::a_base_places_branch_over_a_scratch_repository ... ok
+test merge_queue_sluice::a_branch_whose_records_sluice_cannot_read_is_passed_over_and_the_landing_collected ... ok
+test merge_queue_sluice::a_close_sluice_refuses_keeps_the_branch_in_its_words ... ok
+test merge_queue_sluice::a_conflict_sluice_answers_at_the_submit_is_its_outcome_never_a_refusal ... ok
+test merge_queue_sluice::a_conflicts_base_revision_and_words_are_sluices ... ok
+test merge_queue_sluice::a_failed_entry_is_given_with_sluices_notice_until_it_is_confirmed ... ok
+test merge_queue_sluice::a_fetch_that_fails_is_answered_with_its_words ... ok
+test merge_queue_sluice::a_pull_request_with_no_entry_is_held_and_the_entry_taken_in_from_it_is_read_to_its_landing ... ok
+test merge_queue_sluice::a_queue_nothing_drives_is_decided_by_the_settles_steps ... ok
+test merge_queue_sluice::a_settle_beside_the_stand_ins_submit_collects_at_most_the_outcome_its_answer_gives ... ok
+test merge_queue_sluice::a_step_beside_a_live_driver_does_nothing_and_answers ... ok
+test merge_queue_sluice::a_submission_from_a_herdr_panes_hook_names_the_place_and_no_session ... ok
+test merge_queue_sluice::a_submission_from_a_rex_block_names_no_session ... ok
+test merge_queue_sluice::an_open_of_a_branch_the_policy_names_no_table_for_is_refused_in_sluices_words ... ok
+test merge_queue_sluice::every_branch_asked_at_once_is_read_from_one_overview_and_one_status_of_each_base ... ok
+test claude_words::the_pinned_release_takes_own_settings_as_the_profile_passes_them has been running for over 60 seconds
+test claude_words::the_pinned_release_takes_own_settings_as_the_profile_passes_them ... ok
+test merge_queue_sluice::the_sluice_profile_passes_the_base_place_scenarios ... ok
+test merge_queue_sluice::s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone ... ok
+test merge_queue_sluice::what_the_policy_says_of_a_place ... ok
+test merge_queue_sluice::the_sluice_profile_passes_the_merge_queue_scenarios ... ok
+test open::s107_a_design_session_through_the_binary ... ok
+test open::s90_the_printed_window_through_the_binary ... ok
+test open::s90_a_streams_view_through_the_binary ... ok
+test open::s91_a_stream_under_the_printed_command_beside_one_under_herdr ... ok
+test open_sessions::s105_the_agents_account_spent_within_the_hour_and_a_retry_answers ... ok
+test open_sessions::s104_the_time_passing_lets_the_agent_go_and_a_late_answer_starts_a_fresh_one ... ok
+test open_sessions::s105_the_agents_session_ended_within_the_hour_and_a_retry_answers ... ok
+test place_git_worktree::a_fresh_clones_pins_are_installed_by_the_pinned_sluice ... ok
+test place_git_worktree::without_the_install_moon_is_not_there_to_answer_its_version ... ok
+test stand_in::each_start_reads_its_own_script_from_the_scripts_folder ... ok
+test stand_in::the_stand_in_begins_at_the_effort_passed_and_at_its_default_for_a_word_it_does_not_know ... ok
+test stand_in::the_stand_in_drives_one_stage ... ok
+test stand_in::the_stand_in_refuses_a_session_it_finds_no_transcript_of ... ok
+test stand_in::the_stand_in_under_herdr_takes_its_later_prompt_and_reports_its_state ... ok
+test terminal_herdr::a_client_the_command_runs_attaches_to_its_session ... ok
+test open_sessions::s4_an_answer_within_the_hour_by_a_retry_and_a_message_reaches_the_same_session ... ok
+test terminal_herdr::a_command_run_in_a_herdr_pane_names_its_pane ... ok
+test terminal_herdr::a_command_in_a_herdr_sessions_pane_is_named_as_its_agents_are_given ... ok
+test terminal_herdr::a_conversation_opens_beside_a_named_pane ... ok
+test terminal_herdr::a_herdr_call_that_never_answers_is_refused_within_its_bound ... ok
+test terminal_herdr::a_herdr_name_taken_refuses_the_open ... ok
+test terminal_herdr::a_dialog_before_the_prompt_waits_on_a_person_with_its_words has been running for over 60 seconds
+test terminal_herdr::a_launch_and_a_retry_each_send_their_agents_prompt_with_no_settle has been running for over 60 seconds
+test terminal_herdr::a_dialog_before_the_prompt_waits_on_a_person_with_its_words ... FAILED
+test terminal_herdr::a_name_herdr_refuses_refuses_attach_in_its_words ... ok
+test terminal_herdr::a_nix_wrapped_claude_starts_under_herdr_from_the_agent_profile ... ok
+test terminal_herdr::a_pane_herdr_could_not_bring_back_reads_stopped ... ok
+test terminal_herdr::a_place_recorded_before_records_were_kept_by_server_is_tidied_as_before ... ok
+test terminal_herdr::a_launch_and_a_retry_each_send_their_agents_prompt_with_no_settle ... FAILED
+--- stderr ---
+    Blocking waiting for file lock on build directory
+   Compiling flume v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F3/crates/flume)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 41.51s
+     Running tests/profiles/tools/main.rs (target/debug/deps/tools-b649c48f7c9676e9)
