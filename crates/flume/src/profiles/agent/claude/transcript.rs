@@ -1,4 +1,4 @@
-//! A session's transcript as Claude Code 2.1.296 writes it, one JSON
+//! A session's transcript as Claude Code 2.1.322 writes it, one JSON
 //! record a line: `user` turns, whose `message.content` is the prompt's
 //! text or blocks, a tool's result among them with its
 //! `toolUseResult.backgroundTaskId` where it started work in the
