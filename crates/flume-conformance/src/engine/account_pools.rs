@@ -323,6 +323,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["32", "144", "173"],
             run: a_stage_naming_no_program_on_no_pool,
         },
+        Scenario {
+            name: "account pools: a review naming no program after a code naming other starts on other-1 from the intent's affinity for its last program, though fill-first's first account is agent-1, and no move is recorded",
+            cites: &["147", "173"],
+            run: a_stage_that_names_no_program_keeps_to_the_last_program,
+        },
+        Scenario {
+            name: "account pools: a review naming no program whose mode names agent alone, after a code naming other, starts on agent-1 from the strategy, no move recorded, the affinity keeping other-1 for other and agent-1 for agent, its last program agent",
+            cites: &["147", "173"],
+            run: the_last_program_cannot_run_the_stage,
+        },
+        Scenario {
+            name: "account pools: a review naming no program whose intent's last program's account other-1 is spent starts on agent-1 from the strategy, the affinity keeping other-1 for other with no move and writing agent-1 for agent, its last program agent",
+            cites: &["147", "173"],
+            run: the_last_programs_account_is_spent,
+        },
     ]
 }
 
@@ -3547,6 +3562,197 @@ fn a_stage_naming_no_program_on_no_pool(_: &()) -> Outcome {
             })
         ),
         "the code's program"
+    );
+    Ok(())
+}
+
+/// A fake agent of its own bound to `other`; the host's own fill-first
+/// pool `work` of `accounts`; and the repository's kind `pair`, landing
+/// nothing, whose code names `other` and whose review names no program,
+/// its agent given `review` (147, 173).
+fn a_code_on_other(world: &World, accounts: Vec<Account>, review: Settings) -> Arc<FakeAgent> {
+    let other = Arc::new(FakeAgent::new(world.terminal.clone()));
+    world.resolver.bind_agent("other", other.clone());
+    pool(world, "work", Strategy::FillFirst, accounts);
+    world.host.set_host_pool(Some("work"));
+    let mut code = stage("code", Some(Deliverable::Commits), "{{brief}}");
+    code.agents = vec![Settings {
+        program: Some("other".into()),
+        ..Settings::default()
+    }];
+    let mut second = stage("review", Some(Deliverable::Commits), "{{brief}}");
+    second.agents = vec![review];
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![kind("pair", false, vec![code, second])]);
+    other
+}
+
+/// The place `id`'s code delivered on its branch `pair/<name>` and its
+/// review started.
+fn pairs_code_delivered(world: &World, id: &PlaceId, name: &str) -> Outcome {
+    world.commit(&format!("pair/{name}"), &["fix.rs"]);
+    world.settle(id);
+    ensure!(
+        world
+            .stage_state(id, "review")
+            .is_some_and(StageState::running),
+        "{name}'s review did not start: {:?}",
+        world.stage_state(id, "review")
+    );
+    Ok(())
+}
+
+/// The intent's affinity as `kept` reads it for `agent` and `other`, its
+/// last program and its moves.
+type Kept = (
+    Option<(String, String)>,
+    Option<(String, String)>,
+    Option<String>,
+    Vec<AccountMove>,
+);
+
+fn kept_with_last(world: &World, intent: &IntentKey) -> Result<Kept, String> {
+    let held = affinity(world, intent).ok_or("no affinity")?;
+    Ok((
+        kept(world, intent, "agent"),
+        kept(world, intent, "other"),
+        held.last,
+        held.moves,
+    ))
+}
+
+/// The account-pools spec's scenario "A stage that names no program keeps
+/// to the last program" (147, 173).
+fn a_stage_that_names_no_program_keeps_to_the_last_program(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings::default(),
+    );
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("other-1", AccountFrom::Affinity),
+        "the review"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("other"),
+        "the review's program"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?,
+        (None, on("work", "other-1"), Some("other".into()), vec![]),
+        "the affinity"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The last program cannot run the
+/// stage" (147, 173).
+fn the_last_program_cannot_run_the_stage(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![account("agent-1", None), of_other("other-1")],
+        Settings {
+            mode: Some(ModeSetting::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "edits".to_string(),
+            )]))),
+            ..Settings::default()
+        },
+    );
+    world.agent.map_mode(Mode::Edits, "edit-files");
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review"
+    );
+    ensure_eq!(
+        program_of(&world, &id, "review")?,
+        from_account("agent"),
+        "the review's program"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent_of(&world, &id)?)?,
+        (
+            on("work", "agent-1"),
+            on("work", "other-1"),
+            Some("agent".into()),
+            vec![]
+        ),
+        "the affinity"
+    );
+    Ok(())
+}
+
+/// The account-pools spec's scenario "The last program's account is
+/// spent" (147, 173).
+fn the_last_programs_account_is_spent(_: &()) -> Outcome {
+    let world = World::new();
+    a_code_on_other(
+        &world,
+        vec![
+            account("agent-1", None),
+            of_other("other-1"),
+            of_other("other-2"),
+        ],
+        Settings::default(),
+    );
+    let id = of_the_surfaces(&world, "pair", "a", None)?;
+    ensure_eq!(
+        chosen(&world, &id, "code"),
+        by("other-1", AccountFrom::Strategy),
+        "the code"
+    );
+    let intent = intent_of(&world, &id)?;
+    ensure_eq!(
+        kept_with_last(&world, &intent)?.2,
+        Some("other".to_string()),
+        "the last program before other-1 is spent"
+    );
+    spent(&world, "work", "other-1", world.host.now() + 3600);
+    pairs_code_delivered(&world, &id, "a")?;
+    ensure_eq!(
+        chosen(&world, &id, "review"),
+        by("agent-1", AccountFrom::Strategy),
+        "the review"
+    );
+    ensure_eq!(
+        world.held(&id).map(|held| held.moves),
+        Some(vec![]),
+        "the place's moves"
+    );
+    ensure_eq!(
+        kept_with_last(&world, &intent)?,
+        (
+            on("work", "agent-1"),
+            on("work", "other-1"),
+            Some("agent".into()),
+            vec![]
+        ),
+        "the affinity"
     );
     Ok(())
 }
