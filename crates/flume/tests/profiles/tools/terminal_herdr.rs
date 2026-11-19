@@ -4318,7 +4318,7 @@ esac
 
 #[test]
 fn relay_types_each_of_flumes_key_names_into_a_pane() {
-    // 222, C.5's relay row at blueprints b54a9b4, core.29: each of flume's
+    // 222, C.5's relay row at blueprints cb114fd, core.29: each of flume's
     // key names, bare and led by ctrl+, alt+ and shift+, typed by the relay
     // into a pane of the pinned herdr running `cat`, herdr taking every
     // name but delete, insert, home, end, pageup and pagedown, which the

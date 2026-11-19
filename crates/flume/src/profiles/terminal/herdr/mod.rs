@@ -2869,7 +2869,7 @@ mod tests {
     #[test]
     fn relay_refuses_a_key_herdr_cannot_type_and_types_the_keys_after_it() {
         // The terminal-profiles scenario "A key herdr cannot type among
-        // keys it can" (222, C.5's relay row at blueprints b54a9b4).
+        // keys it can" (222, C.5's relay row at blueprints cb114fd).
         let body = format!("case \"$1 $2\" in\n{PANE_GET}\n*) echo '{{\"result\":{{}}}}' ;;\nesac");
         let (herdr, scratch, log) = over_stand_in("cannot", &body);
         let mut relay = herdr.relay(&identity()).expect("the pane is found");
