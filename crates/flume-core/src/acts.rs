@@ -159,8 +159,11 @@ impl Engine {
         let reading = self.read_agent(id, start);
         let starting = (read.state.stages[index].state == StageState::Starting)
             .then(|| self.read_out(&read.state, start, true));
+        // A command stage's run is no agent: a caller's stop ends it
+        // whether or not it works (51, 223).
+        let run = crate::command::is_run(&read.state, index);
         if reading.state != AgentState::Stopped {
-            if !reading.quiet() && !force {
+            if !reading.quiet() && !force && !run {
                 return Err(format!(
                     "the agent {identity} is not quiet; ask again forced to end it"
                 ));

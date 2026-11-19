@@ -35,6 +35,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_retry_runs_it_again,
         },
         Scenario {
+            name: "command stage: a caller's stop ends a command that works, with no force, and a retry runs it again",
+            cites: &["49", "51", "223"],
+            run: a_stop_ends_it,
+        },
+        Scenario {
             name: "command stage: a launch giving no parameters while a command stage's command asks for them is refused naming the stage, nothing made",
             cites: &["4", "224"],
             run: no_parameters_refused,
@@ -327,6 +332,51 @@ fn a_retry_runs_it_again(_: &()) -> Outcome {
     let held = world.held(&id).ok_or("the place holds no state")?;
     let start = held.stages[0].start.clone().ok_or("no start")?;
     ensure_eq!(start.n, 2, "the move's start");
+    Ok(())
+}
+
+fn a_stop_ends_it(_: &()) -> Outcome {
+    let world = World::new();
+    world
+        .kinds
+        .set_kinds(REPOSITORY, vec![update(&["bin/move", "{{params}}"])]);
+    launched(&world.engine.launch(&update_launch("a", Some(PARAMS))))?;
+    let id = World::id("update", "a");
+    let identity = World::identity("update", "a", "main.move#1/1", 1);
+    let folder = world.store.folder(&id);
+    world
+        .store
+        .write_file(
+            &id,
+            &launched_word(&folder, &identity.to_string()),
+            "{\"pid\":41,\"program\":\"/r/bin/move\"}",
+        )
+        .map_err(|why| format!("the launcher's word: {why}"))?;
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "main.move#1/1"),
+        Some(StageState::Begun),
+        "the move's state once its launcher's word stands"
+    );
+    let answer = world.engine.stop(&id, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the stop was refused: {answer:?}"
+    );
+    ensure_eq!(world.terminal.log.count("close"), 1, "runs closed");
+    ensure_eq!(
+        world.stage_state(&id, "main.move#1/1"),
+        Some(StageState::Stopped),
+        "the move's state once stopped"
+    );
+    let answer = world
+        .engine
+        .retry(&id, Retry::Stage("main.move".into()), None, false);
+    ensure!(
+        answer.refusal().is_none(),
+        "the retry was refused: {answer:?}"
+    );
+    ensure_eq!(world.terminal.log.count("run"), 2, "commands run");
     Ok(())
 }
 
