@@ -397,6 +397,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             cites: &["56", "61"],
             run: a_place_of_a_run_gives_no_checkouts,
         },
+        Scenario {
+            name: "status: A review on the account's program: status of a place whose review names no program and started on other-1 from the strategy gives its program other from account, its account other-1 from the strategy, in the JSON form",
+            cites: &["56", "173"],
+            run: a_review_on_the_accounts_program,
+        },
     ]
 }
 
@@ -3435,5 +3440,57 @@ fn a_place_of_a_run_gives_no_checkouts(_: &()) -> Outcome {
         "a fix's JSON holds checkouts"
     );
     ensure_eq!(json["branch"], "fix/one", "a fix's branch");
+    Ok(())
+}
+
+/// The place-status spec's scenario "A review on the account's program":
+/// a fill-first pool of other-1, of `other`, and agent-1, and the kind
+/// `look`, whose one stage, review, names no program, so its review starts
+/// on other-1 from the strategy and its account names its program (56,
+/// 173; core.30).
+fn a_review_on_the_accounts_program(_: &()) -> Outcome {
+    let world = World::new();
+    world.resolver.bind_agent("other", world.agent.clone());
+    pool(
+        &world,
+        "work",
+        Strategy::FillFirst,
+        vec![
+            Account {
+                program: "other".into(),
+                ..account("other-1", None)
+            },
+            account("agent-1", None),
+        ],
+    );
+    world.host.set_host_pool(Some("work"));
+    world.kinds.set_kinds(
+        REPOSITORY,
+        vec![kind(
+            "look",
+            false,
+            vec![stage("review", Some(Deliverable::Commits), "{{brief}}")],
+        )],
+    );
+    let id = of_the_surfaces(&world, "look", "a", None)?;
+    let status = world.status(&id)?;
+    let json = serde_json::to_value(&status).map_err(|error| error.to_string())?;
+    ensure_eq!(
+        (
+            json["agent"]["stage"].as_str(),
+            json["agent"]["program"].as_str(),
+            json["agent"]["settings"]["from"]["program"].clone(),
+            json["agent"]["account"]["name"].as_str(),
+            json["agent"]["account"]["from"].as_str(),
+        ),
+        (
+            Some("review"),
+            Some("other"),
+            serde_json::json!({"layer": "account", "value": "other"}),
+            Some("other-1"),
+            Some("strategy")
+        ),
+        "the review's agent, its program and its account in the JSON form"
+    );
     Ok(())
 }
