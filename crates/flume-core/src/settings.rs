@@ -32,7 +32,11 @@
 //! naming no entry for its program refused so, and nothing is asked
 //! where no layer gives one (197); and its own settings are taken by its
 //! profile, or the stage refused naming each key with its layer and its
-//! file (195, 196).
+//! file (195, 196). flume's default names the program only for an agent
+//! with no pool: where no layer above it names one and an account is
+//! chosen, the account's program stands in its place, at the layer
+//! `account`, and its own settings are read for that program (32 item 8,
+//! 173; design 1).
 
 use crate::own::{fold, Table};
 use crate::{Engine, HIBERNATE_AFTER, KEEP_OPEN};
@@ -82,6 +86,14 @@ impl Resolved {
         self.from
             .get(key)
             .map_or(Layer::Default, |given| given.layer)
+    }
+
+    /// Whether a layer above flume's default names the agent's program, so
+    /// no account's program stands in for it (32 item 8, 173; design 1).
+    pub(crate) fn names_program(&self) -> bool {
+        self.from
+            .get("program")
+            .is_some_and(|given| !matches!(given.layer, Layer::Default | Layer::Account))
     }
 
     /// `program`'s own settings as the layers give them, by its name, key
@@ -479,8 +491,17 @@ impl Engine {
     /// `stage`'s settings in `place` as each layer wrote them, folded
     /// from the most general layer to the most specific, keeping the
     /// layer of every setting and every variable, and its program's own
-    /// settings key by key (32, 195).
-    pub(crate) fn resolve(&self, place: &PlaceRecord, stage: &Stage) -> Result<Resolved, String> {
+    /// settings key by key (32, 195). `account` is the program the
+    /// account chosen names, none where none is chosen: where no layer
+    /// above flume's default names a program, it stands in the default's
+    /// place, at the layer `account`, and the own settings are read for
+    /// it; where one does, it is ignored (32 item 8, 173; design 1).
+    pub(crate) fn resolve(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        account: Option<&str>,
+    ) -> Result<Resolved, String> {
         let mut resolved = Resolved {
             layers: self.layers(place, stage)?,
             ..Resolved::default()
@@ -523,6 +544,17 @@ impl Engine {
             }
             resolved.settings = resolved.settings.under(&given);
         }
+        if let Some(program) = account.filter(|_| !resolved.names_program()) {
+            resolved.settings.program = Some(program.to_string());
+            resolved.from.insert(
+                "program".into(),
+                Given {
+                    layer: Layer::Account,
+                    value: program.to_string(),
+                    file: None,
+                },
+            );
+        }
         let program = resolved.settings.program.clone().unwrap_or_default();
         resolved.own = resolved.own_for(&program);
         resolved.settings.programs = BTreeMap::new();
@@ -542,7 +574,8 @@ impl Engine {
     }
 
     /// The agent profile `resolved`'s program names, or why there is
-    /// none, naming the program, the stage and its layer (4, 32).
+    /// none, naming the program, the stage and its layer, or that its
+    /// account names it (4, 32, 105, 173).
     pub(crate) fn agent_for(
         &self,
         resolved: &Resolved,
@@ -552,10 +585,13 @@ impl Engine {
         let Some(program) = &resolved.settings.program else {
             return Err(format!("no agent program is named for the stage {stage}"));
         };
-        self.agent(program).ok_or_else(|| {
-            format!(
+        self.agent(program).ok_or_else(|| match layer {
+            Layer::Account => format!(
+                "no agent profile runs the program {program} its account names for the stage {stage}"
+            ),
+            _ => format!(
                 "no agent profile runs the program {program} the stage {stage} names, from the layer {layer}"
-            )
+            ),
         })
     }
 
@@ -583,17 +619,27 @@ impl Engine {
             .collect()
     }
 
-    /// The stage's agent at a start: its settings resolved, the agent
-    /// profile that runs its program, the value it passes for its mode,
-    /// its effort, which the profile takes, and its program's own
-    /// settings, which the profile takes; or why the stage is refused (27,
-    /// 32, 169, 195, 197).
+    /// The stage's agent at a start: its settings resolved, with the
+    /// program `account` names where no layer above flume's default names
+    /// one, the agent profile that runs its program, the value it passes
+    /// for its mode, its effort, which the profile takes, and its
+    /// program's own settings, which the profile takes; or why the stage
+    /// is refused (27, 32, 169, 173, 195, 197).
     pub(crate) fn resolution(
         &self,
         place: &PlaceRecord,
         stage: &Stage,
+        account: Option<&str>,
     ) -> Result<Resolution, String> {
-        let resolved = self.resolve(place, stage)?;
+        self.checked(self.resolve(place, stage, account)?, stage)
+    }
+
+    /// `stage`'s agent with `resolved` as its settings: the agent profile
+    /// that runs its program, the value it passes for its mode, its model
+    /// and its effort, which the profile takes, and its program's own
+    /// settings, which the profile takes; or why the stage is refused (27,
+    /// 32, 169, 172, 195, 197).
+    pub(crate) fn checked(&self, resolved: Resolved, stage: &Stage) -> Result<Resolution, String> {
         let agent = self.agent_for(&resolved, &stage.name)?;
         let model = model_taken(&resolved, agent.as_ref(), &stage.name)?;
         let mode = mode_for(&resolved, agent.as_ref(), stage)?;
@@ -612,6 +658,70 @@ impl Engine {
             effort,
         })
     }
+}
+
+/// Each program a stage whose layers name none may run on, in the order
+/// given, with its resolution, or the words that refuse it (145, 173;
+/// design 2).
+pub(crate) type RunsOn = Vec<(String, Result<Resolution, String>)>;
+
+impl Engine {
+    /// For each distinct program of `programs`, in order, `stage`'s agent
+    /// in `place` resolved with that program as its account's, or the
+    /// words that refuse it: a program no profile binds, or whose profile
+    /// maps not the stage's mode or takes not its model, its effort or its
+    /// own settings, refused as a start refuses it, so one reading serves
+    /// the choice, the wait, the refusal and the start (105, 145, 169, 172,
+    /// 173, 196, 197; design 2).
+    pub(crate) fn runs_on<'a>(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        programs: impl IntoIterator<Item = &'a str>,
+    ) -> RunsOn {
+        let mut read: RunsOn = Vec::new();
+        for program in programs {
+            if read.iter().any(|(seen, _)| seen == program) {
+                continue;
+            }
+            let resolution = self.resolution(place, stage, Some(program));
+            read.push((program.to_string(), resolution));
+        }
+        read
+    }
+}
+
+/// The programs of `runs` that cannot run the stage, each with the words
+/// that refuse it, in order (145, 173).
+pub(crate) fn refused(runs: &RunsOn) -> Vec<(String, String)> {
+    runs.iter()
+        .filter_map(|(program, resolution)| {
+            resolution
+                .as_ref()
+                .err()
+                .map(|words| (program.clone(), words.clone()))
+        })
+        .collect()
+}
+
+/// Why the stage `stage`, whose layers name no program, cannot start on
+/// the pool `pool`, none of whose accounts' programs can run it: the
+/// words a launch and a start refuse it in, naming the stage, the pool
+/// and each program with the words that refuse it (4, 32, 145, 173;
+/// design 2).
+pub(crate) fn cannot_run(stage: &str, pool: &str, refused: &[(String, String)]) -> String {
+    let why = if refused.is_empty() {
+        "it holds no account".to_string()
+    } else {
+        refused
+            .iter()
+            .map(|(program, words)| format!("`{program}` cannot, as {words}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    format!(
+        "the stage `{stage}` names no program, and no account of the pool `{pool}` can run it: {why}; so no room it gives could start it (145, 173)"
+    )
 }
 
 /// flume's own table of the default layer: its one hour kept open for an
@@ -656,6 +766,184 @@ pub(crate) fn no_stage_lacking(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Defaults;
+    use flume_fakes::*;
+    use flume_seams::{Binding, Identity};
+    use serde_json::json;
+
+    /// An engine over fresh fakes whose default program is `agent`, its
+    /// resolver binding a fake agent to `agent` and another to `other`,
+    /// built as `engine` in `deliveries.rs`'s tests builds one (32).
+    fn engine() -> (Engine, Arc<FakeAgent>, Arc<FakeAgent>) {
+        let host = Arc::new(FakeHost::default());
+        let terminal = Arc::new(FakeTerminal::new(host.clone()));
+        let resolver = FakeResolver::new(Arc::new(FakeKinds::default()));
+        let agent = Arc::new(FakeAgent::new(terminal.clone()));
+        let other = Arc::new(FakeAgent::new(terminal.clone()));
+        resolver.bind_agent("agent", agent.clone());
+        resolver.bind_agent("other", other.clone());
+        let engine = Engine::new(
+            Arc::new(resolver),
+            terminal,
+            Arc::new(FakeStore::default()),
+            Arc::new(FakeHistory::new(FakeGit::new())),
+            host,
+            Defaults {
+                settings: Settings {
+                    program: Some("agent".into()),
+                    ..Settings::default()
+                },
+                send_backs: 2,
+            },
+        );
+        (engine, agent, other)
+    }
+
+    /// The stage `review`, delivering commits, its declaration's agent
+    /// `agents`.
+    fn stage(agents: Settings) -> Stage {
+        let mut stage: Stage = serde_json::from_value(json!({
+            "name": "review",
+            "prompt": "Review the work.",
+            "conversation": false,
+            "deliverables": ["commits"],
+            "agents": [],
+            "waits": false,
+        }))
+        .expect("a stage");
+        stage.agents = vec![agents];
+        stage
+    }
+
+    /// A place of `fix`, as `tests::record` in `lib.rs` makes one, whose
+    /// kind gives own settings for both `agent` and `other` (195).
+    fn place() -> PlaceRecord {
+        let mut place = crate::tests::record(Binding::default());
+        place.kind.agents.every_stage.programs = [("agent", "a"), ("other", "o")]
+            .into_iter()
+            .map(|(program, key)| {
+                (
+                    program.to_string(),
+                    ProgramSettings {
+                        file: None,
+                        settings: BTreeMap::from([(key.to_string(), json!(true))]),
+                    },
+                )
+            })
+            .collect();
+        place
+    }
+
+    fn identity() -> Identity {
+        Identity {
+            repository: "/r".into(),
+            place: "fix--one".into(),
+            stage: "review".into(),
+            start: 1,
+            resume: 0,
+        }
+    }
+
+    #[test]
+    fn an_accounts_program_stands_for_the_defaults() {
+        // Only flume's default names the program, so an account's stands
+        // in its place, at the layer `account`, with its own settings;
+        // with no account, the default's (32 item 8, 173).
+        let (engine, _, other) = engine();
+        let (place, stage) = (place(), stage(Settings::default()));
+        let alone = engine.resolve(&place, &stage, None).expect("resolved");
+        assert_eq!(alone.settings.program.as_deref(), Some("agent"));
+        assert_eq!(alone.from["program"].layer, Layer::Default);
+        assert!(!alone.names_program());
+        let own = alone.own.expect("agent's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("a".to_string(), json!(true))]));
+        let account = engine
+            .resolve(&place, &stage, Some("other"))
+            .expect("resolved");
+        assert_eq!(account.settings.program.as_deref(), Some("other"));
+        assert_eq!(
+            account.from["program"],
+            Given {
+                layer: Layer::Account,
+                value: "other".into(),
+                file: None,
+            }
+        );
+        assert!(!account.names_program());
+        let own = account.own.as_ref().expect("other's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("o".to_string(), json!(true))]));
+        assert!(account.from.contains_key("programs.other.settings.o"));
+        assert!(!account.from.contains_key("programs.agent.settings.a"));
+        other.take_own();
+        other.stop_short_words("other's way");
+        let resolution = engine
+            .resolution(&place, &stage, Some("other"))
+            .unwrap_or_else(|words| panic!("{words}"));
+        assert_eq!(resolution.agent.stop_short(&identity()), "other's way");
+        assert_eq!(resolution.resolved, account);
+    }
+
+    #[test]
+    fn the_programs_that_can_run_a_stage() {
+        // `mode = { agent = "edits" }` names no entry for `other`, so
+        // `agent` alone can run the stage, and a program no profile binds
+        // is refused naming it; each program is read once, in order (105,
+        // 145, 169, 173).
+        let (engine, agent, _) = engine();
+        agent.map_mode(Mode::Edits, "agent-edits");
+        let place = crate::tests::record(Binding::default());
+        let stage = stage(Settings {
+            mode: Some(flume_seams::ModeSetting::Programs(BTreeMap::from([(
+                "agent".to_string(),
+                "edits".to_string(),
+            )]))),
+            ..Settings::default()
+        });
+        let runs = engine.runs_on(&place, &stage, ["other", "agent", "nothing-here", "other"]);
+        let programs: Vec<&str> = runs.iter().map(|(program, _)| program.as_str()).collect();
+        assert_eq!(programs, ["other", "agent", "nothing-here"]);
+        let able = runs[1].1.as_ref().unwrap_or_else(|words| panic!("{words}"));
+        assert_eq!(able.mode.as_deref(), Some("agent-edits"));
+        assert_eq!(able.resolved.from["program"].layer, Layer::Account);
+        let refused = refused(&runs);
+        assert_eq!(
+            refused,
+            [
+                (
+                    "other".to_string(),
+                    "the stage `review`'s mode `{ agent = \"edits\" }`, from the layer `kind`, names no entry for `other`".to_string()
+                ),
+                (
+                    "nothing-here".to_string(),
+                    "no agent profile runs the program nothing-here its account names for the stage review".to_string()
+                ),
+            ]
+        );
+        let words = cannot_run("review", "work", &refused);
+        assert!(words.starts_with("the stage `review` names no program, and no account of the pool `work` can run it: `other` cannot, as the stage `review`'s mode"), "{words}");
+        assert!(words.contains("names no entry for `other`; `nothing-here` cannot, as no agent profile runs the program nothing-here"), "{words}");
+        assert!(words.ends_with("(145, 173)"), "{words}");
+    }
+
+    #[test]
+    fn a_layers_program_stands_over_the_accounts() {
+        // The kind names `agent`, so the account's `other` is ignored
+        // and the own settings are `agent`'s (32 item 8, 173).
+        let (engine, _, _) = engine();
+        let place = place();
+        let stage = stage(Settings {
+            program: Some("agent".into()),
+            ..Settings::default()
+        });
+        let resolved = engine
+            .resolve(&place, &stage, Some("other"))
+            .expect("resolved");
+        assert_eq!(resolved.settings.program.as_deref(), Some("agent"));
+        assert_eq!(resolved.from["program"].layer, Layer::Kind);
+        assert!(resolved.names_program());
+        let own = resolved.own.expect("agent's own settings");
+        assert_eq!(own.keys, BTreeMap::from([("a".to_string(), json!(true))]));
+    }
 
     fn login(name: &str) -> Option<String> {
         match name {

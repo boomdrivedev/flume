@@ -4300,6 +4300,7 @@ fn two_programs() -> Affinity {
         gone: Some(50_000),
         pool: None,
         account: None,
+        last: None,
     }
 }
 
@@ -4346,6 +4347,32 @@ fn an_affinity_written_before() {
     assert!(written.get("pool").is_none() && written.get("account").is_none());
     assert!(written["moves"][0].get("program").is_none());
     assert_eq!(written["accounts"], serde_json::json!({}));
+}
+
+#[test]
+fn an_affinity_with_its_last_program() {
+    // The seam-contracts spec's "An affinity with its last program": an
+    // affinity whose last program is `other` reads back with it, and one
+    // written before, which names none, reads with none and is written
+    // again with no field for it (147, 153, 173).
+    let last = Affinity {
+        last: Some("other".into()),
+        ..two_programs()
+    };
+    round_trips(last.clone());
+    let json = serde_json::to_value(&last).unwrap();
+    assert_eq!(json["last"], serde_json::json!("other"));
+    let read: Affinity = serde_json::from_value(json).expect("read");
+    assert_eq!(read.last.as_deref(), Some("other"));
+    let before = serde_json::json!({
+        "stream": "work",
+        "accounts": {"agent": {"pool": "work", "account": "agent-1"}},
+        "moves": [],
+        "gone": null,
+    });
+    let read: Affinity = serde_json::from_value(before.clone()).expect("read");
+    assert_eq!(read.last, None);
+    assert_eq!(serde_json::to_value(&read).unwrap(), before);
 }
 
 #[test]

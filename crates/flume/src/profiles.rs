@@ -68,16 +68,19 @@ pub mod window {
     pub mod terminal;
 }
 
-/// The program an agent runs where no layer of its settings names one:
-/// Claude Code (32, C.4; design 16).
+/// The program an agent with no pool runs where no layer of its
+/// settings names one: Claude Code. An agent with a pool runs its
+/// account's program instead, so the default names a program only for an
+/// agent with no pool (32 item 8, 173, C.4; design 16).
 pub const DEFAULT_PROGRAM: &str = "claude";
 
 /// The send-backs a kind allows where it sets none (23, 112; design 16).
 pub const SEND_BACKS: u32 = 3;
 
 /// What the engine is built with where the statement leaves the value
-/// to flume: Claude Code with no model, instructions or environment, and
-/// three send-backs (32, 23; design 16).
+/// to flume: Claude Code with no model, instructions or environment, its
+/// program naming one only for an agent with no pool, and three
+/// send-backs (32 item 8, 23, 173; design 16).
 pub fn defaults() -> Defaults {
     Defaults {
         settings: Settings {

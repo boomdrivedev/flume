@@ -118,6 +118,9 @@ struct AgentModel {
     /// The parts of the five the core reads from the terminal, which the
     /// profile does not build, as scripted (171, 174).
     from_terminal: BTreeSet<Part>,
+    /// The way to stop short the profile gives in place of its fixed
+    /// words, as scripted (41, 92).
+    stop_short: Option<String>,
 }
 
 #[derive(Clone)]
@@ -577,6 +580,13 @@ impl FakeAgent {
     /// The program keeps `names` from every process it starts (161).
     pub fn withhold(&self, names: &[&str]) {
         lock(&self.state).withheld = names.iter().map(|name| name.to_string()).collect();
+    }
+
+    /// The profile gives `words` as its way to stop short in place of its
+    /// fixed words, the same for every start, so two fake programs give
+    /// two ways (41, 92).
+    pub fn stop_short_words(&self, words: &str) {
+        lock(&self.state).stop_short = Some(words.to_string());
     }
 
     fn record(&self, agent: &Identity) -> Record {
@@ -1130,9 +1140,12 @@ impl Agent for FakeAgent {
     }
 
     /// Both ways to stop short, a found being work a stage before this
-    /// one must do again, the same for every start (41, 92; core.31).
+    /// one must do again, the same for every start, or the words
+    /// scripted in their place (41, 92; core.31).
     fn stop_short(&self, _agent: &Identity) -> String {
-        "to stop short needing an answer, run `flume needs \"<what you need>\"`; having found work a stage before this one must do again, run `flume needs --found \"<the work you found>\"`".into()
+        lock(&self.state).stop_short.clone().unwrap_or_else(|| {
+            "to stop short needing an answer, run `flume needs \"<what you need>\"`; having found work a stage before this one must do again, run `flume needs --found \"<the work you found>\"`".into()
+        })
     }
 
     fn stop_short_to(&self) -> String {

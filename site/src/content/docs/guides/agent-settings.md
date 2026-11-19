@@ -25,8 +25,11 @@ with the layer it came from, and the account with what chose it.
 | `hibernate_after` | how long a conversation whose kind hibernates it may idle before flume hibernates it, in the same form ([how long a conversation idles](#how-long-a-conversation-idles)) |
 | `programs` | each program's own settings, in that program's words: a settings file and keys given inline ([a program's own settings](#a-programs-own-settings)) |
 
-`program` defaults to `claude`, and `keep_open` and `hibernate_after`
-to `1h`. Every other setting is empty unless a layer gives it.
+`program` defaults to `claude` only for an agent with no pool. Where
+the agent has a pool and no layer names its program, the account chosen
+names it ([the program](#the-program)). `keep_open` and
+`hibernate_after` default to `1h`. Every other setting is empty unless a
+layer gives it.
 
 ## The eight layers
 
@@ -41,7 +44,7 @@ Each setting comes from the first of these layers that gives it:
 | the host, for every agent | `host` | the host's `[agents]` |
 | the repository | `repository` | the repository's `[kinds.<kind>.agents]`, for a kind it does not declare, then its `[agents]` for every kind |
 | the kind | `kind` | the kind's own `agents` table and its stage's agent table |
-| flume's default | `default` | the program `claude`, a `keep_open` of `1h` and a `hibernate_after` of `1h`, and nothing else |
+| flume's default | `default` | the program `claude` for an agent with no pool, a `keep_open` of `1h` and a `hibernate_after` of `1h`, and nothing else. For an agent with a pool, the account chosen names the program in the default's place, and status names its layer `account` |
 
 Within a layer, a stage's own setting, in a further `.stages.<stage>`
 table, or `--agent <stage>.<field>=<value>` at the launch, comes before
@@ -426,6 +429,48 @@ account gives, a launch of a stage that runs the program is refused,
 and so is the stage at a later start, naming `herdr integration install
 <name>`. Run it under that home, then launch again or retry the stage
 ([places and herdr](/flume/guides/places-and-herdr/#programs-herdr-reads-through-its-integration)).
+
+### A pool chooses the program
+
+Where no layer above flume's default names a stage's program and its
+agent has a pool, the account chosen names the program. flume reads the
+stage for each program of the pool's accounts and takes only the
+accounts whose program can run it. A program can run the stage when an
+agent profile binds it, it maps the stage's mode, and it takes the
+stage's model, effort and own settings, or the stage gives none of
+them. The pool's strategy then chooses among those accounts as it
+always does, and the start passes that program's entries: its value for
+the mode, its entry of a table of models or efforts, and its own
+settings. Status gives the program from `account`:
+
+```text
+  agent flume:r:look--a:review:1 (codex, from its account) on the account codex-1 of work (from the strategy): working
+    program = codex (from account)
+```
+
+So a stage that gives `mode = { claude = "auto" }` and names no program
+runs only on the pool's `claude` accounts, since the table names no
+entry for any other program. A stage that names no program and gives no
+setting a program could refuse runs on whichever account the strategy
+chooses, of any program the pool holds.
+
+The intent keeps to the program its last agent ran
+([affinity](#an-intent-keeps-an-account-per-program)). A stage whose
+layers name no program takes the intent's account for that program
+while that program can run the stage and the account is usable, and
+otherwise goes where the strategy chooses. With no pool, the stage runs
+flume's default, `claude`.
+
+A conversation goes to no other program. A start that carries a lost or
+hibernated conversation takes the account its earlier start ran under
+first, while that account is usable and can run the stage. A spent
+agent's stage may move to an account of another program, and then
+starts afresh, its status saying the conversation stayed because the
+account chosen runs another program
+([a spent account](#a-spent-account)).
+
+A stage that no account of its pool can run is refused, naming each
+program and why ([a pool that cannot run a stage](#a-pool-that-cannot-run-a-stage)).
 
 ## The model
 
@@ -1279,7 +1324,9 @@ chooses no account, and agents run under the login environment alone.
 
 An account is **usable** for a start while it is unspent, is not past
 its pool's threshold ([a threshold](#a-threshold)) and is under its own
-bound, and runs the stage's program. At each start flume chooses an
+bound, and runs the stage's program, or, for a stage whose layers name
+no program, a program that can run it ([a pool chooses the
+program](#a-pool-chooses-the-program)). At each start flume chooses an
 account under the host's room lock, so two starts never take one
 account's last room:
 
@@ -1424,6 +1471,24 @@ when it comes to start. A stage already waiting for room is refused at
 the next settle, whatever room the host has. A stage so refused
 starts no agent, and its place waits for your retry: put an account of
 the program back in the pool, then run `flume retry <place>`.
+
+A stage whose layers name no program waits for room only while its pool
+holds an account of a program that can run it, spent, past its
+threshold or at its bound, and its want counts only those accounts. A
+pool that holds no account of a program that can run it refuses the
+stage, naming the stage, the pool and each of its programs with why it
+cannot:
+
+```text
+the stage `code` names no program, and no account of the pool `work` can run it: `codex` cannot, as the stage `code`'s mode `{ claude = "auto" }`, from the layer `kind`, names no entry for `codex`; so no room it gives could start it (145, 173)
+```
+
+flume reads it so at the launch, from the pool as the host's
+configuration declares it then, and asks the stream's terminal of such a
+stage only at its start, under the chosen account's environment. It
+reads it again at each later start, and the refusal waits for your
+retry as above: give the pool an account of a program that can run the
+stage, or give the stage what one of its programs takes.
 
 ## The environment
 

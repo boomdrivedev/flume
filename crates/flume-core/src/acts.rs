@@ -5,6 +5,7 @@
 //! (31); a retry ends none whose stage it started or began under, so it
 //! never ends a working session (35, 50).
 
+use crate::accounts::{Choice, Programs};
 use crate::base::base_place;
 use crate::held::refresh_waiting;
 use crate::hibernate::{hibernated_waiting, hibernating};
@@ -38,7 +39,10 @@ pub struct Answering {
 impl Engine {
     /// The exact prompt the stage would be sent at its next start,
     /// rendered with nothing started, sent, settled or written (29,
-    /// 119).
+    /// 119). A stage whose layers name no program, on a pool, is filled
+    /// with the profile of the program of the account a start would choose
+    /// over one reading of the queue, else of the first account in the
+    /// pool's order whose program can run it (173; design 8).
     pub fn prompt(&self, place: &PlaceId, stage: &str) -> Answer {
         let Some(read) = self.store.read(place) else {
             return Answer::refused(format!("no place {place} stands on this host"));
@@ -50,9 +54,12 @@ impl Engine {
         let identity = self.next_identity(&held, index);
         let declared = &held.place.kind.stages[index];
         let agent = self
-            .resolve(&held.place, declared)
-            .and_then(|resolved| self.agent_for(&resolved, stage))
-            .ok();
+            .resolve(&held.place, declared, None)
+            .ok()
+            .and_then(|resolved| {
+                self.agent_on_pool(&held.place, declared, &resolved)
+                    .or_else(|| self.agent_for(&resolved, stage).ok())
+            });
         let head = self
             .history
             .head(&held.place.repository, &held.place.branch)
@@ -81,6 +88,53 @@ impl Engine {
                 part.name()
             )),
         }
+    }
+
+    /// The agent profile a start of `stage` in `place`, whose settings
+    /// `resolved` name no program above flume's default, would fill its
+    /// prompt with on its stream's pool: the program of the account
+    /// `choose_account` chooses over one reading of the queue, else the
+    /// first program in the pool's order that can run it; none where a
+    /// layer names its program, it has no pool, or no program of its pool
+    /// can run it. It writes nothing (29, 119, 145, 147, 173; design 8).
+    fn agent_on_pool(
+        &self,
+        place: &PlaceRecord,
+        stage: &Stage,
+        resolved: &crate::settings::Resolved,
+    ) -> Option<std::sync::Arc<dyn Agent>> {
+        if resolved.names_program() {
+            return None;
+        }
+        let queue = self.queue();
+        let pool = queue
+            .pool_of(&place.stream.name)
+            .and_then(|pool| queue.pools.get(pool))?;
+        let runs = self.runs_on(
+            place,
+            stage,
+            pool.accounts
+                .iter()
+                .map(|room| room.account.program.as_str()),
+        );
+        let affinity = self.affinity_unwritten(&place.intent);
+        let (chosen, _) = self.choose_account(
+            place,
+            &stage.name,
+            &Programs::of_pool(&runs),
+            affinity.as_ref(),
+            None,
+            &queue,
+            self.host.now(),
+        );
+        let chosen = match &chosen {
+            Choice::Chose { account, .. } => Some(account.program.as_str()),
+            _ => None,
+        };
+        runs.into_iter()
+            .filter(|(program, _)| chosen.is_none_or(|chosen| chosen == program))
+            .find_map(|(_, resolution)| resolution.ok())
+            .map(|resolution| resolution.agent)
     }
 
     /// Ends the place's live agent, one that is not quiet only when

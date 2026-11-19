@@ -38,7 +38,7 @@
 
 use crate::own::Table;
 use crate::reading::reads_change;
-use crate::settings::{kind_started, no_stage_lacking};
+use crate::settings::{cannot_run, kind_started, no_stage_lacking, refused};
 use crate::standing::{Standing, StandingHere};
 use crate::{Answer, Bound, Engine, Step};
 use flume_seams::*;
@@ -878,13 +878,35 @@ impl Engine {
         };
         // Each stage's agent resolved, and the stream's terminal asked
         // whether it starts the agent's program's kind, under no account's
-        // environment, before anything is made (4, 8, C.5; core.8).
+        // environment, before anything is made (4, 8, C.5; core.8). A
+        // stage whose layers name no program, on a pool its stream or the
+        // host declares, is read for each program of that pool's accounts
+        // and refused where none can run it; its terminal is asked at its
+        // start, under its account's environment (145, 173; design 7).
         let (terminal, _) = self.stream_terminal(&held.place.stream.name)?;
+        let declared = self
+            .host
+            .pool_for(&held.place.stream.name)
+            .and_then(|named| self.host.pool(&named.name).map(|pool| (named.name, pool)));
         let programs = kind
             .stages
             .iter()
             .map(|stage| {
-                let resolution = self.resolution(&held.place, stage)?;
+                let resolved = self.resolve(&held.place, stage, None)?;
+                if let Some((pool_name, pool)) =
+                    declared.as_ref().filter(|_| !resolved.names_program())
+                {
+                    let runs = self.runs_on(
+                        &held.place,
+                        stage,
+                        pool.accounts.iter().map(|account| account.program.as_str()),
+                    );
+                    if runs.iter().all(|(_, resolution)| resolution.is_err()) {
+                        return Err(cannot_run(&stage.name, pool_name, &refused(&runs)));
+                    }
+                    return Ok(None);
+                }
+                let resolution = self.checked(resolved, stage)?;
                 kind_started(
                     terminal.as_ref(),
                     &resolution,

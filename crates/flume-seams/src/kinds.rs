@@ -538,7 +538,8 @@ pub enum Layer {
     /// flume's own default.
     Default,
     /// The account the agent runs under, which alone gives its
-    /// environment (144).
+    /// environment, and its program where no layer above flume's default
+    /// names one (32 item 8, 144, 173).
     Account,
 }
 

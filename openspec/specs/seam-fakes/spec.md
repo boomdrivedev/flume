@@ -544,3 +544,14 @@ seen with words or a refusal, each asking logged `send-watching
 
 - **WHEN** a test sends an agent `go` by the fake terminal's watched send, scripts that agent's turn not seen with words and sends `again`, and sends to a stopped agent
 - **THEN** the first answers the turn seen, the second the turn not seen in those words, both texts are delivered and logged, and the third is refused with nothing delivered (171, C.5)
+
+### Requirement: The fake agent scripts its way to stop short
+
+The fake agent SHALL give the way to stop short scripted for it, and
+its own fixed words where none is scripted, so two fake programs give
+two ways (41, 92).
+
+#### Scenario: Two fake programs' ways
+
+- **WHEN** the fake resolver binds `agent` to a fake agent scripted with no way to stop short and `other` to one scripted with its own words
+- **THEN** `agent`'s profile gives the fixed words and `other`'s the scripted words, each the same for every start (41, 92)

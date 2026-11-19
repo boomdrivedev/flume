@@ -1160,6 +1160,32 @@ fn the_agent_gives_both_stop_shorts() {
     assert!(way.contains("flume needs --found"), "{way}");
 }
 
+/// The seam-fakes spec's scenario "Two fake programs' ways": the fake
+/// resolver binds `agent` to a fake agent scripted with no way to stop
+/// short and `other` to one scripted with its own words, and each
+/// profile gives its own, the same for every start (41, 92).
+#[test]
+fn two_fake_programs_ways() {
+    let host = Arc::new(FakeHost::default());
+    let terminal = Arc::new(FakeTerminal::new(host));
+    let resolver = FakeResolver::new(Arc::new(FakeKinds::default()));
+    resolver.bind_agent("agent", Arc::new(FakeAgent::new(terminal.clone())));
+    let other = FakeAgent::new(terminal);
+    other.stop_short_words("to stop short, tell `other` so");
+    resolver.bind_agent("other", Arc::new(other));
+    let agent = resolver.agent("agent").expect("agent bound");
+    let other = resolver.agent("other").expect("other bound");
+    for start in [1, 2] {
+        let way = agent.stop_short(&identity("code", start));
+        assert!(way.contains("flume needs \""), "{way}");
+        assert!(way.contains("flume needs --found"), "{way}");
+        assert_eq!(
+            other.stop_short(&identity("code", start)),
+            "to stop short, tell `other` so"
+        );
+    }
+}
+
 /// The seam-fakes spec's scenario "A turn seen, then not" (171, C.5).
 #[test]
 fn a_watched_sends_turn_seen_then_not() {
