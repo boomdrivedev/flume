@@ -186,6 +186,13 @@ may pin either, or a table holding them, as `"streams.work.kinds"`.
 
 A pool of accounts
 ([pools of accounts](/flume/guides/agent-settings/#pools-of-accounts)).
+It may hold accounts of several programs. A stage whose layers name its
+program takes only that program's accounts. A stage whose layers name
+none takes the accounts whose program can run it, its mode mapped and
+its model, effort and own settings taken, and runs the program of the
+account chosen. flume's default, `claude`, names the program only for an
+agent with no pool. The intent keeps to the program its last agent ran,
+and a conversation goes to no other program.
 
 | Key | Values | Meaning |
 |---|---|---|
@@ -198,7 +205,7 @@ Each account:
 | Key | Values | Meaning | Left out |
 |---|---|---|---|
 | `name` | a string | the account's name, unique in its pool | refused |
-| `program` | a string | the program it runs, such as `claude`; it takes only stages of that program, and a pool with no account of a stage's program refuses that stage | refused |
+| `program` | a string | the program it runs, such as `claude` or `codex`; it takes only stages of that program. A stage whose layers name no program takes it where that program can run the stage, and then runs that program ([a pool chooses the program](/flume/guides/agent-settings/#a-pool-chooses-the-program)). A pool with no account of a program that can run a stage refuses that stage | refused |
 | `env` | a table of strings | its agents' environment, over the login environment | no variable |
 | `agents` | a whole number from 1 | the bound on agents running under it at once | no bound of its own |
 
