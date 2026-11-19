@@ -86,6 +86,7 @@ flume launch --kind <kind> --name <name> [--brief <text> | --brief-file <file>] 
 | `--base <branch>` | The branch the place is cut from and lands on; where none is named, the repository's [default branch](/flume/reference/configuration/#the-repositorys-configflumetoml), its remote's. |
 | `--brief <text>` | What the work is, given whole to every stage whose prompt asks for `{{brief}}`. |
 | `--brief-file <file>` | The brief, read from a file once at the launch. |
+| `--params-file <file>` | Parameters for a command stage's command, read from a file once at the launch and kept whole in the place's own folder as `params`, which the command's `{{params}}` names. flume reads no word of them. |
 | `--kinds <file>` | A declaration of kinds the launch carries, read from disk with its prompts beside it. |
 | `--hold <stage>=<words>` | Hold that stage before it starts, with words saying what it waits for. Repeatable. |
 | `--hold-submission` | Hold the submission once the last stage delivers. |

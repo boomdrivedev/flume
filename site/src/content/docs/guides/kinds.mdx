@@ -543,6 +543,71 @@ sessions start with the merge queue's words. A failure no transition
 takes leaves the place waiting on you, and `flume retry <place>
 --submission` submits it again.
 
+### Command stages
+
+A state whose `machine` is `command` is a command stage: it runs one
+command its kind declares in place of an agent, and that command
+commits as an agent would. Use one for work a script does, such as
+moving a dependency's pin, with an agent's stage reached only when it
+fails:
+
+```toml
+[kinds.update]
+title = "Take a new version of a dependency"
+lands = true
+
+[kinds.update.regions.stages]
+initial = "move"
+
+[kinds.update.regions.stages.states.move]
+machine = "command"
+params = { command = ["bin/move", "{{params}}"], deliverables = ["commits"], on_fail = "fix", max_send_backs = 3 }
+transitions = [
+  { when = { final = "passed" }, to = "done" },
+  { when = { final = "failed" }, to = "fix" },
+]
+
+[kinds.update.regions.stages.states.fix]
+machine = "stage"
+params = { agents = [{ model = "sonnet" }], deliverables = ["commits"], prompt = "prompts/fix.md" }
+transitions = [{ when = { final = "passed" }, to = "done" }]
+
+[kinds.update.regions.stages.states.done]
+final = true
+```
+
+| Parameter | Meaning | Left out |
+|---|---|---|
+| `command` | the program and its arguments as a list of words, run with no shell | refused |
+| `deliverables` | `["commits"]`, the only deliverable a command stage has | refused |
+| `on_fail` | the stage that runs an agent its failure is taken to | none |
+| `max_send_backs` | how many of its failures are taken on before the place waits on you | 3 |
+
+The program is a path relative to the declaration's own folder, or a
+program's name found on your login `PATH`. A word that is `{{params}}`
+is the path of the place's copy of the launch's parameters, which you
+give with `flume launch --params-file <file>`. flume reads no word of
+them, and a launch that gives none while the command asks for them is
+refused.
+
+A command stage starts as soon as its kind reaches it: it takes no room
+under the host's bound, no account and no points. Its command runs in a
+pane or block of the stream's terminal, so you can watch it, through
+flume's launcher, which runs the command in the place and keeps its
+whole output in `output.log` and its exit beside the start's record
+before it settles the place. The stage passes once the command exits
+with success and the place's branch holds a commit made since it
+started. It fails when the command exits otherwise, commits nothing, or
+stops with no exit recorded. Status gives its state, its exit and where
+its output lies.
+
+The kind's transition takes a failure on as it takes any end: the agent
+stage it leads to starts with the brief and the failure in `{{words}}`.
+Once its `max_send_backs` failures are spent, the stage waits on you.
+`flume retry <place> <path>` runs the command again from the place's
+head, and a retry with words is refused, since a command takes none. A
+stage may not send a place back to a command stage.
+
 ### Decisions
 
 A state may carry a decision, `decision = { kind, answers, shows }`,
@@ -562,7 +627,7 @@ naming the first, who gave it and when.
 
 ### What a statechart kind may name
 
-flume binds one template, `stage`, one rule, `every-file`, and three
+flume binds two templates, `stage` and `command`, one rule, `every-file`, and three
 evidences a transition may read: `region.entered`, when its region
 entered the state it holds; `place.submission`, the outcome of the
 place's newest submission; and `place.submissions`, how many times
@@ -572,7 +637,13 @@ template starts its sessions.
 A launch of a statechart kind is refused, naming what it found and
 making nothing, where it names:
 
-- a template other than `stage`, or a rule other than `every-file`;
+- a template other than `stage` and `command`, or a rule other than
+  `every-file`;
+- a command stage with no command, a program by an absolute path or a
+  path through `..`, a prompt, agents, a deliverable other than its
+  commits, or an `on_fail` naming no stage that runs agents;
+- a stage that sends a place back to a command stage;
+- a command that asks for `{{params}}` where the launch gives none;
 - an evidence other than those three, or any effect;
 - a stage with no `prompt`, no deliverable, or one flume cannot read;
 - `{{file}}` in a deliverable of a stage whose agents are a list;
