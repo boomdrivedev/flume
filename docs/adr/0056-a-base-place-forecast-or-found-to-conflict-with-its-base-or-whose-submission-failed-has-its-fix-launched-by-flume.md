@@ -51,3 +51,20 @@ Option 1, the user's decision.
 - Bad: each settle of a waiting base place costs a forecast, a merge formed in the repository, while its branch stays proven and unsent.
 - Bad: clause 1's flat "only when a caller asks" gains one exception, which status must show: a fix status names as launched by flume for its base place.
 - Statement clauses 1, 203 and I6 are amended with this record, marked proposed.
+
+## Amendment, 2026-11-19: a base place takes its base in when its caller asks, and only a conflict launches its fix
+
+Status: the user's decision of 2026-11-19, in boomdrive-design's pane: taking a base into a branch is the merge queue's work, and an agent is started only when that merge conflicts. boomdrive-design for how, each choice cheap to change.
+
+Deciders: the user, for the decision; boomdrive-design for the rest.
+
+Sources: the statement's clauses 111, 112, 117, 203 and 212; crew record 0036 as amended on 2026-11-19; Boomdrive's core.62; sluice's `sluice submit <branch> --head <branch>`.
+
+- **A caller may ask a base place to take its base in** (212). flume submits the base's current revision to the base place's branch through the merge queue. A take that lands brings the base's work in with the branch's checks and no agent.
+- **Only a conflict or a failure launches the fix.** A take that conflicts, or that the merge queue blames, launches the base place's fix as this record's forecast does, with the merge queue's words.
+- **flume takes nothing in on its own.** When to take the base in is its caller's, so no bolt runs its checks again for every landing on its base.
+
+### Not taken
+
+- **The caller launching a fix to take the base in.** That spends an agent's run on a merge with nothing to decide.
+- **Taking the base in at every settle that finds it ahead.** Every open base place would run its checks again at each landing on its base.
