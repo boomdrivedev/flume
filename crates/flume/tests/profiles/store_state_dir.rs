@@ -541,6 +541,7 @@ fn two_programs() -> HostDocument {
         gone: None,
         pool: None,
         account: None,
+        last: None,
     })
 }
 

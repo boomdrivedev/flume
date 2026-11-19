@@ -16,7 +16,7 @@ The engine's scenarios cite their clauses and use the fake programs
 
 ## 1. The seams and the fakes
 
-- [ ] 1.1 Give `Affinity` in `crates/flume-seams/src/store.rs` `last: Option<String>`, the program the intent's last agent ran, `#[serde(default, skip_serializing_if = "Option::is_none")]`, its doc comment citing 147 and 173, built as none in every `Affinity` across the workspace (design 5; core.16). Add `an_affinity_with_its_last_program` to `crates/flume-seams/src/round_trip.rs`, beside `an_affinity_written_before`, the seam-contracts spec's "An affinity with its last program". Check: `devenv shell -- cargo test -p flume-seams`.
+- [x] 1.1 Give `Affinity` in `crates/flume-seams/src/store.rs` `last: Option<String>`, the program the intent's last agent ran, `#[serde(default, skip_serializing_if = "Option::is_none")]`, its doc comment citing 147 and 173, built as none in every `Affinity` across the workspace (design 5; core.16). Add `an_affinity_with_its_last_program` to `crates/flume-seams/src/round_trip.rs`, beside `an_affinity_written_before`, the seam-contracts spec's "An affinity with its last program". Check: `devenv shell -- cargo test -p flume-seams`.
 - [ ] 1.2 Give the fake agent in `crates/flume-fakes/src/agent.rs` `stop_short_words(words)`, which its `stop_short` gives in place of its fixed words once scripted, the same for every start (41, 92; design 8); add `two_fake_programs_ways` to `crates/flume-fakes/tests/fakes.rs`, the seam-fakes spec's "Two fake programs' ways". Check: `devenv shell -- cargo test -p flume-fakes --test fakes`.
 
 ## 2. The settings and the programs that can run a stage

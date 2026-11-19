@@ -467,6 +467,7 @@ impl Engine {
                 gone: None,
                 pool: None,
                 account: None,
+                last: None,
             });
             if let Some(moved) = moved {
                 affinity.stream = place.stream.name.clone();

@@ -1301,6 +1301,7 @@ fn written_before(
             gone: None,
             pool: Some("work".into()),
             account: Some(account.into()),
+            last: None,
         }),
     );
 }
