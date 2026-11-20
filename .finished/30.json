@@ -1,0 +1,28 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 30,
+  "branch": "bolt/flume-hands-in-checked-work",
+  "head": "6547a526a3d9d16635122f2eefc01d437650d3b4",
+  "from": {
+    "agent": "fix/flume-hands-in-checked-work-1",
+    "worktree": "fix/flume-hands-in-checked-work-1",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/fix--flume-hands-in-checked-work-1",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-20T02:37:05Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "e899baddf48ba61fc22eaaa1c1afbdaae6dc766e",
+    "on": "7bc023d3a0fb2e746465c6ffc3ee5fb195c5e98d",
+    "submissions": [
+      30
+    ]
+  },
+  "result": "passed",
+  "landed_as": "9d42128744e63b8504fb52aa31fb0c03c378bd18",
+  "trace": "00-a848311e8ac3595d5104cfa5774d57fc-a7af040549734d21-01",
+  "under_test_ms": 218000
+}

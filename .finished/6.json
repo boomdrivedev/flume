@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 6,
+  "branch": "bolt/flume-hands-in-checked-work",
+  "head": "e7f130936c8221d8303004fe05f82a1155773e45",
+  "from": {
+    "agent": "chore/flumes-github-runs-try-again-after-a-passing-refusal",
+    "worktree": "chore/flumes-github-runs-try-again-after-a-passing-refusal",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/chore--flumes-github-runs-try-again-after-a-passing-refusal",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T16:01:25Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "cf9f7fac51604d3cecde79085b946e4854cfbeb3",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      6
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "0190db02a249a7c4b978d80dfb295e68e70151175df91d1cafc1b273d89752bb",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/bolt/flume-hands-in-checked-work/c1/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T19:22:03Z"
+  }
+}

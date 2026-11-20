@@ -1,0 +1,9 @@
+{"format": "weir-known/1", "reader": "chore/flumes-github-runs-try-again-after-a-passing-refusal", "known_at": "2026-11-19T16:07:31Z"}
+{"format": "weir-delivery/1", "key": "7:failed", "readers": ["change/a-fix-runs-its-merge-queues-checks-before-delivering"], "message": "[sluice] #7 failed on bolt/flume-hands-in-checked-work: root:format. sluice wait 7 shows why.", "recorded_at": "2026-11-19T17:01:00Z", "expires_at": "2026-11-26T17:01:00Z"}
+{"format": "weir-handover/1", "key": "7:failed", "reader": "change/a-fix-runs-its-merge-queues-checks-before-delivering", "by": "inbox", "at": "2026-11-19T17:08:23Z"}
+{"format": "weir-confirmation/1", "key": "7:failed", "reader": "change/a-fix-runs-its-merge-queues-checks-before-delivering", "at": "2026-11-19T17:08:50Z"}
+{"format": "weir-known/1", "reader": "change/a-fix-runs-its-merge-queues-checks-before-delivering", "known_at": "2026-11-19T17:08:50Z"}
+{"format": "weir-delivery/1", "key": "30:landed", "readers": ["fix/flume-hands-in-checked-work-1"], "message": "[sluice] #30 landed on bolt/flume-hands-in-checked-work as 9d42128.", "recorded_at": "2026-11-20T02:41:01Z", "expires_at": "2026-11-27T02:41:01Z"}
+{"format": "weir-handover/1", "key": "30:landed", "reader": "fix/flume-hands-in-checked-work-1", "by": "inbox", "at": "2026-11-20T02:41:17Z"}
+{"format": "weir-confirmation/1", "key": "30:landed", "reader": "fix/flume-hands-in-checked-work-1", "at": "2026-11-20T02:41:24Z"}
+{"format": "weir-known/1", "reader": "fix/flume-hands-in-checked-work-1", "known_at": "2026-11-20T02:41:24Z"}

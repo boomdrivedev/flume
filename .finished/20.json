@@ -1,0 +1,26 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 20,
+  "branch": "bolt/flume-hands-in-checked-work",
+  "head": "63ec34a24b3057b798cfdc5dc965afa48d934bb7",
+  "from": {
+    "agent": "boomdrive-planner",
+    "worktree": "chore/flumes-github-runs-try-again-after-a-passing-refusal",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/chore--flumes-github-runs-try-again-after-a-passing-refusal",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T20:26:44Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 3,
+  "state": "landed",
+  "tested": {
+    "combination": "b99d1e2a01a76338ae581e28119778071ac3a34a",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      20
+    ]
+  },
+  "result": "passed",
+  "landed_as": "7bc023d3a0fb2e746465c6ffc3ee5fb195c5e98d"
+}

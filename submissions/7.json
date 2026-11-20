@@ -1,0 +1,33 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 7,
+  "branch": "bolt/flume-hands-in-checked-work",
+  "head": "c7348c9e5e30fceb36b9bb70cf84db6221cb00fb",
+  "from": {
+    "agent": "change/a-fix-runs-its-merge-queues-checks-before-delivering",
+    "worktree": "change/a-fix-runs-its-merge-queues-checks-before-delivering",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/change--a-fix-runs-its-merge-queues-checks-before-delivering",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T16:55:58Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "failed",
+  "tested": {
+    "combination": "0db5b09357ab1f61090370e08e4a55ffd5dc1a23",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      7
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "acd0bb96fbbd1f1575fe2634d423aca15967ecf70fd15c277f9fc744ab096a65",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/bolt/flume-hands-in-checked-work/c2/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    }
+  ]
+}

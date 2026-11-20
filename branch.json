@@ -1,0 +1,17 @@
+{
+  "schema": "sluice/branch@1",
+  "branch": "bolt/flume-hands-in-checked-work",
+  "log": "sluice/log@1",
+  "base": "9d42128744e63b8504fb52aa31fb0c03c378bd18",
+  "verified": false,
+  "window": 3,
+  "next_place": 7,
+  "next_candidate": 6,
+  "candidates": [],
+  "landing": null,
+  "release": [],
+  "outbox": [],
+  "lead": "deneb",
+  "landed": "9d42128744e63b8504fb52aa31fb0c03c378bd18",
+  "kept": "2026-11-20T02:41:24Z"
+}
