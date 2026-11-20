@@ -362,6 +362,11 @@ impl Store for FakeStore {
         lock(&self.state).host.get(key).cloned()
     }
 
+    fn host_version(&self, key: &HostKey) -> Option<u64> {
+        self.log.push(format!("host_version {key}"));
+        lock(&self.state).host.get(key).map(|read| read.version)
+    }
+
     fn write_host(&self, key: &HostKey, at: Option<u64>, next: Option<&HostDocument>) -> Written {
         let hooks: Vec<Interleaved> = std::mem::take(&mut *lock(&self.before_host_write));
         for hook in hooks {
