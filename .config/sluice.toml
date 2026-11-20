@@ -30,7 +30,11 @@ trust = ["sessions"]
 parallel = 4
 batch = false
 flaky = "fail"
-timeout = "10m"
+# A run's limit is 25 minutes: flume:tools alone takes 5 to 16 minutes on
+# deneb under load, and a 10-minute limit timed out main's gate on
+# 2026-11-19. Raised on the user's word of 2026-11-19 ("You can make these
+# changes ...").
+timeout = "25m"
 remote = "origin"
 
 # main counts the runs deneb signs, sandboxed until runs are confined. A
@@ -42,7 +46,11 @@ trust = ["sessions"]
 parallel = 2
 batch = false
 flaky = "fail"
-timeout = "10m"
+# A run's limit is 25 minutes: flume:tools alone takes 5 to 16 minutes on
+# deneb under load, and a 10-minute limit timed out main's gate on
+# 2026-11-19. Raised on the user's word of 2026-11-19 ("You can make these
+# changes ...").
+timeout = "25m"
 remote = "origin"
 
 [branches.main.pull_requests]

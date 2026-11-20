@@ -73,7 +73,7 @@ pub fn scenarios<H: StoreHarness>() -> Vec<Scenario<H>> {
             run: one_store_outside_the_repository::<H>,
         },
         Scenario {
-            name: "store: the host's own documents are read and written by key, an account's holding its spent time and its reading, a write at a moved version refused, and every flume process reaches them",
+            name: "store: the host's own documents are read and written by key, an account's holding its spent time and its reading, a document's version read alone as a read gives it, a write at a moved version refused, and every flume process reaches them",
             cites: &["102", "103", "104", "153"],
             run: the_hosts_own_documents::<H>,
         },
@@ -218,6 +218,11 @@ fn the_hosts_own_documents<H: StoreHarness>(harness: &H) -> Outcome {
         harness.seam().read_host(&account).is_none(),
         "a document read before any was written"
     );
+    ensure_eq!(
+        harness.seam().host_version(&account),
+        None,
+        "the version of a document before any was written"
+    );
     let spent = |until| {
         HostDocument::Account(AccountDocument {
             spent: Some(AccountSpent {
@@ -310,10 +315,20 @@ fn the_hosts_own_documents<H: StoreHarness>(harness: &H) -> Outcome {
         Some(affinity),
         "another process's read of the intent"
     );
+    ensure_eq!(
+        another.host_version(&intent),
+        Some(version),
+        "another process's read of the intent's version alone"
+    );
     written(harness.seam().write_host(&intent, Some(version), None))?;
     ensure!(
         harness.seam().read_host(&intent).is_none(),
         "a removed document is read"
+    );
+    ensure_eq!(
+        harness.seam().host_version(&intent),
+        None,
+        "the version of a removed document"
     );
     ensure!(
         harness.seam().read_host(&account).is_some(),
