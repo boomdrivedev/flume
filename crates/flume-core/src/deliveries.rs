@@ -11,7 +11,7 @@
 
 use crate::answer::and_list;
 use crate::ends::notice;
-use crate::{Answer, Engine, KeyConfirmed, Step};
+use crate::{lock, Answer, Engine, KeyConfirmed, Step};
 use chrono::{DateTime, SecondsFormat, Utc};
 use flume_seams::{
     ConfirmedBy, DeliveredBy, Deliveries, Delivery, DeliveryClaim, DeliveryRecord, EndDelivery,
@@ -19,6 +19,7 @@ use flume_seams::{
     Seconds, Secret, Store, Written,
 };
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use weir_delivery::{Confirmed, Handed, Record, Recorded};
 
 /// How many times a write of the host's deliveries reads again on a
@@ -84,6 +85,17 @@ pub struct Whole {
 /// The records and the claims a write of the host's deliveries leaves
 /// (75, C.7).
 pub type Next = (Vec<Record>, Vec<DeliveryClaim>);
+
+/// The host's deliveries as an engine last read or wrote them, and what
+/// they owed at a second of the host's clock. An engine reads the
+/// document whole again only once its version moved, so a settle of
+/// every pending place reads it once, and once more for each write of
+/// another process's it meets (43, 75; core.15).
+#[derive(Debug, Default)]
+pub(crate) struct Reading {
+    whole: Option<Arc<Whole>>,
+    owing: Option<(Seconds, Arc<Owing>)>,
+}
 
 /// The host's deliveries whole, their records and the claims beside
 /// them, and the version they were read at; none and no version where the
@@ -386,7 +398,7 @@ impl Engine {
         let span = self.host.ends_expire();
         let mut refused: Vec<String> = vec![];
         let mut newly: Vec<String> = vec![];
-        let written = update(&*self.store, |records| {
+        let written = self.add_deliveries(|records| {
             refused.clear();
             newly.clear();
             let mut all = records.to_vec();
@@ -448,7 +460,7 @@ impl Engine {
             self.log(&format!("an end's delivery was not recorded: {why}"));
         }
         let records = match written {
-            Ok(records) => records,
+            Ok(whole) => whole,
             Err(why) => {
                 self.log(&why);
                 return false;
@@ -458,6 +470,7 @@ impl Engine {
             self.log(&line);
         }
         let recorded: Vec<&str> = records
+            .records
             .iter()
             .filter_map(|record| match record {
                 Record::Delivery(delivery) => Some(delivery.key().as_str()),
@@ -520,16 +533,120 @@ impl Engine {
             .collect()
     }
 
-    /// What the host's deliveries hold of each end's delivery now, read
-    /// once (43; weir 111; core.15).
-    pub(crate) fn owing(&self) -> Owing {
-        match read(&*self.store) {
-            Ok((_, records)) => owing(&records, self.host.now()),
-            Err(why) => {
-                self.log(&why);
-                Owing::default()
+    /// The host's deliveries whole as they stand: those this engine last
+    /// read or wrote while their version stands, else read again and held
+    /// (75, C.7; core.15).
+    pub(crate) fn deliveries(&self) -> Result<Arc<Whole>, String> {
+        let standing = self.store.host_version(&HostKey::Deliveries);
+        if let Some(whole) = &lock(&self.reading).whole {
+            if whole.at == standing {
+                return Ok(whole.clone());
             }
         }
+        let whole = Arc::new(read_whole(&*self.store)?);
+        self.hold_deliveries(whole.clone());
+        Ok(whole)
+    }
+
+    /// Holds `whole` as the host's deliveries this engine last read or
+    /// wrote, what an earlier reading owed let go of.
+    fn hold_deliveries(&self, whole: Arc<Whole>) {
+        *lock(&self.reading) = Reading {
+            whole: Some(whole),
+            owing: None,
+        };
+    }
+
+    /// What the host's deliveries hold of each end's delivery now, read
+    /// once for each version of them and each second (43; weir 111;
+    /// core.15).
+    pub(crate) fn owing(&self) -> Arc<Owing> {
+        match self.deliveries() {
+            Ok(whole) => self.owing_of(&whole),
+            Err(why) => {
+                self.log(&why);
+                Arc::default()
+            }
+        }
+    }
+
+    /// What `whole`, the host's deliveries as read, owes now; worked out
+    /// once for the reading held and the second (43; weir 111).
+    pub(crate) fn owing_of(&self, whole: &Arc<Whole>) -> Arc<Owing> {
+        let now = self.host.now();
+        let held = |reading: &Reading| {
+            reading
+                .whole
+                .as_ref()
+                .is_some_and(|held| Arc::ptr_eq(held, whole))
+        };
+        {
+            let reading = lock(&self.reading);
+            if let (true, Some((at, owing))) = (held(&reading), &reading.owing) {
+                if *at == now {
+                    return owing.clone();
+                }
+            }
+        }
+        let owes = Arc::new(owing(&whole.records, now));
+        let mut reading = lock(&self.reading);
+        if held(&reading) {
+            reading.owing = Some((now, owes.clone()));
+        }
+        owes
+    }
+
+    /// [`rewrite_whole`] over the host's deliveries as this engine holds
+    /// them, the reading held after it the one it wrote: `next` asked over
+    /// the deliveries as they stand, and what it gives written at their
+    /// version, read again where it moved; `next` giving none writes
+    /// nothing. Gives the deliveries as they stand after it, or why they
+    /// could not be written (75, C.7; core.17).
+    pub(crate) fn rewrite_deliveries_whole(
+        &self,
+        mut next: impl FnMut(&[Record], &[DeliveryClaim]) -> Option<Next>,
+    ) -> Result<Arc<Whole>, String> {
+        for _ in 0..TRIES {
+            let whole = self.deliveries()?;
+            let Some((records, claims)) = next(&whole.records, &whole.claims) else {
+                return Ok(whole);
+            };
+            if let Written::Written { version } = write(&*self.store, whole.at, &records, &claims) {
+                let written = Arc::new(Whole {
+                    at: Some(version),
+                    records,
+                    claims,
+                });
+                self.hold_deliveries(written.clone());
+                return Ok(written);
+            }
+        }
+        Err(format!(
+            "{} were not written: their version moved {TRIES} times",
+            HostKey::Deliveries
+        ))
+    }
+
+    /// [`rewrite`] over the host's deliveries as this engine holds them.
+    pub(crate) fn rewrite_deliveries(
+        &self,
+        mut next: impl FnMut(&[Record]) -> Option<Vec<Record>>,
+    ) -> Result<Arc<Whole>, String> {
+        self.rewrite_deliveries_whole(|records, claims| {
+            next(records).map(|records| (records, claims.to_vec()))
+        })
+    }
+
+    /// [`update`] over the host's deliveries as this engine holds them:
+    /// the engine's one way to add a record (75; core.17).
+    pub(crate) fn add_deliveries(
+        &self,
+        mut add: impl FnMut(&[Record]) -> Vec<Record>,
+    ) -> Result<Arc<Whole>, String> {
+        self.rewrite_deliveries(|records| {
+            let added = add(records);
+            (!added.is_empty()).then(|| [records, &added].concat())
+        })
     }
 
     /// Lets go of every record of each delivery that is done and whose key
@@ -541,7 +658,7 @@ impl Engine {
     pub(crate) fn let_go_where(&self, mut of: impl FnMut(&str) -> bool, why: &str) {
         let now = time(self.host.now());
         let mut let_go: Vec<String> = vec![];
-        let written = rewrite(&*self.store, |records| {
+        let written = self.rewrite_deliveries(|records| {
             let_go.clear();
             let done: Vec<String> = weir_delivery::owed(records, &now)
                 .ok()?
@@ -650,7 +767,7 @@ impl Engine {
         let at = time(now);
         let mut confirmed: Vec<KeyConfirmed> = vec![];
         let mut refused: Option<String> = None;
-        let written = update(&*self.store, |records| {
+        let written = self.add_deliveries(|records| {
             confirmed.clear();
             refused = None;
             let mut all = records.to_vec();
@@ -721,7 +838,7 @@ impl Engine {
     ) -> Vec<Result<bool, String>> {
         let at = time(at);
         let mut answers: Vec<Result<bool, String>> = vec![];
-        let written = update(&*self.store, |records| {
+        let written = self.add_deliveries(|records| {
             answers.clear();
             let mut all = records.to_vec();
             let mut added = vec![];

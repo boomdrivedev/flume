@@ -307,6 +307,8 @@ pub struct Herdr {
     records: PathBuf,
     bound: Duration,
     start_timeout: Duration,
+    trust_draw: Duration,
+    trust_settle: Duration,
     caller: Option<Pane>,
     login: Arc<OnceLock<BTreeMap<String, String>>>,
     plugin: Option<PathBuf>,
@@ -386,6 +388,8 @@ impl Herdr {
             records: records.into(),
             bound: BOUND,
             start_timeout: START_TIMEOUT,
+            trust_draw: TRUST_DRAW,
+            trust_settle: TRUST_SETTLE,
             caller: None,
             login: Arc::default(),
             plugin: None,
@@ -469,6 +473,18 @@ impl Herdr {
     /// to 300 seconds.
     pub fn with_start_timeout(mut self, timeout: Duration) -> Herdr {
         self.start_timeout = timeout;
+        self
+    }
+
+    /// How long a screen still as it was when herdr answered is given for
+    /// the program to draw, in place of [`TRUST_DRAW`], and how long the
+    /// screen is read for the folder-trust question at most, in place of
+    /// [`TRUST_SETTLE`]: for a program known to draw at once, as the
+    /// tests' stand-in does, which a start waits on no longer than it
+    /// takes to draw.
+    pub fn with_trust_reading(mut self, draw: Duration, settle: Duration) -> Herdr {
+        self.trust_draw = draw;
+        self.trust_settle = settle;
         self
     }
 
@@ -1267,14 +1283,16 @@ impl Herdr {
     /// The pane's visible lines once they show the folder-trust question,
     /// or once the program has drawn and its screen holds still without
     /// it, so neither a dialog half drawn nor one not yet drawn is taken
-    /// for what the screen shows; for up to [`TRUST_SETTLE`]. herdr may
-    /// call the program ready before it draws anything, so a screen still
-    /// as it was at the first read is settled only after [`TRUST_DRAW`];
-    /// where herdr said the program is held at a question, `blocked`, the
-    /// question is waited for until the bound, as it may be drawn late.
+    /// for what the screen shows; for up to [`TRUST_SETTLE`] or the
+    /// settle the profile was given. herdr may call the program ready
+    /// before it draws anything, so a screen still as it was at the first
+    /// read is settled only after [`TRUST_DRAW`] or the draw the profile
+    /// was given; where herdr said the program is held at a question,
+    /// `blocked`, the question is waited for until the bound, as it may be
+    /// drawn late.
     fn settled(&self, pane: &Pane, trust: &FolderTrust, blocked: bool) -> String {
         let began = Instant::now();
-        let deadline = began + TRUST_SETTLE;
+        let deadline = began + self.trust_settle;
         let first = self.visible(pane);
         let mut last = first.clone();
         let mut still = Instant::now();
@@ -1285,7 +1303,7 @@ impl Herdr {
                 still = Instant::now();
             } else if !blocked
                 && still.elapsed() >= TRUST_STILL
-                && (screen != first || began.elapsed() >= TRUST_DRAW)
+                && (screen != first || began.elapsed() >= self.trust_draw)
             {
                 break;
             }
@@ -2869,7 +2887,7 @@ mod tests {
     #[test]
     fn relay_refuses_a_key_herdr_cannot_type_and_types_the_keys_after_it() {
         // The terminal-profiles scenario "A key herdr cannot type among
-        // keys it can" (222, C.5's relay row at blueprints b54a9b4).
+        // keys it can" (222, C.5's relay row at blueprints cb114fd).
         let body = format!("case \"$1 $2\" in\n{PANE_GET}\n*) echo '{{\"result\":{{}}}}' ;;\nesac");
         let (herdr, scratch, log) = over_stand_in("cannot", &body);
         let mut relay = herdr.relay(&identity()).expect("the pane is found");
