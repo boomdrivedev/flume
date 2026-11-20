@@ -62,6 +62,14 @@ pub trait TerminalHarness {
     /// cannot read that it did not (35, 94).
     fn never_up(&self) -> Option<AgentCommand>;
 
+    /// The seam [`TerminalHarness::never_up`]'s command is opened on: the
+    /// harness's own, or the same terminal given the shortest bound on a
+    /// start it takes, since no bound sees that program come up and the
+    /// open answers only once its bound has passed.
+    fn never_up_seam(&self) -> &Self::Seam {
+        self.seam()
+    }
+
     /// Whether the terminal makes anything to hold a place's agents,
     /// which its tidy closes (137, 138).
     fn makes(&self) -> bool;
@@ -82,8 +90,10 @@ pub trait TerminalHarness {
     fn recipient(&self) -> Option<String>;
 
     /// Each input the recipient's session named `session` took as
-    /// submitted, in order.
-    fn received(&self, session: &str) -> Vec<String>;
+    /// submitted, in order: once it took `awaited` of them, or what it
+    /// took by the harness's wait where it takes fewer; read at once where
+    /// none is awaited.
+    fn received(&self, session: &str, awaited: usize) -> Vec<String>;
 
     /// A recipient's session the harness started, which is no agent of
     /// flume's, by the name the terminal gives it, reading working; none
@@ -529,7 +539,7 @@ fn an_agent_by_its_name<H: TerminalHarness>(harness: &H) -> Outcome {
     if harness.sends() {
         ensure_eq!(sent, ToSession::Sent, format!("the send to {name}"));
         ensure_eq!(
-            harness.received(&agent.at).last().cloned(),
+            harness.received(&agent.at, 1).last().cloned(),
             Some("a notice".to_string()),
             format!("what {name} took")
         );
@@ -631,7 +641,7 @@ fn a_session_by_its_name<H: TerminalHarness>(harness: &H) -> Outcome {
     }
     ensure_eq!(sent, ToSession::Sent, "the send to the recipient");
     ensure_eq!(
-        harness.received(&session).last().cloned(),
+        harness.received(&session, 1).last().cloned(),
         Some("a notice".to_string()),
         "what the recipient took"
     );
@@ -647,13 +657,13 @@ fn a_session_at_work<H: TerminalHarness>(harness: &H) -> Outcome {
         Some(AgentState::Working),
         "the recipient's session"
     );
-    let before = harness.received(&session);
+    let before = harness.received(&session, 0);
     match harness.seam().send_to(&session, "a notice") {
         ToSession::Refused { reason } if !harness.sends() || reason.contains("works") => {}
         other => return Err(format!("a send to a session at work gave {other:?}")),
     }
     ensure_eq!(
-        harness.received(&session),
+        harness.received(&session, before.len() + 1),
         before,
         "what the session at work took"
     );
@@ -736,7 +746,7 @@ fn open_answers_not_come_up<H: TerminalHarness>(harness: &H) -> Outcome {
         return Ok(());
     };
     let who = identity(1);
-    match harness.seam().open(
+    match harness.never_up_seam().open(
         &harness.place(),
         &harness.folder(),
         &command,

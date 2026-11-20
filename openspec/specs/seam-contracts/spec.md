@@ -1307,3 +1307,27 @@ held state written before read unchanged (21, 103, 177).
 
 - **WHEN** a statechart kind, a held session and a statechart place's held state are written and read back, and a kind and a held state written before this change are read
 - **THEN** each reads back equal, and the earlier two read with no statechart, no session and no engine state (21, 177)
+
+### Requirement: The agent seam names an account's home's variable
+
+The agent seam SHALL name the variable of an account's environment
+whose value is its program's configuration home, the folder the program
+keeps its settings in under that account, and none by default, so a
+profile that names none gives its accounts no home (56, 171, C.4).
+
+#### Scenario: A profile that keeps the seam's defaults
+
+- **WHEN** an agent profile that keeps the seam's defaults is asked which variable names an account's configuration home
+- **THEN** it names none (56, C.4)
+
+### Requirement: The store gives a host document's version alone
+
+The store seam SHALL give the version a host document stands at, none
+where there is none, as a read of the document would give it, so a
+reader holding the document at that version need not read it again
+(102, 153).
+
+#### Scenario: A host document's version read alone
+
+- **WHEN** a host document's version is read before it is written, after another process wrote it, and after it is removed
+- **THEN** the first and the last give none, and the second gives the version the write gave (102, 103, 153)

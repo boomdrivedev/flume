@@ -13,25 +13,44 @@ kind = "sandbox"
 # The profiles' tests listen on localhost; nothing reaches further.
 network = "localhost"
 
+# The one signer whose runs the gates count (sluice 78, 79): deneb, where
+# the sessions run and submit, signing as sessions with its own key, as
+# sluice's own policy names it. Its runs are sandboxed, never confined.
+# Naming a signer keeps every branch with a remote on it, its state there
+# beside the branch (sluice C.6), so the host that keeps main on origin
+# takes main's pull requests in (sluice 137; sluice record 0125).
+[signers.sessions]
+ssh = "deneb ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGx/Ip3yodP/Rg3DdMAjJXoYuBmMxTLpPrka3ei69M/ sluice deneb"
+
 [branches."bolt/*"]
 required = ["#check-fast"]
-# A replay counts when a run this gate trusts recorded a pass for its key.
-trust = ["open", "sandbox", "container"]
+# A replay counts when a run deneb signed recorded a pass for its key
+# (sluice 108).
+trust = ["sessions"]
 parallel = 4
 batch = false
 flaky = "fail"
-timeout = "10m"
+# A run's limit is 25 minutes: flume:tools alone takes 5 to 16 minutes on
+# deneb under load, and a 10-minute limit timed out main's gate on
+# 2026-11-19. Raised on the user's word of 2026-11-19 ("You can make these
+# changes ...").
+timeout = "25m"
 remote = "origin"
 
-# A replay counts on main only when a sandboxed or confined run recorded a
-# pass for its key: the cache also holds what open shells ran.
+# main counts the runs deneb signs, sandboxed until runs are confined. A
+# replay counts only when such a run recorded a pass for its key (sluice
+# 108).
 [branches.main]
 required = ["#check-fast", "#check-tools"]
-trust = ["confined", "sandbox"]
+trust = ["sessions"]
 parallel = 2
 batch = false
 flaky = "fail"
-timeout = "10m"
+# A run's limit is 25 minutes: flume:tools alone takes 5 to 16 minutes on
+# deneb under load, and a 10-minute limit timed out main's gate on
+# 2026-11-19. Raised on the user's word of 2026-11-19 ("You can make these
+# changes ...").
+timeout = "25m"
 remote = "origin"
 
 [branches.main.pull_requests]
