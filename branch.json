@@ -1,0 +1,23 @@
+{
+  "schema": "sluice/branch@1",
+  "branch": "bolt/flume-is-tested-against-the-claude-code-hosts-run",
+  "log": "sluice/log@1",
+  "base": "9f1af64d8d8c4d649d7716ecced6296e34a77f75",
+  "verified": true,
+  "covered_by": {
+    "at": "9f1af64d8d8c4d649d7716ecced6296e34a77f75",
+    "result": "passed",
+    "ran": 38,
+    "replayed": 0
+  },
+  "window": 3,
+  "next_place": 5,
+  "next_candidate": 5,
+  "candidates": [],
+  "landing": null,
+  "release": [],
+  "outbox": [],
+  "lead": "deneb",
+  "landed": "9f1af64d8d8c4d649d7716ecced6296e34a77f75",
+  "kept": "2026-11-20T20:16:09Z"
+}

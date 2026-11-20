@@ -1,0 +1,5 @@
+{"format": "weir-known/1", "reader": "chore/flumes-suite-cites-the-clause-list-at-cb114fd", "known_at": "2026-11-19T05:56:03Z"}
+{"format": "weir-known/1", "reader": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver", "known_at": "2026-11-19T06:30:24Z"}
+{"format": "weir-delivery/1", "key": "33:landed", "readers": ["chore/flume-pins-claude-code-2-1-322-and-offers-deliver"], "message": "[sluice] #33 landed on bolt/flume-is-tested-against-the-claude-code-hosts-run as 9f1af64.", "recorded_at": "2026-11-20T20:15:54Z", "expires_at": "2026-11-27T20:15:54Z"}
+{"format": "weir-handover/1", "key": "33:landed", "reader": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver", "by": "notice", "at": "2026-11-20T20:15:57Z"}
+{"format": "weir-confirmation/1", "key": "33:landed", "reader": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver", "at": "2026-11-20T20:16:08Z"}

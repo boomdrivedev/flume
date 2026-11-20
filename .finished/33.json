@@ -1,0 +1,29 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 33,
+  "branch": "bolt/flume-is-tested-against-the-claude-code-hosts-run",
+  "head": "b0e00032f53b9eb082b893d46c2ca34837f6fc2c",
+  "from": {
+    "agent": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "worktree": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/chore--flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "host": "deneb",
+    "session": "herdr:w2:p26@/Users/chuck/.config/herdr/sessions/boomdrive/herdr.sock"
+  },
+  "submitted": "2026-11-20T20:11:40Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "7523f78f460c5f4760d434761780f3bd375a3977",
+    "on": "a65e99d1ff77d417277332881c9c9bfcbe6baaa3",
+    "submissions": [
+      33
+    ]
+  },
+  "result": "passed",
+  "landed_as": "9f1af64d8d8c4d649d7716ecced6296e34a77f75",
+  "trace": "00-76fc0a508fe550970e7435c4555e5d1b-fee56f3b8b52ae1e-01",
+  "under_test_ms": 234000
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 32,
+  "branch": "bolt/flume-is-tested-against-the-claude-code-hosts-run",
+  "head": "de245d75d5ba7926ab1b855942654ce530596f88",
+  "from": {
+    "agent": "chore/flumes-suite-cites-the-clause-list-at-cb114fd",
+    "worktree": "chore/flumes-suite-cites-the-clause-list-at-cb114fd",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/chore--flumes-suite-cites-the-clause-list-at-cb114fd",
+    "host": "deneb",
+    "session": "herdr:w2:p26@/Users/chuck/.config/herdr/sessions/boomdrive/herdr.sock"
+  },
+  "submitted": "2026-11-20T20:02:22Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "ac8598d9f4840c4eee2898f32dc0510de48490b7",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      32
+    ]
+  },
+  "result": "passed",
+  "landed_as": "a65e99d1ff77d417277332881c9c9bfcbe6baaa3",
+  "trace": "00-9a751dcd7f485c65fee68b774d348350-65364606156ae0bf-01",
+  "under_test_ms": 211000
+}

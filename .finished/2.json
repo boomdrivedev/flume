@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 2,
+  "branch": "bolt/flume-is-tested-against-the-claude-code-hosts-run",
+  "head": "8627f83bbdead6fd65773bedd826a98cead500cd",
+  "from": {
+    "agent": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "worktree": "chore/flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/chore--flume-pins-claude-code-2-1-322-and-offers-deliver",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T06:17:14Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "9776da06e4c1c86e14f3cc6f1d849dc0def719cb",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      2
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "a0ffcdc2a6fe683e05e4a35b7cf3678c0d334aa7bb336548e669f0cacacb3900",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/bolt/flume-is-tested-against-the-claude-code-hosts-run/c2/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-20T20:11:40Z"
+  }
+}
