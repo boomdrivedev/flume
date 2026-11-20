@@ -46,17 +46,72 @@ pub fn failures<H>(scenarios: &[Scenario<H>], fresh: impl Fn() -> H) -> Vec<(Str
 /// Runs each scenario over a fresh harness and panics naming every one
 /// that failed.
 pub fn pass_all<H>(of: &str, scenarios: &[Scenario<H>], fresh: impl Fn() -> H) {
-    let failed = failures(scenarios, fresh);
+    passed(of, scenarios.len(), failures(scenarios, fresh));
+}
+
+/// Panics naming every one of `failed`, out of `total` scenarios of
+/// `of`, unless none failed.
+fn passed(of: &str, total: usize, failed: Vec<(String, String)>) {
     assert!(
         failed.is_empty(),
-        "{} of {} {of} scenarios failed:\n{}",
+        "{} of {total} {of} scenarios failed:\n{}",
         failed.len(),
-        scenarios.len(),
         failed
             .iter()
             .map(|(name, failure)| format!("  {name}: {failure}"))
             .collect::<Vec<_>>()
             .join("\n")
+    );
+}
+
+/// Runs each scenario over a fresh harness of its own, `at_once` of them
+/// side by side, and panics naming every one that failed, in the
+/// scenarios' order: for a profile whose harnesses share nothing, each
+/// on a server and in a scratch of its own, so its scenarios wait on no
+/// other's.
+pub fn pass_all_side_by_side<H>(
+    of: &str,
+    scenarios: &[Scenario<H>],
+    at_once: usize,
+    fresh: impl Fn() -> H + Sync,
+) {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let outcomes: Vec<(usize, Outcome)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..at_once.clamp(1, scenarios.len().max(1)))
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut ran = vec![];
+                    loop {
+                        let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(scenario) = scenarios.get(index) else {
+                            break ran;
+                        };
+                        ran.push((index, (scenario.run)(&fresh())));
+                    }
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| {
+                worker
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    let mut failed: Vec<(usize, String)> = outcomes
+        .into_iter()
+        .filter_map(|(index, outcome)| outcome.err().map(|failure| (index, failure)))
+        .collect();
+    failed.sort_by_key(|(index, _)| *index);
+    passed(
+        of,
+        scenarios.len(),
+        failed
+            .into_iter()
+            .map(|(index, failure)| (scenarios[index].name.to_string(), failure))
+            .collect(),
     );
 }
 

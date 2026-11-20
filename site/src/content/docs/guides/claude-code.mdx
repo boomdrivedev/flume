@@ -276,6 +276,31 @@ flume asks Claude Code and its maker nothing for it, reads no sign-in
 and fetches nothing: the windows are what the session's own responses
 reported.
 
+## Each account's configuration home
+
+Claude Code keeps its settings, its plugins and its sign-in in its
+configuration home, the folder `CLAUDE_CONFIG_DIR` names. A pool's
+account whose `env` gives `CLAUDE_CONFIG_DIR` is a home of its own, and
+flume's configuration is what says which homes those are. Status gives
+each account's home as `home` at `host.pools[].accounts[]`, its `~`
+and variables read against your login environment as a start reads
+them, and the person's form names it under the account's line:
+
+```sh
+flume status --json | jq '.status.host.pools[].accounts[] | {name, home}'
+```
+
+A tool that installs something into every account's Claude Code, a
+plugin or a setting, reads the homes there. An account whose `env`
+gives no `CLAUDE_CONFIG_DIR` gives `null`: its agents run Claude Code's
+own default home. One whose value names a variable your login
+environment lacks gives `null` with `home_unread`, saying which. The
+home is the one value of an account's variables status gives:
+`CLAUDE_CONFIG_DIR` and every other variable stay `<set>` in an agent's
+settings and in the host's configuration values. flume writes nothing
+in a home, and whether the folder exists is for the installing tool to
+find.
+
 ## Prompt delivery
 
 <Delivery caption="The first sending is lost, and flume reads that it never arrived: it sends the prompt once more and reads it received. Later the pane goes quiet while the checks run; with no deliverable, the stage goes on until the change is committed." />

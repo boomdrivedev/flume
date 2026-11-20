@@ -643,6 +643,13 @@ impl Agent for Claude {
         Some(effort::VARIABLE)
     }
 
+    /// `CLAUDE_CONFIG_DIR`, the folder 2.1.296 keeps its settings and
+    /// sign-in in under an account, an empty value none as
+    /// [`carry::home`] reads it ([`carry::CONFIG_DIR`]; 56, C.4).
+    fn home_variable(&self) -> Option<&'static str> {
+        Some(carry::CONFIG_DIR)
+    }
+
     /// The start's first prompt's UserPromptSubmit input names the mode
     /// the session runs in (161).
     fn mode_read_back(&self) -> Offered {
