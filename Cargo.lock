@@ -470,6 +470,7 @@ dependencies = [
  "flume-fakes",
  "flume-seams",
  "libc",
+ "memchr",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",

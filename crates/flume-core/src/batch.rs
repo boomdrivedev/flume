@@ -25,7 +25,7 @@
 //! its own address; a settle of every place hands the batch of every
 //! recipient a delivery is pending for, once each in the pass.
 
-use crate::deliveries::{owing, read_whole, rewrite_whole, time};
+use crate::deliveries::{owing, time};
 use crate::ends::notice_to;
 use crate::message::is_message_key;
 use crate::standing::{Reached, Standing};
@@ -203,7 +203,7 @@ impl Engine {
     /// (214; design 9).
     pub(crate) fn release_start(&self, identity: &Identity) {
         let start = identity.to_string();
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             let next: Vec<DeliveryClaim> = claims
                 .iter()
                 .filter(|claim| claim.start.as_deref() != Some(start.as_str()))
@@ -235,7 +235,7 @@ impl Engine {
     /// record 0058; design 9).
     fn settle_start_claims(&self, documents: &[HeldState]) {
         let mut refused: Vec<String> = vec![];
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             refused.clear();
             if claims.iter().all(|claim| claim.start.is_none()) {
                 return None;
@@ -289,7 +289,8 @@ impl Engine {
     /// Settles the claims of the starts of roles' runs, where any stands
     /// (214; design 9).
     fn settle_any_start_claims(&self) {
-        let any = read_whole(&*self.store)
+        let any = self
+            .deliveries()
             .map(|whole| whole.claims.iter().any(|claim| claim.start.is_some()))
             .unwrap_or(false);
         if any {
@@ -354,7 +355,7 @@ impl Engine {
     /// but a drop's or a done's, handed to it and claimed for it by
     /// nothing (43, 214).
     pub(crate) fn batch_pending(&self, recipient: &str) -> bool {
-        let whole = match read_whole(&*self.store) {
+        let whole = match self.deliveries() {
             Ok(whole) => whole,
             Err(why) => {
                 self.log(&why);
@@ -362,7 +363,7 @@ impl Engine {
             }
         };
         !batch(
-            &owing(&whole.records, self.host.now()),
+            &self.owing_of(&whole),
             &whole.claims,
             &held_back(&self.documents()),
             recipient,
@@ -389,7 +390,7 @@ impl Engine {
     /// resumes that stage by its delivery in place of a send (43, 75, 213,
     /// 214; core.11).
     fn hand_batch(&self, recipient: &str, standing: &mut Option<Standing>, held_back: &HeldBack) {
-        let whole = match read_whole(&*self.store) {
+        let whole = match self.deliveries() {
             Ok(whole) => whole,
             Err(why) => {
                 self.log(&why);
@@ -397,14 +398,7 @@ impl Engine {
             }
         };
         let now = self.host.now();
-        if batch(
-            &owing(&whole.records, now),
-            &whole.claims,
-            held_back,
-            recipient,
-        )
-        .is_empty()
-        {
+        if batch(&self.owing_of(&whole), &whole.claims, held_back, recipient).is_empty() {
             return;
         }
         if self.takes_itself(recipient) {
@@ -472,7 +466,7 @@ impl Engine {
         start: Option<String>,
     ) -> Option<Vec<Item>> {
         let mut claimed: Vec<Item> = vec![];
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             claimed.clear();
             let owing = owing(records, now);
             let kept: Vec<DeliveryClaim> = claims
@@ -505,7 +499,7 @@ impl Engine {
     /// Removes the claims of `items` for `recipient` made at `at`,
     /// recording nothing, so the next wait takes them (43, 75).
     pub(crate) fn release(&self, recipient: &str, at: Seconds, items: &[Item]) {
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             let next: Vec<DeliveryClaim> = claims
                 .iter()
                 .filter(|claim| !claimed_as(claim, recipient, at, items))
@@ -526,7 +520,7 @@ impl Engine {
     pub(crate) fn handed(&self, recipient: &str, at: Seconds, items: &[Item]) {
         let when = time(at);
         let mut refused: Vec<String> = vec![];
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             refused.clear();
             let mut all = records.to_vec();
             for item in items {
@@ -557,7 +551,7 @@ impl Engine {
         // The send was answered: its claims are marked so, and the next
         // settle records their hand-overs at the claim's time, once (43,
         // 75; weir 103).
-        let marked = rewrite_whole(&*self.store, |records, claims| {
+        let marked = self.rewrite_deliveries_whole(|records, claims| {
             let mut next = claims.to_vec();
             let mut changed = false;
             for claim in next
@@ -583,7 +577,7 @@ impl Engine {
     /// have typed (43, 75; weir 103).
     fn record_answered(&self) {
         let mut refused: Vec<String> = vec![];
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             refused.clear();
             if claims.iter().all(|claim| claim.sending) {
                 return None;
@@ -725,7 +719,7 @@ impl Engine {
     fn take_batch(&self, recipient: &str, held_back: &HeldBack, at: Seconds) -> Vec<Item> {
         let when = time(at);
         let mut taken: Vec<Item> = vec![];
-        let written = rewrite_whole(&*self.store, |records, claims| {
+        let written = self.rewrite_deliveries_whole(|records, claims| {
             taken.clear();
             let owing = owing(records, at);
             let kept: Vec<DeliveryClaim> = claims
