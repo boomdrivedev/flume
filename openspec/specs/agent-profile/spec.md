@@ -213,7 +213,8 @@ A `check-tools` test SHALL require the source the profile's `withheld`
 rests on to stand byte for byte in the pinned Claude Code: its lists of
 credentials, the memory service's pair, the test of the environment
 against the list, the names its child environment drops and the drop,
-and the hook runner's environment built on that child environment
+the hook runner's environment built on that child environment, and the
+environment an organization's hook inherits, built by the same builder
 (core.22, C.4).
 
 #### Scenario: What the pinned release keeps from its hooks
@@ -242,7 +243,7 @@ value its map gives the settings' mode where they give one, and with no
 The Claude Code profile SHALL map `plan` to `plan`, `ask` to `manual`,
 `edits` to `acceptEdits` and `full` to `bypassPermissions`, and SHALL
 take its own values under `claude` in a table of programs, the pinned
-2.1.296's `--permission-mode` choices `acceptEdits`, `auto`,
+2.1.322's `--permission-mode` choices `acceptEdits`, `auto`,
 `bypassPermissions`, `manual`, `dontAsk` and `plan`, each passed as
 written; any other own value SHALL be refused naming it, `claude` and
 the values it names; and it SHALL read the mode back (161, 169, C.4).
@@ -519,7 +520,7 @@ give none (197, C.4).
 ### Requirement: Claude Code takes the pinned release's five efforts
 
 The Claude Code profile SHALL take `low`, `medium`, `high`, `xhigh` and
-`max`, the pinned 2.1.296's `--effort` words, and SHALL refuse any
+`max`, the pinned 2.1.322's `--effort` words, and SHALL refuse any
 other, naming it, `claude` and the five; and SHALL name
 `CLAUDE_CODE_EFFORT_LEVEL` as the variable its program reads over
 `--effort` (197, C.4).
@@ -562,23 +563,26 @@ schema (core.22, C.4).
 
 ### Requirement: Claude Code's deliver part at the pinned release
 
-Claude Code's profile SHALL answer deliver not offered while flume pins
-a release no check of the tree has read running a hooks module's
-`$.prompt.submit` in an interactive session, 2.1.296 among them, the
-release the row was read on, 2.1.322, named with its reason; its
+Claude Code's profile SHALL answer deliver offered at the pinned
+2.1.322, which runs a plugin's hooks module in an interactive session,
+and not offered where it is built for a release that runs none; its
 command SHALL set `FLUME_DELIVER=1` in the agent's environment only
-where it answers offered, and never otherwise (54, 171, 215, C.4;
-core.39; record 0069).
+where it answers offered (54, 171, 215, C.4; core.39; record 0069).
 
 #### Scenario: The pinned release
 
-- **WHEN** `deliver` is asked of Claude Code's profile, and a command is built for a start
-- **THEN** it answers not offered, and the command's environment names no `FLUME_DELIVER`
+- **WHEN** `deliver` is asked of Claude Code's profile as the binary builds it
+- **THEN** it answers offered
 
 #### Scenario: A profile that offers it
 
-- **WHEN** the profile is built answering deliver offered, as the chore that moves the pin will build it, and a command is built for a start
+- **WHEN** a command is built for a start of the profile as the binary builds it, offering deliver
 - **THEN** the command's environment gives `FLUME_DELIVER=1` beside `FLUME_AGENT`, `FLUME_SECRET`, `FLUME_PLACE` and `FLUME_STAGE`
+
+#### Scenario: A profile that does not offer it
+
+- **WHEN** the profile is built answering deliver not offered, as for a release that runs no hooks module, and a command is built for a start
+- **THEN** the command's environment names no `FLUME_DELIVER`
 
 ### Requirement: flume hook deliver prints what the take answers
 
@@ -658,3 +662,59 @@ give none (56, 144, C.4).
 
 - **WHEN** a host's pool declares the Claude Code accounts work-1, whose `env` gives `CLAUDE_CONFIG_DIR = "~/.claude-work-1"` and `CLAUDE_CODE_OAUTH_TOKEN`, and work-2, whose `env` gives neither, and `flume status --json` and `flume status` are run with the host user's `HOME` a scratch folder
 - **THEN** the JSON form's `host.pools[0].accounts` give work-1 `home` the scratch folder's `.claude-work-1` and work-2 `home` `null`, the person's form gives `configuration home` with that folder under work-1's line, and neither form gives the token's value (56, C.4; core.30)
+
+### Requirement: The hooks' inputs pinned to the release the tree holds
+
+A `check-tools` test SHALL require the source the plugin's hooks read
+of their inputs to stand byte for byte in the pinned Claude Code: the
+input every hook is built on, with its session and its transcript, and
+each event's input with the fields the hooks read, SessionStart's,
+StopFailure's and SessionEnd's naming no mode (116, 134, 161, C.4;
+core.22, core.39).
+
+#### Scenario: What the pinned release hands its hooks
+
+- **WHEN** the test reads the program devenv.nix pins
+- **THEN** it finds SessionStart's input with its source, PreToolUse's, PermissionRequest's and PostToolUse's each with its tool and the tool's input, Stop's with whether a stop hook already blocked it, StopFailure's with its error and its words, and SessionEnd's with its reason, and names any it does not (C.4)
+
+### Requirement: The hooks' answers and the plan's tool pinned to the release the tree holds
+
+A `check-tools` test SHALL require the source of how the pinned Claude
+Code reads a SessionStart hook's context and a PreToolUse hook's
+refusal, and of `ExitPlanMode`'s input, its plan and its plan's file,
+which the asking mark keeps, to stand byte for byte in the pinned
+release (43, 90, 108, C.4; core.22, core.39).
+
+#### Scenario: What the pinned release reads of the hooks' answers
+
+- **WHEN** the test reads the program devenv.nix pins
+- **THEN** each fragment is found in it, and the test names any that is not (C.4)
+
+### Requirement: The command's options pinned to the release the tree holds
+
+A `check-tools` test SHALL require the source the profile's command
+rests on to stand byte for byte in the pinned Claude Code:
+`--plugin-dir`, which loads a plugin for the session alone; `--model`;
+and the file `--append-system-prompt-file` names read as
+`--append-system-prompt`'s text is, with the words the release ends
+with where no such file is (35, 148, C.4; core.22, core.39).
+
+#### Scenario: What the pinned release takes of the command
+
+- **WHEN** the test reads the program devenv.nix pins
+- **THEN** each fragment the command rests on is found in it, and the test names any that is not (C.4)
+
+### Requirement: The folder-trust dialog pinned to the release the tree holds
+
+A `check-tools` test SHALL require the source the profile's folder-trust
+question rests on to stand byte for byte in the pinned Claude Code: the
+dialog's choices, its refusal listed first and in focus and
+`Yes, I trust this folder` its confirming choice, and the mark of the
+choice in focus; and the screens the profile's own tests read SHALL be
+the pinned release's, with and without its warning that the folder's
+settings pre-approve tools (34, C.4; core.22, core.39; record 0018).
+
+#### Scenario: What the pinned release asks in a folder new to it
+
+- **WHEN** the test reads the program devenv.nix pins
+- **THEN** each fragment the folder-trust question rests on is found in it, and the test names any that is not (34, C.4)

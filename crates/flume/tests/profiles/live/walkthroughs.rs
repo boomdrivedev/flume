@@ -5,13 +5,16 @@
 //! `low` (197, S103), a fix whose code agent stops at
 //! its account's usage limit going on in its own conversation under the
 //! pool's other account (S78), a fix whose code agent's pane holds the
-//! place's line under its prompt (56, 60, C.4), and a fix whose host's own
+//! place's line under its prompt (56, 60, C.4), a fix whose host's own
 //! settings for the program reach its code agent's session (195, S100,
-//! S102). Each brief asks for what the stand-in's script acted; the kinds'
-//! own prompts say the rest.
+//! S102), and a standing role's session, words typed into its input and
+//! not submitted, taking two messages for its address through flume's
+//! plugin's deliver part, its input left as typed (54, 214, 215, C.4).
+//! Each brief asks for what the stand-in's script acted; the kinds' own
+//! prompts say the rest.
 
 use super::common::git;
-use super::walk::{now, session_limit_after, stage};
+use super::walk::{desk_source, now, session_limit_after, stage};
 use super::Live;
 use flume::profiles::agent::claude::record::Record;
 use flume::profiles::terminal::herdr::herdr_name;
@@ -314,7 +317,7 @@ fn s78_a_spent_agents_conversation_goes_on_under_the_pools_other_account() {
     // pinned release refuses a bare `sleep` there. No test account reaches
     // its limit on demand, so the test ends that turn while the call runs
     // as a usage limit ends one: it runs the plugin's StopFailure hook for
-    // that start with the input 2.1.296 builds for a session limit, and
+    // that start with the input 2.1.322 builds for a session limit, and
     // interrupts the turn, which runs no Stop hook, as a turn the API
     // failed runs none. Once the agent is quiet flume ends it and starts
     // code under the second account, resuming the first's session: the
@@ -364,7 +367,7 @@ fn s78_a_spent_agents_conversation_goes_on_under_the_pools_other_account() {
         std::thread::sleep(Duration::from_secs(1));
     }
 
-    // The turn ends at the session limit: StopFailure, as 2.1.296 builds
+    // The turn ends at the session limit: StopFailure, as 2.1.322 builds
     // its input, and the turn interrupted, so its agent waits.
     let (_, limit) = session_limit_after(now());
     live.hook(
@@ -657,6 +660,168 @@ fn a_hosts_own_settings_reach_its_fix_agents_session_and_commit() {
         assert!(
             !message.to_lowercase().contains("co-authored-by"),
             "the code agent's commit carries a trailer: {message:?}"
+        );
+    }
+}
+
+/// Words a person typed into the role's session's input and did not
+/// submit.
+const DRAFT: &str = "a draft its person half typed";
+
+/// The two messages for `w/ops`, each asking for one word.
+const MESSAGES: [(&str, &str); 2] = [
+    (
+        "The nightly job failed: reply with the one word BLUEBIRD.",
+        "BLUEBIRD",
+    ),
+    (
+        "And the weekly one: reply with the one word REDWING.",
+        "REDWING",
+    ),
+];
+
+/// The texts of the user turns of the transcript at `path` from the
+/// byte `from` on.
+fn user_turns(path: &str, from: u64) -> Vec<String> {
+    let bytes = std::fs::read(path).unwrap_or_default();
+    let from = usize::try_from(from).unwrap_or(usize::MAX).min(bytes.len());
+    String::from_utf8_lossy(&bytes[from..])
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|record| record["type"] == "user")
+        .filter_map(|record| text(&record["message"]["content"]))
+        .collect()
+}
+
+/// The row of a pane's screen that holds the prompt's input, `❯`, the
+/// last such row.
+fn prompt_row(screen: &str) -> Option<&str> {
+    screen
+        .lines()
+        .rev()
+        .find(|row| row.trim_start().starts_with('❯'))
+}
+
+#[test]
+fn a_standing_roles_session_takes_a_batch_through_its_deliver_part_its_draft_left_as_typed() {
+    // 54, 193, 214, 215, C.4; record 0069: the standing role `w/ops`,
+    // whose kind's one stage is a conversation that hibernates, is woken,
+    // and its talk's Claude Code session reads its inbox and waits. Words
+    // are typed into its input and not submitted. Two messages for `w/ops`
+    // then reach the session through flume's plugin's deliver part, its
+    // hooks module running `flume hook deliver` while the session waits
+    // and submitting what it prints by `$.prompt.submit`, as the person's
+    // words: flume types nothing into the pane, each message is recorded
+    // handed to `w/ops` by `message`, and the session answers each. The
+    // words typed are in no turn, and the session's input holds them as
+    // typed once it answered.
+    let live = Live::with_host("live-deliver", |walk| {
+        desk_source(walk);
+        "\n[streams.w]\npool = \"live\"\n".into()
+    });
+    live.walk.flume(&["kinds", "lock", "--host", "acme/desk@1"]);
+    live.walk.flume(&["wake", "w/ops"]);
+    let place = flume::profiles::place::git_worktree::location(
+        &live.walk.repository.name(),
+        "desk--w-ops",
+        Some(&live.walk.home().join("data/flume")),
+    )
+    .expect("the standing role's location");
+    live.until(&place, "its talk begun", 5, |status| {
+        status["agent"]["started"] == "yes"
+    });
+    let start = live.live_start(&place);
+    let started = Record::at(&live.folder(&place), &start.identity)
+        .started()
+        .expect("the talk's started ack");
+    live.until(
+        &place,
+        "its talk waiting after its first prompt",
+        5,
+        |status| {
+            status["agent"]["state"] == "waiting"
+                && !user_turns(&started.transcript_path, started.from).is_empty()
+        },
+    );
+
+    let name = herdr_name(&start.identity);
+    let (socket, pane) = live
+        .sessions()
+        .into_iter()
+        .find_map(|socket| {
+            let agent = live.herdr_at(&socket, &["agent", "get", &name]);
+            let pane = agent["agent"]["pane_id"].as_str()?.to_string();
+            Some((socket, pane))
+        })
+        .unwrap_or_else(|| panic!("herdr holds no agent {name}"));
+    live.herdr_at(&socket, &["pane", "send-text", &pane, DRAFT]);
+    let began = Instant::now();
+    while !prompt_row(&live.screen_at(&socket, &pane)).is_some_and(|row| row.contains(DRAFT)) {
+        assert!(
+            began.elapsed() < Duration::from_secs(30),
+            "the talk's input never held the draft:\n{}",
+            live.screen_at(&socket, &pane)
+        );
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    let typed = user_turns(&started.transcript_path, started.from).len();
+
+    let keys: Vec<String> = MESSAGES
+        .iter()
+        .map(|(words, _)| {
+            let messaged = live.walk.flume(&["message", "w/ops", words]);
+            messaged["messaged"]["key"]
+                .as_str()
+                .unwrap_or_else(|| panic!("no message's key: {messaged}"))
+                .to_string()
+        })
+        .collect();
+    live.until(&place, "both messages answered", 5, |status| {
+        let turns = user_turns(&started.transcript_path, started.from);
+        let after = turns.get(typed..).unwrap_or_default().join("\n");
+        let answered = records(&started.transcript_path)
+            .iter()
+            .filter(|record| record["type"] == "assistant")
+            .filter_map(|record| text(&record["message"]["content"]))
+            .collect::<Vec<_>>()
+            .join("\n");
+        status["agent"]["state"] == "waiting"
+            && MESSAGES
+                .iter()
+                .all(|(words, word)| after.contains(words) && answered.contains(word))
+    });
+
+    let turns = user_turns(&started.transcript_path, started.from);
+    assert!(
+        turns.iter().all(|turn| !turn.contains(DRAFT)),
+        "the draft was submitted: {turns:?}"
+    );
+    let screen = live.screen_at(&socket, &pane);
+    assert!(
+        prompt_row(&screen).is_some_and(|row| row.contains(DRAFT)),
+        "the talk's input holds the draft no longer:\n{screen}"
+    );
+    let host = live.walk.host();
+    let ops = host["addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|address| address["address"] == "w/ops")
+        .unwrap_or_else(|| panic!("status names no w/ops: {host}"));
+    for key in &keys {
+        let message = ops["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|message| message["key"] == key.as_str())
+            .unwrap_or_else(|| panic!("no message {key} at w/ops: {ops}"));
+        assert_eq!(
+            message["handovers"].as_array().map(|handed| handed
+                .iter()
+                .map(|one| one["by"].clone())
+                .collect::<Vec<_>>()),
+            Some(vec![json!("message")]),
+            "{message}"
         );
     }
 }
