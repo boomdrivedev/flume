@@ -1,5 +1,5 @@
 //! Claude Code's own settings (195, 196, C.4; design 6, 9): the keys of
-//! 2.1.296's settings another of flume's settings, the account or a
+//! 2.1.322's settings another of flume's settings, the account or a
 //! person owns, each by its path with its owner, which the core refuses
 //! where a table's `settings` gives one and leaves out of a named file;
 //! and the file the command lists the agent's resolved keys in, one JSON
@@ -34,7 +34,7 @@ const SIGN_IN: &str = "the account's sign-in";
 /// agent may do, which flume never gives (34; core.12).
 const PERSON: &str = "a person, who alone accepts the warning it records";
 
-/// Each key 2.1.296's settings hold that the profile reserves, by its
+/// Each key 2.1.322's settings hold that the profile reserves, by its
 /// path, with its owner and its declaration in the release's settings
 /// schema past its name, through the opening of its description: the
 /// account's environment, flume's model, effort and mode, the account's
@@ -45,7 +45,7 @@ const RESERVED: [(&str, &str, &str); 14] = [
     (
         "env",
         ACCOUNT,
-        "()=>Ae(()=>Lg()).describe(\"Environment variables to set for Claude Code sessions\")",
+        "()=>Ke(()=>d_()).describe(\"Environment variables to set for Claude Code sessions\")",
     ),
     (
         "model",
@@ -55,12 +55,12 @@ const RESERVED: [(&str, &str, &str); 14] = [
     (
         "effortLevel",
         "flume's `effort`",
-        "()=>U([\"low\",\"medium\",\"high\",\"xhigh\"]).optional().catch(void 0).describe(\"Persisted effort level for supported models.\")",
+        "()=>B([\"low\",\"medium\",\"high\",\"xhigh\"]).optional().catch(void 0).describe(\"Persisted effort level for supported models.\")",
     ),
     (
         "permissions.defaultMode",
         "flume's `mode`",
-        "pa(rh,U([...CH,...Ho(e)])).optional().describe(\"Default permission mode when Claude Code needs access",
+        "sl(ZS,B([...eN,...Nr(e)])).optional().describe(\"Default permission mode when Claude Code needs access",
     ),
     (
         "apiKeyHelper",
@@ -90,7 +90,7 @@ const RESERVED: [(&str, &str, &str); 14] = [
     (
         "forceLoginMethod",
         SIGN_IN,
-        "()=>U([\"claudeai\",\"console\",\"gateway\"]).optional().catch(void 0).describe('Force a specific login method",
+        "()=>B([\"claudeai\",\"console\",\"gateway\"]).optional().catch(void 0).describe('Force a specific login method",
     ),
     (
         "forceLoginOrgUUID",
@@ -100,17 +100,17 @@ const RESERVED: [(&str, &str, &str); 14] = [
     (
         "disableAllHooks",
         "flume's plugin",
-        "()=>H().optional().describe(\"Disable all hooks and statusLine execution",
+        "()=>I().optional().describe(\"Disable all hooks and statusLine execution",
     ),
     (
         "skipDangerousModePermissionPrompt",
         PERSON,
-        "()=>H().optional().describe(\"Whether the user has accepted the bypass permissions mode dialog\")",
+        "()=>I().optional().describe(\"Whether the user has accepted the bypass permissions mode dialog\")",
     ),
     (
         "skipAutoPermissionPrompt",
         PERSON,
-        "H().optional().describe(\"Whether the user has accepted the auto mode opt-in dialog\")",
+        "I().optional().describe(\"Whether the user has accepted the auto mode opt-in dialog\")",
     ),
 ];
 
@@ -141,7 +141,7 @@ pub fn text(own: &BTreeMap<String, Value>) -> String {
     text
 }
 
-/// The source fragments of 2.1.296 the way rests on, each named and as
+/// The source fragments of 2.1.322 the way rests on, each named and as
 /// the release's program holds it: the option of one value that names a
 /// settings file or JSON, its sources' order with the flag's after the
 /// user's, the project's and the local settings, the merge that joins a
@@ -163,7 +163,7 @@ pub fn fragments() -> Vec<(&'static str, String)> {
         ),
         (
             "the merge joining a source's lists with those beneath it",
-            "if(Array.isArray(e)&&Array.isArray(n)){if(s===\"fallbackModel\")return n;return D([...e,...n])}".into(),
+            "if(Array.isArray(e)&&Array.isArray(n)){if(r===\"fallbackModel\")return n;return L([...e,...n])}".into(),
         ),
     ];
     fragments.extend(RESERVED.iter().map(|(key, _, schema)| {
@@ -199,21 +199,21 @@ mod tests {
             [
                 r#""--settings <file-or-json>","Path to a settings JSON file or a JSON string to load additional settings from""#,
                 r#"return["userSettings","projectSettings","localSettings","flagSettings","policySettings"]"#,
-                r#"if(Array.isArray(e)&&Array.isArray(n)){if(s==="fallbackModel")return n;return D([...e,...n])}"#,
-                r#"env:()=>Ae(()=>Lg()).describe("Environment variables to set for Claude Code sessions")"#,
+                r#"if(Array.isArray(e)&&Array.isArray(n)){if(r==="fallbackModel")return n;return L([...e,...n])}"#,
+                r#"env:()=>Ke(()=>d_()).describe("Environment variables to set for Claude Code sessions")"#,
                 r#"model:()=>o().optional().describe("Override the default model used by Claude Code")"#,
-                r#"effortLevel:()=>U(["low","medium","high","xhigh"]).optional().catch(void 0).describe("Persisted effort level for supported models.")"#,
-                r#"defaultMode:pa(rh,U([...CH,...Ho(e)])).optional().describe("Default permission mode when Claude Code needs access"#,
+                r#"effortLevel:()=>B(["low","medium","high","xhigh"]).optional().catch(void 0).describe("Persisted effort level for supported models.")"#,
+                r#"defaultMode:sl(ZS,B([...eN,...Nr(e)])).optional().describe("Default permission mode when Claude Code needs access"#,
                 r#"apiKeyHelper:()=>o().optional().describe("Path to a script that outputs authentication values")"#,
                 r#"awsAuthRefresh:()=>o().optional().describe("Path to a script that refreshes AWS authentication")"#,
                 r#"awsCredentialExport:()=>o().optional().describe("Path to a script that exports AWS credentials")"#,
                 r#"gcpAuthRefresh:()=>o().optional().describe("Command to refresh GCP authentication"#,
                 r#"otelHeadersHelper:()=>o().optional().describe("Path to a script that outputs OpenTelemetry headers")"#,
-                r#"forceLoginMethod:()=>U(["claudeai","console","gateway"]).optional().catch(void 0).describe('Force a specific login method"#,
+                r#"forceLoginMethod:()=>B(["claudeai","console","gateway"]).optional().catch(void 0).describe('Force a specific login method"#,
                 r#"forceLoginOrgUUID:()=>Ue([o(),A(o())]).optional().describe("Organization UUID to require for OAuth login."#,
-                r#"disableAllHooks:()=>H().optional().describe("Disable all hooks and statusLine execution"#,
-                r#"skipDangerousModePermissionPrompt:()=>H().optional().describe("Whether the user has accepted the bypass permissions mode dialog")"#,
-                r#"skipAutoPermissionPrompt:H().optional().describe("Whether the user has accepted the auto mode opt-in dialog")"#,
+                r#"disableAllHooks:()=>I().optional().describe("Disable all hooks and statusLine execution"#,
+                r#"skipDangerousModePermissionPrompt:()=>I().optional().describe("Whether the user has accepted the bypass permissions mode dialog")"#,
+                r#"skipAutoPermissionPrompt:I().optional().describe("Whether the user has accepted the auto mode opt-in dialog")"#,
                 "Attribution text for git commits, including any trailers. Empty string hides attribution.",
                 "Attribution text for pull request descriptions. Empty string hides attribution.",
             ]

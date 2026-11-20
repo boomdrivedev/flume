@@ -6,7 +6,7 @@
 //! reads the report here, keeps it beside the start's record with the
 //! time it ran ([`Record::keep_windows`]), and has the core take it as the
 //! account's reading; the profile's `windows` reads it back. Every field
-//! is checked against the engine types the pinned Claude Code 2.1.296
+//! is checked against the engine types the pinned Claude Code 2.1.322
 //! writes, `plugins/claude/engine-types/claude-code/index.d.ts`:
 //! `SessionRateLimit`'s `kind`, `percentUsed`, from 0 to 100 and past it
 //! for an exceeded spend limit, and `resetsAt`, ISO 8601.

@@ -1,6 +1,6 @@
 //! The agent profile for Claude Code (C.4; design 14; record 0016): the
 //! agent seam's scenarios against it over fixture transcripts and hook
-//! records of Claude Code 2.1.296, the release `devenv.nix` pins; the
+//! records of Claude Code 2.1.322, the release `devenv.nix` pins; the
 //! command for a code stage, its instructions in a file of the start's
 //! own, and for a stage in a mode; the command for a stage with no
 //! effort and at `xhigh`, the five efforts it takes and two the release
@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// The fixtures, as Claude Code 2.1.296 writes them.
+/// The fixtures, as Claude Code 2.1.322 writes them.
 pub fn fixture(name: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/profiles/fixtures/claude")
@@ -56,7 +56,7 @@ pub fn fixture(name: &str) -> String {
 const SESSION: &str = "4e3c05c8-51c4-4449-8577-4f7038e394bf";
 
 /// The folder under a home's `projects` the harness's transcripts are in,
-/// one as 2.1.296 names a place's: the profile reads the names a started
+/// one as 2.1.322 names a place's: the profile reads the names a started
 /// ack gives, and computes none.
 const PROJECT: &str = "-repository-places-fix--one";
 
@@ -120,7 +120,7 @@ fn live_process(pid: u32) -> LiveProcess {
     }
 }
 
-/// When the process `pid` started, as 2.1.296 records it in `procStart`,
+/// When the process `pid` started, as 2.1.322 records it in `procStart`,
 /// `ps -o lstart=`'s words under `LC_ALL=C` and `TZ=UTC`.
 fn proc_start(pid: u32) -> String {
     live::proc_start(live_process(pid).started).expect("the start in words")
@@ -182,7 +182,7 @@ impl Harness {
         child.wait().expect("the process waited on");
     }
 
-    /// `<home>/sessions/<pid>.json` as 2.1.296 writes it for the process
+    /// `<home>/sessions/<pid>.json` as 2.1.322 writes it for the process
     /// `pid` running `session`, its `procStart` as given, none left out.
     fn session_record(
         &self,
@@ -426,13 +426,13 @@ impl AgentHarness for Harness {
             "type": "assistant",
             "isSidechain": false,
             "message": {"role": "assistant", "type": "message", "content": [{"type": "text", "text": words}]},
-            "version": "2.1.296",
+            "version": "2.1.322",
         });
         append(&self.transcript(identity), &format!("{line}\n"));
     }
 
     /// The StopFailure hook recorded `rate_limit` and a session limit's
-    /// words, written as 2.1.296 builds them, at 13:10 UTC on 29 October
+    /// words, written as 2.1.322 builds them, at 13:10 UTC on 29 October
     /// 2026; the reset they name is 15:00 that day.
     fn hit_usage_limit(&self, identity: &Identity) -> Seconds {
         self.record(identity)
@@ -461,7 +461,7 @@ impl AgentHarness for Harness {
             .expect("the word");
     }
 
-    /// The four as the profile maps them, and 2.1.296's own six.
+    /// The four as the profile maps them, and 2.1.322's own six.
     fn modes(&self) -> Modes {
         Modes {
             four: BTreeMap::from([
@@ -553,7 +553,7 @@ impl AgentHarness for Harness {
         }
     }
 
-    /// 2.1.296's five `--effort` words, and `CLAUDE_CODE_EFFORT_LEVEL`
+    /// 2.1.322's five `--effort` words, and `CLAUDE_CODE_EFFORT_LEVEL`
     /// read over them (197, C.4).
     fn efforts(&self) -> Efforts {
         Efforts {
@@ -634,8 +634,9 @@ fn the_command_for_a_code_stage() {
     // and the instructions, in a file of the start's own beside its record
     // holding them as given, newlines and all, which no argument may hold
     // under herdr (148, C.5), the four FLUME_* words over its account's
-    // environment, no `--permission-mode` where the settings give no mode,
-    // and nothing of the caller's session (29, 32, 88, 144, 162, C.4).
+    // environment and `FLUME_DELIVER`, since the pinned release offers
+    // deliver, no `--permission-mode` where the settings give no mode, and
+    // nothing of the caller's session (29, 32, 88, 144, 162, 215, C.4).
     let harness = Harness::new();
     let instructions = "Keep each commit small.\n\n- **Before you finish.** List each decision.\n";
     let settings = Settings {
@@ -701,6 +702,7 @@ fn the_command_for_a_code_stage() {
             ("FLUME_SECRET".into(), "s3cret".into()),
             ("FLUME_PLACE".into(), harness.place().location),
             ("FLUME_STAGE".into(), "code".into()),
+            ("FLUME_DELIVER".into(), "1".into()),
         ]),
         "the environment holds the account's and flume's words alone"
     );
@@ -836,7 +838,7 @@ fn the_command_for_a_stage_at_xhigh() {
 
 #[test]
 fn each_of_the_five_and_two_the_release_reads_otherwise() {
-    // The profile takes 2.1.296's five `--effort` words and refuses `med`
+    // The profile takes 2.1.322's five `--effort` words and refuses `med`
     // and `ultracode`, which the release reads as `medium` and `xhigh`,
     // each naming it, `claude` and the five; it names the variable the
     // release reads over `--effort` (197, C.4).
@@ -857,7 +859,7 @@ fn each_of_the_five_and_two_the_release_reads_otherwise() {
 #[test]
 fn the_profile_names_claude_config_dir_as_its_home() {
     // The profile names `CLAUDE_CONFIG_DIR` as the variable whose value
-    // is an account's configuration home, the folder 2.1.296 keeps its
+    // is an account's configuration home, the folder 2.1.322 keeps its
     // settings and sign-in in (56, C.4).
     let seam = Harness::new().seam;
     assert_eq!(seam.home_variable(), Some("CLAUDE_CONFIG_DIR"));
@@ -985,7 +987,7 @@ fn the_command_for_a_stage_with_none() {
 
 #[test]
 fn each_reserved_key() {
-    // Each key 2.1.296's settings hold that another setting, the account
+    // Each key 2.1.322's settings hold that another setting, the account
     // or a person owns, `permissions.defaultMode` by its path, with its
     // owner (34, 144, 162, 172, 195, 197).
     let reserved: Vec<(String, String)> = Harness::new()
@@ -1316,7 +1318,7 @@ fn a_repositorys_tagline_written_as_given() {
 
 #[test]
 fn each_of_the_four() {
-    // Each of flume's four maps to the one choice of 2.1.296's that means
+    // Each of flume's four maps to the one choice of 2.1.322's that means
     // it (169, C.4).
     let seam = Harness::new().seam;
     let mapped: Vec<String> = Mode::ALL
@@ -1359,7 +1361,7 @@ fn its_own_value_under_its_name() {
 
 #[test]
 fn the_mode_read_back() {
-    // 2.1.296 reports `--permission-mode manual` as `default`: the profile
+    // 2.1.322 reports `--permission-mode manual` as `default`: the profile
     // reads it back as `manual`, and every other choice as itself (161,
     // C.4).
     assert_eq!(Harness::new().seam.mode_read_back(), Offered::Offered);
@@ -1576,7 +1578,7 @@ fn a_prompt_queued_while_the_agent_worked() {
 
 #[test]
 fn a_prompt_inside_paste_tags_is_the_prompt_sent() {
-    // Claude Code 2.1.296 may submit a pasted prompt inside paste tags
+    // Claude Code 2.1.322 may submit a pasted prompt inside paste tags
     // carrying a four-hex-digit id: the prompt is compared with them taken
     // off, and text that only looks like a tag stays (89; record 0016).
     let sent = "Fix the parser.\n\nCommit it.";
@@ -1673,7 +1675,7 @@ fn a_question_answered_in_the_transcript_is_no_longer_asked() {
 
 #[test]
 fn the_trust_screen() {
-    // The command names the folder-trust dialog of Claude Code 2.1.296 by
+    // The command names the folder-trust dialog of Claude Code 2.1.322 by
     // a line its screen shows, the mark of the choice in focus and the
     // keys that move and confirm it: the dialog lists "No, exit" first
     // and focused, with or without the warning that the folder's settings
@@ -1698,8 +1700,8 @@ fn the_trust_screen() {
     assert_eq!(trust.next, TRUST_NEXT);
     assert_eq!(trust.confirm, TRUST_CONFIRM);
     for name in [
-        "trust-screen-2.1.296.txt",
-        "trust-screen-settings-2.1.296.txt",
+        "trust-screen-2.1.322.txt",
+        "trust-screen-settings-2.1.322.txt",
     ] {
         let screen = fixture(name);
         let yes = screen
@@ -2193,7 +2195,7 @@ fn a_session_record_and_its_process() {
 fn a_reused_process_id() {
     // The record names a `pid` the host runs, started at another time
     // than its `procStart`: live answers none. A record with no
-    // `procStart` counts where its process runs, as 2.1.296 reads its own
+    // `procStart` counts where its process runs, as 2.1.322 reads its own
     // (207).
     let harness = Harness::new();
     let who = identity("talk");

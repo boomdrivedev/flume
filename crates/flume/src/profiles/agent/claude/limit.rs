@@ -1,4 +1,4 @@
-//! A usage limit read from the words Claude Code 2.1.296 writes for one
+//! A usage limit read from the words Claude Code 2.1.322 writes for one
 //! (151, 146, C.4): the failure's `error` is `rate_limit` and its words
 //! open as one of the usage-limit messages that release itself
 //! recognizes, its own list of their openings; the reset is the words'
@@ -24,7 +24,7 @@ use chrono_tz::Tz;
 /// apart.
 pub const RATE_LIMIT: &str = "rate_limit";
 
-/// The openings of the usage-limit messages, as 2.1.296's own list holds
+/// The openings of the usage-limit messages, as 2.1.322's own list holds
 /// them, in its order.
 pub const OPENINGS: [&str; 12] = [
     "You've hit your",
@@ -54,7 +54,7 @@ const YOUR: &str = "your ";
 /// What joins a date to its time where the reset is more than a day off.
 const AT: &str = " at ";
 
-/// The source fragments of 2.1.296 the reading rests on, each named and
+/// The source fragments of 2.1.322 the reading rests on, each named and
 /// as the release's program holds it: its list of the openings, the
 /// template of the "You've hit your" messages, the reset's parts, the
 /// zone its reset formatter puts after the time, and the formatter's
@@ -67,35 +67,35 @@ pub fn fragments() -> Vec<(&'static str, String)> {
     vec![
         (
             "the list of the usage-limit messages' openings",
-            format!("var yCr=[{}]", openings.join(",")),
+            format!("var fMo=[{}]", openings.join(",")),
         ),
         (
             "the template of the \"You've hit your\" messages",
-            "`You've hit your ${e}${r}${h}`".to_string(),
+            "`You've hit your ${e}${n}${d}`".to_string(),
         ),
         (
             "the reset's part of the words",
-            "` \\xB7 resets ${y}`".to_string(),
+            "` \\xB7 resets ${h}`".to_string(),
         ),
         (
             "the part naming the plan limit's reset where a budget is hit",
-            "` \\xB7 your ${R.limitName} resets ${R.resetTime}`".to_string(),
+            "` \\xB7 your ${w.limitName} resets ${w.resetTime}`".to_string(),
         ),
         (
             "the zone after the reset's time",
-            "` (${s??zIs()})`".to_string(),
+            "` (${t??Uca()})`".to_string(),
         ),
         (
             "a date where the reset is more than a day off",
-            "i=(o.getTime()-c.getTime())/3600000;if(n||i>24){".to_string(),
+            "c=(u.getTime()-o.getTime())/3600000;if(r||c>24){".to_string(),
         ),
         (
             "the date and time's options, the year only where it is not the clock's",
-            "{month:\"short\",day:\"numeric\",hour:r?\"numeric\":void 0,minute:!r||m===0?void 0:\"2-digit\",hour12:r?!0:void 0,timeZone:s};if(f!==v(c,s).year)l.year=\"numeric\";return o.toLocaleString(\"en-US\",l).replace(/[ \\u202f]([AP]M)/i,(g,a)=>a.toLowerCase())+u}".to_string(),
+            "{month:\"short\",day:\"numeric\",hour:s?\"numeric\":void 0,minute:!s||l===0?void 0:\"2-digit\",hour12:s?!0:void 0,timeZone:t};if(d!==Re(o,t).year)g.year=\"numeric\";return u.toLocaleString(\"en-US\",g).replace(/[ \\u202f]([AP]M)/i,(A,b)=>b.toLowerCase())+a}".to_string(),
         ),
         (
             "the time of day's options",
-            "return o.toLocaleTimeString(\"en-US\",{hour:\"numeric\",minute:m===0?void 0:\"2-digit\",hour12:!0,timeZone:s}).replace(/[ \\u202f]([AP]M)/i,(l,p)=>p.toLowerCase())+u}".to_string(),
+            "return u.toLocaleTimeString(\"en-US\",{hour:\"numeric\",minute:l===0?void 0:\"2-digit\",hour12:!0,timeZone:t}).replace(/[ \\u202f]([AP]M)/i,(g,p)=>p.toLowerCase())+a}".to_string(),
         ),
     ]
 }
@@ -107,7 +107,7 @@ pub fn usage_limit(error: &str, words: &str) -> bool {
 
 /// The reset the words name by the host's clock, read in the zone they
 /// name from `at`, when the hook ran; none where they name none, name
-/// one in a form 2.1.296 does not write, or name a zone `chrono-tz` does
+/// one in a form 2.1.322 does not write, or name a zone `chrono-tz` does
 /// not know (146).
 pub fn reset(words: &str, at: u64) -> Option<u64> {
     let part = words.split(PART).find_map(|part| {
@@ -198,7 +198,7 @@ mod tests {
         u64::try_from(moment.timestamp()).expect("after 1970")
     }
 
-    /// The words 2.1.296 builds as `You've hit your ${limit}${" · resets "
+    /// The words 2.1.322 builds as `You've hit your ${limit}${" · resets "
     /// + when}${" · progress saved"?}`.
     fn hit(limit: &str, reset: Option<&str>, saved: bool) -> String {
         let reset = reset
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn a_date_joined_by_a_comma() {
-        // A form 2.1.296 does not write: no reset, so an hour (146).
+        // A form 2.1.322 does not write: no reset, so an hour (146).
         let words = hit("weekly limit", Some("Nov 2, 3:30pm (UTC)"), true);
         assert!(usage_limit(RATE_LIMIT, &words));
         assert_eq!(reset(&words, at("UTC", 2026, 10, 29, 9, 0)), None);
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn the_openings_fragment_is_the_releases_list() {
         let (_, list) = &fragments()[0];
-        assert!(list.starts_with("var yCr=[\"You've hit your\",\"You've reached your\","));
+        assert!(list.starts_with("var fMo=[\"You've hit your\",\"You've reached your\","));
         assert!(list.contains("\"Your org is out of usage \\xB7 add funds to continue\""));
         assert!(list.ends_with("\"Your seat type doesn't include extra usage\"]"));
     }

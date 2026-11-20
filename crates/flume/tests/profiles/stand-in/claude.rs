@@ -1,6 +1,6 @@
 //! The stand-in for Claude Code in the walkthroughs (design 18): the
 //! program the printed command, or herdr's agent start, runs as `claude`,
-//! first on the walkthrough's `PATH`, in the place. It acts as the pinned Claude Code, 2.1.296, acts
+//! first on the walkthrough's `PATH`, in the place. It acts as the pinned Claude Code, 2.1.322, acts
 //! for flume's plugin: it writes a transcript in that release's shape, runs
 //! the hooks the plugin's `hooks/hooks.json` names under `--plugin-dir`, as
 //! that release runs them (the exec form with no shell, the hook's input on
@@ -140,6 +140,20 @@
 //! a four-hex-digit id, inside the paste tags that release wraps a pasted
 //! prompt in where the account's features turn them on.
 //!
+//! Where its session's environment names `FLUME_PLACE`, `FLUME_AGENT` and
+//! `FLUME_DELIVER` and its plugin holds the hooks module, it runs the
+//! module's deliver part as that release runs the module: `flume hook
+//! deliver`, by the binary the module names, at the session's start, at
+//! each turn's end where another run follows, and every ten seconds while
+//! it waits for a prompt in its terminal, each run bounded at ten seconds;
+//! what a run that exits 0 prints is the next run's prompt, the person's
+//! own words and no paste, and what was typed into its terminal and not
+//! yet submitted stays there, as that release's prompt box keeps a draft
+//! (54, 215, C.4). It logs each such prompt as `took the prompt`, after
+//! `the plugin's module submitted what flume hook deliver printed` and,
+//! where its input holds a draft, `its input still holds: <the draft as
+//! JSON>`.
+//!
 //! A prompt UserPromptSubmit blocked is held back, as that release holds
 //! it back: no act is made and no turn taken, and the session ends.
 //! Otherwise the turn ends: Stop, once more with `stop_hook_active` where
@@ -161,7 +175,17 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The release whose shape the transcript takes.
-const VERSION: &str = "2.1.296";
+const VERSION: &str = "2.1.322";
+
+/// How often the plugin's module asks for its deliveries while no turn
+/// runs, as its `EVERY_MS` says, and how long one run of its hook may
+/// take, as its `RUN_MS` says.
+const DELIVER_EVERY: Duration = Duration::from_secs(10);
+const DELIVER_RUN: Duration = Duration::from_secs(10);
+
+/// The variables naming a session flume started whose agent takes its
+/// deliveries itself, as the plugin's module reads them.
+const DELIVERS: [&str; 3] = ["FLUME_PLACE", "FLUME_AGENT", "FLUME_DELIVER"];
 
 /// The events whose input that release builds with the session's mode.
 const MODED: [&str; 4] = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"];
@@ -312,9 +336,20 @@ static LOG: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 /// The terminal the session reads its typed prompts from: its standard
 /// input, where that is a terminal, read a key at a time, unechoed, ctrl+c
 /// a key rather than a signal and enter its own key, its settings given
-/// back when the session ends.
+/// back when the session ends. What is typed and not yet submitted stays
+/// in its input, whatever the session takes meanwhile, as that release's
+/// prompt box keeps a person's draft.
 struct Typed {
     saved: libc::termios,
+    line: std::cell::RefCell<Vec<u8>>,
+}
+
+/// What the terminal gave within a wait: a prompt submitted, its input
+/// ended, or nothing yet.
+enum Keys {
+    Submitted(String),
+    Ended,
+    Waiting,
 }
 
 impl Typed {
@@ -335,29 +370,85 @@ impl Typed {
         keys.c_cc[libc::VTIME] = 0;
         // SAFETY: standard input's descriptor, and the settings to take.
         unsafe { libc::tcsetattr(0, libc::TCSANOW, &keys) };
-        Some(Typed { saved })
+        Some(Typed {
+            saved,
+            line: std::cell::RefCell::new(vec![]),
+        })
     }
 
     /// The next prompt typed: the keys up to the enter that submits it,
     /// those before a ctrl+c cleared, an enter with nothing typed taking
     /// nothing; none once the input ends.
     fn next(&self) -> Option<String> {
-        let mut line: Vec<u8> = vec![];
-        let mut stdin = std::io::stdin().lock();
-        let mut key = [0u8; 1];
         loop {
-            match stdin.read(&mut key) {
-                Ok(0) => return None,
-                Ok(_) => match key[0] {
-                    b'\r' if line.is_empty() => {}
-                    b'\r' => return Some(String::from_utf8_lossy(&line).into_owned()),
-                    0x03 => line.clear(),
-                    byte => line.push(byte),
-                },
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(_) => return None,
+            match self.within(None) {
+                Keys::Submitted(prompt) => return Some(prompt),
+                Keys::Ended => return None,
+                Keys::Waiting => {}
             }
         }
+    }
+
+    /// The keys typed within `wait`, or until a prompt is submitted where
+    /// it is none: the prompt submitted, the input ended, or nothing yet,
+    /// what was typed kept for the next wait. Each key is read from the
+    /// descriptor itself, so no key waits in a buffer the wait cannot see.
+    fn within(&self, wait: Option<Duration>) -> Keys {
+        let until = wait.map(|wait| Instant::now() + wait);
+        let mut key = [0u8; 1];
+        loop {
+            if let Some(until) = until {
+                let left = until.saturating_duration_since(Instant::now());
+                let mut ready = libc::pollfd {
+                    fd: 0,
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                let millis = libc::c_int::try_from(left.as_millis()).unwrap_or(libc::c_int::MAX);
+                // SAFETY: one `pollfd` for standard input, read for `millis`.
+                match unsafe { libc::poll(&mut ready, 1, millis) } {
+                    0 => return Keys::Waiting,
+                    n if n < 0 => {
+                        if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
+                        {
+                            continue;
+                        }
+                        return Keys::Ended;
+                    }
+                    _ => {}
+                }
+            }
+            // SAFETY: standard input's descriptor, and one byte to fill.
+            let read = unsafe { libc::read(0, key.as_mut_ptr().cast(), 1) };
+            let read = if read < 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(read)
+            };
+            match read {
+                Ok(0) => return Keys::Ended,
+                Ok(_) => {
+                    let mut line = self.line.borrow_mut();
+                    match key[0] {
+                        b'\r' if line.is_empty() => {}
+                        b'\r' => {
+                            let prompt = String::from_utf8_lossy(&line).into_owned();
+                            line.clear();
+                            return Keys::Submitted(prompt);
+                        }
+                        0x03 => line.clear(),
+                        byte => line.push(byte),
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => return Keys::Ended,
+            }
+        }
+    }
+
+    /// What is typed and not yet submitted.
+    fn draft(&self) -> String {
+        String::from_utf8_lossy(&self.line.borrow()).into_owned()
     }
 }
 
@@ -466,7 +557,7 @@ impl Pane {
 
 /// The prompt as the session submits it: as given, or where
 /// `STAND_IN_PASTE_TAG` names a tag's id, inside the tags Claude Code
-/// 2.1.296 wraps a pasted prompt in where the account's features turn them
+/// 2.1.322 wraps a pasted prompt in where the account's features turn them
 /// on, newlines around them.
 fn submitted(prompt: &str) -> String {
     match std::env::var("STAND_IN_PASTE_TAG") {
@@ -589,6 +680,25 @@ struct Session {
     /// The herdr pane or the Rex block it runs in, if any, to which it
     /// reports its state.
     reporter: Option<Reporter>,
+    /// The binary the plugin's module names, where the session takes its
+    /// deliveries itself: its environment names the three [`DELIVERS`] and
+    /// its plugin holds the module.
+    deliver: Option<PathBuf>,
+    /// Whether the prompt the turn takes was submitted by the plugin's
+    /// module, as the person's own words and no paste.
+    from_module: bool,
+}
+
+/// The binary the module's text names as its `FLUME`, the JSON string
+/// after `const FLUME = `.
+fn module_flume(text: &str) -> Option<PathBuf> {
+    let named = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("const FLUME = "))?;
+    let named = named.trim().strip_suffix(';')?;
+    serde_json::from_str::<String>(named)
+        .ok()
+        .map(PathBuf::from)
 }
 
 impl Session {
@@ -635,6 +745,15 @@ impl Session {
             .and_then(|dir| std::fs::read_to_string(dir.join("hooks/hooks.json")).ok())
             .and_then(|text| serde_json::from_str::<Value>(&text).ok())
             .map_or(Value::Null, |file| file["hooks"].clone());
+        let deliver = plugin
+            .as_ref()
+            .filter(|_| {
+                DELIVERS
+                    .iter()
+                    .all(|name| std::env::var(name).is_ok_and(|value| !value.is_empty()))
+            })
+            .and_then(|dir| std::fs::read_to_string(dir.join("hooks/flume.ts")).ok())
+            .and_then(|text| module_flume(&text));
         Session {
             cwd,
             plugin,
@@ -648,6 +767,8 @@ impl Session {
             resumed: is_resumed,
             records: calls,
             reporter: Reporter::here(),
+            deliver,
+            from_module: false,
         }
     }
 
@@ -707,7 +828,10 @@ impl Session {
             say(&format!("given at its start: {}", json!(context)));
         }
         let mut failed = false;
-        let mut given = prompt;
+        let mut given = prompt.map(|prompt| (prompt, false));
+        if given.is_none() && !runs.is_empty() {
+            given = self.take(typed);
+        }
         for (at, acts) in runs.iter().enumerate() {
             let prompt = match given.take() {
                 Some(prompt) => Some(prompt),
@@ -715,20 +839,105 @@ impl Session {
                     if at == 0 {
                         self.report("idle");
                     }
-                    typed.and_then(Typed::next)
+                    typed.and_then(|typed| self.next_prompt(typed))
                 }
             };
             if prompt.is_none() && at > 0 {
                 break;
             }
-            match self.turn(prompt.as_deref(), acts) {
-                Turn::Ended(acted) => failed |= !acted,
+            self.from_module = prompt.as_ref().is_some_and(|(_, from_module)| *from_module);
+            match self.turn(prompt.as_ref().map(|(prompt, _)| prompt.as_str()), acts) {
+                Turn::Ended(acted) => {
+                    failed |= !acted;
+                    if at + 1 < runs.len() {
+                        given = self.take(typed);
+                    }
+                }
                 Turn::Over => return failed,
             }
         }
         self.hook("SessionEnd", json!({ "reason": "prompt_input_exit" }), None);
         say("session ended");
         failed
+    }
+
+    /// The next prompt, typed into `typed`; or, where the session takes its
+    /// deliveries itself, the words the plugin's module submits at one of
+    /// its idle ticks, every [`DELIVER_EVERY`] while nothing is submitted,
+    /// what is typed kept in the input; with whether the module submitted
+    /// it; none once the input ends.
+    fn next_prompt(&self, typed: &Typed) -> Option<(String, bool)> {
+        if self.deliver.is_none() {
+            return typed.next().map(|prompt| (prompt, false));
+        }
+        loop {
+            match typed.within(Some(DELIVER_EVERY)) {
+                Keys::Submitted(prompt) => return Some((prompt, false)),
+                Keys::Ended => return None,
+                Keys::Waiting => {
+                    if let Some(taken) = self.take(Some(typed)) {
+                        return Some(taken);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The deliver part of the plugin's module, where the session takes its
+    /// deliveries itself: `flume hook deliver` run by the binary the module
+    /// names, in the place, with the session's environment less the
+    /// credentials that release keeps from every process it starts, bounded
+    /// at [`DELIVER_RUN`]; what a run that exits 0 prints, its last
+    /// newlines taken off, is submitted as the person's own words, and a
+    /// run that fails, or prints nothing, submits nothing. What is typed
+    /// into `typed` and not yet submitted stays there.
+    fn take(&self, typed: Option<&Typed>) -> Option<(String, bool)> {
+        let flume = self.deliver.as_ref()?;
+        let mut command = Command::new(flume);
+        command.args(["hook", "deliver"]);
+        for name in WITHHELD {
+            command.env_remove(name);
+        }
+        let mut child = command
+            .current_dir(&self.cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let mut out = child.stdout.take()?;
+        let reading = std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = out.read_to_string(&mut text);
+            text
+        });
+        let began = Instant::now();
+        let code = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status.code(),
+                Ok(None) if began.elapsed() < DELIVER_RUN => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+            }
+        };
+        let printed = reading.join().unwrap_or_default();
+        if code != Some(0) {
+            return None;
+        }
+        let words = printed.trim_end_matches('\n');
+        if words.trim().is_empty() {
+            return None;
+        }
+        say("the plugin's module submitted what flume hook deliver printed");
+        if let Some(draft) = typed.map(Typed::draft).filter(|draft| !draft.is_empty()) {
+            say(&format!("its input still holds: {}", json!(draft)));
+        }
+        Some((words.to_string(), true))
     }
 
     /// The state reported to herdr or Rex where the stand-in runs in a
@@ -747,7 +956,11 @@ impl Session {
             self.report("working");
             say(&format!("took the prompt: {}", json!(prompt)));
             self.prompt = prompt.to_string();
-            let submitted = submitted(prompt);
+            let submitted = if self.from_module {
+                prompt.to_string()
+            } else {
+                submitted(prompt)
+            };
             self.queued(&submitted);
             let answer = self.hook("UserPromptSubmit", json!({ "prompt": submitted }), None);
             if let Some(reason) = answer.blocked {
@@ -795,7 +1008,7 @@ impl Session {
         Turn::Ended(acted)
     }
 
-    /// The turn ended by the API's failure, as 2.1.296 ends one: its words
+    /// The turn ended by the API's failure, as 2.1.322 ends one: its words
     /// written as the synthetic error message, StopFailure run with the
     /// error and the words in place of Stop, and the session ended.
     fn fail(&mut self, failure: &Value) {

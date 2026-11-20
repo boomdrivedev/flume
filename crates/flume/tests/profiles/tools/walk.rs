@@ -901,6 +901,50 @@ pub fn session_limit_after(at: u64) -> (u64, String) {
     )
 }
 
+/// The prompt of the talk of `desk@1`: the inbox read once, then a wait
+/// for what comes later (43, 214).
+pub const DESK_PROMPT: &str = "You are w's ops desk. Read what is pending for you with `flume inbox`, say in one line what it holds, and then wait: what comes for you later reaches you here, and you answer each in one line.\n";
+
+/// The source acme of the walk's host, its kind `desk@1`, whose one stage
+/// `talk` is a conversation that hibernates and lands nothing, and its
+/// roles file declaring `w/ops` the standing role of the walk's
+/// repository in the stream `w`, which the host's configuration declares
+/// and `desk@1` is locked for by the caller (132, 143, 191, 193, 212).
+pub fn desk_source(walk: &Walk) {
+    let config = walk.config_dir();
+    let kinds = config.join("kinds/acme");
+    let dir = kinds.join("desk@1");
+    std::fs::create_dir_all(dir.join("prompts")).expect("the package's folder");
+    std::fs::write(
+        dir.join("kind.toml"),
+        "[kinds.desk]\nversion = 1\nbranch = \"desk\"\nstarts_unready = true\nlands = false\n\n\
+         [[kinds.desk.stages]]\nname = \"talk\"\nprompt = \"prompts/talk.md\"\n\
+         conversation = true\nhibernate = true\nagents = [{}]\n",
+    )
+    .expect("the package's declaration");
+    std::fs::write(dir.join("prompts/talk.md"), DESK_PROMPT).expect("the package's prompt");
+    let roles = config.join("acme-roles.toml");
+    let repository = walk.repository.dir.display().to_string();
+    std::fs::write(
+        &roles,
+        format!(
+            "[roles.\"w/ops\"]\nkind = \"desk\"\nrepositories = [{repository:?}]\n\
+             answers = \"w's live systems\"\n"
+        ),
+    )
+    .expect("acme's roles file");
+    std::fs::create_dir_all(config.join("sources")).expect("the sources folder");
+    std::fs::write(
+        config.join("sources/acme.toml"),
+        format!(
+            "kinds_dir = {:?}\nroles = {:?}\n",
+            kinds.display().to_string(),
+            roles.display().to_string()
+        ),
+    )
+    .expect("acme's source file");
+}
+
 /// The place's stage named `name`, as status gives it.
 pub fn stage<'a>(status: &'a Value, name: &str) -> &'a Value {
     status["stages"]

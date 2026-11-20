@@ -1,4 +1,4 @@
-//! The credentials Claude Code 2.1.296 keeps from every process it
+//! The credentials Claude Code 2.1.322 keeps from every process it
 //! starts (161): its hooks run in the environment its child-environment
 //! builder gives, which drops each of its own list of credential
 //! variables wherever one of them is set, and the memory service's token
@@ -8,11 +8,12 @@
 //! [`fragments`], which a test of the check-tools layer finds byte for
 //! byte in the release the tree pins.
 
-/// The credential variables 2.1.296 keeps from the processes it starts,
+/// The credential variables 2.1.322 keeps from the processes it starts,
 /// its own list in its order with the file-descriptor ones it spreads in
-/// at the second place, then the memory service's token.
-pub const WITHHELD: [&str; 19] = [
+/// at the third place, then the memory service's token.
+pub const WITHHELD: [&str; 20] = [
     "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_SESSIONS_OAUTH_TOKEN",
     "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
     "CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR",
     "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
@@ -33,7 +34,11 @@ pub const WITHHELD: [&str; 19] = [
     "CLAUDE_CODE_MEMORY_API_TOKEN",
 ];
 
-/// How many of [`WITHHELD`], from the second, the release's list of
+/// How many of [`WITHHELD`] the release's list holds before it spreads in
+/// its list of file-descriptor credentials.
+const BEFORE: usize = 2;
+
+/// How many of [`WITHHELD`], from the third, the release's list of
 /// file-descriptor credentials holds.
 const DESCRIPTORS: usize = 5;
 
@@ -46,7 +51,7 @@ fn list(names: &[&str]) -> String {
         .join(",")
 }
 
-/// The source fragments of 2.1.296 the list rests on, each named and as
+/// The source fragments of 2.1.322 the list rests on, each named and as
 /// the release's program holds it: its list of the file-descriptor
 /// credentials, its list of credentials, the memory service's pair, the
 /// set it tests the environment against, the names its builder drops,
@@ -54,41 +59,46 @@ fn list(names: &[&str]) -> String {
 /// the hook runner's environment built on the builder's.
 pub fn fragments() -> Vec<(&'static str, String)> {
     let (own, memory) = WITHHELD.split_at(WITHHELD.len() - 1);
-    let descriptors = &own[1..=DESCRIPTORS];
-    let rest = &own[DESCRIPTORS + 1..];
+    let descriptors = &own[BEFORE..BEFORE + DESCRIPTORS];
+    let rest = &own[BEFORE + DESCRIPTORS..];
     vec![
         (
             "the list of the file-descriptor credentials",
-            format!("ynn=[{}]", list(descriptors)),
+            format!("Hne=[{}]", list(descriptors)),
         ),
         (
             "the list of the credentials kept from children",
-            format!("_nn=[{},...ynn,{}]", list(&own[..1]), list(rest)),
+            format!("uKn=[{},...Hne,{}]", list(&own[..BEFORE]), list(rest)),
         ),
         (
             "the memory service's address and token",
-            format!("Gs=[\"CLAUDE_CODE_MEMORY_API_BASE_URL\",{}]", list(memory)),
+            format!("ls=[\"CLAUDE_CODE_MEMORY_API_BASE_URL\",{}]", list(memory)),
         ),
         (
             "the set the environment is tested against",
-            "var vt=new Set(_nn.map((e)=>e.toUpperCase()))".to_string(),
+            "var K=new Set(uKn.map((n)=>n.toUpperCase()))".to_string(),
         ),
         (
             "the names the child environment drops",
-            "return[..._nn.filter((i)=>!n(i)),...Object.keys(e).filter((i)=>z$e(i.toUpperCase()))"
+            "return[...uKn.filter((r)=>!e(r)),...Object.keys(n).filter((r)=>Rnt(r.toUpperCase()))"
                 .to_string(),
         ),
         (
             "the test that drops the memory service's pair",
-            "return yAr(n)||Hxe(n)||".to_string(),
+            "return EOo(e)||Cqe(e)||".to_string(),
         ),
         (
             "the drop from the child environment",
-            "if(nt.has(f.toUpperCase())||z$e(f.toUpperCase())".to_string(),
+            "if(Ve.has(o.toUpperCase())||Rnt(o.toUpperCase())||K.has(o.toUpperCase())&&!h(o,d)||"
+                .to_string(),
         ),
         (
             "the hook runner's environment",
-            "{...Ss()},...ke,...sVe(h),CLAUDE_PROJECT_DIR:".to_string(),
+            "{...os()},...He,...Xpt(y),CLAUDE_PROJECT_DIR:".to_string(),
+        ),
+        (
+            "the environment an organization's hook inherits, the same builder's",
+            "inherited:{...os()}".to_string(),
         ),
     ]
 }
@@ -102,11 +112,11 @@ mod tests {
         let fragments = fragments();
         assert_eq!(
             fragments[0].1,
-            "ynn=[\"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR\",\"CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR\",\"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR\",\"CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR\",\"CCR_AGENT_PROXY_TOKEN_FILE_DESCRIPTOR\"]"
+            "Hne=[\"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR\",\"CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR\",\"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR\",\"CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR\",\"CCR_AGENT_PROXY_TOKEN_FILE_DESCRIPTOR\"]"
         );
         assert!(
             fragments[1].1.starts_with(
-                "_nn=[\"CLAUDE_CODE_OAUTH_TOKEN\",...ynn,\"CLAUDE_CODE_ARTIFACTS_API_TOKEN\","
+                "uKn=[\"CLAUDE_CODE_OAUTH_TOKEN\",\"CLAUDE_CODE_SESSIONS_OAUTH_TOKEN\",...Hne,\"CLAUDE_CODE_ARTIFACTS_API_TOKEN\","
             ),
             "{}",
             fragments[1].1
@@ -118,7 +128,7 @@ mod tests {
         );
         assert_eq!(
             fragments[2].1,
-            "Gs=[\"CLAUDE_CODE_MEMORY_API_BASE_URL\",\"CLAUDE_CODE_MEMORY_API_TOKEN\"]"
+            "ls=[\"CLAUDE_CODE_MEMORY_API_BASE_URL\",\"CLAUDE_CODE_MEMORY_API_TOKEN\"]"
         );
     }
 }
