@@ -901,7 +901,7 @@ impl TerminalHarness for FakeTerminalHarness {
         Some("ops".into())
     }
 
-    fn received(&self, session: &str) -> Vec<String> {
+    fn received(&self, session: &str, _awaited: usize) -> Vec<String> {
         self.terminal.notices(session)
     }
 
