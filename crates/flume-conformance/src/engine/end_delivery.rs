@@ -64,6 +64,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: an_end_handed_on_once_its_recipient_waits,
         },
         Scenario {
+            name: "end delivery: a watch's settle reads the host's deliveries whole once however many places are pending, its own writes read again from what it wrote, and the next reads them again only once another command wrote them",
+            cites: &["43", "225", "75"],
+            run: a_watch_reads_the_deliveries_once,
+        },
+        Scenario {
             name: "end delivery: a recipient no session holds leaves the end pending, and the settle goes on",
             cites: &["43", "95", "46"],
             run: a_recipient_gone,
@@ -637,6 +642,86 @@ fn an_end_handed_on_once_its_recipient_waits(_: &()) -> Outcome {
         world.terminal.notices("ops").len(),
         1,
         "the notices after the next settle"
+    );
+    Ok(())
+}
+
+/// The times the host's deliveries were read whole since the store's
+/// log was last cleared.
+fn deliveries_read(world: &World) -> usize {
+    world
+        .store
+        .log
+        .calls()
+        .iter()
+        .filter(|call| *call == "read_host the host's deliveries")
+        .count()
+}
+
+/// Three fixes for `ops` delivered while its pane asks, so each end is
+/// pending; once the pane waits, one settle of the watch's records and
+/// hands over every end, reading the host's deliveries whole once, not
+/// once for each place or each act; the watch's next settle, nothing
+/// written since, reads them whole none; and after another command
+/// confirms an end, the next reads them whole once and sends nothing
+/// again (43, 75, 225).
+fn a_watch_reads_the_deliveries_once(_: &()) -> Outcome {
+    let world = World::new();
+    world.terminal.add_session("ops", AgentState::Asking);
+    let names = ["one", "two", "three"];
+    for name in names {
+        let mut fix = launch("fix", name, Some("mend it"));
+        fix.recipients = vec!["ops".into()];
+        fix.hold_submission = true;
+        launched(&world.engine.launch(&fix))?;
+        let id = World::id("fix", name);
+        world.settle(&id);
+        deliver_fix(&world, &id);
+        world.settle(&id);
+    }
+    world.terminal.set_session_state("ops", AgentState::Waiting);
+    world.store.log.clear();
+    world.engine.settle_every(60);
+    let notices = world.terminal.notices("ops");
+    ensure!(
+        names.iter().all(|name| notices
+            .iter()
+            .any(|notice| notice.contains(&format!("fix--{name}")))),
+        "the notices at the watch's settle: {notices:?}"
+    );
+    ensure_eq!(
+        deliveries_read(&world),
+        1,
+        "the host's deliveries read whole by one settle"
+    );
+    world.store.log.clear();
+    world.engine.settle_every(60);
+    ensure_eq!(
+        deliveries_read(&world),
+        0,
+        "the host's deliveries read whole by a settle after none wrote them"
+    );
+    let key = world
+        .delivery_key("fix--one", "stage/code/1/delivered")
+        .ok_or("no delivery of fix--one's end")?;
+    ensure!(
+        matches!(
+            world.engine().confirm("ops", std::slice::from_ref(&key)),
+            Answer::Confirmed { .. }
+        ),
+        "ops confirmed {key}"
+    );
+    world.store.log.clear();
+    world.engine.settle_every(60);
+    ensure_eq!(
+        deliveries_read(&world),
+        1,
+        "the host's deliveries read whole once another command wrote them"
+    );
+    ensure_eq!(
+        world.terminal.notices("ops"),
+        notices,
+        "the notices after the confirmation"
     );
     Ok(())
 }

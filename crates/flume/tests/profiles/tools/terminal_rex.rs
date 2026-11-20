@@ -13,7 +13,7 @@ use flume::profiles::terminal::rex::{
     caller, rex_key, rex_name, Block, Rex, RexKey, NAME, PIECE, RUNTIME_ROOT, SEND_KEY_REFUSES,
 };
 use flume_conformance::engine::world::{kind, stage, World};
-use flume_conformance::scenario::pass_all;
+use flume_conformance::scenario::pass_all_side_by_side;
 use flume_conformance::seams::terminal::{self, TerminalHarness};
 use flume_core::{Answer, Engine};
 use flume_seams::*;
@@ -428,6 +428,10 @@ const BOUND: Duration = Duration::from_secs(3);
 /// the stand-in on a loaded host, short for a program that never reports.
 const START: Duration = Duration::from_secs(20);
 
+/// The bound on the start of a program that never reports, which no
+/// bound sees begin.
+const NEVER_UP_START: Duration = Duration::from_secs(4);
+
 /// A test's own folder for the Rex profile: its state, the stand-in and
 /// the programs beside it, the stand-ins' logs, a scratch repository and
 /// its places' folders.
@@ -554,10 +558,17 @@ impl Fixture {
     /// What the stand-in in `block` took, once it took anything, waiting
     /// up to ten seconds.
     fn got(&self, block: &str) -> Vec<String> {
+        self.got_at_least(block, 1)
+    }
+
+    /// What the stand-in in `block` took, once it took `awaited` inputs
+    /// or within ten seconds where it takes fewer; at once where none is
+    /// awaited.
+    fn got_at_least(&self, block: &str, awaited: usize) -> Vec<String> {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let got = self.kept(block, "got");
-            if !got.is_empty() || Instant::now() >= deadline {
+            if got.len() >= awaited || Instant::now() >= deadline {
                 return got;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -1584,17 +1595,21 @@ fn without(name: &str, leads: &[&str]) -> String {
     .to_string()
 }
 
+/// How many blocks running `cat` the key names are typed into side by
+/// side, each taking its share of them.
+const KEY_BLOCKS: usize = 4;
+
 #[test]
 fn relay_types_each_of_flumes_key_names_into_a_block() {
     // The terminal-profiles scenario "Every key name against the pinned
     // Rex" (222, C.5's Rex relay row at blueprints bf9e16f; core.29): each
     // of flume's named keys, f1 to f12, every printable character of ASCII
     // and é, bare and under each of ctrl+, alt+ and shift+ and their
-    // pairs and all three, typed alone by the relay into a block of the
-    // pinned Rex running `cat`: each key the relay hands `send-key` types
-    // something, a bare character types itself, `alt+` types ESC before
-    // what the key without it types, and `shift+` and a small letter its
-    // capital; each key the relay refuses is named and types nothing. The
+    // pairs and all three, typed alone by the relay into blocks of the
+    // pinned Rex running `cat`, each block its share of them: each key
+    // the relay hands `send-key` types something, a bare character types
+    // itself, `alt+` types ESC before what the key without it types, and
+    // `shift+` and a small letter its capital; each key the relay refuses is named and types nothing. The
     // pinned Rex's own `send-key` still refuses the nineteen and é, types
     // each capital as its small letter, and types each other key the relay
     // refuses as nothing or as that key with a lead dropped. And `cat` reads
@@ -1602,22 +1617,9 @@ fn relay_types_each_of_flumes_key_names_into_a_block() {
     // of `A`, `ctrl+shift+a` and `b`, each refused key named.
     let fixture = Fixture::new();
     let profile = fixture.profile();
-    let who = identity(1);
-    let block = opened(
-        &fixture,
-        &profile,
-        &who,
-        &fixture.command(&[("STAND_IN_CAT", "1")]),
-    );
-    let log = fixture
-        .path("log")
-        .join(block.id.strip_prefix("block:").unwrap_or(&block.id));
-    fs::write(log.join("go"), "").expect("the stand-in told to run cat");
-    let cat = log.join("cat");
-    within("the block's cat did not run", || cat.exists());
-    let mut relay = profile.relay(&who).expect("the block is relayed");
-    let apart = || {
-        rex(&block.socket, &["send", "-b", &block.id, "--", APART]);
+    let handed = |full: &str| {
+        full.parse::<Key>()
+            .is_ok_and(|key| matches!(rex_key(&key), RexKey::Key(_)))
     };
     let leads = [
         "",
@@ -1632,40 +1634,98 @@ fn relay_types_each_of_flumes_key_names_into_a_block() {
     let mut bare: Vec<String> = KeyName::named().iter().map(ToString::to_string).collect();
     bare.extend((0x21u8..0x7f).map(|byte| char::from(byte).to_string()));
     bare.push("\u{e9}".into());
-    let mut steps: Vec<(String, Step)> = vec![];
-    for name in &bare {
-        for lead in leads {
-            let full = format!("{lead}{name}");
+    let names: Vec<String> = bare
+        .iter()
+        .flat_map(|name| leads.iter().map(move |lead| format!("{lead}{name}")))
+        .collect();
+    // The keys are typed into KEY_BLOCKS blocks side by side, each its
+    // own `cat`, as each step is read by what its block's `cat` read.
+    let share = names.len().div_ceil(KEY_BLOCKS);
+    let blocks: Vec<(Identity, Block)> = names
+        .chunks(share)
+        .enumerate()
+        .map(|(index, _)| {
+            let place = format!("fix--keys{index}");
+            let who = identity_of(&place, 1);
+            let block = opened_at(
+                &fixture,
+                &profile,
+                &fixture.place(&place),
+                &who,
+                &fixture.command(&[("STAND_IN_CAT", "1")]),
+                &OpenIn::Own,
+                None,
+            );
+            (who, block)
+        })
+        .collect();
+    let typed_in = |who: &Identity, block: &Block, names: &[String], around: bool| {
+        let log = fixture
+            .path("log")
+            .join(block.id.strip_prefix("block:").unwrap_or(&block.id));
+        fs::write(log.join("go"), "").expect("the stand-in told to run cat");
+        let cat = log.join("cat");
+        within("the block's cat did not run", || cat.exists());
+        let mut relay = profile.relay(who).expect("the block is relayed");
+        let apart = || {
+            rex(&block.socket, &["send", "-b", &block.id, "--", APART]);
+        };
+        let mut steps: Vec<(String, Step)> = vec![];
+        for full in names {
             let key: Key = full.parse().unwrap_or_else(|words| panic!("{words}"));
-            steps.push((full, Step::Relay(relay.typed(&Typed::Keys(vec![key])))));
+            steps.push((
+                full.clone(),
+                Step::Relay(relay.typed(&Typed::Keys(vec![key]))),
+            ));
             apart();
         }
-    }
-    let handed = |full: &str| {
-        full.parse::<Key>()
-            .is_ok_and(|key| matches!(rex_key(&key), RexKey::Key(_)))
+        for full in names.iter().filter(|full| !handed(full)) {
+            let own = try_rex(&block.socket, &["send-key", "-b", &block.id, full]);
+            steps.push((full.clone(), Step::Own(own)));
+            apart();
+        }
+        if around {
+            let keys = |names: &[&str]| {
+                Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect())
+            };
+            for around in [
+                ["a", "?", "b"],
+                ["a", "ctrl+?", "b"],
+                ["A", "ctrl+shift+a", "b"],
+            ] {
+                steps.push((around.join(" "), Step::Relay(relay.typed(&keys(&around)))));
+                apart();
+            }
+        }
+        let typed = read_apart(&cat, steps.len());
+        assert!(
+            matches!(relay.screen(), RelayScreen::Shows { .. }),
+            "the block reads gone once every key was typed"
+        );
+        (steps, typed)
     };
-    let not_handed: Vec<String> = steps
-        .iter()
-        .map(|(full, _)| full.clone())
-        .filter(|full| !handed(full))
-        .collect();
-    for full in not_handed {
-        let own = try_rex(&block.socket, &["send-key", "-b", &block.id, &full]);
-        steps.push((full, Step::Own(own)));
-        apart();
-    }
-    let keys =
-        |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
-    for around in [
-        ["a", "?", "b"],
-        ["a", "ctrl+?", "b"],
-        ["A", "ctrl+shift+a", "b"],
-    ] {
-        steps.push((around.join(" "), Step::Relay(relay.typed(&keys(&around)))));
-        apart();
-    }
-    let typed = read_apart(&cat, steps.len());
+    let (steps, typed): (Vec<(String, Step)>, Vec<Vec<u8>>) = std::thread::scope(|scope| {
+        let typing: Vec<_> = blocks
+            .iter()
+            .zip(names.chunks(share))
+            .enumerate()
+            .map(|(index, ((who, block), names))| {
+                let typed_in = &typed_in;
+                scope.spawn(move || typed_in(who, block, names, index == 0))
+            })
+            .collect();
+        typing
+            .into_iter()
+            .map(|one| {
+                one.join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .fold((vec![], vec![]), |(mut steps, mut typed), (more, read)| {
+                steps.extend(more);
+                typed.extend(read);
+                (steps, typed)
+            })
+    });
     let cannot = |full: &str| format!("{full} is a key Rex 0.1.0-preview.14 cannot type");
     let mut unread = vec![];
     let mut by_send_key: BTreeMap<String, Vec<u8>> = BTreeMap::new();
@@ -1776,10 +1836,6 @@ fn relay_types_each_of_flumes_key_names_into_a_block() {
         }
     }
     assert!(unread.is_empty(), "{unread:#?}");
-    assert!(
-        matches!(relay.screen(), RelayScreen::Shows { .. }),
-        "the block reads gone once every key was typed"
-    );
 }
 
 #[test]
@@ -2566,6 +2622,9 @@ fn a_done_agent_with_nothing_delivered_waits_and_no_settle_ends_it() {
 struct Harness {
     fixture: Fixture,
     seam: Rex,
+    /// The seam with a start bound of [`NEVER_UP_START`], for a program
+    /// that never reports.
+    never_up_seam: Rex,
     caller: Block,
     /// Each server the harness stopped, to wake once it is dropped.
     frozen: std::cell::RefCell<Vec<i32>>,
@@ -2584,6 +2643,7 @@ impl Harness {
             .with_caller(Some(caller.clone()));
         Harness {
             fixture,
+            never_up_seam: seam.clone().with_start_timeout(NEVER_UP_START),
             seam,
             caller,
             frozen: std::cell::RefCell::default(),
@@ -2673,6 +2733,10 @@ impl TerminalHarness for Harness {
         Some(self.fixture.command(&[("STAND_IN_SILENT", "1")]))
     }
 
+    fn never_up_seam(&self) -> &Rex {
+        &self.never_up_seam
+    }
+
     fn makes(&self) -> bool {
         true
     }
@@ -2759,9 +2823,9 @@ impl TerminalHarness for Harness {
         Some(name)
     }
 
-    fn received(&self, session: &str) -> Vec<String> {
+    fn received(&self, session: &str, awaited: usize) -> Vec<String> {
         let block = Block::named(session).expect("a session the profile named");
-        self.fixture.got(&block.id)
+        self.fixture.got_at_least(&block.id, awaited)
     }
 
     fn no_session(&self) -> String {
@@ -2817,9 +2881,18 @@ impl TerminalHarness for Harness {
     }
 }
 
+/// How many of the seam's scenarios run side by side, each on a
+/// Rex server and in a scratch of its own.
+const SIDE_BY_SIDE: usize = 5;
+
 #[test]
 fn the_rex_profile_passes_the_terminal_scenarios() {
-    pass_all("terminal", &terminal::scenarios(), Harness::new);
+    pass_all_side_by_side(
+        "terminal",
+        &terminal::scenarios(),
+        SIDE_BY_SIDE,
+        Harness::new,
+    );
 }
 
 #[test]
