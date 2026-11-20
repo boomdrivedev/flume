@@ -1,6 +1,6 @@
 //! Claude Code's carry (179, C.4; core.32): whether the account chosen for
 //! a stage's next start reaches the conversation of the start whose agent
-//! stopped at its account's usage limit. 2.1.296 keeps a session's
+//! stopped at its account's usage limit. 2.1.322 keeps a session's
 //! transcript at `<home>/projects/<folder>/<session>.jsonl`, `<home>` its
 //! configuration home, `CLAUDE_CONFIG_DIR` or else `~/.claude`, and
 //! `--resume <session>` looks for the session under that home's
@@ -37,7 +37,7 @@ pub const UNREACHED: &str = "the chosen account's configuration home (`CLAUDE_CO
 
 /// The configuration home of an account whose environment is `env`: its
 /// `CLAUDE_CONFIG_DIR`, else `.claude` under `login`, the host user's
-/// home; none where neither is given. An empty value is none, as 2.1.296
+/// home; none where neither is given. An empty value is none, as 2.1.322
 /// reads it.
 pub fn home(env: &BTreeMap<String, String>, login: Option<&Path>) -> Option<PathBuf> {
     env.get(CONFIG_DIR)
@@ -87,7 +87,7 @@ pub fn fragments() -> Vec<(&'static str, String)> {
     vec![
         (
             "the option that resumes a session",
-            format!("\"-r, {FLAG} [value]\",\"Resume a conversation by session ID, or open interactive picker with optional search term\""),
+            format!("\"-r, {FLAG} [value]\",\"Resume a conversation by session ID or name, or open interactive picker with optional search term\""),
         ),
         (
             "the option that forks a resumed session",
@@ -95,7 +95,7 @@ pub fn fragments() -> Vec<(&'static str, String)> {
         ),
         (
             "the transcripts' folder under the configuration home",
-            "function Df(){return S(be(),\"projects\")}".into(),
+            "function qm(){return S(Be(),\"projects\")}".into(),
         ),
         (
             "the words where no such session is found",

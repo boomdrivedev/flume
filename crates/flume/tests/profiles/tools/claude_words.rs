@@ -12,12 +12,15 @@
 //! the profile reserves and the `attribution` the docs give as their
 //! example (design 9 of record 0043's change), `effortLevel` among those
 //! keys, and the efforts its `--effort` takes and the variable it reads
-//! over them (design 6 and 7 of record 0044's change). A release that
-//! changes any of them, or only renames what its minifier names in those
-//! fragments, fails here until the reading is made again. No agent runs.
+//! over them (design 6 and 7 of record 0044's change), the input each of
+//! its hook events hands the plugin's hooks and how it reads their
+//! answers, the options the command names, and its folder-trust dialog
+//! (C.4; core.39). A release that changes any of them, or only renames
+//! what its minifier names in those fragments, fails here until the
+//! reading is made again. No agent runs.
 
 use flume::profiles::agent::claude::{
-    carry, effort, limit, live, mode, settings, withheld, wrapper,
+    self, carry, effort, hook, limit, live, mode, settings, withheld, wrapper,
 };
 use std::path::{Path, PathBuf};
 
@@ -147,6 +150,39 @@ fn the_pinned_release_takes_own_settings_as_the_profile_passes_them() {
     assert!(
         missing.is_empty(),
         "Claude Code {version}, at {}, does not hold the fragments its own settings' way rests on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_hands_its_hooks_the_inputs_they_read() {
+    let (missing, program, version) = missing(&hook::fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the hooks and their inputs rest on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_takes_the_command_the_profile_builds() {
+    let (missing, program, version) = missing(&claude::command_fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the command rests on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_asks_its_folder_trust_as_the_terminal_answers_it() {
+    let (missing, program, version) = missing(&claude::trust_fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the folder-trust dialog rests on:\n{}",
         program.display(),
         missing.join("\n")
     );

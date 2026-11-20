@@ -1,13 +1,13 @@
 //! Claude Code's live (207, C.4; core.10): whether a process of the host
 //! runs the conversation of a start, the session its started ack names.
-//! 2.1.296 names each session it runs in `<home>/sessions/<pid>.json`,
+//! 2.1.322 names each session it runs in `<home>/sessions/<pid>.json`,
 //! `<home>` its configuration home, `CLAUDE_CONFIG_DIR` or else
 //! `~/.claude`: the process's `pid`, its `sessionId` and its `procStart`,
 //! when the process started as `ps -o lstart=` gives it under `LC_ALL=C`
 //! and `TZ=UTC`; it removes the record at its exit, and a record left by a
 //! process that was killed names a process that is gone, or an id the host
 //! gave another since. So a record counts only where the host runs a
-//! process with its `pid` started at its `procStart`, as 2.1.296 reads its
+//! process with its `pid` started at its `procStart`, as 2.1.322 reads its
 //! own records, the start compared to the second, since the host's
 //! process table, which flume reads itself, gives it in seconds and `ps`
 //! as words of the second. A session resumed under a home no account
@@ -40,7 +40,7 @@ pub const UNREADABLE: &str = "the running sessions of a configuration home (`CLA
 /// Unknown, where the host's processes cannot be listed.
 pub const UNLISTED: &str = "the host's processes cannot be listed";
 
-/// A session's record as 2.1.296 writes it, the fields live reads.
+/// A session's record as 2.1.322 writes it, the fields live reads.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionRecord {
@@ -63,7 +63,7 @@ pub fn started_at(lstart: &str) -> Option<Seconds> {
 }
 
 /// `lstart`'s words under `LC_ALL=C` and `TZ=UTC` for a process started at
-/// `at`, as 2.1.296 writes a session's `procStart`.
+/// `at`, as 2.1.322 writes a session's `procStart`.
 pub fn proc_start(at: Seconds) -> Option<String> {
     let at = chrono::DateTime::from_timestamp(i64::try_from(at).ok()?, 0)?;
     Some(at.format("%a %b %e %H:%M:%S %Y").to_string())
@@ -139,7 +139,7 @@ fn records(home: &Path, session: &str) -> Result<Vec<(u32, Option<String>)>, ()>
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(_) => return Err(()),
         };
-        // A record half written, or not 2.1.296's, names no session.
+        // A record half written, or not 2.1.322's, names no session.
         let Ok(record) = serde_json::from_str::<SessionRecord>(&text) else {
             continue;
         };
@@ -158,7 +158,7 @@ fn records(home: &Path, session: &str) -> Result<Vec<(u32, Option<String>)>, ()>
 /// where a home's record of the session names a process the host runs
 /// started within a second of its `procStart`, a record whose `procStart`
 /// is missing or reads otherwise counted where its process runs, as
-/// 2.1.296 reads its own; or where a `claude` resumes the session in its
+/// 2.1.322 reads its own; or where a `claude` resumes the session in its
 /// arguments, under any home; none where the start named no session or
 /// none runs it; and unknown, naming `CLAUDE_CONFIG_DIR` or the host's
 /// processes and no path, where a home's records or the processes cannot
@@ -233,23 +233,23 @@ pub fn fragments() -> Vec<(&'static str, String)> {
     vec![
         (
             "the running sessions' folder under the configuration home",
-            format!("function oV(){{return A(be(),\"{SESSIONS}\")}}"),
+            format!("function Bwe(){{return w(Be(),\"{SESSIONS}\")}}"),
         ),
         (
             "the record of a running session, by the process's id",
-            "w=Wt(b,`${process.pid}.json`)".into(),
+            "w=_n(b,`${process.pid}.json`)".into(),
         ),
         (
             "the record's process, session and start",
-            "P=_({pid:process.pid,sessionId:K(),cwd:Ee(),startedAt:Date.now(),procStart:await Ul(process.pid),".into(),
+            "M=_({pid:process.pid,sessionId:G(),cwd:Ce(),startedAt:Date.now(),procStart:await ec(process.pid),".into(),
         ),
         (
             "when the process started, as ps gives it",
-            "[\"-o\",\"lstart=\",\"-p\",String(e)],{timeout:1000,...r,env:{...n??process.env,LC_ALL:\"C\",TZ:\"UTC\"}}".into(),
+            "[\"-o\",\"lstart=\",\"-p\",String(e)],{timeout:1000,...t,env:{...n??process.env,LC_ALL:\"C\",TZ:\"UTC\"}}".into(),
         ),
         (
             "the record removed at the process's exit",
-            "process.on(\"exit\",()=>{try{wU(w)}catch{}})".into(),
+            "process.on(\"exit\",()=>{try{e2(w)}catch{}})".into(),
         ),
         (
             "the short form of the option that resumes a session",
