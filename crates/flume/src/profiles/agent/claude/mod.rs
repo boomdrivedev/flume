@@ -7,7 +7,7 @@
 //! (`flume hook <event>`, [`hook`]), and the session's transcript the
 //! started ack recorded (128), past the length it held at that ack. Every
 //! fact of Claude Code read here is checked against the release
-//! `devenv.nix` pins, 2.1.296: its hook events and their inputs, its
+//! `devenv.nix` pins, 2.1.322: its hook events and their inputs, its
 //! transcript's records, its folder-trust dialog and the keys that answer
 //! it, the words of its usage limits, its permission modes ([`mode`]),
 //! the efforts it takes and the variable it reads over them ([`effort`]),
@@ -50,7 +50,7 @@ pub const NAME: &str = "claude";
 /// program names it (C.4).
 pub const KIND: &str = "claude";
 
-/// The option that names the file of the standing prompt, which 2.1.296
+/// The option that names the file of the standing prompt, which 2.1.322
 /// reads as it reads `--append-system-prompt`'s text, though its help
 /// does not list it (148, C.4).
 pub const STANDING_PROMPT_FLAG: &str = "--append-system-prompt-file";
@@ -59,7 +59,7 @@ pub const STANDING_PROMPT_FLAG: &str = "--append-system-prompt-file";
 /// run by a binary of another version is reported (135).
 pub const VERSION: &str = crate::VERSION;
 
-/// A line of the folder-trust dialog Claude Code 2.1.296 shows in a
+/// A line of the folder-trust dialog Claude Code 2.1.322 shows in a
 /// folder new to it, with or without its warning that the folder's
 /// `.claude/settings.json` pre-approves tools: its confirming choice,
 /// short enough that no width of pane wraps it. The dialog lists "No,
@@ -77,6 +77,48 @@ pub const TRUST_NEXT: &str = "down";
 /// The key that confirms the dialog's choice in focus.
 pub const TRUST_CONFIRM: &str = "enter";
 
+/// The source fragments of the pinned release the command rests on, each
+/// named and as the release's program holds it: `--plugin-dir`, which
+/// loads flume's plugin for the session alone; `--model`; and the file
+/// [`STANDING_PROMPT_FLAG`] names read as `--append-system-prompt`'s text
+/// is, its words where no such file is (35, 148, C.4; core.39). The
+/// settings', the resume's, the effort's and the mode's options are their
+/// own modules' fragments.
+pub fn command_fragments() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "the option that loads a plugin for the session alone",
+            "\"--plugin-dir <path>\",\"Load a plugin from a directory or .zip for this session only; a folder of plugins loads each child (repeatable: --plugin-dir A --plugin-dir B.zip)\"".into(),
+        ),
+        (
+            "the option that names the session's model",
+            "\"--model <model>\",\"Model for the current session.".into(),
+        ),
+        (
+            "the standing prompt's file read as --append-system-prompt's text, and its words where none is",
+            "{let s=no(o.appendSystemPromptFile);zo=Br(Bus(await xl(s)),o.appendSystemPrompt)}catch(s){if(E(s)===\"ENOENT\")return En(`Error: Append system prompt file not found: ${no(o.appendSystemPromptFile)}`)".into(),
+        ),
+    ]
+}
+
+/// The source fragments of the pinned release its folder-trust dialog
+/// rests on, each named and as the release's program holds it: its
+/// refusal listed first and in focus, [`TRUST_QUESTION`] its confirming
+/// choice, and [`TRUST_FOCUS`] the mark of the choice in focus (34, C.4;
+/// core.39; record 0018).
+pub fn trust_fragments() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "the dialog's choices, the refusal first and in focus",
+            format!("cancelFirst:!0,focus:\"cancel\",confirmLabel:\"{TRUST_QUESTION}\",cancelLabel:p?\"No, continue without these permissions\":\"No, exit\""),
+        ),
+        (
+            "the mark of the choice in focus",
+            format!("pointer:\"\\u{:04X}\"", u32::from(TRUST_FOCUS.chars().next().expect("a mark"))),
+        ),
+    ]
+}
+
 /// The variables the command gives the agent, which the plugin's hooks
 /// read (33, 41, C.4).
 pub const AGENT: &str = "FLUME_AGENT";
@@ -89,16 +131,16 @@ pub const STAGE: &str = "FLUME_STAGE";
 /// (215, C.4).
 pub const DELIVER_VARIABLE: &str = "FLUME_DELIVER";
 
-/// Whether the pinned Claude Code offers the deliver part: not offered.
-/// The deliver row was read on 2.1.322, whose hooks modules submit words
-/// by `$.prompt.submit` once the session is idle, and flume pins 2.1.296,
-/// which sluice pins too; no check of this tree runs the pinned release in
-/// an interactive session but the live walkthroughs, by hand, so nothing
-/// shows that 2.1.296 runs a hooks module's `$.prompt.submit` there, and
-/// the terminal hands every batch and message until the chore that moves
-/// the pin reads one taken through the plugin's deliver part (215, C.4;
+/// Whether the pinned Claude Code offers the deliver part: offered. The
+/// pinned 2.1.322 runs a plugin's hooks module in an interactive session
+/// and submits the words its `$.prompt.submit` hands it, `asUser`, as a
+/// turn of their own once the session is idle, leaving the prompt box as
+/// the person left it, which the deliver row was read on; its engine types
+/// are vendored and its engine runs the module's tests, and the live
+/// walkthrough of a role's session reads a batch taken through the deliver
+/// part with words half typed in its input left as typed (215, C.4;
 /// core.39; record 0069).
-pub const DELIVER: Offered = Offered::NotOffered;
+pub const DELIVER: Offered = Offered::Offered;
 
 /// The plugin's files, as `plugins/claude` holds them, by their path in
 /// the plugin: its manifests, its hooks, its one hooks module, which pins
@@ -160,7 +202,7 @@ pub fn collapsed(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The name of the tags Claude Code 2.1.296 wraps pasted text in, where
+/// The name of the tags Claude Code 2.1.322 wraps pasted text in, where
 /// the account's features turn them on: `<pasted_content id="fad0">`
 /// before the paste and `</pasted_content id="fad0">` after it, the id
 /// four lowercase hex digits. A terminal sends a prompt as a paste, so the
@@ -217,7 +259,7 @@ pub struct Claude {
     /// The binary the plugin's hooks call.
     binary: PathBuf,
     /// Whether the profile offers deliver: [`DELIVER`] at the pinned
-    /// release (215).
+    /// release, unless built otherwise (215).
     deliver: Offered,
 }
 
@@ -247,12 +289,12 @@ impl Claude {
         }
     }
 
-    /// The profile answering deliver offered, as the chore that moves the
-    /// pin to a release read running the deliver part builds it (215;
-    /// record 0069).
-    pub fn offering_deliver(self) -> Claude {
+    /// The profile answering deliver not offered, so the terminal hands
+    /// every batch and message, as for a release that runs no hooks module
+    /// in an interactive session (215; record 0069).
+    pub fn without_deliver(self) -> Claude {
         Claude {
-            deliver: Offered::Offered,
+            deliver: Offered::NotOffered,
             ..self
         }
     }
@@ -508,7 +550,7 @@ impl Agent for Claude {
     /// shows started and not finished, the transcript the started ack named
     /// or, for an agent begun otherwise than its start recorded, the one
     /// its word named, each past the length it held then; a transcript not
-    /// yet written shows none, since 2.1.296 writes it at the session's
+    /// yet written shows none, since 2.1.322 writes it at the session's
     /// first message and own work starts only in a turn (31, 91, 161, 179).
     fn own_work(&self, folder: &str, agent: &Identity) -> Reading {
         let record = Record::at(folder, agent);
@@ -589,7 +631,7 @@ impl Agent for Claude {
     }
 
     /// A usage limit, where the StopFailure hook recorded `rate_limit` with
-    /// words that open as 2.1.296's usage-limit messages do, with the
+    /// words that open as 2.1.322's usage-limit messages do, with the
     /// reset they name read from when the hook ran ([`limit`]); a failure
     /// of other words, or none, is no usage limit (146, 151, C.4).
     fn spent(&self, folder: &str, agent: &Identity) -> Spent {
@@ -642,7 +684,7 @@ impl Agent for Claude {
         )
     }
 
-    /// The credentials 2.1.296 keeps from every process it starts, its
+    /// The credentials 2.1.322 keeps from every process it starts, its
     /// hooks among them ([`withheld::WITHHELD`]; 161).
     fn withheld(&self) -> Vec<String> {
         withheld::WITHHELD
@@ -651,7 +693,7 @@ impl Agent for Claude {
             .collect()
     }
 
-    /// The choice of 2.1.296's own that the entry means, or its own value
+    /// The choice of 2.1.322's own that the entry means, or its own value
     /// as written where it is one of that release's ([`mode`]; 169, C.4).
     fn mode(&self, entry: &ModeEntry) -> Result<String, String> {
         mode::map(entry).map(str::to_string)
@@ -663,19 +705,19 @@ impl Agent for Claude {
         Ok(())
     }
 
-    /// Each of 2.1.296's five `--effort` words, and any other refused
+    /// Each of 2.1.322's five `--effort` words, and any other refused
     /// naming it, `claude` and the five ([`effort`]; 197, C.4).
     fn effort(&self, word: &str) -> Result<(), String> {
         effort::take(word)
     }
 
-    /// `CLAUDE_CODE_EFFORT_LEVEL`, which 2.1.296 reads over `--effort`
+    /// `CLAUDE_CODE_EFFORT_LEVEL`, which 2.1.322 reads over `--effort`
     /// ([`effort::VARIABLE`]; 197, C.4).
     fn effort_variable(&self) -> Option<&'static str> {
         Some(effort::VARIABLE)
     }
 
-    /// `CLAUDE_CONFIG_DIR`, the folder 2.1.296 keeps its settings and
+    /// `CLAUDE_CONFIG_DIR`, the folder 2.1.322 keeps its settings and
     /// sign-in in under an account, an empty value none as
     /// [`carry::home`] reads it ([`carry::CONFIG_DIR`]; 56, C.4).
     fn home_variable(&self) -> Option<&'static str> {
@@ -687,20 +729,21 @@ impl Agent for Claude {
         Some(KIND)
     }
 
-    /// [`DELIVER`] at the pinned release: not offered, so the terminal
-    /// hands every batch and message (215, C.4; record 0069).
+    /// [`DELIVER`] at the pinned release: offered, so the plugin's module
+    /// takes every batch and message while its session waits (215, C.4;
+    /// record 0069).
     fn deliver(&self) -> Offered {
         self.deliver
     }
 
-    /// 2.1.296's keys that another of flume's settings, the account or a
+    /// 2.1.322's keys that another of flume's settings, the account or a
     /// person owns, each with its owner ([`settings::reserved`]; design 6).
     fn reserved(&self) -> Vec<Reserved> {
         settings::reserved()
     }
 
     /// Every entry, taken as written: `--settings` passes any keys of
-    /// 2.1.296's settings, and the release reads them as it reads its own
+    /// 2.1.322's settings, and the release reads them as it reads its own
     /// (195, 196, C.4).
     fn own(&self, _given: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
         Ok(())
@@ -798,6 +841,21 @@ mod tests {
     }
 
     #[test]
+    fn the_trust_fragments_are_written_as_the_release_writes_them() {
+        let fragments: Vec<String> = trust_fragments()
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect();
+        assert_eq!(
+            fragments,
+            [
+                r#"cancelFirst:!0,focus:"cancel",confirmLabel:"Yes, I trust this folder",cancelLabel:p?"No, continue without these permissions":"No, exit""#,
+                r#"pointer:"\u276F""#,
+            ]
+        );
+    }
+
+    #[test]
     fn the_plugin_written_carries_its_module_naming_the_binary() {
         // The claude-code-plugin spec's "The plugin written for an agent"
         // (C.4): hooks.json names the one module, flume.ts, which names
@@ -824,28 +882,13 @@ mod tests {
     }
 
     #[test]
-    fn deliver_is_not_offered_at_the_pinned_release() {
-        // The agent-profile spec's "The pinned release" (215, C.4;
-        // record 0069): not offered, and no FLUME_DELIVER in the command.
+    fn deliver_is_offered_at_the_pinned_release() {
+        // The agent-profile spec's "The pinned release" and "A profile
+        // that offers it" (215, C.4; record 0069): offered, and
+        // FLUME_DELIVER=1 beside the four FLUME_* words.
         let dir = scratch("pinned");
         let claude = Claude::new(&dir, Path::new("/opt/flume/bin/flume"));
-        assert_eq!(DELIVER, Offered::NotOffered);
-        assert_eq!(claude.deliver(), Offered::NotOffered);
-        let command = command_of(&claude, &dir);
-        assert!(
-            !command.env.contains_key(DELIVER_VARIABLE),
-            "{:?}",
-            command.env
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_command_names_flume_deliver_only_where_deliver_is_offered() {
-        // The agent-profile spec's "A profile that offers it" (215, C.4):
-        // FLUME_DELIVER=1 beside the four FLUME_* words.
-        let dir = scratch("offered");
-        let claude = Claude::new(&dir, Path::new("/opt/flume/bin/flume")).offering_deliver();
+        assert_eq!(DELIVER, Offered::Offered);
         assert_eq!(claude.deliver(), Offered::Offered);
         let command = command_of(&claude, &dir);
         assert_eq!(
@@ -855,6 +898,22 @@ mod tests {
         for variable in [AGENT, SECRET, PLACE, STAGE] {
             assert!(command.env.contains_key(variable), "{variable}");
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_command_names_no_flume_deliver_where_deliver_is_not_offered() {
+        // The agent-profile spec's "A profile that does not offer it"
+        // (215, C.4): no FLUME_DELIVER in the command.
+        let dir = scratch("unoffered");
+        let claude = Claude::new(&dir, Path::new("/opt/flume/bin/flume")).without_deliver();
+        assert_eq!(claude.deliver(), Offered::NotOffered);
+        let command = command_of(&claude, &dir);
+        assert!(
+            !command.env.contains_key(DELIVER_VARIABLE),
+            "{:?}",
+            command.env
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }

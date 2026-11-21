@@ -74,7 +74,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "role waking: a run's inbox with no recipient named, confirming on receipt, collects every end and every message pending for its address, each handed to it by the inbox and confirmed by it, a role's messages waiting at its address",
-            cites: &["132", "43"],
+            cites: &["132", "43", "214"],
             run: the_run_starts,
         },
         Scenario {
@@ -154,7 +154,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "role waking: an end for east/planner whose run's agent waits in its session before its start took its prompt is typed into its pane never, and goes in that prompt, recorded handed to the address once the prompt is received and sent by no settle again, a role's run's first prompt carrying its batch",
-            cites: &["37", "38", "43", "132"],
+            cites: &["37", "38", "43", "132", "214"],
             run: a_run_not_yet_given_its_prompt,
         },
         Scenario {
@@ -209,12 +209,12 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "role waking: A carrier's wake of a hibernating run: east/ops' run hibernates, a message is pending for it, and flume wake east/ops launches nothing, resumes the run's stage by delivery, and answers the run that stands",
-            cites: &["132", "213"],
+            cites: &["132", "213", "214"],
             run: a_carriers_wake_of_a_hibernating_run,
         },
         Scenario {
             name: "role waking: Nothing pending: east/ops' run hibernates with nothing pending at its address, and flume wake east/ops launches and resumes nothing, answering the run that stands, hibernating",
-            cites: &["132", "213"],
+            cites: &["132", "213", "214"],
             run: nothing_pending_at_a_hibernating_run,
         },
         Scenario {

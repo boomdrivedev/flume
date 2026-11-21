@@ -1057,7 +1057,7 @@ a text it leaves out with its own. `attribution = { commit = "" }`
 alone hides the commit's trailer and leaves the pull request's line to
 the account's settings or Claude Code's own. Give both texts empty for
 none, and `sessionUrl = false`, which keeps a session started from the
-web or by Remote Control from adding its link. Claude Code 2.1.296 also
+web or by Remote Control from adding its link. Claude Code 2.1.322 also
 reads `attribution = false` as all three, but earlier releases refuse
 it, so give the table.
 

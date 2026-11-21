@@ -318,3 +318,15 @@ configuration naming the table and `model` (32, 172, C.7).
 
 - **WHEN** the configuration gives `[kinds.fix.agents] model = 4`, or `model = {}`, or `model = { claude = 4 }`
 - **THEN** every launch and start is refused naming `kinds.fix.agents` and `model` (172, C.7)
+
+### Requirement: A host document's version read from its opening bytes
+
+The store profile SHALL read a host document's version alone from the
+bytes the document opens with, `{"version":` and a whole number, as it
+writes every host document, and SHALL read the document whole for its
+version where its bytes open otherwise (153, C.7).
+
+#### Scenario: A document's opening bytes
+
+- **WHEN** a host document's opening bytes are pretty or compact JSON beginning with its version, or begin with another field, or end within the number
+- **THEN** the first two give the version, and the others give none from the bytes, so the document is read whole for it (153)

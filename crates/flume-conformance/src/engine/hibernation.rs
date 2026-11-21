@@ -156,27 +156,27 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "hibernation: Two messages and an end while asleep: east/ops' talk hibernates, two messages and a fix's end come for east/ops, and one resume starts by delivery, its prompt the three as one batch each with its confirm then the way to stop short, each recorded handed once the prompt is received, status giving the resume by delivery",
-            cites: &["43", "132", "213"],
+            cites: &["43", "132", "213", "214"],
             run: two_messages_and_an_end_while_asleep,
         },
         Scenario {
             name: "hibernation: A resume that never began: east/ops' resume by delivery read never begun lets its claims go, records nothing handed, and the start after it carries the same batch",
-            cites: &["146", "213"],
+            cites: &["146", "213", "214"],
             run: a_delivery_resume_that_never_began,
         },
         Scenario {
             name: "hibernation: Handed meanwhile: a message the resume by delivery waited for room for, collected by east/ops' inbox before the resume fills its prompt, leaves the resume's prompt flume's words for a bare resume then the way to stop short",
-            cites: &["43", "213"],
+            cites: &["43", "213", "214"],
             run: handed_meanwhile,
         },
         Scenario {
             name: "hibernation: A hibernated agent waiting on its answer: east/ops' talk ended short needing an answer and hibernated at the end of its keep-open time takes no message for east/ops, which stays pending until the answer resumes the talk and its agent next waits",
-            cites: &["42", "198", "213"],
+            cites: &["42", "198", "213", "214"],
             run: a_hibernated_agent_waiting_on_its_answer,
         },
         Scenario {
             name: "hibernation: A batch the terminal could not hand: east/ops' talk quiet past its hibernate time while the fake terminal refuses every send to east/ops and a message waits there is hibernated by no settle, and once the send is taken and the agent quiet its hibernate time again, a settle hibernates it",
-            cites: &["43", "212"],
+            cites: &["43", "212", "214"],
             run: a_batch_the_terminal_could_not_hand,
         },
     ]

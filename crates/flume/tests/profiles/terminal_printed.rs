@@ -113,7 +113,7 @@ impl TerminalHarness for Harness {
         None
     }
 
-    fn received(&self, _session: &str) -> Vec<String> {
+    fn received(&self, _session: &str, _awaited: usize) -> Vec<String> {
         vec![]
     }
 

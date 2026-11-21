@@ -57,6 +57,13 @@ pub trait Store: Send + Sync {
     /// at; none where there is none (153).
     fn read_host(&self, key: &HostKey) -> Option<HostVersioned>;
 
+    /// The version the host's own document under `key` stands at, none
+    /// where there is none, read without the document, so a reader that
+    /// holds the document at that version need not read it again (153).
+    fn host_version(&self, key: &HostKey) -> Option<u64> {
+        self.read_host(key).map(|read| read.version)
+    }
+
     /// The host's next document under `key`, whole, only if it is still
     /// at `at`; `at` none is a first write, which succeeds only if there
     /// is none. `next` none removes it (103, 153).

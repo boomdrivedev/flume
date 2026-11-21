@@ -6,9 +6,32 @@ tasks:
   # Every formatter treefmt.nix configures, writing nothing it would change
   # and keeping no cache outside the tree. It reads every tracked file: one
   # that no formatter claims and no exclude names fails it (core.21).
+  # Its inputs are the files the commit holds, so a key names no file git
+  # ignores (boomdrive-design's ruling of 2026-11-19): moon 2.6.1 walks the
+  # file system for a root task's globs whatever hasher.walkStrategy says,
+  # so each path .gitignore names is negated here, one for one, and a path
+  # added there is added here.
   format:
     command: 'treefmt --ci'
-    inputs: ['/**/*', '/devenv.nix', '/devenv.lock']
+    inputs:
+      - '/**/*'
+      - '!/**/.devenv/**/*'
+      - '!/**/.devenv.flake.nix'
+      - '!/**/devenv.local.nix'
+      - '!/**/.pre-commit-config.yaml'
+      - '!/.moon/cache/**/*'
+      - '!/result'
+      - '!/result/**/*'
+      - '!/**/.DS_Store'
+      - '!/target/**/*'
+      - '!/site/node_modules/**/*'
+      - '!/site/dist/**/*'
+      - '!/site/.astro/**/*'
+      - '!/site/shots/**/*'
+      - '!/.mcp.json'
+      - '!/.claude/settings.json'
+      - '/devenv.nix'
+      - '/devenv.lock'
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
   # The commit hooks devenv.nix installs, driven in a fresh worktree of a
@@ -71,6 +94,15 @@ tasks:
   changes-cases:
     command: 'sh check-changes-cases.sh'
     inputs: ['/check-changes.sh', '/check-changes-cases.sh', '/devenv.nix', '/devenv.lock']
+    tags: [check-fast]
+    options: {runFromWorkspaceRoot: true}
+  # The script CI runs each step that downloads from GitHub through runs
+  # its command again where GitHub turned a download away for a moment,
+  # and fails at once on any other failure (try-again.sh): its cases, each
+  # over a stand-in command and a stand-in sleep (check-try-again.sh).
+  try-again:
+    command: 'sh check-try-again.sh'
+    inputs: ['/try-again.sh', '/check-try-again.sh', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
   # Every task of every project carries exactly one layer tag, or a comment

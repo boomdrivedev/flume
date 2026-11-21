@@ -15,7 +15,7 @@
 //! fault is refused naming why, and so is a bound or an answer's key with
 //! an address, each recording nothing (42, 53, 193).
 
-use crate::deliveries::{time, token, update};
+use crate::deliveries::{time, token};
 use crate::{Answer, Answering, CollectedMessage, Engine, Found, Woke};
 use flume_seams::*;
 use weir_delivery::{Record, Recorded};
@@ -261,7 +261,7 @@ impl Engine {
         let mut key = String::new();
         let mut refused: Option<String> = None;
         let mut expires = String::new();
-        let written = update(&*self.store, |records| {
+        let written = self.add_deliveries(|records| {
             refused = None;
             // A token another message holds is drawn again, so two
             // messages never share a key (weir 101).
