@@ -1,0 +1,26 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 135,
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "head": "0bcf0df7b544b4cc4f93bbe15c55594028b9b6df",
+  "from": {
+    "agent": "change/flume-knows-every-program-its-terminal-starts",
+    "worktree": "change/flume-knows-every-program-its-terminal-starts",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/change--flume-knows-every-program-its-terminal-starts",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-18T18:18:25Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "26737a1c23428b3842f63f46bcfcfd07b999d8cc",
+    "on": "a7cb4d3eb323d044eab5ae24de9af02dd458c260",
+    "submissions": [
+      135
+    ]
+  },
+  "result": "passed",
+  "landed_as": "85c601ec3bfd554a7b292e27ffe97801bb72273e"
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "sluice/branch@1",
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "log": "sluice/log@1",
+  "base": "9aa0dff40ccf82d25f8b9c25fbbbd18cae061e9a",
+  "verified": false,
+  "window": 3,
+  "next_place": 11,
+  "next_candidate": 11,
+  "candidates": [],
+  "landing": null,
+  "release": [],
+  "outbox": [],
+  "lead": "deneb",
+  "landed": "9aa0dff40ccf82d25f8b9c25fbbbd18cae061e9a",
+  "kept": "2026-11-21T00:35:11Z"
+}

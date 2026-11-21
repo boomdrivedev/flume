@@ -1,0 +1,28 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 12,
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "head": "386c2cfead6d9017e1f281dab647325b6b415a86",
+  "from": {
+    "agent": "boomdrive-ops",
+    "worktree": "fix/flume-runs-every-agent-its-terminal-can-start-3",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/fix--flume-runs-every-agent-its-terminal-can-start-3",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T18:56:04Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "78aed0e239e56c50db7030308cf172faea9ae60d",
+    "on": "90d51b08692f8856645c77492e66f840843a6d8f",
+    "submissions": [
+      12
+    ]
+  },
+  "withdrawn": {
+    "by": "operator",
+    "at": "2026-11-19T18:59:16Z"
+  }
+}

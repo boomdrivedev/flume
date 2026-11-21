@@ -1,0 +1,30 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 164,
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "head": "4fe510bbe5a8fd939ef80daf106d2d96bd7bfefa",
+  "from": {
+    "agent": "fix/flume-runs-every-agent-its-terminal-can-start--takes-main",
+    "worktree": "fix/flume-runs-every-agent-its-terminal-can-start--takes-main",
+    "path": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/places/fix-flume-runs-every-agent-its-terminal-can-start--takes-main",
+    "host": "deneb",
+    "session": "herdr:w2:p26@/Users/chuck/.config/herdr/sessions/boomdrive/herdr.sock"
+  },
+  "submitted": "2026-11-21T00:31:14Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "2faa26e386aa07099949d7affd6576263a6a98b7",
+    "on": "90d51b08692f8856645c77492e66f840843a6d8f",
+    "submissions": [
+      164
+    ]
+  },
+  "result": "passed",
+  "landed_as": "9aa0dff40ccf82d25f8b9c25fbbbd18cae061e9a",
+  "subject": "main at 967b4fc into the bolt",
+  "trace": "00-cde1ab784ed0c0eae276a478874c8238-05e529a44d791f22-01",
+  "under_test_ms": 215000
+}

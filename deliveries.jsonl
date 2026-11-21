@@ -1,0 +1,10 @@
+{"format": "weir-known/1", "reader": "change/each-agent-profile-says-which-parts-it-builds", "known_at": "2026-11-18T16:47:34Z"}
+{"format": "weir-known/1", "reader": "change/flume-knows-every-program-its-terminal-starts", "known_at": "2026-11-18T18:24:55Z"}
+{"format": "weir-known/1", "reader": "change/a-program-without-its-own-profile-starts-through-flumes-launcher", "known_at": "2026-11-18T21:20:30Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-every-agent-its-terminal-can-start-1", "known_at": "2026-11-18T21:55:50Z"}
+{"format": "weir-known/1", "reader": "change/the-common-profile-reads-an-agent-from-its-terminal", "known_at": "2026-11-19T00:51:26Z"}
+{"format": "weir-known/1", "reader": "change/a-pool-of-several-programs-picks-each-stages-program", "known_at": "2026-11-19T03:48:12Z"}
+{"format": "weir-delivery/1", "key": "159:landed", "readers": ["fix/flume-runs-every-agent-its-terminal-can-start-2"], "message": "[sluice] #159 landed on bolt/flume-runs-every-agent-its-terminal-can-start as 90d51b0.", "recorded_at": "2026-11-19T04:17:31Z", "expires_at": "2026-11-26T04:17:31Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-every-agent-its-terminal-can-start-3", "known_at": "2026-11-19T18:37:48Z"}
+{"format": "weir-delivery/1", "key": "164:landed", "readers": ["fix/flume-runs-every-agent-its-terminal-can-start--takes-main"], "message": "[sluice] #164 landed on bolt/flume-runs-every-agent-its-terminal-can-start as 9aa0dff.", "recorded_at": "2026-11-21T00:35:06Z", "expires_at": "2026-11-28T00:35:06Z"}
+{"format": "weir-handover/1", "key": "164:landed", "reader": "fix/flume-runs-every-agent-its-terminal-can-start--takes-main", "by": "notice", "at": "2026-11-21T00:35:10Z"}

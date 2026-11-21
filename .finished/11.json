@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 11,
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "head": "f9fde4b700108f030f736c2a70763ad368398e0f",
+  "from": {
+    "agent": "fix/flume-runs-every-agent-its-terminal-can-start-3",
+    "worktree": "fix/flume-runs-every-agent-its-terminal-can-start-3",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/fix--flume-runs-every-agent-its-terminal-can-start-3",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T18:28:02Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "6fca27d2fedf4b48fba889bb208fd0f2bfa19a46",
+    "on": "90d51b08692f8856645c77492e66f840843a6d8f",
+    "submissions": [
+      11
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "3001cdd4f723d4a0dbd6919f332f924444f806fc297bed4a5c9ef42d180001e0",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/bolt/flume-runs-every-agent-its-terminal-can-start/c8/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T18:56:04Z"
+  }
+}

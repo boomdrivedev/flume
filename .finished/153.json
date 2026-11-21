@@ -1,0 +1,31 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 153,
+  "branch": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "head": "1028c7a5f92fd1f534bdc1deb1a07524205899d5",
+  "from": {
+    "agent": "change/the-common-profile-reads-an-agent-from-its-terminal",
+    "worktree": "change/the-common-profile-reads-an-agent-from-its-terminal",
+    "path": "/Users/chuck/.local/share/flume/places/6c61b9842ad5/change--the-common-profile-reads-an-agent-from-its-terminal",
+    "host": "deneb"
+  },
+  "submitted": "2026-11-19T00:46:54Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "conflict": {
+    "paths": [
+      "crates/flume-conformance/src/clauses.rs",
+      "crates/flume-core/src/acts.rs",
+      "crates/flume-core/src/lib.rs",
+      "crates/flume-core/src/settle.rs",
+      "site/src/content/docs/reference/state.md"
+    ],
+    "with": []
+  },
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T01:10:56Z"
+  }
+}
