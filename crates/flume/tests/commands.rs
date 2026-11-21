@@ -4533,6 +4533,70 @@ fn the_helps_of_confirm_and_wait() {
     }
 }
 
+#[test]
+fn an_answer_naming_no_decision() {
+    // 176, section 9: a statechart kind launched over a scratch
+    // repository, `flume answer` naming a region whose state carries no
+    // decision exits non-zero naming it, and status of the place gives no
+    // answer: the command-line spec's "An answer over a scratch
+    // repository".
+    let host = Host::new("answer");
+    let repository = repository("answer", None);
+    let dir = host.scratch.path("statechart");
+    std::fs::create_dir_all(dir.join("prompts")).expect("the kinds' folder");
+    std::fs::write(
+        dir.join("prompts/work.md"),
+        "Do the work of {{name}} in {{place}}. To stop short: {{needs}}\n",
+    )
+    .expect("the prompt");
+    let declaration = dir.join("kinds.toml");
+    std::fs::write(
+        &declaration,
+        format!(
+            r#"[kinds.one]
+title = "One stage"
+
+[kinds.one.regions.main]
+initial = "work"
+
+[kinds.one.regions.main.states.work]
+machine = "stage"
+params = {{ agents = [{{ program = "{STAND_IN}" }}], deliverables = ["commits"], prompt = "prompts/work.md" }}
+transitions = [{{ when = {{ final = "passed" }}, to = "done" }}]
+
+[kinds.one.regions.main.states.done]
+final = true
+"#
+        ),
+    )
+    .expect("the declaration");
+    let kinds = declaration.to_string_lossy().into_owned();
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "one", "--name", "a", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    let place = host.place_of(&repository, "one--a");
+    let ran = host.flume(&repository.dir, &["answer", &place, "main", "retry"], &[]);
+    assert_ne!(ran.code, 0, "{}", ran.text);
+    assert!(
+        ran.text.contains("main") && ran.text.contains("no decision"),
+        "the refusal names not the region: {}",
+        ran.text
+    );
+    let status = host.flume(&repository.dir, &["status", &place, "--json"], &[]);
+    assert_eq!(status.code, 0, "{}", status.text);
+    let answer = status.answer();
+    let chart = the_place(&answer)
+        .statechart
+        .as_ref()
+        .expect("status gives the place's statechart");
+    assert!(chart.answers.is_empty(), "{:?}", chart.answers);
+}
+
 /// The replies of a scripted MCP session of `flume mcp` run in `dir` with
 /// `env`: initialize, then each of `calls`, one reply a request (section
 /// 9; design 12).

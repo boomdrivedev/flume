@@ -964,7 +964,7 @@ impl Engine {
                     .filter(|(_, stage)| stage.state == StageState::WaitingForRoom)
                     .map(move |(index, stage)| {
                         let room = stage.room.clone().unwrap_or_default();
-                        let declared = &held.place.kind.stages[index];
+                        let declared = held.declared(index);
                         let resolved = self.resolve(&held.place, declared, None).ok();
                         // The programs that can run it, read once here: the
                         // one a layer names, or, where none above flume's

@@ -12,14 +12,17 @@ mod acts;
 pub mod address;
 mod agent_acts;
 mod answer;
+pub mod atoms;
 mod base;
 mod batch;
+mod chart;
 mod clues;
 mod deliver;
 pub mod deliveries;
 mod end;
 mod ends;
 mod fixes;
+mod glob;
 mod held;
 mod hibernate;
 mod kinds_lock;
@@ -321,6 +324,7 @@ mod tests {
                 label: None,
                 fix: None,
                 fix_limit: None,
+                statechart: None,
             },
             declared: Declared::Flume,
             kind_from: None,

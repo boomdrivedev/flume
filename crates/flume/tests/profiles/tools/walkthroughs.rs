@@ -470,9 +470,11 @@ fn a_conflict_sluice_answers_at_the_submit_goes_back_to_code_and_lands() {
         delivery["state"], "done",
         "the outcome sluice's answer gave, confirmed: {delivery}"
     );
+    // The conflict's words are sluice's notice, which the answer of a
+    // submit that waits on sluice's host process carries (C.6).
     let prompt = walk.prompt(&place);
     for named in [
-        "conflict on main: work.rs",
+        "conflicts on main in work.rs",
         "The files contested: work.rs.",
         &base,
     ] {
@@ -536,12 +538,20 @@ fn a_pull_request_is_followed_from_no_entry_to_its_entry_and_its_landing() {
         "{person}"
     );
 
+    // The entry's check is held while flume reads it open, since sluice's
+    // host process, which the take-in's submit starts, decides it at once
+    // otherwise (124; sluice 135).
+    walk.hold();
     let entry = walk.take_in_request();
     let status = walk.status(&place);
     let read = &status["submission"]["read"]["found"]["submission"];
     assert_eq!(read["id"], entry["id"].to_string(), "{status}");
     assert_eq!(read["request"], PULL_REQUEST, "{status}");
-    assert_eq!(read["state"], "waiting", "{status}");
+    assert!(
+        read["state"] == "waiting" || read["state"] == "under_test",
+        "{status}"
+    );
+    walk.release();
     until_landed(&walk, &place);
 
     let submissions = walk.submissions();

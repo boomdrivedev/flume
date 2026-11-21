@@ -438,6 +438,19 @@ script the managed layer's `[telemetry]` (216, 217).
 - **WHEN** a stage starts over fakes whose telemetry sends traces
 - **THEN** the fake terminal's open carries a `TRACEPARENT` naming the span the fake telemetry was later handed for that start (217, 219)
 
+### Requirement: The fake merge queue holds a landing the forge refused
+
+The fake merge queue SHALL take a plan whose round holds the
+submission, its record held with the forge's words or with none, and a
+held outcome left in its place's inbox. It SHALL land a held submission
+a test pushes again, queue one whose landing a test drops, and withdraw
+one whose branch is submitted again (106, 112, 124; sluice 67, 152).
+
+#### Scenario: Held, pushed again, dropped and replaced
+
+- **WHEN** a test plans a held landing for a submission of `fix/x` and runs a round, collects the inbox, runs another round, pushes it again; then holds a second submission, drops its landing, holds a third, and submits `fix/x` again
+- **THEN** the first reads held with the words and the inbox gives it held under `<id>:held` until it is confirmed, the second round leaves it held, and the push lands it; the second reads waiting once dropped; the third reads withdrawn once the branch is submitted again (112, 124)
+
 ### Requirement: The fake merge queue keeps an outcome until it is confirmed
 
 The fake merge queue SHALL give each outcome it holds for a place with
@@ -555,6 +568,29 @@ two ways (41, 92).
 
 - **WHEN** the fake resolver binds `agent` to a fake agent scripted with no way to stop short and `other` to one scripted with its own words
 - **THEN** `agent`'s profile gives the fixed words and `other`'s the scripted words, each the same for every start (41, 92)
+
+### Requirement: The fake kinds reads a held statechart kind
+
+The fake kinds SHALL take a statechart kind scripted as the seam's kind
+with its text, and SHALL read a held statechart kind's text and the
+stage template's through weir's crate as the kinds profile does, so the
+engine's scenarios tick the statechart a kind's text declares (106,
+176).
+
+#### Scenario: A scripted statechart kind read back
+
+- **WHEN** the fake kinds is scripted with a statechart kind's text and asked to read it back with the stage template's
+- **THEN** it gives the statechart that text declares and the template `stage` (106, 176)
+
+### Requirement: The fake git gives a revision's files
+
+The fake git SHALL give, at a revision, the path of every file a commit
+at or before it on its branch touched (106, 178).
+
+#### Scenario: Files at two revisions
+
+- **WHEN** the fake git commits `personas/a.md`, then `personas/b.md`
+- **THEN** the first revision's files name `personas/a.md` alone, and the second's name both (178)
 
 ### Requirement: The fake agent scripts its home's variable
 

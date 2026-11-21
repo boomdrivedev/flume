@@ -11,7 +11,7 @@ use crate::accounts::{Choice, Programs};
 use crate::live::LiveRead;
 use crate::open_sessions::told;
 use crate::prompt::{
-    after_roles, asks, group_text, may_name, notes_path, render, way_to_stop_short,
+    after_roles, asks, group_text, may_name, notes_path, render, session_part, way_to_stop_short,
 };
 use crate::room::Admit;
 use crate::settings::{cannot_run, kind_started, program_name, Resolution, RunsOn};
@@ -280,7 +280,7 @@ impl Engine {
         Identity {
             repository: self.repository_id_of(&held.place.repository),
             place: held.place.short(),
-            stage: held.place.kind.stages[index].name.clone(),
+            stage: held.declared(index).name.clone(),
             start: held.stages[index].starts + 1,
             resume: 0,
         }
@@ -341,7 +341,7 @@ impl Engine {
         batch: Option<&str>,
     ) -> Result<String, PromptPart> {
         let place = &held.place;
-        let stage = &place.kind.stages[index];
+        let stage = held.declared(index);
         let change = self.bound(place).ok().and_then(|bound| bound.change);
         let stop_short = agent.map(|agent| way_to_stop_short(agent, identity));
         let fill = |part: PromptPart| -> Option<String> {
@@ -367,6 +367,9 @@ impl Engine {
                 PromptPart::Notes => stage
                     .repeats
                     .then(|| notes_path(&self.store.folder(&place.id), &stage.name)),
+                PromptPart::Session | PromptPart::File => {
+                    session_part(part, held.stages[index].session.as_ref())
+                }
             }
         };
         let mut text = render(&stage.prompt, fill)?;
@@ -407,7 +410,7 @@ impl Engine {
         head: &Revision,
     ) -> Option<Option<GroupHeld>> {
         let place = &held.place;
-        if !place.kind.stages[index].repeats {
+        if !held.declared(index).repeats {
             return None;
         }
         let change = self.bound(place).ok()?.change?;
@@ -492,7 +495,7 @@ impl Engine {
         // accounts, the session it opens in read from its settings before
         // the program, which name none; every other is resolved as it
         // stands (32 item 8, 144, 145, 173, 199; design 6).
-        let stage = &place.kind.stages[index];
+        let stage = read.state.declared(index);
         let pool_room = queue
             .pool_of(&place.stream.name)
             .and_then(|pool| queue.pools.get(pool));
@@ -789,11 +792,15 @@ impl Engine {
                     }
                 }
             }
-            if held
-                .stages
-                .iter()
-                .any(|stage| stage.start.as_ref().is_some_and(|start| start.live))
-            {
+            // A simple kind's place has one agent at a time; a statechart
+            // kind's runs one per session, never two of the same (30;
+            // core.10).
+            let live = if held.place.kind.is_statechart() {
+                held.live_starts().any(|(at, _)| at == index)
+            } else {
+                held.live_starts().next().is_some()
+            };
+            if live {
                 return Step::Write(Err(Start::AgentLive));
             }
             let (resolution, (terminal, named), opens_in) = match &resolution {
@@ -1333,6 +1340,10 @@ fn passed(command: &AgentCommand) -> Option<String> {
 pub(crate) trait Starts {
     fn index_of(&self, identity: &Identity) -> Option<usize>;
     fn live_start(&self) -> Option<(usize, &StartHeld)>;
+    /// Every live start of the place, by its stage's index, in order: one
+    /// at most for a simple kind's place, one per session for a statechart
+    /// kind's (30; core.10).
+    fn live_starts(&self) -> impl Iterator<Item = (usize, &StartHeld)>;
 }
 
 impl Starts for HeldState {
@@ -1346,7 +1357,11 @@ impl Starts for HeldState {
     }
 
     fn live_start(&self) -> Option<(usize, &StartHeld)> {
-        self.stages.iter().enumerate().find_map(|(index, stage)| {
+        self.live_starts().next()
+    }
+
+    fn live_starts(&self) -> impl Iterator<Item = (usize, &StartHeld)> {
+        self.stages.iter().enumerate().filter_map(|(index, stage)| {
             stage
                 .start
                 .as_ref()

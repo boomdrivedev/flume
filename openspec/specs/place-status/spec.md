@@ -45,11 +45,12 @@ which names the file holding its environment and holds no value of it
 ### Requirement: Status says what a waiting place waits on
 
 Status SHALL give a stop-short's words and whether it needs an answer or
-found work, or a failed submission's words, and, for a place waiting on
-its caller, the move it waits on and since when, a hold's words among
-it, and, for an answer, whether its agent is kept open for it and until
-when, or when and why it was let go and whether it is ended (56, 130,
-198).
+found work, or a failed submission's words, or a held submission's with
+the forge's words as the merge queue's record gives them, and, for a
+place waiting on its caller, the move it waits on and since when, a
+hold's words among it, and, for an answer, whether its agent is kept
+open for it and until when, or when and why it was let go and whether it
+is ended (56, 112, 130, 198).
 
 #### Scenario: A place waiting on an answer
 
@@ -60,6 +61,11 @@ when, or when and why it was let go and whether it is ended (56, 130,
 
 - **WHEN** status is asked of that place once its agent was let go by its time and ended
 - **THEN** it gives the same move since t, and its agent let go with when, `time`, and when it was ended (130, 198, S104)
+
+#### Scenario: A submission whose landing the forge refused
+
+- **WHEN** status is asked of a fix whose submission a settle at a time t read held, the fake merge queue's record holding the forge's words
+- **THEN** it gives the submission held with the record's words, and the move waited on as a retry of code for `forge_refused`, since t, with the words the wait was written with, in the JSON form and the person's (56, 99, 112, 130)
 
 ### Requirement: Status reads where each fact lives and writes nothing
 
@@ -666,6 +672,37 @@ core.14).
 
 - **WHEN** status is asked of a place whose agent's settings give no model
 - **THEN** the JSON form holds no `model` for the agent beyond its settings', and the person's form names none (172)
+
+### Requirement: Status gives a statechart place's statechart
+
+Status SHALL give a place of a statechart kind each region with the
+state it holds, since when and whether it is final, its counters,
+whether its run is over, each decision standing with its region, kind,
+answers and shows, each answer given with who gave it, when and whether
+it was applied, and each stage entered with its entry, join, send-backs
+and sessions (56, 175, 176).
+
+#### Scenario: Persona at its test stage
+
+- **WHEN** persona's test stage runs two sessions, one delivered and one working
+- **THEN** status gives region `stages` at `test` since its entry, region `stages.test.run` at `working`, the stage `stages.test` at entry 1 joined by all with its two sessions, each session as a stage with its state, and the run not over (56, 175)
+
+#### Scenario: A decision standing
+
+- **WHEN** persona's region `stages` reaches `stopped`, whose decision answers `retry` and `drop`
+- **THEN** status gives the decision at region `stages` with its kind `stalled` and its two answers, and says the place waits on its caller for it, since when (56, 130, 176)
+
+### Requirement: Status gives each live session's agent
+
+Status SHALL give, for a place of a statechart kind, each live
+session's agent as it gives a simple kind's current stage's agent, in a
+list of the place's agents, and its JSON SHALL only gain fields (56,
+core.14).
+
+#### Scenario: Two agents
+
+- **WHEN** two sessions of a statechart place run
+- **THEN** status gives both agents, each with its identity naming its session, its account and its settings with where each came from, and a simple kind's place gives the same JSON it gave before with an empty list (56, core.14)
 
 ### Requirement: Status gives each account's configuration home
 

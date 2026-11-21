@@ -7,6 +7,10 @@ use flume_seams::{
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
+/// The words of a held record that carries none of the forge's (99).
+pub const HELD_WITHOUT_WORDS: &str =
+    "the forge refused its landing; the merge queue's record gives none of its words";
+
 /// What the fake merge queue does with a submission: refused or decided
 /// at submit, or held and decided by the round that next reaches it.
 #[derive(Clone, Debug)]
@@ -27,6 +31,18 @@ pub enum Plan {
     Refuse(String),
     /// It stays open through every round.
     Hold,
+    /// The round that reaches it holds its landing, as a merge queue
+    /// holds one the forge refused: its record held with `words` where
+    /// `recorded`, else with words saying the merge queue's record gives
+    /// none of the forge's, and a held outcome with `words` left in its
+    /// place's inbox, as the merge queue's notice carries them. No round
+    /// moves it after; pushed again it lands, and put back in the queue
+    /// it lands at the next round unless decided otherwise (112, 124;
+    /// core.58).
+    Held {
+        words: String,
+        recorded: bool,
+    },
     /// Submit opens a request for the branch, or updates the one it
     /// opened, and makes no entry; `take_in` takes the request in as an
     /// entry, which comes to `then`, its outcome delivered to the request
@@ -67,6 +83,11 @@ struct Requested {
 /// answer standing until scripted again, or else clear at the base's
 /// revision, logged as `forecast <branch> onto <base>`, adding no
 /// submission (210).
+///
+/// A landing it holds, as the forge refused it, stays held through every
+/// round: `push_again` lands it as the same landing, `drop_held` puts it
+/// back in the queue, and a later submit of its branch withdraws it (112,
+/// 124).
 ///
 /// It opens and closes the branches it lands on for base places, as a
 /// test scripts it or else by its own reading of the fake git, logged as
@@ -233,14 +254,17 @@ impl FakeMergeQueue {
         commit
     }
 
-    /// The newest open submission of `branch` decided now by `plan`, as a
-    /// round the queue ran on its own would.
+    /// The newest open or held submission of `branch` decided now by
+    /// `plan`, as a round the queue ran on its own would, or a hand
+    /// withdrawing a held landing does.
     pub fn decide(&self, repository: &str, branch: &str, plan: Plan) {
         let open = self
             .submissions(repository, branch)
             .into_iter()
             .rev()
-            .find(|submission| submission.state.open());
+            .find(|submission| {
+                submission.state.open() || matches!(submission.state, SubmissionState::Held { .. })
+            });
         if let Some(submission) = open {
             lock(&self.state)
                 .plans
@@ -252,7 +276,8 @@ impl FakeMergeQueue {
     }
 
     /// One round of `base`'s queue: every open submission to it decided by
-    /// its plan, a held one left open.
+    /// its plan, one planned to stay open left open, and a held landing,
+    /// which is not open, left held.
     pub fn run_round(&self, repository: &str, base: &str) {
         let open: Vec<Submission> = lock(&self.state)
             .submissions
@@ -265,6 +290,62 @@ impl FakeMergeQueue {
         for submission in open {
             self.settle(repository, &submission);
         }
+    }
+
+    /// The landing of `branch`'s held submission pushed again, as the
+    /// operator pushes it: it lands as the same landing, merging the
+    /// branch's head, its outcome landed in its place's inbox (113, 124).
+    pub fn push_again(&self, repository: &str, branch: &str) -> Option<Revision> {
+        let held = self.newest_held(repository, branch)?;
+        let head = self
+            .git
+            .branch_head(repository, branch)
+            .expect("a submitted branch");
+        let commit = self.git.merge(repository, &held.target, &head);
+        self.set_state(
+            repository,
+            &held,
+            SubmissionState::Landed {
+                commit: commit.clone(),
+            },
+        );
+        self.deliver(
+            &held,
+            SubmissionOutcome::Landed {
+                commit: commit.clone(),
+            },
+        );
+        Some(commit)
+    }
+
+    /// `branch`'s held submission put back in the queue, waiting, as a
+    /// held landing is dropped once another of its submissions left: its
+    /// next round decides it by its plan, a landing unless a test decides
+    /// it otherwise (124).
+    pub fn drop_held(&self, repository: &str, branch: &str) {
+        if let Some(held) = self.newest_held(repository, branch) {
+            self.set_state(repository, &held, SubmissionState::Waiting);
+        }
+    }
+
+    /// `branch`'s newest submission where it is held.
+    fn newest_held(&self, repository: &str, branch: &str) -> Option<Submission> {
+        self.submissions(repository, branch)
+            .pop()
+            .filter(|submission| matches!(submission.state, SubmissionState::Held { .. }))
+    }
+
+    /// `outcome` left in the inbox of the place `submission` came from,
+    /// where it came from one.
+    fn deliver(&self, submission: &Submission, outcome: SubmissionOutcome) {
+        let mut queue = lock(&self.state);
+        let Some((_, Some(location))) = queue.plans.get(&submission.id).cloned() else {
+            return;
+        };
+        queue.inboxes.entry(location).or_default().push((
+            Some(submission.target.clone()),
+            Self::handed(&submission.id, outcome),
+        ));
     }
 
     pub fn submissions(&self, repository: &str, branch: &str) -> Vec<Submission> {
@@ -303,6 +384,7 @@ impl FakeMergeQueue {
             SubmissionOutcome::Landed { .. } => "landed",
             SubmissionOutcome::Failed { .. } => "failed",
             SubmissionOutcome::Conflict { .. } => "conflict",
+            SubmissionOutcome::Held { .. } => "held",
         };
         Owed {
             submission: submission.into(),
@@ -448,6 +530,23 @@ impl FakeMergeQueue {
                 )
             }
             Plan::Withdraw => (SubmissionState::Withdrawn, None),
+            Plan::Held { words, recorded } => {
+                // Held once: back in the queue, it lands at its next
+                // round unless decided otherwise.
+                if let Some(planned) = lock(&self.state).plans.get_mut(&submission.id) {
+                    planned.0 = Plan::Land;
+                }
+                (
+                    SubmissionState::Held {
+                        words: if recorded {
+                            words.clone()
+                        } else {
+                            HELD_WITHOUT_WORDS.into()
+                        },
+                    },
+                    Some(SubmissionOutcome::Held { words }),
+                )
+            }
         };
         self.set_state(repository, submission, state);
         if let (Some(outcome), Some(location)) = (outcome, location) {
@@ -487,6 +586,15 @@ impl MergeQueue for FakeMergeQueue {
         let plan = queue.submits.pop_front().unwrap_or(Plan::Land);
         if let Plan::Refuse(reason) = plan {
             return Submitted::Refused { reason };
+        }
+        // A later submission of the branch withdraws its held one (112).
+        if let Some(held) = queue
+            .submissions
+            .get_mut(&(place.repository.clone(), branch.clone()))
+            .and_then(|all| all.last_mut())
+            .filter(|newest| matches!(newest.state, SubmissionState::Held { .. }))
+        {
+            held.state = SubmissionState::Withdrawn;
         }
         if let Plan::ConflictAtSubmit(files, words) = plan {
             let base = self

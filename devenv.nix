@@ -347,23 +347,24 @@ let
   # (core.22, core.51).
   rex = inputs.rex.packages.${pkgs.stdenv.hostPlatform.system}.rex or null;
 
-  # sluice, which the merge-queue profile drives: the release the hosts
-  # run, so it reads the host's configuration as the hosts' own sluice
-  # writes it; an older release refuses a key it does not know, and no
-  # place's checks run. sluice publishes no x86_64-darwin build. Its builds
-  # are Nix's: on Linux the loader and libgcc_s, on macOS libiconv, are
-  # store paths of the machine that built them, set here to this tree's.
-  # Bump the version and the three checksums from the release's assets. A
-  # walkthrough's place runs its equip and release in the login
-  # environment alone (29), and this release's release makes
+  # sluice, which the merge-queue profile drives: a release that reads the
+  # host's configuration as the hosts' own sluice writes it; an older
+  # release refuses a key it does not know, and no place's checks run.
+  # sluice publishes no x86_64-darwin build. Its builds are Nix's: on
+  # Linux the loader and libgcc_s, on macOS libiconv, are store paths of the
+  # machine that built them, set here to this tree's. Bump the version and
+  # the three checksums from the release's assets. A walkthrough's place
+  # runs its equip and release in the login environment alone (29), with
+  # no SLUICE_USER_SCRATCH, and a release since 0.95.1 makes
   # /tmp/sluice-<uid>/<key> even with nothing to free, which the gate's
-  # sandbox refuses, so the walk's own `sluice` runs this one with
-  # SLUICE_USER_SCRATCH in the gate's scratch (core.51).
-  sluiceVersion = "0.95.1";
+  # sandbox refuses: the walk's login shell puts first a sluice of its own
+  # that gives those steps the walk's state folder and the test's scratch
+  # (core.51).
+  sluiceVersion = "0.97.0";
   sluiceHashes = {
-    aarch64-darwin = "5918bdfbd7eff7f855bb493cc2332b26dd4d30a3f196e4222207f7f5667cd63d";
-    aarch64-linux = "4c554ae1e69dc7a3e911593b3e0986e04964cb97cc3b3275e77aa5b2f185d77e";
-    x86_64-linux = "e56d64cad80820873cc070c5c593f825a591d9ab29fe0a44e21cccdbcc89ef5e";
+    aarch64-darwin = "8f70e1b6d6eb546a1a92285f7d5203043d9d8943389d4133213b8b6e42b69bb9";
+    aarch64-linux = "d0e9d3f3bbb77d59a133674759e72a300991f3f240b59a709432d304a7617b64";
+    x86_64-linux = "c04784a0533a7bc741fab55e0dacaecbfab628ad63401440b6ad7e9159e690b9";
   };
   sluiceSystem = pkgs.stdenv.hostPlatform.system;
   sluice = pkgs.stdenv.mkDerivation {

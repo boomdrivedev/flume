@@ -19,7 +19,7 @@ removes SHALL change this list in the commit that adopts it.
 #### Scenario: The clauses listed
 
 - **WHEN** the suite's list is read
-- **THEN** it names the revision it named before this change, 48a94da; Parts A and B hold every clause that revision states; and it names as unbuilt what it named before this change but 173 and S71; S72 among it is named by record 0024's plan stage's change beside 163, 164 and S68, and nothing is named by record 0026's change
+- **THEN** it names boomdrivedev/blueprints at 3a3b287, the revision that states how flume runs statechart kinds; Parts A and B hold every clause that revision states, 175 to 177 in Part A and 178 in Part B; the scenarios run to S131; and it names as unbuilt what it named before these changes but 173, S71, 175 to 178, S76 and S77, which they build and their scenarios cite; S72 among it is named by record 0024's plan stage's change beside 163, 164 and S68, and nothing is named by record 0026's change or by records 0028 and 0029's
 
 ### Requirement: Every scenario cites its clauses
 

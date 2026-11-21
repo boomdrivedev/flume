@@ -865,6 +865,23 @@ known fields fail, naming every field that does.
 | `on_fail` | a stage's name | read from the last stage: where a failed or conflicting submission sends the place back, and found work from the last stage where it names a stage before the last; found work from a last stage that names itself or none waits on an answer | the last stage |
 | `max_send_backs` | a whole number from 0 | read from the last stage: how many times the place may go back before it waits for you | 3 |
 
+### A statechart kind
+
+A kind whose table holds `regions` in place of `stages` is a statechart
+kind. A table holding both refuses the launch, naming the field.
+
+| Field | Values | Meaning | Left out |
+|---|---|---|---|
+| `title` | a string | the words a person reads for the kind | refused |
+| `version`, `branch`, `lands`, `label` | as a kind's | as a kind's | as a kind's |
+| `regions.<region>` | a table | a region: `initial`, the state it starts at, and `states.<state>`, its states | refused |
+| `states.<state>.machine` | `"stage"` | the state is a stage, running flume's stage template; any other template refuses the launch | not a stage |
+| `states.<state>.params` | a table | a stage's parameters: `agents`, `join`, `deliverables`, `prompt`, `on_fail`, `max_send_backs` ([a stage's sessions](/flume/guides/kinds/#a-stages-sessions)); keys flume does not name are ignored | refused on a stage |
+| `states.<state>.final` | `true`, `false` | its region's run is over once it holds the state | `false` |
+| `states.<state>.decision` | `{ kind, answers }` | a question its caller answers while the region holds the state | none |
+| `states.<state>.transitions` | an array of `{ when, to }` | where the region moves, and on what: `final`, a stage's end; `response`, an answer; `ev`, one of `region.entered`, `place.submission` and `place.submissions` | none |
+| `landing_fix` | a kind's identity | refuses the launch, until a statechart kind's landing fix is designed | none |
+
 [Kinds](/flume/guides/kinds/) says what each deliverable needs and how
 a kind runs through, and [prompt parts](/flume/reference/prompt-parts/)
 lists what a prompt may ask for.

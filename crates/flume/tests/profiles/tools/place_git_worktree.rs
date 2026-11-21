@@ -8,6 +8,7 @@
 //! stand-ins of the test's own, and no moon of the host's is on the
 //! steps' path.
 
+use super::walk::{unlink_user_scratch, user_scratch, USER_SCRATCH};
 use crate::common::*;
 use flume::profiles::place::git_worktree::{GitWorktree, Login};
 use flume::profiles::place_data;
@@ -91,8 +92,9 @@ fn path_without_moon() -> String {
 
 /// A place of the clone `repository` made and readied at its launch's
 /// revision through the resolver's data and the git worktree profile,
-/// its steps run under the pinned sluice: the readiness, and the
-/// clone's common git directory.
+/// its steps run under the pinned sluice with a state folder in the
+/// scratch home and the test's own user scratch (core.51): the readiness,
+/// and the clone's common git directory.
 fn readied(repository: &Repository, name: &str) -> (Readiness, String) {
     let launched = Revision::new(repository.head());
     let data = place_data(&repository.name(), Some("sluice"), "main", Some(&launched))
@@ -105,6 +107,8 @@ fn readied(repository: &Repository, name: &str) -> (Readiness, String) {
             ("HOME", &home.to_string_lossy()),
             ("PATH", &path_without_moon()),
             ("LANG", "C"),
+            ("XDG_STATE_HOME", &home.join("state").to_string_lossy()),
+            (USER_SCRATCH, &user_scratch(repository).to_string_lossy()),
         ]),
     )
     .with_own(&repository.scratch.path("data/flume"));
@@ -124,7 +128,9 @@ fn readied(repository: &Repository, name: &str) -> (Readiness, String) {
         &repository.dir,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
     );
-    (profile.ready(&place, &launched), common)
+    let readiness = profile.ready(&place, &launched);
+    unlink_user_scratch(repository);
+    (readiness, common)
 }
 
 /// The steps a readiness ran, each with whether it passed.
