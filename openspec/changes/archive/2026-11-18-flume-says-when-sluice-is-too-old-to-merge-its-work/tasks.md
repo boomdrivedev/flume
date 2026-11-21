@@ -1,0 +1,28 @@
+# Tasks
+
+The groups are headings for reading. Each task names the narrowest check
+that shows it done, run as written; no task runs the repository's whole
+checks or a group's, which the change's verify stage and the merge queue
+run (record 0054). Each task leaves every crate and its tests building,
+as the pre-commit hook's clippy over every target asks. `<base>` is
+written as is, for the branch the place running it was cut from and
+lands on. The statement is read at boomdrivedev/blueprints `5efb363`, on
+the branch `design/flume-says-when-sluice-is-too-old-to-merge-its-work`:
+C.6's submit and version rows, with 111, 112, 124 and 203. Record 0080
+and core.6's details hold the decision. Design sections are this
+change's `design.md`.
+
+## 1. The profile's submit
+
+- [x] 1.1 In `crates/flume/src/profiles/merge_queue/sluice/mod.rs`, have `submit` run `sluice --version` through `exited`, in the directory its head picked, before the submit's own command, for both heads, as design section 1 says. Add `MERGES_BY_ITSELF`, `(0, 97, 0)`, its doc naming it the first sluice release whose own host process moves its queues (sluice 135; sluice record 0093; record 0080), and a function reading a release from an exit 0's first line, as design section 2 says. Where the release is before `MERGES_BY_ITSELF`, have `submit` return `Submitted::Refused` with the words of design section 3, `sluice <release> is too old to merge this work by itself; flume needs sluice 0.97.0 or later, the first release whose own process moves its queues`, and run nothing more. Add a sentence to the module doc saying so, citing C.6's submit and version rows (111, 112, 203, C.6). Add the tests' helper `stand_in(scratch, says, code)` of design section 4, and the unit test `a_sluice_before_its_host_process_is_handed_no_work`: over a stand-in that says `sluice 0.95.1`, a place's submit from its worktree and a base place's by name, `SubmitHead::Branch` naming `train/a`, are each refused with words holding `sluice 0.95.1` and `0.97.0`, and `ran` holds no line beginning `submit`. True when `devenv shell -- cargo test -p flume --lib profiles::merge_queue::sluice::tests::a_sluice_before_its_host_process_is_handed_no_work` passes.
+- [x] 1.2 In the same file, have a version that names no release refuse the submit with design section 3's words for it: an exit 0 whose first line is no release, `sluice --version said "<line>", which names no release`, and any other exit, or a sluice that could not be run, `sluice --version gave no release: ` and what `refusal` reads of its output and errors, `it said nothing` where both are empty, or the run's error; each followed by `; flume needs sluice 0.97.0 or later, the first release whose own process moves its queues`. Add the unit test `a_sluice_that_names_no_release_is_handed_no_work`: over stand-ins that say `sluice 0.0.0`, `sluice 0.97.0-rc.1` and `sluice`, each exiting 0, and one that prints nothing and exits 64, a place's submit is refused each time, its words holding the stand-in's line, or `it said nothing`, and `0.97.0`, and `ran` holds no line beginning `submit` (C.6; sluice record 0111). True when `devenv shell -- cargo test -p flume --lib profiles::merge_queue::sluice::tests::a_sluice_that_names_no_release_is_handed_no_work` passes.
+- [x] 1.3 In the same file, add the unit test `a_sluice_with_its_host_process_is_handed_the_work`: over stand-ins that say `sluice 0.97.0`, `sluice 0.100.0` and `sluice 1.0.0`, each exiting 0, a place's submit answers `Submitted::Submitted` with the entry `7`, and `ran` holds `submit main --no-wait --json` as its one line each time, so a release is compared part by part as numbers, as design section 2 says (111, C.6). Change `submit` only where the test finds it reads a release otherwise than section 2 says. True when `devenv shell -- cargo test -p flume --lib profiles::merge_queue::sluice::tests::a_sluice_with_its_host_process_is_handed_the_work` passes.
+
+## 2. Against the pinned sluice
+
+- [x] 2.1 In `crates/flume/tests/profiles/tools/merge_queue_sluice.rs`, have `a_base_places_branch_over_a_scratch_repository` read the counting sluice's first command as `--version` and its next as `submit main --head train/a --no-wait --json`, its message naming the version read before the submit by name, as design section 5 and merge-queue-profile's scenario "The pinned sluice is handed the work" say; keep its other assertions as they are (203, C.6; core.22). True when `devenv shell -- cargo test -p flume --features tools --test tools merge_queue_sluice::a_base_places_branch_over_a_scratch_repository` passes.
+- [x] 2.2 In the same file, have `a_queue_the_settles_never_step_is_decided_by_sluices_host_process` read the counting sluice's first command as `--version` and its next as the submit, beginning `submit main `, and keep its check that every command after the submit begins `inbox`, `confirm`, `overview` or `status`, as design section 5 says (124, 125, C.6). True when `devenv shell -- cargo test -p flume --features tools --test tools merge_queue_sluice::a_queue_the_settles_never_step_is_decided_by_sluices_host_process` passes.
+
+## 3. The site
+
+- [x] 3.1 In `site/src/content/docs/guides/merge-queue.md`, extend the paragraph that says flume needs sluice 0.97.0 or later as design section 6 says: flume reads sluice's version before each submit; from an older sluice, or one whose version names no release, it submits nothing, and the place waits on its caller with words naming the release flume needs; once sluice is updated, `flume retry <place> --submission` submits it. Name sluice only as a product flume integrates with (core.35). True when `sluice exec <base> -- moon run site:build` passes.

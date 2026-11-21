@@ -73,7 +73,8 @@ fn watching(host: &UnderHerdr, place: &str, what: &str, holds: impl Fn(&Value) -
         }
         assert!(
             began.elapsed() < Duration::from_secs(180),
-            "{place} never came to {what}: {status}"
+            "{place} never came to {what}: {status}\nsluice's records of main: {:?}",
+            host.submissions()
         );
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -140,6 +141,11 @@ fn s4_an_answer_within_the_hour_by_a_retry_and_a_message_reaches_the_same_sessio
         .collect();
     assert_eq!(questions.len(), 2, "two ends of their own: {status}");
 
+    // The gate's check is held while flume reads the answers the session
+    // took, since sluice's host process, which the submission after the
+    // message's commit starts, decides it and lands the place at once
+    // otherwise (42, 124; sluice 135).
+    host.hold();
     host.flume(&["message", "fix--one", "Hello."]);
     let status = host.status(&place);
     let answers = &stage(&status, "code")["answers"];
@@ -162,6 +168,7 @@ fn s4_an_answer_within_the_hour_by_a_retry_and_a_message_reaches_the_same_sessio
             "an answer not received in its session: {status}"
         );
     }
+    host.release();
     until_landed(&host, &place);
     assert_eq!(host.on_remote("notes.md").as_deref(), Some("Hello.\n"));
     let prompts = host.prompts("code", 1);

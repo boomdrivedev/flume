@@ -211,9 +211,10 @@ impl WaitRead {
 /// The waits `held` reads while it stands, in design 7's order: its
 /// caller's move, a person's at a dialog its program shows; each stage
 /// waiting for room on the host; the merge queue from a submission sent
-/// until it is read landed or refused; and a person while a live start's
-/// agent was read asking. None once the place's work is over (217; 70,
-/// 90, 111, 130).
+/// until it is read landed or refused, or its landing held by the forge,
+/// and again from its return to the queue; and a person while a live
+/// start's agent was read asking. None once the place's work is over
+/// (217; 70, 90, 111, 112, 130).
 pub(crate) fn waits_of(held: &HeldState) -> Vec<WaitRead> {
     if !matches!(held.phase, Phase::Making { .. } | Phase::Live) {
         return vec![];
@@ -240,7 +241,11 @@ pub(crate) fn waits_of(held: &HeldState) -> Vec<WaitRead> {
         }
     }
     let submission = &held.submission;
-    if submission.submits > 0 && !submission.due && submission.verdict.is_none() {
+    if submission.submits > 0
+        && !submission.due
+        && submission.verdict.is_none()
+        && !submission.landing_refused
+    {
         waits.push(WaitRead {
             on: WaitParty::MergeQueue,
             for_move: "landing".into(),
@@ -543,8 +548,12 @@ fn end_of(state: StageState, needs: Option<StopKind>) -> (&'static str, Option<&
 }
 
 /// How the submission a merge queue's wait waited on ended, as the
-/// state that ends the wait reads it (111, 217).
+/// state that ends the wait reads it, `held` where the forge refused its
+/// landing (111, 112, 217).
 fn outcome_of(held: &HeldState) -> Option<&'static str> {
+    if held.submission.verdict.is_none() && held.submission.landing_refused {
+        return Some("held");
+    }
     match &held.submission.verdict {
         Some(Verdict::Landed { .. }) => Some("landed"),
         Some(Verdict::Failed { .. }) => Some("failed"),
@@ -738,6 +747,7 @@ pub(crate) mod tests {
                 room: None,
                 made_from: None,
                 counts: None,
+                session: None,
             }],
             current: Some(0),
             submission: SubmissionHeld::default(),
@@ -758,6 +768,7 @@ pub(crate) mod tests {
             fixes: vec![],
             trace: None,
             waits: vec![],
+            chart: None,
         }
     }
 
@@ -961,6 +972,7 @@ pub(crate) mod tests {
             (Waits::Submission, "submission"),
             (Waits::Delivered, "delivered"),
             (Waits::Unsubmitted, "unsubmitted"),
+            (Waits::ForgeRefused, "forge_refused"),
         ] {
             assert_eq!(
                 waits_of(&waiting(held(), why, 10)),
@@ -1008,6 +1020,64 @@ pub(crate) mod tests {
             kept: None,
         };
         assert_eq!(waits_of(&asking), vec![], "the work is over");
+    }
+
+    #[test]
+    fn a_landing_the_forge_refused_ends_the_merge_queues_wait() {
+        // telemetry "A landing the forge refused": the merge queue's wait
+        // ends at the settle that reads the landing held, naming it held,
+        // the caller's for forge_refused runs from it to the settle that
+        // reads the submission back in the queue, and a merge queue's
+        // wait begins there again; no words of the forge's on a span or
+        // a record (217, 112, 130; core.56).
+        let mut ids = counted();
+        let mut submitted = held();
+        write(None, &mut submitted, 100, &mut ids);
+        let mut queued = running(submitted.clone(), StageState::Delivered, 1, 100);
+        queued.submission.submits = 1;
+        let signals = write(Some(&submitted), &mut queued, 1000, &mut ids);
+        assert_eq!(named(&signals), ["wait.begun"]);
+        let forge = "push declined: a secret in src/config.rs";
+        let mut refused = queued.clone();
+        refused.submission.waiting = Some(format!(
+            "the forge refused the submission's landing: {forge}"
+        ));
+        refused.submission.landing_refused = true;
+        refused = waiting(refused, Waits::ForgeRefused, 2000);
+        let signals = write(Some(&queued), &mut refused, 2000, &mut ids);
+        assert_eq!(
+            named(&signals),
+            ["span wait on merge-queue", "wait.ended", "wait.begun"]
+        );
+        let (_, from, to, attributes) = span_named(&signals, "wait on merge-queue");
+        assert_eq!((from, to), (1000, 2000));
+        assert_eq!(attributes[keys::WAIT_OUTCOME], text("held"));
+        assert_eq!(refused.waits.len(), 1, "the caller's wait alone");
+        assert_eq!(
+            (refused.waits[0].on, refused.waits[0].for_move.as_str()),
+            (WaitParty::Caller, "forge_refused")
+        );
+        assert!(
+            !format!("{signals:?}").contains(forge),
+            "the forge's words in a signal: {signals:?}"
+        );
+        let mut back = refused.clone();
+        back.submission.waiting = None;
+        back.submission.landing_refused = false;
+        back.waiting = None;
+        let signals = write(Some(&refused), &mut back, 3000, &mut ids);
+        assert_eq!(
+            named(&signals),
+            ["span wait on caller", "wait.ended", "wait.begun"]
+        );
+        let (_, from, to, attributes) = span_named(&signals, "wait on caller");
+        assert_eq!((from, to), (2000, 3000));
+        assert_eq!(attributes[keys::WAIT_MOVE], text("forge_refused"));
+        assert_eq!(back.waits.len(), 1);
+        assert_eq!(
+            (back.waits[0].on, back.waits[0].since),
+            (WaitParty::MergeQueue, 3000)
+        );
     }
 
     #[test]
@@ -1380,6 +1450,7 @@ pub(crate) mod tests {
                     stages: vec![code_stage()],
                     fix: None,
                     fix_limit: None,
+                    statechart: None,
                 }],
             );
             kinds.set_binding(

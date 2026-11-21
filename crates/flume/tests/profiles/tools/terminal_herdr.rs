@@ -55,7 +55,7 @@ use flume::profiles::terminal::herdr::{
     herdr_name, Herdr, Pane, Server, NAME, SESSION, SESSION_HOME, START_TIMEOUT,
 };
 use flume_conformance::engine::world::{kind, stage, World};
-use flume_conformance::scenario::pass_all;
+use flume_conformance::scenario::pass_all_side_by_side;
 use flume_conformance::seams::terminal::{self, TerminalHarness};
 use flume_core::{Answer, Engine, Retry};
 use flume_fakes::FakeChange;
@@ -195,6 +195,16 @@ const SHORT_START: Duration = Duration::from_millis(3001);
 /// The bound on an agent's start the seam's scenarios give herdr: room
 /// for the stand-in on a loaded host, short for a program never up.
 const HARNESS_START: Duration = Duration::from_secs(20);
+
+/// How long the profile gives a still screen for the program to draw:
+/// none, as the stand-in draws whatever it draws before it tells herdr
+/// it is ready, and herdr answers a start only after its settle delay.
+const STAND_IN_DRAW: Duration = Duration::ZERO;
+
+/// How long the profile reads the screen for the folder-trust question
+/// at most: room for the stand-in's question drawn a second after it
+/// tells herdr it is held at it, on a loaded host.
+const STAND_IN_SETTLE: Duration = Duration::from_secs(4);
 
 /// How many short links this run has made, which names the next.
 static LINKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -423,6 +433,7 @@ impl TestServer {
         )
         .with_bound(BOUND)
         .with_login(&login)
+        .with_trust_reading(STAND_IN_DRAW, STAND_IN_SETTLE)
     }
 
     /// The place `short` of the scratch repository on `base`.
@@ -623,6 +634,9 @@ fn opened(server: &TestServer, profile: &Herdr, who: &Identity, command: &AgentC
 struct Harness {
     server: TestServer,
     seam: Herdr,
+    /// The seam with herdr's shortest bound on a start, for a program
+    /// that never comes up.
+    never_up_seam: Herdr,
     caller: Pane,
     /// The pane each moved agent started in, by identity.
     moved: RefCell<BTreeMap<String, String>>,
@@ -647,6 +661,7 @@ impl Harness {
             .with_plugin(Some(server.scratch.path("plugin")));
         Harness {
             server,
+            never_up_seam: seam.clone().with_start_timeout(SHORT_START),
             seam,
             caller,
             moved: RefCell::default(),
@@ -737,6 +752,10 @@ impl TerminalHarness for Harness {
         Some(command)
     }
 
+    fn never_up_seam(&self) -> &Herdr {
+        &self.never_up_seam
+    }
+
     fn makes(&self) -> bool {
         true
     }
@@ -788,12 +807,12 @@ impl TerminalHarness for Harness {
         Some(pane.session())
     }
 
-    fn received(&self, session: &str) -> Vec<String> {
+    fn received(&self, session: &str, awaited: usize) -> Vec<String> {
         let pane = Pane::named(session).expect("a session the profile named");
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let got = self.server.kept_at(&pane, "got");
-            if !got.is_empty() || Instant::now() >= deadline {
+            if got.len() >= awaited || Instant::now() >= deadline {
                 return got;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -904,6 +923,10 @@ impl Harness {
     }
 }
 
+/// How many of the seam's scenarios run side by side, each on a
+/// herdr server and in a scratch of its own.
+const SIDE_BY_SIDE: usize = 5;
+
 /// The terminal-profiles spec's scenario "omp's integration not
 /// installed, then installed" (4, S75): under a scratch home, given over
 /// a login environment whose home is another, the pinned herdr reports
@@ -954,7 +977,12 @@ fn omp_starts_once_its_integration_is_installed() {
 
 #[test]
 fn the_herdr_profile_passes_the_terminal_scenarios() {
-    pass_all("terminal", &terminal::scenarios(), Harness::new);
+    pass_all_side_by_side(
+        "terminal",
+        &terminal::scenarios(),
+        SIDE_BY_SIDE,
+        Harness::new,
+    );
 }
 
 #[test]
@@ -4129,6 +4157,7 @@ fn own_session(server: &TestServer, home: &SessionHome) -> Herdr {
         ("SHELL".to_string(), "/bin/sh".to_string()),
     ])
     .with_session_home(home.path())
+    .with_trust_reading(STAND_IN_DRAW, STAND_IN_SETTLE)
 }
 
 /// Whether herdr's listing under `home` names a session `name`, running
@@ -4592,7 +4621,7 @@ esac
 
 #[test]
 fn relay_types_each_of_flumes_key_names_into_a_pane() {
-    // 222, C.5's relay row at blueprints b54a9b4, core.29: each of flume's
+    // 222, C.5's relay row at blueprints cb114fd, core.29: each of flume's
     // key names, bare and led by ctrl+, alt+ and shift+, typed by the relay
     // into a pane of the pinned herdr running `cat`, herdr taking every
     // name but delete, insert, home, end, pageup and pagedown, which the

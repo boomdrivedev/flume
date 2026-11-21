@@ -1,9 +1,8 @@
-//! What a recipient takes at its next wait (43, 54, 75, 95, 121, 132;
-//! every delivery pending for a recipient handed as one prompt at its
-//! wait, record 0069): a recipient's session is typed nothing while it
-//! works; at its wait it takes every delivery owed to it and handed to it
-//! by nothing, ends and messages alike, in the order recorded, as one
-//! prompt, each item with how to confirm it; each is claimed beside the
+//! What a recipient takes at its next wait (43, 54, 75, 95, 121, 132,
+//! 214, 215; record 0069): a recipient's session is typed nothing while
+//! it works; at its wait it takes every delivery owed to it and handed
+//! to it by nothing, ends and messages alike, in the order recorded, as
+//! one prompt, each item with how to confirm it; each is claimed beside the
 //! host's deliveries before the send and recorded handed on its answer,
 //! so two settles hand it once; a send refused leaves nothing claimed or
 //! recorded; and a claim left sending holds its item out of later batches
@@ -32,12 +31,12 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "batch: two messages and a fix's end for east/ops come while its run's agent works; nothing is typed while it works, and once it goes quiet and its place settles its session takes one prompt holding the two messages and the end in the order recorded, each with its confirm, each recorded handed to the address, a role's deliveries taken as one prompt at its wait",
-            cites: &["43", "54", "121", "132"],
+            cites: &["43", "54", "121", "132", "214"],
             run: two_messages_and_an_end_while_a_role_works,
         },
         Scenario {
             name: "batch: an end handed to madswan/ops by its inbox, then a message for it, gives the next batch to the address the message alone",
-            cites: &["43", "53", "132"],
+            cites: &["43", "53", "132", "214"],
             run: something_handed_before,
         },
         Scenario {
@@ -57,47 +56,47 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "batch: a message to madswan/planner, whose standing agent works, is typed into it never while it works, and the host's watch's settle once it waits hands it the message once, recorded handed by message, a role's messages taken at its wait",
-            cites: &["43", "53", "132"],
+            cites: &["43", "53", "132", "214"],
             run: a_message_to_a_standing_agent_at_the_watchs_settle,
         },
         Scenario {
             name: "batch: a message for east/ops while its run's plan ended short needing an answer, its agent kept open, is typed into its session never and handed to none; once a retry answers the stop-short and the agent goes quiet again, the next settle hands it the message, a delivery never taken for the answer",
-            cites: &["42", "53", "132", "198"],
+            cites: &["42", "53", "132", "198", "214"],
             run: a_message_while_the_run_waits_on_its_answer,
         },
         Scenario {
             name: "batch: a message and a fix's end pending for east/planner when its run's start fills its prompt go in that prompt after the kind's template and before the way to stop short, each with its confirm, a role's run's first prompt carrying its batch",
-            cites: &["28", "43", "132"],
+            cites: &["28", "43", "132", "214"],
             run: the_first_prompt_carries_the_batch,
         },
         Scenario {
             name: "batch: a run's start carrying a batch, read never begun, lets its claims go and records nothing handed, and the next start's prompt carries the same batch",
-            cites: &["37", "38", "43", "132"],
+            cites: &["37", "38", "43", "132", "214"],
             run: a_start_that_never_began,
         },
         Scenario {
             name: "batch: an end for east/planner that comes after its run's prompt was filled and before it was received is handed to none until the run's agent next waits, and then goes in one prompt alone",
-            cites: &["37", "38", "43", "132"],
+            cites: &["37", "38", "43", "132", "214"],
             run: what_came_after_the_prompt,
         },
         Scenario {
             name: "batch: the fake agent of east/ops's run offers deliver; an end for the address comes while it works, and once it goes quiet a settle sends nothing through the terminal and its take answers the end's notice with its confirm, recorded handed to the address by notice, its deliver part taking the place of the terminal",
-            cites: &["43", "54", "121", "132"],
+            cites: &["43", "54", "121", "132", "214", "215"],
             run: a_run_whose_agent_takes_its_batch,
         },
         Scenario {
             name: "message: the fake agent's profile offers deliver and a caller messages its place while it works: nothing goes through the fake terminal, the message waits on the start untaken, and once the agent waits and takes it, it is read received and the message answers acted, the deliver part taking the place of the terminal",
-            cites: &["53", "54", "38"],
+            cites: &["53", "54", "38", "215"],
             run: a_message_taken_by_the_deliver_part,
         },
         Scenario {
             name: "message: the fake agent's profile offers deliver, a caller messages its place with a bound of a minute and the agent works past it: the message is refused with nothing typed, the start holds no message waiting, and a take after the bound gets nothing",
-            cites: &["53", "54"],
+            cites: &["53", "54", "215"],
             run: a_message_the_deliver_part_never_takes,
         },
         Scenario {
             name: "message: the fake agent's profile offers deliver, takes a message and reads it not received within 60 seconds, then takes it again and reads it not received again: the message is refused naming that the agent did not receive the words, taken twice",
-            cites: &["38", "53", "54"],
+            cites: &["38", "53", "54", "215"],
             run: a_message_taken_and_not_received,
         },
     ]

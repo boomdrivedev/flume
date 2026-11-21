@@ -4,7 +4,7 @@
 
 /// The revision of `design/flume/requirements.md` in boomdrivedev/blueprints
 /// the list was read at.
-pub const REVISION: &str = "48a94da";
+pub const REVISION: &str = "3a3b287";
 
 /// Part A: what flume decides.
 pub fn part_a() -> Vec<u32> {
@@ -85,11 +85,6 @@ pub const PLAN: &str = "record 0024's plan stage's change, built after the mode"
 /// and its pace.
 pub const POINTS: &str = "record 0025's change, points, built after the mode";
 
-/// The change that builds records 0028 and 0029: statechart kinds, run
-/// on the family's engine moved into weir.
-pub const STATECHART: &str =
-    "records 0028 and 0029's change, statechart kinds on the family's engine, after crew's rewrite";
-
 /// What builds clause 183, an MCP server naming the labels whose places
 /// may have it: the answer to section 10's question on how a host's
 /// servers reach an agent.
@@ -102,13 +97,11 @@ pub const MCP_SERVERS: &str =
 pub const ORIGIN: &str =
     "a-place-is-cut-from-origins-copy-of-its-base, record 0041, landed before the list held S92";
 
-/// The changes that built record 0069 beside a stage that hibernates and
-/// resumes its own session, a role's deliveries taken as one prompt at
-/// its wait, the agent seam's deliver and a standing role, which landed
-/// before the list held 214, 215, S126 and S128: no scenario cites them
-/// as data yet.
+/// The changes that built record 0069's standing role and an agent
+/// program's own deliver part, which landed before the list held S126
+/// and S128: no scenario cites them as data yet.
 pub const HIBERNATE: &str =
-    "record 0069's changes, a role's deliveries taken at its wait, the agent seam's deliver and a standing role, landed before the list held 214, 215, S126 and S128";
+    "record 0069's changes, a standing role and an agent program's own deliver part, landed before the list held S126 and S128";
 
 /// What builds clauses 221 and 222: a caller's relay of a place's live
 /// agent to a person elsewhere, which no record of flume's holds yet.
@@ -150,13 +143,9 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .map(|clause| clause.to_string())
         .chain((69..=70).map(|scenario| format!("S{scenario}")))
         .map(|clause| (clause, POINTS));
-    let statechart = (175..=178)
-        .map(|clause| clause.to_string())
-        .chain((76..=77).map(|scenario| format!("S{scenario}")))
-        .map(|clause| (clause, STATECHART));
     let mcp_servers = std::iter::once(("183".to_string(), MCP_SERVERS));
     let origin = std::iter::once(("S92".to_string(), ORIGIN));
-    let hibernate = ["214", "215", "S126", "S128"].map(|clause| (clause.to_string(), HIBERNATE));
+    let hibernate = ["S126", "S128"].map(|clause| (clause.to_string(), HIBERNATE));
     let relay = [221, 222].map(|clause| (clause.to_string(), RELAY));
     let command_stages = [223, 224]
         .map(|clause| clause.to_string())
@@ -168,7 +157,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
     standing
         .chain(plan)
         .chain(points)
-        .chain(statechart)
         .chain(mcp_servers)
         .chain(origin)
         .chain(hibernate)
@@ -218,7 +206,7 @@ mod tests {
                 "{scenario} is not listed"
             );
         }
-        assert_eq!(REVISION, "48a94da");
+        assert_eq!(REVISION, "3a3b287");
         for clause in [
             129, 130, 131, 132, 137, 140, 141, 142, 148, 154, 155, 156, 157, 158, 159, 161, 162,
             163, 165, 168, 169, 173, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186, 190, 191,
@@ -239,7 +227,7 @@ mod tests {
     #[test]
     fn the_clauses_unbuilt_are_named_by_the_changes_that_build_them() {
         let unbuilt = unbuilt();
-        assert_eq!(unbuilt.len(), 3 + 2 + 4 + 6 + 6 + 1 + 1 + 4 + 2 + 3 + 1 + 3);
+        assert_eq!(unbuilt.len(), 3 + 2 + 4 + 6 + 1 + 1 + 2 + 2 + 3 + 1 + 3);
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
             "140", "141", "142", "143", "144", "145", "146", "147", "151", "153", "154", "157",
@@ -252,7 +240,8 @@ mod tests {
             "197", "S103", "198", "S104", "S105", "202", "203", "204", "205", "206", "208", "S109",
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
             "S119", "211", "216", "217", "218", "219", "220", "S129", "170", "172", "S75", "174",
-            "S74", "171", "S73", "212", "213", "S124", "S125", "S127", "173", "S71",
+            "S74", "171", "S73", "212", "213", "S124", "S125", "S127", "173", "S71", "214", "215",
+            "175", "176", "177", "178", "S76", "S77",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),

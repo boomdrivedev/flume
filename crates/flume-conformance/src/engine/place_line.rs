@@ -45,6 +45,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: held_then_stalled,
         },
         Scenario {
+            name: "place line: a fix whose submission is read held, the forge having refused its landing, is landing refused, and stalled five minutes later under no hold's words",
+            cites: &["112", "130"],
+            run: a_landing_the_forge_refused,
+        },
+        Scenario {
             name: "place line: a construct stage stopped short needing an answer is waiting on an answer",
             cites: &["42", "130"],
             run: waiting_on_an_answer,
@@ -526,6 +531,31 @@ fn a_lost_talk_retried_while_its_session_runs(_: &()) -> Outcome {
             Some(StageState::WaitingForRoom)
         ),
         "the line's state and talk once its session ended, the host having no room"
+    );
+    Ok(())
+}
+
+fn a_landing_the_forge_refused(_: &()) -> Outcome {
+    let world = World::new();
+    let id = super::settling::fix_held(&world, "parser", true)?;
+    world.settle(&id);
+    let refused = line(&world, &id)?;
+    ensure_eq!(
+        refused.state.as_str(),
+        "landing refused",
+        "the state while held"
+    );
+    ensure_eq!(
+        refused.full.as_str(),
+        "fix--parser · fix@1 · code · run 1 · landing refused",
+        "the line while held"
+    );
+    world.host.advance(STALL_AFTER);
+    world.settle(&id);
+    ensure_eq!(
+        line(&world, &id)?.state,
+        "stalled",
+        "the state five minutes later"
     );
     Ok(())
 }

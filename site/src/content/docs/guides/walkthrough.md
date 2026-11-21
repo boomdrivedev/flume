@@ -174,9 +174,9 @@ delivered.
 
 ## 5. The landing and the tidy
 
-Each settle after the submission reads sluice's record, and runs one
-round of sluice's queue where no `sluice run` drives it. Once sluice
-lands the fix, the next settle reads the landing and tidies the place:
+Each settle after the submission reads sluice's record and runs no
+round of sluice's queue, which moves on its own. Once sluice lands the
+fix, the next settle reads the landing and tidies the place:
 
 ```console
 $ flume settle

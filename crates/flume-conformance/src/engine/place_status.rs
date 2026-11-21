@@ -16,6 +16,7 @@ use super::agent_settings::{for_every_stage, kept_open};
 use super::base_places::{forecast_conflict, mend_fix, spring, spring_mended};
 use super::carried_conversations::{by_hand, lost_with_host, retry_talk, talk, talking};
 use super::open_sessions::{asking, code, stops_short, taken, QUESTION};
+use super::statecharts::persona;
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{
@@ -91,6 +92,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a place whose construct ended short waits on a retry of construct, since then, with the question whole and its agent kept open until an hour after, in the JSON form",
             cites: &["56", "130", "42", "41", "198"],
             run: waiting_on_an_answer,
+        },
+        Scenario {
+            name: "status: a fix whose submission a settle at t read held, the fake merge queue's record holding the forge's words, gives the submission held with the record's words and the move waited on as a retry of code for forge_refused since t with the words the wait was written with, in the JSON form and the person's",
+            cites: &["56", "99", "112", "130"],
+            run: a_submission_whose_landing_the_forge_refused,
         },
         Scenario {
             name: "status: a place whose construct's agent kept open was let go by its time and ended waits on the same move since the stop-short, giving when it was let go, time, and when it was ended, in the JSON form",
@@ -396,6 +402,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a base place whose forecast could not be read gives it unread with the merge queue's words",
             cites: &["56", "203", "210"],
             run: a_forecast_unread_in_status,
+        },
+        Scenario {
+            name: "status: persona at its test stage, one session delivered and one working, gives region stages at test since its entry, stages.test.run working, the stage at entry 1 joined by all with its two sessions, each session as a stage with its state, and the run not over",
+            cites: &["56", "175"],
+            run: persona_at_its_test_stage,
+        },
+        Scenario {
+            name: "status: persona's region stages at stopped gives the decision there, its kind stalled and its two answers, and the place waiting on its caller for it since then",
+            cites: &["56", "130", "176"],
+            run: a_decision_standing,
+        },
+        Scenario {
+            name: "status: two sessions of a statechart place running give both agents, each with its identity naming its session and its settings with where each came from, and a simple kind's place gives no statechart and no agents in its JSON",
+            cites: &["30", "56"],
+            run: two_agents,
         },
         Scenario {
             name: "status: A hibernating standing role with nothing pending: status gives east/ops among the host's addresses with standing_role naming its place and since when it hibernates",
@@ -3393,6 +3414,243 @@ fn drop_field(value: &mut serde_json::Value, path: &[&str]) -> bool {
     } else {
         drop_field(inner, rest)
     }
+}
+
+fn a_submission_whose_landing_the_forge_refused(_: &()) -> Outcome {
+    use super::settling::{fix_held, FORGE};
+    let world = World::new();
+    let id = fix_held(&world, "one", true)?;
+    world.host.advance(60);
+    let t = world.host.now();
+    world.settle(&id);
+    world.host.advance(60);
+    let status = world.status(&id)?;
+    let submission = status.submission.clone().ok_or("no submission")?;
+    ensure!(
+        matches!(
+            &submission.read,
+            SubmissionRead::Found { submission }
+                if submission.state == SubmissionState::Held { words: FORGE.into() }
+        ),
+        "the submission read {:?}",
+        submission.read
+    );
+    let written = format!("the forge refused the submission's landing: {FORGE}");
+    let waiting = status
+        .waiting_on
+        .clone()
+        .ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        waiting,
+        WaitingOn {
+            act: Act::Retry,
+            stage: Some("code".into()),
+            why: Waits::ForgeRefused,
+            since: Some(t),
+            words: Some(written.clone()),
+            open_until: None,
+            closed: None,
+        },
+        "the move the place waits on"
+    );
+    ensure_eq!(
+        waiting.move_words(),
+        "a retry of code",
+        "the move in the person's form"
+    );
+    let json = status_json(&world, &id)?;
+    ensure_eq!(
+        json["waiting_on"],
+        serde_json::json!({
+            "act": "retry",
+            "stage": "code",
+            "why": "forge_refused",
+            "since": t,
+            "words": written,
+        }),
+        "the move in the JSON form"
+    );
+    ensure_eq!(
+        json["submission"]["read"]["found"]["submission"]["state"],
+        serde_json::json!({"held": {"words": FORGE}}),
+        "the submission in the JSON form"
+    );
+    Ok(())
+}
+
+/// persona launched over two personas, its test stage's two sessions
+/// begun (175).
+fn persona_begun(world: &World, kind: Kind) -> Result<PlaceId, String> {
+    world.commit("main", &["personas/a.md", "personas/b.md"]);
+    world.kinds.set_kinds(REPOSITORY, vec![kind]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    let id = World::id("persona", "a");
+    world.settle(&id);
+    Ok(id)
+}
+
+fn persona_at_its_test_stage(_: &()) -> Outcome {
+    let world = World::new();
+    let id = persona_begun(&world, persona())?;
+    world.commit("persona/a", &["results/personas/a.md"]);
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let chart = status.statechart.ok_or("status gives no statechart")?;
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let entered = held
+        .chart
+        .as_ref()
+        .and_then(|chart| chart.state.entered_at.get("stages").copied());
+    ensure_eq!(
+        chart
+            .regions
+            .iter()
+            .map(|region| (
+                region.region.as_str(),
+                region.state.as_str(),
+                region.is_final
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("stages", "test", false),
+            ("stages.test.run", "working", false)
+        ],
+        "the regions"
+    );
+    ensure_eq!(
+        chart.regions[0].since,
+        entered,
+        "since when stages is at test"
+    );
+    ensure_eq!(
+        chart
+            .stages
+            .iter()
+            .map(|stage| (
+                stage.stage.as_str(),
+                stage.entry,
+                stage.join,
+                stage.sessions.clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            "stages.test",
+            1,
+            Join::All,
+            vec!["stages.test#1/1".to_string(), "stages.test#1/2".to_string()]
+        )],
+        "the stages"
+    );
+    ensure_eq!(
+        status
+            .stages
+            .iter()
+            .map(|stage| (stage.name.as_str(), stage.state))
+            .collect::<Vec<_>>(),
+        vec![
+            ("stages.test#1/1", StageState::Delivered),
+            ("stages.test#1/2", StageState::Begun)
+        ],
+        "the sessions as stages"
+    );
+    ensure!(!chart.over, "the run reads over");
+    Ok(())
+}
+
+fn a_decision_standing(_: &()) -> Outcome {
+    let world = World::new();
+    let mut kind = persona();
+    if let Some(statechart) = kind.statechart.as_mut() {
+        statechart
+            .stages
+            .values_mut()
+            .for_each(|stage| stage.send_back_limit = Some(0));
+    }
+    let id = persona_begun(&world, kind)?;
+    super::statecharts::stops_short(
+        &world,
+        ("persona", "a"),
+        "stages.test#1/1",
+        "personas/a.md fails.",
+        StopKind::FoundWork,
+    )?;
+    world.settle(&id);
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let chart = status.statechart.ok_or("status gives no statechart")?;
+    ensure_eq!(
+        chart
+            .decisions
+            .iter()
+            .map(|decision| (
+                decision.region.as_str(),
+                decision.kind.as_str(),
+                decision.answers.clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            "stages",
+            "stalled",
+            vec!["retry".to_string(), "drop".to_string()]
+        )],
+        "the decisions standing"
+    );
+    let since = chart.decisions[0].since;
+    ensure!(since.is_some(), "the decision gives no since");
+    let waiting = status.waiting_on.ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (
+            waiting.act,
+            waiting.stage.as_deref(),
+            waiting.why,
+            waiting.since
+        ),
+        (Act::Decide, Some("stages"), Waits::Decision, since),
+        "the move the place waits on, and since when"
+    );
+    Ok(())
+}
+
+fn two_agents(_: &()) -> Outcome {
+    let world = World::new();
+    let id = persona_begun(&world, persona())?;
+    let status = world.status(&id)?;
+    ensure_eq!(
+        status
+            .agents
+            .iter()
+            .map(|agent| (agent.identity.clone(), agent.stage.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                World::identity("persona", "a", "stages.test#1/1", 1).to_string(),
+                "stages.test#1/1"
+            ),
+            (
+                World::identity("persona", "a", "stages.test#1/2", 1).to_string(),
+                "stages.test#1/2"
+            ),
+        ],
+        "the agents"
+    );
+    ensure!(
+        status
+            .agents
+            .iter()
+            .all(|agent| agent.settings.from.contains_key("program")),
+        "an agent's settings say not where its program came from"
+    );
+    let simple = world.begun("plain", Some(Deliverable::Commits), "b")?;
+    let json = serde_json::to_value(world.status(&simple)?).map_err(|error| error.to_string())?;
+    ensure!(
+        json.get("agents").is_none() && json.get("statechart").is_none(),
+        "a simple kind's place gives a statechart or agents: {json}"
+    );
+    ensure!(
+        json.get("agent").is_some_and(|agent| !agent.is_null()),
+        "a simple kind's place gives no agent"
+    );
+    Ok(())
 }
 
 /// The stage `name` of a place's status.

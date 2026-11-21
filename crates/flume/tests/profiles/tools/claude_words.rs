@@ -12,12 +12,15 @@
 //! the profile reserves and the `attribution` the docs give as their
 //! example (design 9 of record 0043's change), `effortLevel` among those
 //! keys, and the efforts its `--effort` takes and the variable it reads
-//! over them (design 6 and 7 of record 0044's change). A release that
-//! changes any of them, or only renames what its minifier names in those
-//! fragments, fails here until the reading is made again. No agent runs.
+//! over them (design 6 and 7 of record 0044's change), the input each of
+//! its hook events hands the plugin's hooks and how it reads their
+//! answers, the options the command names, and its folder-trust dialog
+//! (C.4; core.39). A release that changes any of them, or only renames
+//! what its minifier names in those fragments, fails here until the
+//! reading is made again. No agent runs.
 
 use flume::profiles::agent::claude::{
-    carry, effort, limit, live, mode, settings, withheld, wrapper,
+    self, carry, effort, hook, limit, live, mode, settings, withheld, wrapper,
 };
 use std::path::{Path, PathBuf};
 
@@ -65,25 +68,25 @@ fn pinned_program() -> (PathBuf, String) {
 /// Each of `fragments` the pinned release's program does not hold, as
 /// its name and the fragment.
 fn missing(fragments: &[(&'static str, String)]) -> (Vec<String>, PathBuf, String) {
-    let (program, version) = pinned_program();
-    let bytes =
-        std::fs::read(&program).unwrap_or_else(|error| panic!("{}: {error}", program.display()));
-    let mut found = vec![false; fragments.len()];
-    for at in 0..bytes.len() {
-        for (index, (_, fragment)) in fragments.iter().enumerate() {
-            let fragment = fragment.as_bytes();
-            if !found[index] && bytes[at] == fragment[0] && bytes[at..].starts_with(fragment) {
-                found[index] = true;
-            }
-        }
-    }
+    let (program, version, bytes) = pinned_bytes();
     let missing = fragments
         .iter()
-        .zip(&found)
-        .filter(|(_, found)| !**found)
-        .map(|((name, fragment), _)| format!("{name}: {fragment}"))
+        .filter(|(_, fragment)| memchr::memmem::find(bytes, fragment.as_bytes()).is_none())
+        .map(|(name, fragment)| format!("{name}: {fragment}"))
         .collect();
-    (missing, program, version)
+    (missing, program.clone(), version.clone())
+}
+
+/// The pinned release's program, its version and its bytes, read once
+/// for every test of this module.
+fn pinned_bytes() -> &'static (PathBuf, String, Vec<u8>) {
+    static PINNED: std::sync::OnceLock<(PathBuf, String, Vec<u8>)> = std::sync::OnceLock::new();
+    PINNED.get_or_init(|| {
+        let (program, version) = pinned_program();
+        let bytes = std::fs::read(&program)
+            .unwrap_or_else(|error| panic!("{}: {error}", program.display()));
+        (program, version, bytes)
+    })
 }
 
 #[test]
@@ -147,6 +150,39 @@ fn the_pinned_release_takes_own_settings_as_the_profile_passes_them() {
     assert!(
         missing.is_empty(),
         "Claude Code {version}, at {}, does not hold the fragments its own settings' way rests on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_hands_its_hooks_the_inputs_they_read() {
+    let (missing, program, version) = missing(&hook::fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the hooks and their inputs rest on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_takes_the_command_the_profile_builds() {
+    let (missing, program, version) = missing(&claude::command_fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the command rests on:\n{}",
+        program.display(),
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn the_pinned_release_asks_its_folder_trust_as_the_terminal_answers_it() {
+    let (missing, program, version) = missing(&claude::trust_fragments());
+    assert!(
+        missing.is_empty(),
+        "Claude Code {version}, at {}, does not hold the fragments the folder-trust dialog rests on:\n{}",
         program.display(),
         missing.join("\n")
     );

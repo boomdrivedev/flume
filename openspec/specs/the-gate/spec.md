@@ -63,14 +63,21 @@ and CI SHALL run `:#check-fast` on Linux and macOS in the devenv shell
 
 The `check-live` layer's walkthroughs SHALL carry a fix and a change
 from their launch to their landing with the pinned Claude Code under
-herdr, signed in by a test account's token, and SHALL leave a stage
-whose pane goes quiet with no deliverable not ended (39, S3); the
-operator runs them by hand, outside `sluice exec`.
+herdr, signed in by a test account's token, SHALL leave a stage whose
+pane goes quiet with no deliverable not ended (39, S3), and SHALL have
+a role's session take a batch through flume's plugin's deliver part,
+its input left as typed (215); the operator runs them by hand, outside
+`sluice exec`.
 
 #### Scenario: The operator's run
 
 - **WHEN** the operator runs `moon run flume:live` from the devenv shell with a test account's token
 - **THEN** both walkthroughs land, and the quiet stage with no deliverable is not ended
+
+#### Scenario: A role's session takes a batch with words half typed
+
+- **WHEN** the live walkthrough wakes the standing role `w/ops`, whose talk reads its inbox and waits, types words into the talk's pane without submitting them, and gives `w/ops` two messages each asking for one word
+- **THEN** the talk's transcript holds each message in a user turn and the word each asks for in its answers, holds the words typed in no user turn, the pane's input holds them once the talk waits again, and status gives each message handed to `w/ops` by `message` alone (54, 214, 215, C.4)
 
 ### Requirement: The commit hooks take a commit git revert wrote as CI does
 
@@ -208,3 +215,47 @@ unchecked, and write nothing in the tree (core.59).
 
 - **WHEN** `root:changes` runs over two open changes that each add a requirement of one name to one spec, each with a task left unchecked
 - **THEN** it passes, and the tree's specs and changes are as they were before it ran
+
+### Requirement: CI tries a download GitHub turns away again
+
+CI SHALL run each step that downloads from GitHub, the devenv shell's
+inputs, the flake's, the nixpkgs convco comes from and the crates of
+weir, through `try-again.sh`. `try-again.sh` SHALL run its command
+again where it fails and the last lines of its output say HTTP 429 or a
+5xx, or GitHub's rate limit, up to three runs in all, pausing a minute
+before the second and two before the third, and SHALL exit with the
+command's own status at once on any other failure and on the third
+refusal.
+
+#### Scenario: A download GitHub turned away once
+
+- **WHEN** `root:try-again` runs `try-again.sh` over a stand-in whose first run fails saying nix's `HTTP error 429` and GitHub's "rate-limited", and whose second passes
+- **THEN** the stand-in runs twice, `try-again.sh` pauses 60 seconds between, says it was turned away at run 1 of 3, and exits 0
+
+#### Scenario: A download GitHub turned away at every run
+
+- **WHEN** `root:try-again` runs `try-again.sh` over a stand-in that fails each run with status 7 saying GitHub's "API rate limit exceeded"
+- **THEN** the stand-in runs three times, `try-again.sh` pauses 60 and then 120 seconds, says it was turned away at each of 3 runs, and exits 7
+
+#### Scenario: A failure that is no refusal
+
+- **WHEN** `root:try-again` runs `try-again.sh` over a stand-in that fails a check, one that fails with GitHub's `HTTP error 403` and no rate limit, and one that fails a check forty lines after a refusal nix tried again
+- **THEN** each stand-in runs once, `try-again.sh` pauses not at all, and exits with the stand-in's status
+
+#### Scenario: The workflow's downloads from GitHub
+
+- **WHEN** `nix:test` reads `.github/workflows/ci.yml`
+- **THEN** every step of the jobs `fast` and `flake` that enters the devenv shell, the job `conventional`'s `nix shell` of convco and the job `binaries`' `cargo build` each run through `sh try-again.sh`
+
+### Requirement: The tools layer runs its tests all at once
+
+The `flume:tools` task SHALL run its tests as many at once as libtest
+takes on the host, never the share of the host's cores a sluice run is
+handed, since its tests wait on the pinned tools' sessions and the
+stand-in rather than on a processor; every other task SHALL keep that
+share for its builds and tests (core.21).
+
+#### Scenario: A gate run on a host that hands each run two cores
+
+- **WHEN** sluice runs `flume:tools` with `SLUICE_JOBS` set to 2
+- **THEN** cargo builds with two jobs and libtest runs the tests with no `RUST_TEST_THREADS`, as many at once as the host has processors

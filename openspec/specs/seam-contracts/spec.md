@@ -151,14 +151,19 @@ start's secret and a stop-short that needs an answer or found work (29,
 30, 33, 41, 92); an agent's command with the program's folder-trust
 question, its answer and the program's kind (34, 88, C.4); the
 terminal's clues and what its tidy closed and kept (138, 139); and a
-submission with its outcomes, landed, failed, in conflict or withdrawn
-(99, 111 to 113, 117, 125, 133). Each SHALL serialize to JSON and back
-unchanged.
+submission with its outcomes, landed, failed, in conflict, held or
+withdrawn (99, 111 to 113, 117, 125, 133). Each SHALL serialize to JSON
+and back unchanged.
 
 #### Scenario: An agent's command and a withdrawn submission round-trip
 
 - **WHEN** an agent's command carrying its folder-trust question, its answer and its kind, and a submission withdrawn, are each written to JSON and read back
 - **THEN** each equals the value written (34, 88, 125)
+
+#### Scenario: A held submission and its outcome round-trip
+
+- **WHEN** a submission held with the forge's words, a held outcome, a place's wait on a held landing and a held state whose submission's landing was refused are each written to JSON and read back, and a held state written before `landing_refused` existed is read
+- **THEN** each equals the value written, the held submission is not open, and the earlier state reads with `landing_refused` false (99, 112, 133)
 
 ### Requirement: Git's history and the host's facts beside the seams
 
@@ -1265,6 +1270,20 @@ other name SHALL be refused, naming it and flume's names (222).
 - **WHEN** `ctrl+c`, `shift+tab`, `escape`, `f12`, `ctrl+alt+x`, `é` and `space` are read as keys, and then `alt+ctrl+x`, `f13` and `hyper+x`
 - **THEN** the first seven are read and written back as `ctrl+c`, `shift+tab`, `esc`, `f12`, `ctrl+alt+x`, `é` and `space`, and each of the last three is refused naming it and flume's names (222)
 
+### Requirement: A held submission is neither decided nor moved
+
+A submission held where the forge refused its landing SHALL carry the
+forge's words, or words saying the merge queue's record gives none, and
+SHALL be neither decided nor one a round of its base's queue moves,
+staying the place's open submission until it lands, goes back to the
+queue, is withdrawn or is replaced; a held outcome SHALL decide nothing
+(99, 112, 124, 125, 133; core.58).
+
+#### Scenario: A round moves no held landing
+
+- **WHEN** a submission's state is held with the forge's words
+- **THEN** it is not open, so no round of its base's queue moves it, and it is none of the decided states, landed, failed, in conflict or withdrawn (112, 125)
+
 ### Requirement: The merge queue reads several branches at once
 
 The merge queue seam SHALL answer read-submission for several branches
@@ -1464,6 +1483,42 @@ before (31, 171; core.16).
 - **WHEN** a start written before, with no field for its agent's waiting, is read
 - **THEN** it reads with none, and writes back with no such field (171; core.16)
 
+### Requirement: The kinds seam reads a held statechart kind
+
+The kinds seam SHALL read a statechart kind's held text and the stage
+template's text into the engine's statechart and templates, and SHALL
+refuse, naming why, a text it cannot read; a kinds profile that reads no
+statechart kind SHALL refuse every one (84, 85, 176, core.2).
+
+#### Scenario: A kinds seam that reads none
+
+- **WHEN** a kinds seam that gives no reading of its own is asked to read a held statechart kind
+- **THEN** it refuses, naming the kind (84, core.2)
+
+### Requirement: Git's history gives a revision's files
+
+Git's history SHALL give the path of every file a revision of a
+repository holds, the same revision always giving the same files, and
+nothing for a revision it does not hold (176, 178, section 9).
+
+#### Scenario: Files at two revisions
+
+- **WHEN** a branch's first commit adds `personas/a.md` and its second adds `personas/b.md`
+- **THEN** the first revision's files name `personas/a.md` alone, and the second's name both (178)
+
+### Requirement: The types of a statechart kind and its place
+
+The seams SHALL pass a kind's statechart, each stage parameter of it, a
+session held as a stage of its place, and a statechart place's held
+engine state, answers and stage entries as types that round-trip
+through JSON, each new field left out while empty, so that a kind and a
+held state written before read unchanged (21, 103, 177).
+
+#### Scenario: Round trips
+
+- **WHEN** a statechart kind, a held session and a statechart place's held state are written and read back, and a kind and a held state written before this change are read
+- **THEN** each reads back equal, and the earlier two read with no statechart, no session and no engine state (21, 177)
+
 ### Requirement: The agent seam names an account's home's variable
 
 The agent seam SHALL name the variable of an account's environment
@@ -1475,3 +1530,15 @@ profile that names none gives its accounts no home (56, 171, C.4).
 
 - **WHEN** an agent profile that keeps the seam's defaults is asked which variable names an account's configuration home
 - **THEN** it names none (56, C.4)
+
+### Requirement: The store gives a host document's version alone
+
+The store seam SHALL give the version a host document stands at, none
+where there is none, as a read of the document would give it, so a
+reader holding the document at that version need not read it again
+(102, 153).
+
+#### Scenario: A host document's version read alone
+
+- **WHEN** a host document's version is read before it is written, after another process wrote it, and after it is removed
+- **THEN** the first and the last give none, and the second gives the version the write gave (102, 103, 153)

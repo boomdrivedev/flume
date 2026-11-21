@@ -13,11 +13,12 @@
 //! stand-in, and on a tools walk whose test writes its own agent program,
 //! the host user's login shell is the walk's own, which gives the walk's
 //! `PATH`, so a place's steps, sluice's equip and release, run the sluice
-//! the tree pins and never the host's (core.22); every sluice the test
-//! starts keeps its scratch in the walk's own folder, which the gate's
-//! sandbox lets it write, and a place's steps, which run in the login
-//! environment alone (29), keep none, the pinned sluice's equip and
-//! release making no scratch where they have nothing to free. Every process
+//! the tree pins and never the host's (core.22), through one of the
+//! walk's that gives it the walk's state folder and user scratch, which a
+//! place's steps' login environment does not carry (29); and every sluice
+//! keeps its state in the walk's home and its scratch and its host
+//! process's socket in the test's scratch, which the gate's sandbox lets
+//! it write (core.51). Every process
 //! the walkthrough starts, flume, sluice, git and the stand-in, runs in the
 //! scratch home with no multiplexer's session, no flume, sluice or Claude
 //! Code session of the caller's, no credential and no forge (core.6,
@@ -48,9 +49,20 @@ use std::time::{Duration, Instant};
 /// account's, only a word for the stand-in to keep from its hooks.
 pub const STAND_IN_TOKEN: &str = "stand-in-token";
 
-/// The gate: the check fails, with its words, while the tree holds
+/// The gate: the check waits while the walk holds it, `hold` standing
+/// in the walk's scratch, looking every 100 milliseconds for at most 120
+/// seconds, and then fails, with its words, while the tree holds
 /// `broken`.
-const CHECK: &str = "if [ -e broken ]; then\n  echo 'the parser test failed: broken is in the tree' >&2\n  exit 1\nfi\n";
+fn check(hold: &Path) -> String {
+    format!(
+        "i=0\nwhile [ -e '{}' ] && [ \"$i\" -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done\n\
+         if [ -e broken ]; then\n  echo 'the parser test failed: broken is in the tree' >&2\n  exit 1\nfi\n",
+        hold.display()
+    )
+}
+
+/// The file in a walk's scratch that holds its check while it stands.
+const HOLD: &str = "hold";
 
 /// sluice's policy: main gated by the check and landed on `origin`.
 const POLICY: &str =
@@ -84,10 +96,49 @@ fn a_callers(name: &str) -> bool {
 /// 0063).
 pub const USER_SCRATCH: &str = "SLUICE_USER_SCRATCH";
 
+/// The socket the pinned sluice's host process binds in the folder that
+/// stands for the host user's own, named by a digest of its state folder.
+const HOST_SOCKET: &str = "sluice/host-0123456789.sock";
+
+/// The short links [`user_scratch`] has made, by the scratch each leads
+/// to, so every command of one test reaches one host process.
+static USER_LINKS: std::sync::Mutex<Vec<(PathBuf, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+
 /// The test's own folder for the scratch of the checkouts sluice makes
-/// for `repository`.
+/// for `repository`, and for the socket of its state folder's host
+/// process: the scratch's `sluice`, through a short link to the scratch
+/// where the socket would not fit beneath it, as a run whose temporary
+/// folder is long needs, `cargo test` by hand on macOS among them; the
+/// test fails naming what lacked room where no link holds it (core.51).
 pub fn user_scratch(repository: &Repository) -> PathBuf {
-    repository.scratch.path("sluice")
+    // SAFETY: an address of all zeros is a valid `sockaddr_un`.
+    let address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    let root = &repository.scratch.root;
+    if root.join(HOST_SOCKET).as_os_str().len() < address.sun_path.len() {
+        return root.join("sluice");
+    }
+    let mut links = USER_LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    let link = match links.iter().find(|(to, _)| to == root) {
+        Some((_, link)) => link.clone(),
+        None => {
+            let link = short_link(root, HOST_SOCKET);
+            links.push((root.clone(), link.clone()));
+            link
+        }
+    };
+    link.join("sluice")
+}
+
+/// The short link [`user_scratch`] made for `repository`, removed.
+pub fn unlink_user_scratch(repository: &Repository) {
+    let mut links = USER_LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(at) = links
+        .iter()
+        .position(|(to, _)| *to == repository.scratch.root)
+    {
+        let (_, link) = links.remove(at);
+        let _ = std::fs::remove_file(link);
+    }
 }
 
 /// The stand-in's run: what it printed and how it ended.
@@ -115,7 +166,26 @@ pub struct Walk {
     scripts: Option<PathBuf>,
 }
 
+impl Drop for Walk {
+    fn drop(&mut self) {
+        // Released first, so every run ends and the host process of the
+        // walk's state folder ends with nothing in play.
+        self.release();
+        unlink_user_scratch(&self.repository);
+    }
+}
+
 impl Walk {
+    /// The check held: each run of it waits until [`Walk::release`].
+    pub fn hold(&self) {
+        std::fs::write(self.repository.scratch.path(HOLD), "").expect("the hold");
+    }
+
+    /// The check released, so a run of it waiting ends.
+    pub fn release(&self) {
+        let _ = std::fs::remove_file(self.repository.scratch.path(HOLD));
+    }
+
     /// A repository on `main` holding the binding, the gate and
     /// OpenSpec's root, pushed to its bare remote, which it tracks, and
     /// the stand-in first on `PATH` as `claude`.
@@ -143,6 +213,7 @@ impl Walk {
         walk.shell = Some(login_shell(
             &walk.repository.scratch.path("login"),
             &walk.path,
+            &user_scratch(&walk.repository),
         ));
         walk
     }
@@ -151,7 +222,7 @@ impl Walk {
         let repository = Repository::new(label);
         repository.write(".config/sluice.toml", POLICY);
         repository.write(".config/flume.toml", BINDING);
-        repository.write("check.sh", CHECK);
+        repository.write("check.sh", &check(&repository.scratch.path(HOLD)));
         repository.write("openspec/config.yaml", "schema: spec-driven\n");
         repository.write("work.rs", "one\n");
         repository.commit("the binding, the gate and the specs' root");
@@ -180,7 +251,13 @@ impl Walk {
         .expect("a PATH")
         .to_string_lossy()
         .into_owned();
-        let shell = stand_in.then(|| login_shell(&repository.scratch.path("login"), &path));
+        let shell = stand_in.then(|| {
+            login_shell(
+                &repository.scratch.path("login"),
+                &path,
+                &user_scratch(&repository),
+            )
+        });
         let account = stand_in.then(|| repository.scratch.path("account-1"));
         if let Some(dir) = &account {
             std::fs::create_dir_all(dir).expect("the account's folder");
@@ -224,6 +301,12 @@ impl Walk {
     /// then the test's.
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    /// The `PATH` the walk's login shell gives: the folder of its
+    /// [`login_sluice`], then the walkthrough's.
+    pub fn login_path(&self) -> String {
+        login_path(&self.repository.scratch.path("login"), &self.path)
     }
 
     /// The host user's login shell, the walk's own, which gives the walk's
@@ -759,23 +842,63 @@ pub fn sluice_script(bin: &Path, scratch: &Path, body: &str) {
 }
 
 /// The walk's login shell, written into `dir` as `shell`: run as a login
-/// shell, it runs `/bin/sh` with the rest of its words and `path` for its
-/// `PATH`, so the login environment a place's steps run in names the
-/// walk's tools, the pinned sluice among them, rather than whatever the
-/// host user's own login shell names (11, 79; core.22). Its path.
-fn login_shell(dir: &Path, path: &str) -> PathBuf {
-    std::fs::create_dir_all(dir).expect("the login shell's folder");
+/// shell, it runs `/bin/sh` with the rest of its words and, for its
+/// `PATH`, the folder of the walk's [`login_sluice`] and then `path`, so
+/// the login environment a place's steps run in names the walk's tools,
+/// the pinned sluice among them, rather than whatever the host user's own
+/// login shell names (11, 79; core.22), and every sluice a step runs
+/// reaches the walk's state folder and `user_scratch` (core.51). Its
+/// path.
+fn login_shell(dir: &Path, path: &str, user_scratch: &Path) -> PathBuf {
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).expect("the login shell's folder");
+    login_sluice(&bin, path, user_scratch);
     let shell = dir.join("shell");
     std::fs::write(
         &shell,
         format!(
-            "#!/bin/sh\nPATH='{path}'\nexport PATH\n[ \"$1\" = -l ] && shift\nexec /bin/sh \"$@\"\n"
+            "#!/bin/sh\nPATH='{}'\nexport PATH\n[ \"$1\" = -l ] && shift\nexec /bin/sh \"$@\"\n",
+            login_path(dir, path)
         ),
     )
     .expect("the login shell");
     std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755))
         .expect("the login shell made executable");
     shell
+}
+
+/// The `PATH` the walk's login shell in `dir` gives: its
+/// [`login_sluice`]'s folder, then `path`.
+fn login_path(dir: &Path, path: &str) -> String {
+    format!("{}:{path}", dir.join("bin").display())
+}
+
+/// The `sluice` first on the walk's login shell's `PATH`, written into
+/// `bin`: a place's steps, sluice's equip and its release, run under the
+/// login environment alone, which gives the walk's home and none of its
+/// `XDG_STATE_HOME` or `SLUICE_USER_SCRATCH` (11, 79), so it gives them
+/// where they are unset, the state folder the walk's home's `state` as
+/// [`Walk::command`] gives it and the user scratch `user_scratch`, and
+/// runs the `sluice` `path` finds first, a stand-in of the walk's or the
+/// pinned one. The pinned sluice reaches or starts the host process of
+/// the state folder it is given, its socket in the user scratch, so the
+/// teardown's release reaches the walk's own rather than starting one
+/// under the home's `.local/state` with its socket in the host user's
+/// `/tmp/sluice-<uid>`, which the gate's sandbox refuses (sluice 135;
+/// sluice record 0063; core.51).
+fn login_sluice(bin: &Path, path: &str, user_scratch: &Path) {
+    let program = bin.join("sluice");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\n: \"${{XDG_STATE_HOME:=$HOME/state}}\"\n: \"${{{USER_SCRATCH}:={}}}\"\n\
+             export XDG_STATE_HOME {USER_SCRATCH}\nPATH='{path}'\nexport PATH\nexec sluice \"$@\"\n",
+            user_scratch.display()
+        ),
+    )
+    .expect("the login shell's sluice");
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+        .expect("the login shell's sluice made executable");
 }
 
 /// The walk's login shell at `shell` written again to export `exports`
@@ -901,6 +1024,50 @@ pub fn session_limit_after(at: u64) -> (u64, String) {
     )
 }
 
+/// The prompt of the talk of `desk@1`: the inbox read once, then a wait
+/// for what comes later (43, 214).
+pub const DESK_PROMPT: &str = "You are w's ops desk. Read what is pending for you with `flume inbox`, say in one line what it holds, and then wait: what comes for you later reaches you here, and you answer each in one line.\n";
+
+/// The source acme of the walk's host, its kind `desk@1`, whose one stage
+/// `talk` is a conversation that hibernates and lands nothing, and its
+/// roles file declaring `w/ops` the standing role of the walk's
+/// repository in the stream `w`, which the host's configuration declares
+/// and `desk@1` is locked for by the caller (132, 143, 191, 193, 212).
+pub fn desk_source(walk: &Walk) {
+    let config = walk.config_dir();
+    let kinds = config.join("kinds/acme");
+    let dir = kinds.join("desk@1");
+    std::fs::create_dir_all(dir.join("prompts")).expect("the package's folder");
+    std::fs::write(
+        dir.join("kind.toml"),
+        "[kinds.desk]\nversion = 1\nbranch = \"desk\"\nstarts_unready = true\nlands = false\n\n\
+         [[kinds.desk.stages]]\nname = \"talk\"\nprompt = \"prompts/talk.md\"\n\
+         conversation = true\nhibernate = true\nagents = [{}]\n",
+    )
+    .expect("the package's declaration");
+    std::fs::write(dir.join("prompts/talk.md"), DESK_PROMPT).expect("the package's prompt");
+    let roles = config.join("acme-roles.toml");
+    let repository = walk.repository.dir.display().to_string();
+    std::fs::write(
+        &roles,
+        format!(
+            "[roles.\"w/ops\"]\nkind = \"desk\"\nrepositories = [{repository:?}]\n\
+             answers = \"w's live systems\"\n"
+        ),
+    )
+    .expect("acme's roles file");
+    std::fs::create_dir_all(config.join("sources")).expect("the sources folder");
+    std::fs::write(
+        config.join("sources/acme.toml"),
+        format!(
+            "kinds_dir = {:?}\nroles = {:?}\n",
+            kinds.display().to_string(),
+            roles.display().to_string()
+        ),
+    )
+    .expect("acme's source file");
+}
+
 /// The place's stage named `name`, as status gives it.
 pub fn stage<'a>(status: &'a Value, name: &str) -> &'a Value {
     status["stages"]
@@ -1005,8 +1172,8 @@ pub fn short_link(target: &Path, socket: &str) -> PathBuf {
         .unwrap_or_else(|| {
             let socket = temporary.join(&named).join(socket);
             panic!(
-                "herdr's socket would be {}, {} bytes, past the {limit} a socket's path holds on \
-                 this host, and /tmp cannot be written",
+                "a socket would be {}, {} bytes, past the {limit} a socket's path holds on this \
+                 host, and /tmp cannot be written",
                 socket.display(),
                 socket.as_os_str().len()
             )
@@ -1403,7 +1570,7 @@ impl Walk {
                 .iter()
                 .map(|(name, value)| (*name, value.to_string())),
         );
-        login_shell_exporting(walk.login_shell(), walk.path(), &exports);
+        login_shell_exporting(walk.login_shell(), &walk.login_path(), &exports);
         let host = UnderRex { walk, link };
         host.walk
             .configure("[streams.trial]\nmultiplexer = \"rex\"\npool = \"stand-in\"\n");

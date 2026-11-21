@@ -27,6 +27,8 @@ anything.
 | `{{unready}}` | what readiness came to: the step that failed and what it printed, that it passed, or that the repository declares none | always filled |
 | `{{needs}}` | the way to stop short, `flume needs` and `flume needs --found`, and that it is the agent's one way to ask | always filled |
 | `{{made}}` | the path of the place's `made.jsonl` | refused for a stage that declares no `makes` |
+| `{{session}}` | the number of a statechart kind's session, from 1 | refused for a simple kind's stage |
+| `{{file}}` | the file a statechart kind's session was given by its rule, as in `personas/a.md` | refused for a simple kind's stage, and the launch is refused where a stage lists its agents |
 
 A part refused at a start leaves the stage refused, naming the part in
 status, and starts no agent. Text in double braces that names no part

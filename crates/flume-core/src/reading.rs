@@ -90,20 +90,27 @@ pub(crate) fn find_group(facts: &ChangeFacts, group: &GroupHeld) -> Option<usize
 /// a task of the change still unticked at the head its facts were read
 /// at: then the stage repeats, and has not ended (140).
 pub(crate) fn repeats_on(held: &HeldState, index: usize, facts: &Facts) -> bool {
-    held.place.kind.stages[index].repeats
+    held.declared(index).repeats
         && matches!(&facts.change, Some(ChangeRead::Read { facts }) if facts.tasks.iter().any(|task| !task.ticked))
 }
 
 /// Whether a kind reads a change (3, 4).
 pub(crate) fn reads_change(kind: &Kind) -> bool {
-    kind.stages.iter().any(|stage| {
-        stage.deliverables.iter().any(|deliverable| {
-            matches!(
-                deliverable,
-                Deliverable::ChangeWritten | Deliverable::TasksTicked | Deliverable::ChangeArchived
-            )
+    let of_change = |deliverable: &Deliverable| {
+        matches!(
+            deliverable,
+            Deliverable::ChangeWritten | Deliverable::TasksTicked | Deliverable::ChangeArchived
+        )
+    };
+    kind.stages
+        .iter()
+        .any(|stage| stage.deliverables.iter().any(of_change))
+        || kind.statechart.iter().any(|statechart| {
+            statechart
+                .stages
+                .values()
+                .any(|stage| stage.deliverables.iter().any(of_change))
         })
-    })
 }
 
 impl Engine {
@@ -186,7 +193,7 @@ impl Engine {
     /// Each name the stage at `index` declares it makes that no line
     /// written since its current start's count began names (25, 129).
     pub(crate) fn unmade(&self, held: &HeldState, index: usize) -> Vec<String> {
-        let makes = &held.place.kind.stages[index].makes;
+        let makes = &held.declared(index).makes;
         let Some(start) = held.stages[index].start.as_ref() else {
             return makes.clone();
         };
@@ -213,7 +220,7 @@ impl Engine {
         change: Option<&ChangeRead>,
     ) -> (bool, Option<String>) {
         let place = &held.place;
-        let stage = &place.kind.stages[index];
+        let stage = held.declared(index);
         let Some(start) = held.stages[index].start.as_ref() else {
             return (false, None);
         };

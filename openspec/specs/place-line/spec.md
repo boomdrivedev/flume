@@ -32,7 +32,7 @@ The core SHALL give every place one line: `<kind>--<name>`, `<kind>@<version>`, 
 
 ### Requirement: A place's state in one word
 
-The line's state SHALL be the first that holds of: being made; landed, dropped or done; stalled; hibernating; held; waiting on an answer; asking; lost; never begun; not ready; refused; stopped; past its bound; submission refused; waiting on done; waiting for room; starting; asking, where the live agent's profile reads it asking; stuck; in conversation; working; submitted; else the current stage's state in words (12, 27, 34, 38, 42, 45, 47, 48, 51, 63, 70, 90, 112, 114, 118, 130, 212).
+The line's state SHALL be the first of: being made; landed, dropped or done; stalled; hibernating; held; waiting on an answer; asking; lost; never begun; not ready; refused; stopped; past its bound; submission refused; landing refused; waiting on done; waiting for room; starting; asking, where the live agent's profile reads it asking; stuck; in conversation; working; submitted; else the current stage's state in words (12, 27, 34, 38, 42, 45, 47, 48, 51, 63, 70, 90, 112, 114, 118, 130, 212).
 
 #### Scenario: A hold, then a stall
 
@@ -58,6 +58,11 @@ The line's state SHALL be the first that holds of: being made; landed, dropped o
 
 - **WHEN** a fix place's last stage delivered and flume submitted it, and a later settle reads its landing
 - **THEN** its line's state is `submitted`, and after that settle `landed` (48, 63)
+
+#### Scenario: A landing the forge refused
+
+- **WHEN** a place's submission is read held, the forge having refused its landing, and five minutes pass under no hold's words
+- **THEN** its line's state is `landing refused`, and then `stalled` (112, 130)
 
 #### Scenario: Hibernating, then resumed
 

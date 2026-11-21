@@ -1,11 +1,18 @@
 //! The merge-queue profile over sluice (C.6; design 13), every command
-//! and field it reads checked against the sluice the tree pins, 0.95.1.
+//! and field it reads checked against the sluice the tree pins, 0.97.0.
 //!
 //! submit is `sluice submit <base> --no-wait --json` in the place, with
 //! every multiplexer's session stripped from its environment, so sluice
 //! records the place's worktree as the submitter, pushes into no pane and
 //! answers at once; never `--check` to a submit, never `wt submit` (111,
-//! 113, 117, core.6). Where sluice finds the submission decided as it takes it in,
+//! 113, 117, core.6). Before each submit, a place's from its worktree and
+//! a base place's by name, the profile reads the sluice it runs by `sluice
+//! --version`, in the directory the submit runs in: where that names a
+//! release before [`MERGES_BY_ITSELF`], the first whose own host process
+//! moves its queues, or names no release, as a build of sluice's main says
+//! 0.0.0, it runs no `sluice submit` and answers the submit refused, its
+//! words naming what sluice said and the release flume needs (111, 112,
+//! 203, C.6's submit and version rows; sluice 135; record 0080). Where sluice finds the submission decided as it takes it in,
 //! as on a base that takes pull requests, it answers with the entry's
 //! record, exiting as the outcome does, so the outcome is read from that
 //! answer as the inbox reads one, never as a refusal, with the key of the
@@ -23,7 +30,9 @@
 //! it, and the inbox only where it is still pending for the place (133).
 //! inbox is `sluice inbox --json` in the place, which hands over each
 //! outcome owed to it again until it is confirmed, never `--confirm`,
-//! which would confirm it before flume acted on it: each record with its
+//! which would confirm it before flume acted on it, or confirm one the
+//! profile then drops (C.6's inbox row at boomdrivedev/blueprints
+//! `8b73d11` as `fc4323b` amends it; core.58): each record with its
 //! entry's `id` and the key of its `delivery` where it is owed, landed
 //! with its commit, failed or in
 //! conflict with sluice's `notice` as its words, a conflict's files from
@@ -31,17 +40,21 @@
 //! `tested.on`, never parsed from the notice; a record with no notice
 //! says its state, and a conflict's files and the entries its
 //! `conflict.with` names; one found in conflict before any test names the
-//! base's current revision (112, 133). Where sluice could not read a
-//! branch's records it answers the others' outcomes with that branch in
-//! its `unread`, exiting as a failure: the inbox passes that branch over
-//! with its words, whose outcomes sluice leaves pending, and a decided
-//! record the profile cannot read is passed over the same way, by its
-//! branch, rather than dropped unsaid (133). confirm is `sluice confirm
-//! <key> --json` in the place, run once flume has acted on the outcome;
-//! exit 0, confirmed now or before, and exit 1, nothing owed under the
-//! key, are each confirmed, since sluice hands nothing over under it
-//! again, and any other exit sluice unread in its words, the outcome
-//! left owed for the next inbox (101, 133; sluice 51). read-submission reads
+//! base's current revision (112, 133); and a `refused` record, a landing
+//! the forge refused that sluice holds, held with its `notice` whole as
+//! its words, or what a record with none says (112, 133; sluice 152). An
+//! outcome in a state the profile does not read, or whose outcome it
+//! cannot read, is left owed, unconfirmed, and passed over by its branch
+//! with words naming it, rather than dropped unsaid (133; core.58). Where
+//! sluice could not read a branch's records it answers the others'
+//! outcomes with that branch in its `unread`, exiting as a failure: the
+//! inbox passes that branch over with its words, whose outcomes sluice
+//! leaves pending (133). confirm is `sluice confirm <key> --json` in the
+//! place, run once flume has acted on the outcome; exit 0, confirmed now
+//! or before, and exit 1, nothing owed under the key, are each
+//! confirmed, since sluice hands nothing over under it again, and any
+//! other exit sluice unread in its words, the outcome left owed for the
+//! next inbox (101, 133; sluice 51). read-submission reads
 //! `sluice status <base> --all --json` for each branch `sluice overview
 //! --json` names, once for every branch of the repository asked at once,
 //! so a status of every place runs them once for each repository (58,
@@ -50,10 +63,26 @@
 //! base revision its `tested.on` where it holds one; a branch whose
 //! status sluice refuses, as it refuses one whose policy it no longer
 //! reads, is passed over with sluice's words, and every other branch is
-//! read still (99, 101). step is
-//! `sluice step <base>`, which takes in the base's pull requests before
-//! its round, and beside a live `sluice run` finds the branch's lock held
-//! and does nothing, so no liveness is read (124, 125). The base lives at `<remote>/<base>` after one fetch where
+//! read still (99, 101). A `refused` record, a landing the forge refused
+//! that sluice holds, reads as held with the record's `refused.words`;
+//! one that carries no `refused`, as sluice `44e33d4` prints every record
+//! but a waiting submit's report, is held still, with [`HELD_UNSAID`] as
+//! its words, never read as not understood, never passed over and never
+//! read through `sluice wait` or a submit that waits (C.6's
+//! read-submission row at `8b73d11` as `04e5a1a` amends it; core.6,
+//! core.13, core.58). A submit's answer is never `refused`, its landing
+//! coming after the rounds a submit with `--no-wait` does not wait on;
+//! were one so, it is answered submitted, open and undecided. step is
+//! nothing, as C.6's step row says: it
+//! runs no sluice command and answers that the base's queue moves on its
+//! own, whichever way runs it, sluice's host process, a daemon on this
+//! host or another, or a forge's jobs, since sluice keeps one contract
+//! with flume for every way; a submit starts sluice's host process as it
+//! takes the entry in, and the settles' reads, the inbox and
+//! read-submission's overview and status, start it again where work
+//! waits and none runs, so the profile runs no `sluice step`, `run`,
+//! `daemon` or `wait` (124, 125, C.6; sluice 135; sluice record 0093 as
+//! amended). The base lives at `<remote>/<base>` after one fetch where
 //! `.config/sluice.toml` lands it on a remote, and at the local base
 //! otherwise (9, 126, C.1). A place is made ready by sluice's equipping
 //! of it, `sluice equip <base> --at <revision> --json` run in the place,
@@ -69,7 +98,7 @@
 //! the resolver to hand the place profile (core.3). A base place's
 //! branch is opened by `sluice branch create <branch> --from <base>
 //! --json` and closed by `sluice branch delete <branch> --into <base>
-//! --json`, each run in the repository as read-submission and step are:
+//! --json`, each run in the repository as read-submission is:
 //! open answers the revision sluice made the branch at, and any other
 //! exit a refusal in sluice's words; close answers removed on exit 0, gone
 //! on exit 1 naming the branch itself, and kept in sluice's words
@@ -101,6 +130,42 @@ pub const NAME: &str = "sluice";
 
 /// Where a repository's sluice policy lives in its tree.
 pub const POLICY: &str = ".config/sluice.toml";
+
+/// The words of a `refused` record that carries none of the forge's, as
+/// sluice `44e33d4` prints every record but a waiting submit's report
+/// (99, C.6 at `04e5a1a`; core.58).
+pub const HELD_UNSAID: &str =
+    "the forge refused its landing; sluice's record gives none of its words";
+
+/// The first sluice release whose own host process moves its queues, so
+/// work submitted to it is merged by itself: flume hands no work to an
+/// earlier one (sluice 135; sluice record 0093; record 0080).
+pub const MERGES_BY_ITSELF: (u64, u64, u64) = (0, 97, 0);
+
+/// The release a `sluice --version` that exited 0 names on `line`, its
+/// first line, as sluice wrote it and read part by part: the line, trimmed,
+/// is exactly `sluice` and a version of three parts joined by `.`, each of
+/// ASCII digits alone; anything else, and 0.0.0, which a build of sluice's
+/// main says, names none (C.6; sluice record 0111).
+fn release(line: &str) -> Option<(&str, (u64, u64, u64))> {
+    let mut words = line.split_whitespace();
+    let (Some("sluice"), Some(version), None) = (words.next(), words.next(), words.next()) else {
+        return None;
+    };
+    let part = |part: &str| {
+        (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            .then(|| part.parse::<u64>().ok())
+            .flatten()
+    };
+    let mut parts = version.split('.');
+    let (Some(major), Some(minor), Some(patch), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return None;
+    };
+    let release = (part(major)?, part(minor)?, part(patch)?);
+    (release != (0, 0, 0)).then_some((version, release))
+}
 
 /// The variables a multiplexer's session is named by: a submission made
 /// with one would be recorded as that session's and its outcome pushed
@@ -194,6 +259,38 @@ impl Sluice {
             Some(answer) if success && answer.get("error").is_none() => Ok(answer),
             _ => Err(words(args, &stdout, &stderr)),
         }
+    }
+
+    /// Whether the sluice run in `dir` merges work by itself: where
+    /// `sluice --version` names a release from [`MERGES_BY_ITSELF`] on, and
+    /// otherwise the words a submit is refused with, what sluice said and
+    /// the release flume needs (C.6; sluice 135; record 0080).
+    fn merges_by_itself(&self, dir: &Path) -> Result<(), String> {
+        let said = match self.exited(dir, &["--version"]) {
+            Ok((Some(0), stdout, _)) => {
+                let line = stdout.lines().next().unwrap_or_default();
+                match release(line) {
+                    Some((_, release)) if release >= MERGES_BY_ITSELF => return Ok(()),
+                    Some((version, _)) => {
+                        format!("sluice {version} is too old to merge this work by itself")
+                    }
+                    None => format!("sluice --version said \"{line}\", which names no release"),
+                }
+            }
+            Ok((_, stdout, stderr)) => {
+                let said = refusal(&stdout, &stderr);
+                let said = match said.is_empty() {
+                    true => "it said nothing",
+                    false => said.as_str(),
+                };
+                format!("sluice --version gave no release: {said}")
+            }
+            Err(reason) => format!("sluice --version gave no release: {reason}"),
+        };
+        let (major, minor, patch) = MERGES_BY_ITSELF;
+        Err(format!(
+            "{said}; flume needs sluice {major}.{minor}.{patch} or later, the first release whose own process moves its queues"
+        ))
     }
 
     /// A decided record's outcome: landed with its commit, failed with
@@ -529,6 +626,13 @@ fn state(record: &Value) -> Result<SubmissionState, String> {
             words: said(record),
         },
         "withdrawn" => SubmissionState::Withdrawn,
+        // 152: held, the forge having refused its landing.
+        "refused" => SubmissionState::Held {
+            words: record
+                .get("refused")
+                .and_then(|refused| text(refused, "words"))
+                .unwrap_or_else(|| HELD_UNSAID.into()),
+        },
         other => return Err(format!("sluice gave a submission in the state {other:?}")),
     })
 }
@@ -721,6 +825,11 @@ impl MergeQueue for Sluice {
                 vec!["submit", place.base.as_str(), "--no-wait", "--json"],
             ),
         };
+        // No work is handed to a sluice too old to merge it by itself, its
+        // version read where the submit would run (C.6; record 0080).
+        if let Err(reason) = self.merges_by_itself(dir) {
+            return Submitted::Refused { reason };
+        }
         let (success, stdout, stderr) = match self.run(dir, &args) {
             Ok(output) => output,
             Err(reason) => return Submitted::Refused { reason },
@@ -794,7 +903,9 @@ impl MergeQueue for Sluice {
     fn inbox(&self, place: &PlaceRef) -> Inbox {
         // Each outcome owed is handed over again until flume confirms it
         // once it has acted on it, so one a settle could not act on comes
-        // to the next (124, 133; sluice 51; sluice record 0102).
+        // to the next; never `--confirm`, which would confirm on receipt
+        // one the profile then drops (124, 133; sluice 51; sluice record
+        // 0102; core.58).
         let args = ["inbox", "--json"];
         let (success, stdout, stderr) = match self.run(Path::new(&place.location), &args) {
             Ok(output) => output,
@@ -815,14 +926,21 @@ impl MergeQueue for Sluice {
             };
         };
         let mut outcomes = vec![];
-        for record in records.iter().filter(|record| {
-            matches!(
-                text(record, "state").as_deref(),
-                Some("landed" | "failed" | "conflict")
-            )
-        }) {
+        for record in &records {
+            let reading = match text(record, "state").as_deref() {
+                Some("landed" | "failed" | "conflict") => self.outcome(record, place),
+                // 152: a landing the forge refused, held, with the notice
+                // whole as its words (C.6's inbox row at `fc4323b`).
+                Some("refused") => Ok(SubmissionOutcome::Held {
+                    words: said(record),
+                }),
+                state => Err(format!(
+                    "sluice gave an outcome in the state {:?}",
+                    state.unwrap_or_default()
+                )),
+            };
             let handed = match id(record) {
-                Some(submission) => self.outcome(record, place).map(|outcome| Owed {
+                Some(submission) => reading.map(|outcome| Owed {
                     submission,
                     outcome,
                     key: owed(record),
@@ -831,6 +949,9 @@ impl MergeQueue for Sluice {
             };
             match handed {
                 Ok(handed) => outcomes.push(handed),
+                // Left owed, unconfirmed, and passed over by its branch, so
+                // status names it and a later inbox hands it over again
+                // (133; core.58).
                 Err(reason) => passed_over.push(PassedOver {
                     branch: text(record, "branch").unwrap_or_default(),
                     words: match id(record) {
@@ -913,11 +1034,12 @@ impl MergeQueue for Sluice {
             .collect()
     }
 
-    fn step(&self, repository: &str, base: &str) -> Stepped {
-        match self.json(Git::at(repository).path(), &["step", base, "--json"]) {
-            Ok(_) => Stepped::Stepped,
-            Err(reason) => Stepped::CouldNotRead { reason },
-        }
+    /// Nothing: sluice's queue moves on its own once submitted, whichever
+    /// way runs it, and the settles' reads start sluice's host process
+    /// where work waits and none runs, so no sluice command is run (124,
+    /// 125, C.6; sluice 135).
+    fn step(&self, _repository: &str, _base: &str) -> Stepped {
+        Stepped::MovesOnItsOwn
     }
 
     /// The base on the remote its table names after one fetch, or the
@@ -1015,6 +1137,189 @@ fn gone(branch: &str, stdout: &str, stderr: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_step_runs_no_sluice_and_says_the_queue_moves_on_its_own() {
+        // 125, C.6: step is nothing; a stand-in `sluice` first on the
+        // seam's PATH leaves a mark whenever it runs, and none is left.
+        let scratch = std::env::temp_dir().join(format!("fsl-step-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        let bin = scratch.join("bin");
+        std::fs::create_dir_all(&bin).expect("a scratch folder");
+        let ran = scratch.join("ran");
+        let program = bin.join("sluice");
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 1\n", ran.display()),
+        )
+        .expect("the stand-in sluice");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .expect("a PATH");
+        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
+        assert_eq!(
+            seam.step(&scratch.to_string_lossy(), "main"),
+            Stepped::MovesOnItsOwn
+        );
+        assert!(!ran.exists(), "a sluice command was run");
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    /// A scratch folder of the test's own, named for it and the process.
+    fn scratch(test: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("fsl-{test}-{}", std::process::id()))
+    }
+
+    /// A stand-in `sluice` made afresh in `scratch` and put first on the
+    /// seam's `PATH`: it answers `--version` with the line `says`, nothing
+    /// where it is empty, exiting `code`, and appends any other command to
+    /// the `ran` file beside it, answering a submit with the entry 7. The
+    /// seam over it and the `ran` file.
+    fn stand_in(scratch: &Path, says: &str, code: i32) -> (Sluice, PathBuf) {
+        let _ = std::fs::remove_dir_all(scratch);
+        let bin = scratch.join("bin");
+        std::fs::create_dir_all(&bin).expect("a scratch folder");
+        let ran = scratch.join("ran");
+        let version = match says.is_empty() {
+            true => String::new(),
+            false => format!("echo '{says}'\n"),
+        };
+        let program = bin.join("sluice");
+        std::fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then\n{version}exit {code}\nfi\necho \"$*\" >> '{}'\nif [ \"$1\" = submit ]; then\necho '{{\"id\":7,\"branch\":\"main\",\"ahead\":[]}}'\nexit 0\nfi\nexit 1\n",
+                ran.display()
+            ),
+        )
+        .expect("the stand-in sluice");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .expect("a PATH");
+        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
+        (seam, ran)
+    }
+
+    /// The place `fix/one` onto main, its repository and its worktree
+    /// `scratch`.
+    fn a_place(scratch: &Path) -> PlaceRef {
+        let at = scratch.to_string_lossy().into_owned();
+        PlaceRef {
+            repository: at.clone(),
+            location: at,
+            branch: "fix/one".into(),
+            base: "main".into(),
+        }
+    }
+
+    /// The commands the stand-in was asked but `--version`, in order.
+    fn ran_lines(ran: &Path) -> Vec<String> {
+        std::fs::read_to_string(ran)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// A place's head from its worktree.
+    fn from_its_worktree() -> SubmitHead {
+        SubmitHead::Worktree {
+            head: Revision::new("aaa111"),
+        }
+    }
+
+    #[test]
+    fn a_sluice_before_its_host_process_is_handed_no_work() {
+        // C.6; sluice 135; record 0080: a sluice before 0.97.0 has no host
+        // process to move its queues, so neither a place's submit nor a
+        // base place's by name is handed to it.
+        let scratch = scratch("too-old");
+        let (seam, ran) = stand_in(&scratch, "sluice 0.95.1", 0);
+        let place = a_place(&scratch);
+        let by_name = SubmitHead::Branch {
+            branch: "train/a".into(),
+            revision: Revision::new("aaa111"),
+        };
+        for head in [from_its_worktree(), by_name] {
+            assert_eq!(
+                seam.submit(&place, &head),
+                Submitted::Refused {
+                    reason: "sluice 0.95.1 is too old to merge this work by itself; flume needs sluice 0.97.0 or later, the first release whose own process moves its queues".into(),
+                },
+                "{head:?}"
+            );
+        }
+        let ran_lines = ran_lines(&ran);
+        assert!(
+            !ran_lines.iter().any(|line| line.starts_with("submit")),
+            "sluice 0.95.1 was handed the work: {ran_lines:?}"
+        );
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_sluice_that_names_no_release_is_handed_no_work() {
+        // C.6; sluice record 0111: a build of sluice's main says 0.0.0, and
+        // a pre-release, a version alone or nothing names no release.
+        let scratch = scratch("no-release");
+        let says = [
+            ("sluice 0.0.0", 0, "sluice 0.0.0"),
+            ("sluice 0.97.0-rc.1", 0, "sluice 0.97.0-rc.1"),
+            ("sluice", 0, "said \"sluice\""),
+            ("", 64, "it said nothing"),
+        ];
+        for (n, (line, code, named)) in says.into_iter().enumerate() {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, code);
+            let Submitted::Refused { reason } = seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} exiting {code} was handed the work");
+            };
+            assert!(
+                reason.contains(named) && reason.contains("0.97.0"),
+                "{line:?}: {reason}"
+            );
+            let ran_lines = ran_lines(&ran);
+            assert!(
+                !ran_lines.iter().any(|line| line.starts_with("submit")),
+                "{line:?} was handed the work: {ran_lines:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    fn a_sluice_with_its_host_process_is_handed_the_work() {
+        // 111, C.6: a release is compared part by part as numbers, so
+        // 0.100.0 and 1.0.0 are each later than 0.97.0.
+        let scratch = scratch("handed");
+        for (n, line) in ["sluice 0.97.0", "sluice 0.100.0", "sluice 1.0.0"]
+            .into_iter()
+            .enumerate()
+        {
+            let at = scratch.join(n.to_string());
+            let (seam, ran) = stand_in(&at, line, 0);
+            let Submitted::Submitted { submission } =
+                seam.submit(&a_place(&at), &from_its_worktree())
+            else {
+                panic!("{line:?} was handed no work");
+            };
+            assert_eq!(submission.id, "7", "{line:?}");
+            assert_eq!(
+                ran_lines(&ran),
+                vec!["submit main --no-wait --json"],
+                "{line:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(scratch);
+    }
 
     /// The steps a reading gave, each with whether it passed.
     fn outcomes(steps: &[ReadyStep]) -> Vec<(&str, bool)> {

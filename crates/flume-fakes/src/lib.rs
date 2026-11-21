@@ -25,7 +25,7 @@ pub use git::{FakeGit, FakeHistory};
 pub use host::{source_file, FakeHost, HOST_LOCK, SOURCES};
 pub use kinds::{kind_identity, package_dir, packaged, FakeKinds};
 pub use log::Log;
-pub use merge_queue::{FakeMergeQueue, Plan};
+pub use merge_queue::{FakeMergeQueue, Plan, HELD_WITHOUT_WORDS};
 pub use place::{place_location, FakePlace};
 pub use resolver::FakeResolver;
 pub use store::FakeStore;
