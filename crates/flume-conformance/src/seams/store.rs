@@ -308,6 +308,7 @@ fn the_hosts_own_documents<H: StoreHarness>(harness: &H) -> Outcome {
         gone: None,
         pool: None,
         account: None,
+        last: None,
     });
     let version = written(harness.seam().write_host(&intent, None, Some(&affinity)))?;
     ensure_eq!(

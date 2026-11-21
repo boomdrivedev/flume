@@ -32,8 +32,9 @@ pub mod withheld;
 pub mod wrapper;
 
 use flume_seams::{
-    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Offered, PlaceRef,
-    Reading, Received, Reserved, Secret, Settings, Spent, Unsettled, Windows,
+    Agent, AgentCommand, Carry, FolderTrust, Guarded, Identity, Live, ModeEntry, Offered, Part,
+    Parts, PerProgram, PlaceRef, Reading, Received, Reserved, Secret, Settings, Spent, Unsettled,
+    Windows,
 };
 use record::Record;
 use sha2::{Digest, Sha256};
@@ -392,11 +393,11 @@ impl Agent for Claude {
         if let Some(session) = resume {
             args.extend([carry::FLAG.to_string(), session.to_string()]);
         }
-        if let Some(model) = &settings.model {
-            args.extend(["--model".to_string(), model.clone()]);
+        if let Some(model) = settings.model.as_ref().and_then(PerProgram::one) {
+            args.extend(["--model".to_string(), model.to_string()]);
         }
-        if let Some(word) = &settings.effort {
-            args.extend([effort::FLAG.to_string(), word.clone()]);
+        if let Some(word) = settings.effort.as_ref().and_then(PerProgram::one) {
+            args.extend([effort::FLAG.to_string(), word.to_string()]);
         }
         if let Some(mode) = mode {
             args.extend([mode::FLAG.to_string(), mode.to_string()]);
@@ -445,8 +446,9 @@ impl Agent for Claude {
                 next: TRUST_NEXT.into(),
                 confirm: TRUST_CONFIRM.into(),
             }),
-            kind: Some(KIND.into()),
+            kind: self.kind().map(str::to_string),
             files,
+            launcher: vec![],
         }
     }
 
@@ -598,6 +600,36 @@ impl Agent for Claude {
         }
     }
 
+    /// Every part, each named in turn, so a part added to the seam's list
+    /// is built here only by the change that builds it, and none is read
+    /// from the terminal: received from the plugin's received ack or the
+    /// session's transcript, asking from the plugin's mark until the
+    /// transcript holds its answer, own work from the transcript's
+    /// background shells and tasks, ended from the SessionEnd hook's mark,
+    /// last words from the StopFailure hook's reason or the transcript's
+    /// last message, spent from the StopFailure hook's words, windows from
+    /// the plugin's module, send-back and on-quiet from the Stop hook, the
+    /// guard from the PreToolUse hook, the mode read back from
+    /// UserPromptSubmit's input, carry from the session's transcript and
+    /// own settings by `--settings` (171, 174, C.4).
+    fn parts(&self) -> Parts {
+        Parts::of(&[
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+            Part::Spent,
+            Part::Windows,
+            Part::SendBack,
+            Part::Guard,
+            Part::OnQuiet,
+            Part::Mode,
+            Part::Carry,
+            Part::OwnSettings,
+        ])
+    }
+
     /// A usage limit, where the StopFailure hook recorded `rate_limit` with
     /// words that open as 2.1.322's usage-limit messages do, with the
     /// reset they name read from when the hook ran ([`limit`]); a failure
@@ -621,12 +653,6 @@ impl Agent for Claude {
     /// none; unknown where it cannot be read ([`windows`]; 171, 211, C.4).
     fn windows(&self, folder: &str, agent: &Identity) -> Windows {
         windows::windows(folder, agent)
-    }
-
-    /// The plugin's module passes each report of the windows to `flume
-    /// hook usage` (211, C.4).
-    fn reports_windows(&self) -> Offered {
-        Offered::Offered
     }
 
     /// Yes with the stopped start's session where the chosen account's
@@ -673,6 +699,12 @@ impl Agent for Claude {
         mode::map(entry).map(str::to_string)
     }
 
+    /// Every name, since the release's model names are open, passed by
+    /// `--model` as written (172, C.4).
+    fn model(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Each of 2.1.322's five `--effort` words, and any other refused
     /// naming it, `claude` and the five ([`effort`]; 197, C.4).
     fn effort(&self, word: &str) -> Result<(), String> {
@@ -692,10 +724,9 @@ impl Agent for Claude {
         Some(carry::CONFIG_DIR)
     }
 
-    /// The start's first prompt's UserPromptSubmit input names the mode
-    /// the session runs in (161).
-    fn mode_read_back(&self) -> Offered {
-        Offered::Offered
+    /// [`KIND`], herdr's kind for Claude Code (170, C.4).
+    fn kind(&self) -> Option<&str> {
+        Some(KIND)
     }
 
     /// [`DELIVER`] at the pinned release: offered, so the plugin's module
@@ -760,19 +791,11 @@ impl Agent for Claude {
         "name it with `--to`, as `flume needs --to <name> \"<words>\"` or `flume needs --found --to <name> \"<words>\"`, the name written as listed here".into()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::Offered
-    }
-
     /// Each act the PreToolUse hook refused (116, 108).
     fn guard(&self, folder: &str, agent: &Identity) -> Guarded {
         Guarded::Refused {
             acts: Record::at(folder, agent).refused(),
         }
-    }
-
-    fn on_quiet(&self) -> Offered {
-        Offered::Offered
     }
 }
 

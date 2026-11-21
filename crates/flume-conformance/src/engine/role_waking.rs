@@ -1311,7 +1311,12 @@ fn the_runs_intent_and_settings(_: &()) -> Outcome {
     );
     let agent = status.agent.ok_or("no agent")?;
     ensure_eq!(
-        agent.settings.settings.model.as_deref(),
+        agent
+            .settings
+            .settings
+            .model
+            .as_ref()
+            .and_then(|model| model.one()),
         Some("opus"),
         "the agent's model"
     );

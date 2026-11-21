@@ -441,6 +441,9 @@ pub struct FakeAgentHarness {
     /// it to build none, as a profile that keeps the seam's defaults (171,
     /// 211).
     windows: bool,
+    /// Whether the harness left the fake taking every model, or scripted
+    /// it to take none, as a profile that keeps the seam's default (172).
+    models: bool,
 }
 
 impl FakeAgentHarness {
@@ -463,6 +466,28 @@ impl FakeAgentHarness {
             ..FakeAgentHarness::default()
         };
         harness.agent.reports_no_windows();
+        harness
+    }
+
+    /// The fake scripted to offer no send-back, guard or on-quiet, as a
+    /// profile whose program gives flume no hooks, building every other
+    /// part (115, 116, 121, 174).
+    pub fn offering_no_hooks() -> Self {
+        let harness = FakeAgentHarness::default();
+        harness.agent.no_send_back();
+        harness.agent.no_guard();
+        harness.agent.no_on_quiet();
+        harness
+    }
+
+    /// The fake scripted to read received, asking, own work, ended and
+    /// last words from its terminal, as a profile whose program gives
+    /// flume no record of them, building every other part (93, 171, 174).
+    pub fn reading_from_its_terminal() -> Self {
+        let harness = FakeAgentHarness::default();
+        harness
+            .agent
+            .reads_from_its_terminal(&FakeAgent::FROM_TERMINAL);
         harness
     }
 
@@ -489,6 +514,7 @@ impl FakeAgentHarness {
             own: OwnWay::default(),
             efforts: fake_efforts(),
             windows: true,
+            models: true,
         }
     }
 
@@ -506,7 +532,20 @@ impl FakeAgentHarness {
             own,
             efforts: Efforts::default(),
             windows: true,
+            models: true,
         }
+    }
+
+    /// The fake scripted to take no model, refusing every name in the
+    /// seam's default words, as a profile that keeps the seam's default
+    /// (172).
+    pub fn taking_no_model() -> Self {
+        let harness = FakeAgentHarness {
+            models: false,
+            ..FakeAgentHarness::default()
+        };
+        harness.agent.take_no_model();
+        harness
     }
 }
 
@@ -597,6 +636,7 @@ impl Default for FakeAgentHarness {
             own,
             efforts: fake_efforts(),
             windows: true,
+            models: true,
         }
     }
 }
@@ -776,6 +816,10 @@ impl AgentHarness for FakeAgentHarness {
     /// and none where it names none (196).
     fn efforts(&self) -> Efforts {
         self.efforts.clone()
+    }
+
+    fn models(&self) -> bool {
+        self.models
     }
 
     fn own_passed(&self, command: &AgentCommand) -> Option<BTreeMap<String, serde_json::Value>> {

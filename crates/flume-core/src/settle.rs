@@ -373,6 +373,9 @@ impl Engine {
         if hibernation_claimed(&held) {
             return self.carry_hibernation_on(id);
         }
+        // When this settle read the live agent waiting, for a profile that
+        // does not build own work, before its stage is read (31, 171).
+        self.read_waiting(id);
         let current = held.current;
         match held.stages[index].state {
             StageState::Starting | StageState::Started => self.deliver(id, current),

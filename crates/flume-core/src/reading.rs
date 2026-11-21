@@ -1,8 +1,14 @@
 //! Reading a stage's deliverable at one head of the place's branch (24,
 //! 25), an agent's state from the terminal and the agent seam (31, 77,
 //! 90, 134, 135), and what an end that read no deliverable carries (43).
+//! A part of the agent seam its profile does not build, of received,
+//! asking, own work, ended and last words, is read from the terminal its
+//! start recorded, and the profile is asked nothing of it; one its profile
+//! builds is read from the profile alone, never from the terminal (93,
+//! 171; core.2, core.39).
 
-use crate::{Bound, Engine};
+use crate::start::Starts;
+use crate::{Bound, Engine, Step, OWN_WORK_AFTER};
 use flume_seams::*;
 
 /// The facts of a place read at one head.
@@ -272,8 +278,101 @@ impl Engine {
         }
     }
 
+    /// Whether the agent of `start` started, its record read in the
+    /// place's own `folder`: the profile's own answer where it starts its
+    /// program itself, or where that answer is not yes; for one that starts
+    /// it through flume's launcher, otherwise, yes only where the start's
+    /// terminal reads the program running in the process the launcher's
+    /// word names and, for a start not yet sent its prompt nor begun, reads
+    /// the agent waiting; no where it reads nothing running the program, it
+    /// running in another process, the word naming none, or the agent not
+    /// yet waiting; and unknown where the terminal cannot read the process,
+    /// so the start stays starting and is never read failed for it (35,
+    /// 135, 171, C.4; core.10). Every reading of a start's started is this
+    /// one, so a settle, a message and the stop check read it alike.
+    pub(crate) fn started(&self, agent: &dyn Agent, folder: &str, start: &StartHeld) -> Reading {
+        let said = agent.started(folder, &start.identity);
+        if !agent.launches() || said != Reading::Yes {
+            return said;
+        }
+        let Some(launched) = agent.launched(folder, &start.identity) else {
+            return Reading::No;
+        };
+        match self.agent_on(start).program_process() {
+            ProgramProcess::Runs { pid } if pid == launched => {
+                let taken = !start.prompt.sendings.is_empty() || start.begun_at.is_some();
+                if taken || self.state_of(Some(agent), folder, start) == AgentState::Waiting {
+                    Reading::Yes
+                } else {
+                    Reading::No
+                }
+            }
+            ProgramProcess::Runs { .. } | ProgramProcess::Nothing => Reading::No,
+            ProgramProcess::Unknown { .. } => Reading::Unknown,
+        }
+    }
+
+    /// How the agent of `start` began otherwise than its start recorded,
+    /// its record read in the place's own `folder`: the profile's own
+    /// answer; else, for a profile that starts its program through flume's
+    /// launcher whose start's word names a process, that it runs in
+    /// another process where the terminal reads the program running in
+    /// another than the word names, as a person running it again by hand
+    /// in the pane starts it; none otherwise (161, S74; core.10). Every
+    /// reading of how a start began is this one, so a settle and the stop
+    /// check read it alike.
+    pub(crate) fn began_otherwise(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<Unsettled> {
+        if let Some(unsettled) = agent.started_without(folder, &start.identity) {
+            return Some(unsettled);
+        }
+        if !agent.launches() {
+            return None;
+        }
+        let launched = agent.launched(folder, &start.identity)?;
+        match self.agent_on(start).program_process() {
+            ProgramProcess::Runs { pid } if pid != launched => Some(Unsettled {
+                process: true,
+                ..Unsettled::default()
+            }),
+            _ => None,
+        }
+    }
+
+    /// How the agent of `start` began otherwise, as
+    /// [`Engine::began_otherwise`] reads it now, else as `held` recorded a
+    /// reading of its program in another process than its launcher became,
+    /// which a later reading of the terminal need not repeat: the start is
+    /// still no start of its stage's agent, and is ended once quiet (161,
+    /// S74).
+    pub(crate) fn began_otherwise_held(
+        &self,
+        held: &HeldState,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<Unsettled> {
+        self.began_otherwise(agent, folder, start).or_else(|| {
+            held.unsettled
+                .iter()
+                .find(|read| {
+                    read.stage == start.identity.stage
+                        && read.start == start.n
+                        && read.unsettled.process
+                })
+                .map(|read| read.unsettled.clone())
+        })
+    }
+
     /// The agent of a place's start, as the terminal and the agent seam
-    /// read it, the agent's record read in the place's own folder (128).
+    /// read it, the agent's record read in the place's own folder (128):
+    /// its asking as [`Engine::read_asking`] reads it, from the state read
+    /// here where its profile does not build asking, and its own work as
+    /// [`Engine::read_own_work`] reads it (31, 90, 171).
     pub(crate) fn read_agent(&self, place: &PlaceId, start: &StartHeld) -> AgentReading {
         let agent = self.agent(&start.program);
         let folder = self.store.folder(place);
@@ -282,9 +381,13 @@ impl Engine {
         match agent {
             Some(agent) => AgentReading {
                 state,
-                started: agent.started(&folder, &start.identity),
-                asking: agent.asking(&folder, &start.identity),
-                own_work: agent.own_work(&folder, &start.identity),
+                started: self.started(agent.as_ref(), &folder, start),
+                asking: if agent.parts().builds(Part::Asking) {
+                    agent.asking(&folder, &start.identity)
+                } else {
+                    asking_of(state)
+                },
+                own_work: self.read_own_work(agent.as_ref(), &folder, start, state),
                 own_record,
             },
             None => AgentReading {
@@ -299,10 +402,13 @@ impl Engine {
 
     /// The agent's state: the reading of the terminal its start opened
     /// it in, but asking only where the agent profile's mark says it
-    /// asks, and unknown otherwise, never waiting, so nothing is typed
-    /// into a dialog flume cannot name (90, 190, core.2); and stopped
-    /// where the terminal cannot read the agent and its own record says
-    /// its session ended (134).
+    /// asks, or where its profile does not build asking, so the terminal's
+    /// reading is its asking, and unknown otherwise, never waiting, so
+    /// nothing is typed into a dialog flume cannot name (90, 171, 190,
+    /// core.2); and stopped where the terminal cannot read the agent and
+    /// its own record says its session ended, read only where its profile
+    /// builds ended, so an agent whose profile does not is read stopped by
+    /// its terminal alone (134, 171).
     pub(crate) fn state_of(
         &self,
         agent: Option<&dyn Agent>,
@@ -311,15 +417,137 @@ impl Engine {
     ) -> AgentState {
         let identity = &start.identity;
         match (self.agent_on(start).state(), agent) {
-            (AgentState::Asking, Some(agent)) if agent.asking(folder, identity) == Reading::Yes => {
+            (AgentState::Asking, Some(agent))
+                if !agent.parts().builds(Part::Asking)
+                    || agent.asking(folder, identity) == Reading::Yes =>
+            {
                 AgentState::Asking
             }
             (AgentState::Asking, _) => AgentState::Unknown,
-            (AgentState::Unknown, Some(agent)) if agent.ended(folder, identity) == Reading::Yes => {
+            (AgentState::Unknown, Some(agent))
+                if agent.parts().builds(Part::Ended)
+                    && agent.ended(folder, identity) == Reading::Yes =>
+            {
                 AgentState::Stopped
             }
             (state, _) => state,
         }
+    }
+
+    /// Whether the agent of `start` waits on a question it put to a
+    /// person: its profile's answer from its own record where it builds
+    /// asking; otherwise the terminal's reading, asking as yes, working,
+    /// waiting and stopped as no and unknown as unknown, the profile asked
+    /// nothing (90, 171; core.2, core.39). Every reading of an agent's
+    /// asking is this one, so a settle, a message and the stop check read it
+    /// alike.
+    pub(crate) fn read_asking(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Reading {
+        if agent.parts().builds(Part::Asking) {
+            return agent.asking(folder, &start.identity);
+        }
+        asking_of(self.agent_on(start).state())
+    }
+
+    /// Whether own work the agent of `start` started still runs: its
+    /// profile's answer from its own record where it builds own work;
+    /// otherwise from `state`, the agent's state as the core read it, and
+    /// the settles' readings of it waiting its start holds: none where it is
+    /// read stopped, or waiting with the last settle's reading a minute or
+    /// more after the first; running where it is read working, asking, or
+    /// waiting short of that; unknown where its state is unknown, the
+    /// profile asked nothing (31, 91, 171; core.39). Every reading of an
+    /// agent's own work is this one, so a settle, status and the stop check
+    /// read it alike, and only a settle writes what it reads.
+    pub(crate) fn read_own_work(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+        state: AgentState,
+    ) -> Reading {
+        if agent.parts().builds(Part::OwnWork) {
+            return agent.own_work(folder, &start.identity);
+        }
+        match state {
+            AgentState::Stopped => Reading::No,
+            AgentState::Waiting => match start.waiting {
+                Some(WaitingRead { since, at }) if at.saturating_sub(since) >= OWN_WORK_AFTER => {
+                    Reading::No
+                }
+                _ => Reading::Yes,
+            },
+            AgentState::Working | AgentState::Asking => Reading::Yes,
+            AgentState::Unknown => Reading::Unknown,
+        }
+    }
+
+    /// A settle's reading of the place's live start whose agent's profile
+    /// does not build own work: where its agent is read waiting, when a
+    /// settle first read it so, kept, or now where none did, and now as
+    /// the last; any other reading clears it; nothing is written where
+    /// nothing changed, and a start whose profile builds own work is not
+    /// read (31, 171; core.16, core.17). Run by a settle alone, so status,
+    /// the list and a wait write nothing of it (core.52).
+    pub(crate) fn read_waiting(&self, id: &PlaceId) {
+        let Some(read) = self.store.read(id) else {
+            return;
+        };
+        let Some((_, start)) = read.state.live_start() else {
+            return;
+        };
+        let Some(agent) = self.agent(&start.program) else {
+            return;
+        };
+        if agent.parts().builds(Part::OwnWork) {
+            return;
+        }
+        let folder = self.store.folder(id);
+        let waiting = self.state_of(Some(agent.as_ref()), &folder, start) == AgentState::Waiting;
+        let now = self.host.now();
+        let identity = start.identity.clone();
+        self.update(id, |held| {
+            let Some(index) = held.index_of(&identity) else {
+                return Step::Keep(());
+            };
+            let Some(start) = held.stages[index].start.as_mut().filter(|start| start.live) else {
+                return Step::Keep(());
+            };
+            let read = waiting.then(|| WaitingRead {
+                since: start.waiting.map_or(now, |kept| kept.since),
+                at: now,
+            });
+            if read == start.waiting {
+                return Step::Keep(());
+            }
+            start.waiting = read;
+            Step::Write(())
+        });
+    }
+
+    /// The agent's last words: its profile's answer from its own record
+    /// where it builds last words; otherwise what the terminal shows of
+    /// the agent, trimmed as a dialog's words are, none where it shows
+    /// nothing, the profile asked nothing (43, 136, 171; core.39). Every
+    /// reading of an agent's last words is this one, so an end and status
+    /// read them alike.
+    pub(crate) fn read_last_words(
+        &self,
+        agent: &dyn Agent,
+        folder: &str,
+        start: &StartHeld,
+    ) -> Option<String> {
+        if agent.parts().builds(Part::LastWords) {
+            return agent.last_words(folder, &start.identity);
+        }
+        self.agent_on(start)
+            .screen()
+            .map(|screen| shown(&screen))
+            .filter(|words| !words.is_empty())
     }
 
     /// What a stuck, lost or never-begun end carries: the agent's last
@@ -346,13 +574,36 @@ impl Engine {
             head: Some(head),
             last_words: self
                 .agent(&start.program)
-                .and_then(|agent| agent.last_words(&folder, &start.identity)),
+                .and_then(|agent| self.read_last_words(agent.as_ref(), &folder, start)),
             screen: never_begun.then(|| self.agent_on(start).screen()).flatten(),
             made: self.stage_made(held, start),
             group: start.group.clone().map(Box::new),
             ..StageEnd::default()
         }
     }
+}
+
+/// Whether an agent the terminal reads in `state` asks a person, for a
+/// profile that does not build asking (90, 171).
+fn asking_of(state: AgentState) -> Reading {
+    match state {
+        AgentState::Asking => Reading::Yes,
+        AgentState::Working | AgentState::Waiting | AgentState::Stopped => Reading::No,
+        AgentState::Unknown => Reading::Unknown,
+    }
+}
+
+/// What a terminal shows, each line's trailing blanks and the blank lines
+/// around it taken off, so a dialog's words and an agent's last words read
+/// as it draws them.
+pub(crate) fn shown(screen: &str) -> String {
+    screen
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_matches('\n')
+        .to_string()
 }
 
 /// How many lines of `made.jsonl` a stage's end passes over: the count

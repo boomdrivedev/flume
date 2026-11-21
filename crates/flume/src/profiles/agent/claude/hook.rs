@@ -24,7 +24,8 @@ use super::{
     PLACE, SECRET, STAGE,
 };
 use crate::host::process::{parent_executable, program_path};
-use flume_core::{variable_digest, Answer, Engine};
+use crate::profiles::agent::start;
+use flume_core::{Answer, Engine};
 use flume_seams::{ModeBegan, PlaceId, Secret, StartRecord, Unsettled};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -162,7 +163,8 @@ impl Start {
 
 /// How this process began otherwise than the start's record says its
 /// agent runs: each variable the record names that `variable` finds
-/// unset, each whose digest keyed by `secret` differs, by name alone,
+/// unset, each whose digest keyed by `secret` differs, by name alone, as
+/// [`start::variables`] compares them,
 /// whether the program the record names, found on `path` as the command
 /// finds it and run in a nix wrapper's place, is another than `ran`, the
 /// program this process's parent runs, and whether `session`, the session
@@ -177,16 +179,7 @@ pub fn compare(
     path: &str,
     session: &str,
 ) -> Unsettled {
-    let mut unsettled = Unsettled::default();
-    for (name, digest) in &recorded.env {
-        match variable(name) {
-            None => unsettled.missing.push(name.clone()),
-            Some(value) if &variable_digest(secret, name, &value) != digest => {
-                unsettled.different.push(name.clone());
-            }
-            Some(_) => {}
-        }
-    }
+    let mut unsettled = start::variables(recorded, secret, variable);
     let named = program_path(&recorded.program, path)
         .map(|file| wrapper::unwrapped(&file).map_or(file, |wrapped| wrapped.program));
     let canonical = |file: &Path| file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
@@ -363,7 +356,7 @@ fn began_otherwise(
         return format!("{}: {error}", record.dir().display());
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, false);
+        start::settle_detached(binary, place, false);
     }
     format!(
         "{agent} began {}, not as its start recorded, so it is not its stage's agent",
@@ -612,68 +605,7 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path
         return json!({ "decision": "block", "reason": words }).to_string();
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, true);
+        start::settle_detached(binary, place, true);
     }
     String::new()
-}
-
-/// `flume settle <place>`, with `--on-quiet` where `on_quiet`, in a
-/// session of its own that outlives the hook and the agent's terminal,
-/// its output nowhere. A process group of its own is not enough: a
-/// terminal closing the agent's pane, as herdr 0.9.5 does once the
-/// settle ends the agent, ends every process of the pane's session, so
-/// a settle killed between claiming its place's submit and recording
-/// the merge queue's entry would leave the place submitted with no
-/// entry to read, never stepped again (46, 111).
-fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
-    use std::process::{Command, Stdio};
-    let mut args = vec!["settle", place];
-    if on_quiet {
-        args.push("--on-quiet");
-    }
-    let mut command = Command::new(binary);
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let _ = in_a_session_of_its_own(command);
-}
-
-/// `command` started as the leader of a session of its own, which no
-/// terminal's session the caller runs in reaches.
-fn in_a_session_of_its_own(
-    mut command: std::process::Command,
-) -> std::io::Result<std::process::Child> {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: setsid is async-signal-safe and touches no memory of the
-    // parent's; it runs in the child between fork and exec.
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    command.spawn()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_detached_settle_leads_a_session_of_its_own() {
-        let mut command = std::process::Command::new("/bin/sleep");
-        command.arg("5");
-        let mut child = in_a_session_of_its_own(command).expect("sleep starts");
-        let pid = child.id() as libc::pid_t;
-        // SAFETY: getsid reads the session of a process this test started.
-        let (session, ours) = unsafe { (libc::getsid(pid), libc::getsid(0)) };
-        let _ = child.kill();
-        let _ = child.wait();
-        assert_eq!(session, pid, "the child leads its own session");
-        assert_ne!(session, ours, "the child shares the test's session");
-    }
 }

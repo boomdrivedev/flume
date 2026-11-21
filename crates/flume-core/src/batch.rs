@@ -665,7 +665,7 @@ impl Engine {
         }
         let folder = self.store.folder(place);
         if start.prompt.received_at.is_none()
-            || agent.asking(&folder, &start.identity) == Reading::Yes
+            || self.read_asking(agent.as_ref(), &folder, start) == Reading::Yes
         {
             return none;
         }

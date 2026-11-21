@@ -2143,6 +2143,21 @@ pub struct StartHeld {
     /// is not (90, 217).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asking_since: Option<Seconds>,
+    /// When a settle first read its agent waiting and when one last did,
+    /// written only where its profile does not build own work, which the
+    /// core reads none once the two lie a minute or more apart; none while
+    /// no settle has, once a settle read it otherwise or anything was sent
+    /// to it, and in a start written before (31, 171; core.16).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<WaitingRead>,
+}
+
+/// When settles read a start's agent waiting: the first of them since it
+/// was last read otherwise or sent to, and the last (31, 171).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitingRead {
+    pub since: Seconds,
+    pub at: Seconds,
 }
 
 impl StartHeld {

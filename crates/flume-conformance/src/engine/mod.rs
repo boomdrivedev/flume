@@ -3,7 +3,10 @@
 
 pub mod account_pools;
 pub mod agent_effort;
+pub mod agent_launcher;
+pub mod agent_model;
 pub mod agent_modes;
+pub mod agent_programs;
 pub mod agent_settings;
 pub mod answers;
 pub mod base_places;
@@ -43,6 +46,7 @@ pub mod statecharts;
 pub mod stream_terminals;
 pub mod streams;
 pub mod telemetry;
+pub mod terminal_readings;
 pub mod tidying;
 pub mod world;
 
@@ -68,6 +72,9 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(agent_settings::scenarios());
     every.extend(agent_modes::scenarios());
     every.extend(agent_effort::scenarios());
+    every.extend(agent_model::scenarios());
+    every.extend(agent_programs::scenarios());
+    every.extend(agent_launcher::scenarios());
     every.extend(end_delivery::scenarios());
     every.extend(caller_waits::scenarios());
     every.extend(made_things::scenarios());
@@ -93,6 +100,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     every.extend(standing_roles::scenarios());
     every.extend(relay::scenarios());
     every.extend(telemetry::scenarios());
+    every.extend(terminal_readings::scenarios());
     every.extend(statecharts::scenarios());
     every
 }

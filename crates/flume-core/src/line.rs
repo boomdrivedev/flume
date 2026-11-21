@@ -82,10 +82,16 @@ impl Engine {
     }
 
     /// Whether the live agent's profile reads it asking a person, from
-    /// its own record and the transcript it names alone (90).
+    /// its own record and the transcript it names alone; or, where its
+    /// profile does not build asking, whether the last settle that read its
+    /// stage's end read it asking, from its start's held `asking_since`,
+    /// asking no terminal (57, 90, 171; core.52).
     pub(crate) fn asking(&self, held: &HeldState) -> bool {
         held.live_start().is_some_and(|(_, start)| {
             self.agent(&start.program).is_some_and(|agent| {
+                if !agent.parts().builds(Part::Asking) {
+                    return start.asking_since.is_some();
+                }
                 agent.asking(&self.store.folder(&held.place.id), &start.identity) == Reading::Yes
             })
         })

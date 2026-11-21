@@ -228,13 +228,17 @@ pub enum Deliverable {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub program: Option<String>,
-    pub model: Option<String>,
+    /// The agent's model, its program's own name or a table of programs
+    /// as its layer wrote it, the agent's entry its program's, which its
+    /// profile takes or refuses; a held state written before reads its
+    /// name as one value (172).
+    pub model: Option<PerProgram>,
     /// How hard the agent's model works on each turn, its program's own
-    /// word as its layer wrote it, which its profile takes or refuses;
-    /// none where the layer gives none, and in settings written before
-    /// (197).
+    /// word or a table of programs as its layer wrote it, the agent's
+    /// entry its program's, which its profile takes or refuses; none
+    /// where the layer gives none, and in settings written before (197).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
+    pub effort: Option<PerProgram>,
     pub instructions: Option<String>,
     /// The pane the agent opens beside, named by the launch's settings.
     pub beside: Option<String>,
@@ -455,6 +459,111 @@ impl std::fmt::Display for ModeEntry {
     }
 }
 
+/// A setting as a layer gives it: one value for every program, or a
+/// table of programs, each entry as written, the agent's taken by its
+/// program's name (172, 197). It is written as the string or the object
+/// it was written as, and read through [`PerProgram::from_programs`], so
+/// a held state written before reads its value unchanged and a table
+/// naming no program is refused where it is read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "WrittenPerProgram", into = "WrittenPerProgram")]
+pub enum PerProgram {
+    One(String),
+    Programs(BTreeMap<String, String>),
+}
+
+/// A per-program setting as JSON spells it, before it is read.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum WrittenPerProgram {
+    One(String),
+    Programs(BTreeMap<String, String>),
+}
+
+impl TryFrom<WrittenPerProgram> for PerProgram {
+    type Error = String;
+
+    fn try_from(written: WrittenPerProgram) -> Result<PerProgram, String> {
+        match written {
+            WrittenPerProgram::One(value) => Ok(PerProgram::One(value)),
+            WrittenPerProgram::Programs(programs) => PerProgram::from_programs(programs),
+        }
+    }
+}
+
+impl From<PerProgram> for WrittenPerProgram {
+    fn from(setting: PerProgram) -> WrittenPerProgram {
+        match setting {
+            PerProgram::One(value) => WrittenPerProgram::One(value),
+            PerProgram::Programs(programs) => WrittenPerProgram::Programs(programs),
+        }
+    }
+}
+
+impl From<&str> for PerProgram {
+    fn from(value: &str) -> PerProgram {
+        PerProgram::One(value.to_string())
+    }
+}
+
+impl From<String> for PerProgram {
+    fn from(value: String) -> PerProgram {
+        PerProgram::One(value)
+    }
+}
+
+impl PerProgram {
+    /// A table of programs, each entry as written; one that names no
+    /// program refused (172, 197).
+    pub fn from_programs(programs: BTreeMap<String, String>) -> Result<PerProgram, String> {
+        if programs.is_empty() {
+            return Err("the table of programs names no program".into());
+        }
+        Ok(PerProgram::Programs(programs))
+    }
+
+    /// The entry of the agent whose program is named `program`: the value
+    /// given whole, or the table's entry for it; none where the table
+    /// names no entry for it, since the table is taken whole (172, 197).
+    pub fn entry(&self, program: &str) -> Option<&str> {
+        match self {
+            PerProgram::One(value) => Some(value),
+            PerProgram::Programs(programs) => programs.get(program).map(String::as_str),
+        }
+    }
+
+    /// The value given whole, as a profile's command passes it; none for
+    /// a table of programs, whose entry the core hands it whole (172,
+    /// 197).
+    pub fn one(&self) -> Option<&str> {
+        match self {
+            PerProgram::One(value) => Some(value),
+            PerProgram::Programs(_) => None,
+        }
+    }
+
+    /// Whether it is a table of programs, whose entry status names.
+    pub fn is_table(&self) -> bool {
+        matches!(self, PerProgram::Programs(_))
+    }
+
+    /// The setting as a layer would write it, `opus` or `{ agent =
+    /// "opus", other = "gpt-5.5" }`, its programs in order, as
+    /// [`ModeSetting::written`] writes a mode's (56).
+    pub fn written(&self) -> String {
+        match self {
+            PerProgram::One(value) => value.clone(),
+            PerProgram::Programs(programs) => {
+                let entries: Vec<String> = programs
+                    .iter()
+                    .map(|(program, value)| format!("{program} = {value:?}"))
+                    .collect();
+                format!("{{ {} }}", entries.join(", "))
+            }
+        }
+    }
+}
+
 /// What stands in a record or an answer for an environment variable's
 /// value: a value may be a secret, a token or a password, so no status,
 /// log line, refusal or record of a start holds one, only that the
@@ -463,10 +572,11 @@ pub const SET: &str = "<set>";
 
 impl Settings {
     /// These settings with `over`'s fields set over them, field by field,
-    /// each taken whole, the effort as the model (197): a mode's table of programs is never merged with
-    /// another's (32, 169). Own settings are taken whole too, `over`'s
-    /// where they give any: folding them key by key, each table's file
-    /// kept beneath its own keys, is the core's (195).
+    /// each taken whole: a model's, an effort's or a mode's table of
+    /// programs is never merged with another's (32, 169, 172, 197). Own
+    /// settings are taken whole too, `over`'s where they give any: folding
+    /// them key by key, each table's file kept beneath its own keys, is
+    /// the core's (195).
     pub fn under(&self, over: &Settings) -> Settings {
         Settings {
             program: over.program.clone().or_else(|| self.program.clone()),
@@ -542,7 +652,8 @@ pub enum Layer {
     /// flume's own default.
     Default,
     /// The account the agent runs under, which alone gives its
-    /// environment (144).
+    /// environment, and its program where no layer above flume's default
+    /// names one (32 item 8, 144, 173).
     Account,
 }
 

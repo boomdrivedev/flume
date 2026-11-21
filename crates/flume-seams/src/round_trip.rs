@@ -499,6 +499,7 @@ fn held() -> HeldState {
                 }),
                 span: None,
                 asking_since: None,
+                waiting: None,
             }),
             since: Some(120),
             session: None,
@@ -626,6 +627,7 @@ fn unsettled() -> Unsettled {
             asked: "careful".into(),
             began: Some("ask-each".into()),
         }),
+        process: false,
     }
 }
 
@@ -1301,6 +1303,86 @@ fn a_held_state_with_an_effort() {
     );
 }
 
+/// The seam-contracts spec's scenarios "A held state with a model's
+/// table and an effort's" and "A table that names no program" (32, 172,
+/// 197).
+#[test]
+fn a_model_and_an_effort_for_each_program() {
+    let table = |entries: &[(&str, &str)]| {
+        PerProgram::from_programs(
+            entries
+                .iter()
+                .map(|(program, value)| (program.to_string(), value.to_string()))
+                .collect(),
+        )
+        .expect("a table naming a program")
+    };
+    let model = table(&[("agent", "large"), ("other", "small")]);
+    let mut state = held();
+    state.place.every_stage.model = Some(model.clone());
+    state.place.every_stage.effort = Some(table(&[("agent", "high")]));
+    state.place.kind.agents.every_stage.model = Some("medium".into());
+    round_trips(state.clone());
+    let json = serde_json::to_value(&state).expect("held state as JSON");
+    assert_eq!(
+        json["place"]["every_stage"]["model"],
+        serde_json::json!({"agent": "large", "other": "small"})
+    );
+    assert_eq!(
+        json["place"]["every_stage"]["effort"],
+        serde_json::json!({"agent": "high"})
+    );
+    assert_eq!(
+        json["place"]["kind"]["agents"]["every_stage"]["model"],
+        "medium"
+    );
+    let read: HeldState = serde_json::from_value(json).expect("read back");
+    assert_eq!(read, state);
+    assert_eq!(model.entry("agent"), Some("large"));
+    assert_eq!(model.entry("nonesuch"), None, "no entry for the program");
+    assert_eq!(
+        model.written(),
+        r#"{ agent = "large", other = "small" }"#,
+        "each program in order"
+    );
+    assert_eq!(model.one(), None, "a table is no value given whole");
+    assert!(model.is_table());
+
+    // A state written with one model reads it as one value, every
+    // program's, and writes it back as it was.
+    let medium: PerProgram = serde_json::from_str(r#""medium""#).expect("one value");
+    assert_eq!(medium, PerProgram::One("medium".into()));
+    assert_eq!(medium.entry("agent"), Some("medium"));
+    assert_eq!(medium.entry("nonesuch"), Some("medium"));
+    assert_eq!(medium.written(), "medium");
+    assert_eq!(medium.one(), Some("medium"));
+    assert_eq!(PerProgram::from(String::from("medium")), medium);
+    assert_eq!(serde_json::to_value(&medium).unwrap(), "medium");
+    let settings: Settings = serde_json::from_str(
+        r#"{"program":null,"model":"medium","instructions":null,"beside":null}"#,
+    )
+    .expect("settings written before");
+    assert_eq!(settings.model, Some("medium".into()));
+    assert_eq!(settings.effort, None);
+
+    // A table that names no program is refused where it is read.
+    let refused = serde_json::from_str::<PerProgram>("{}").expect_err("an empty table");
+    assert!(
+        refused
+            .to_string()
+            .contains("the table of programs names no program"),
+        "{refused}"
+    );
+    assert!(
+        serde_json::from_str::<Settings>(r#"{"model":{}}"#).is_err(),
+        "settings with a model's table naming no program"
+    );
+    assert_eq!(
+        PerProgram::from_programs(BTreeMap::new()),
+        Err("the table of programs names no program".to_string())
+    );
+}
+
 #[test]
 fn a_bare_word_of_a_programs_own() {
     // A program's own value goes under its program's name, never bare,
@@ -1451,6 +1533,55 @@ fn a_start_begun_in_another_conversation_in_words() {
         .words(),
         "without AGENT_HOME, in another conversation than the one its start resumes"
     );
+}
+
+/// The seam-contracts spec's scenario "Begun in another process" (161,
+/// S74).
+#[test]
+fn a_start_begun_in_another_process() {
+    let other = Unsettled {
+        process: true,
+        ..Unsettled::default()
+    };
+    round_trips(other.clone());
+    assert_eq!(
+        other.words(),
+        "in another process than the one its start's launcher became"
+    );
+    assert!(
+        !other.words().chars().any(|c| c.is_ascii_digit()),
+        "the words named a process's id: {}",
+        other.words()
+    );
+    assert_eq!(
+        Unsettled {
+            missing: vec!["AGENT_HOME".into()],
+            ..other
+        }
+        .words(),
+        "without AGENT_HOME, in another process than the one its start's launcher became"
+    );
+}
+
+/// The seam-contracts spec's scenario "A word written before" (161).
+#[test]
+fn a_word_written_before_has_no_process() {
+    let before = serde_json::json!({
+        "missing": ["AGENT_HOME"],
+        "different": [],
+        "program": false
+    });
+    let read: Unsettled = serde_json::from_value(before.clone()).unwrap();
+    assert!(
+        !read.process,
+        "a word written before read in another process"
+    );
+    let written = serde_json::to_value(&read).unwrap();
+    assert!(
+        written.get("process").is_none(),
+        "a word with no process wrote one: {written}"
+    );
+    assert_eq!(written, before);
 }
 
 #[test]
@@ -2479,17 +2610,168 @@ impl Agent for Bare {
         String::new()
     }
 
-    fn send_back(&self) -> Offered {
-        Offered::NotOffered
-    }
-
     fn guard(&self, _folder: &str, _agent: &Identity) -> Guarded {
         Guarded::NotOffered
     }
+}
 
-    fn on_quiet(&self) -> Offered {
-        Offered::NotOffered
+/// The seam-contracts spec's scenario "Each part written and read" (174).
+#[test]
+fn each_part_written_and_read() {
+    let words = [
+        "received",
+        "asking",
+        "own_work",
+        "ended",
+        "last_words",
+        "spent",
+        "windows",
+        "send_back",
+        "guard",
+        "on_quiet",
+        "mode",
+        "carry",
+        "own_settings",
+    ];
+    assert_eq!(Part::ALL.len(), words.len());
+    for (part, word) in Part::ALL.into_iter().zip(words) {
+        assert_eq!(serde_json::to_value(part).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<Part>(serde_json::json!(word)).unwrap(),
+            part
+        );
+        round_trips(part);
     }
+    let words = serde_json::from_value::<Part>(serde_json::json!("colour"))
+        .expect_err("`colour` was read as a part")
+        .to_string();
+    assert!(words.contains("`colour`"), "{words}");
+}
+
+/// The seam-contracts spec's scenario "A part's name and its lesser
+/// reading" (171, 174).
+#[test]
+fn a_parts_name_and_its_lesser_reading() {
+    assert_eq!(Part::SendBack.name(), "send-back");
+    assert_eq!(Part::OwnWork.name(), "own work");
+    assert_eq!(Part::OwnSettings.name(), "own settings");
+    assert_eq!(
+        Part::Carry.read(),
+        "not offered, so a stage whose agent stopped at its account's usage limit starts afresh"
+    );
+    assert!(
+        Part::OwnWork.read().starts_with(
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting"
+        ),
+        "{}",
+        Part::OwnWork.read()
+    );
+    let names: Vec<&str> = Part::ALL.into_iter().map(Part::name).collect();
+    assert_eq!(
+        names,
+        [
+            "received",
+            "asking",
+            "own work",
+            "ended",
+            "last words",
+            "spent",
+            "windows",
+            "send-back",
+            "guard",
+            "on-quiet",
+            "mode",
+            "carry",
+            "own settings"
+        ]
+    );
+}
+
+/// The seam-contracts spec's scenario "A profile that builds no part"
+/// (174).
+#[test]
+fn a_profile_that_builds_no_part() {
+    assert_eq!(Bare.parts(), Parts::none());
+    assert_eq!(Bare.parts().degraded(), Part::ALL.to_vec());
+    let reads: Vec<&str> = Bare
+        .parts()
+        .degraded()
+        .into_iter()
+        .map(Part::read)
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            "read from the terminal, received once it sees the turn the sending began, the agent working or asking, within 60 seconds",
+            "read from the terminal, asking while it reads the agent waiting on a question",
+            "read from the terminal, none once two settles a minute or more apart read the agent waiting, and running until then",
+            "read from the terminal, ended once it reads the agent stopped",
+            "read from the terminal, what it shows of the agent",
+            "unknown, so the account it runs under is never recorded spent",
+            "unknown, so the account it runs under has no reading",
+            "not offered, so it may go quiet with its deliverable missing",
+            "not offered, so nothing refuses its submitting, merging or pushing its place's branch",
+            "not offered, so the host's watch, or a command where none keeps watch, settles its place",
+            "recorded and not compared with the mode it began in",
+            "not offered, so a stage whose agent stopped at its account's usage limit starts afresh",
+            "none reserved and none taken, so own settings given for its program are refused",
+        ]
+    );
+    assert_eq!(Bare.send_back(), Offered::NotOffered);
+    assert_eq!(Bare.on_quiet(), Offered::NotOffered);
+    assert_eq!(Bare.reports_windows(), Offered::NotOffered);
+    assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+    // No part's lesser reading names a terminal (core.1), the names spelled
+    // in pieces so this file names none of them.
+    for part in Part::ALL {
+        for name in [
+            ["her", "dr"].concat(),
+            ["R", "ex"].concat(),
+            ["tm", "ux"].concat(),
+        ] {
+            assert!(!part.read().contains(&name), "{}", part.read());
+        }
+    }
+    assert_eq!(
+        Bare.received("/folder", &identity(), "go"),
+        Received::Unknown
+    );
+    assert_eq!(Bare.asking("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.own_work("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.ended("/folder", &identity()), Reading::Unknown);
+    assert_eq!(Bare.last_words("/folder", &identity()), None);
+    assert_eq!(Bare.spent("/folder", &identity()), Spent::Unknown);
+    assert_eq!(Bare.windows("/folder", &identity()), Windows::Unknown);
+    assert_eq!(Bare.guard("/folder", &identity()), Guarded::NotOffered);
+    assert_eq!(
+        Bare.carry("/folder", &identity(), &BTreeMap::new()),
+        Carry::NotOffered
+    );
+    assert_eq!(Bare.reserved(), vec![]);
+    let given = BTreeMap::from([("line".to_string(), serde_json::json!("a"))]);
+    assert!(Bare.own(&given).is_err());
+
+    // A profile naming some parts builds those alone, each named once
+    // however often it is given.
+    let parts = Parts::of(&[Part::OnQuiet, Part::SendBack, Part::SendBack]);
+    assert!(parts.builds(Part::SendBack) && parts.builds(Part::OnQuiet));
+    assert_eq!(
+        parts.degraded(),
+        [
+            Part::Received,
+            Part::Asking,
+            Part::OwnWork,
+            Part::Ended,
+            Part::LastWords,
+            Part::Spent,
+            Part::Windows,
+            Part::Guard,
+            Part::Mode,
+            Part::Carry,
+            Part::OwnSettings
+        ]
+    );
+    assert_eq!(Parts::of(&Part::ALL).degraded(), vec![]);
 }
 
 #[test]
@@ -2558,6 +2840,26 @@ fn a_profile_that_maps_no_mode() {
         .expect_err("a profile that maps no mode mapped an own value");
     assert!(words.contains("`careful`"), "{words}");
     assert_eq!(Bare.mode_read_back(), Offered::NotOffered);
+}
+
+/// The seam-contracts spec's scenario "A profile that keeps the seam's
+/// defaults" (170, 172).
+#[test]
+fn a_profile_that_keeps_the_seams_defaults_refuses_a_model() {
+    let words = Bare
+        .model("large")
+        .expect_err("a profile that names no way to give a model took large");
+    assert!(words.contains("`large`"), "{words}");
+    assert_eq!(words, no_model("large"));
+    assert_eq!(
+        words,
+        "its agent profile names no way to give a model, `large` among them"
+    );
+    assert_eq!(
+        Bare.kind(),
+        None,
+        "a profile that keeps the defaults names no kind"
+    );
 }
 
 #[test]
@@ -2638,6 +2940,106 @@ fn a_profile_that_reads_no_running_session() {
     ] {
         round_trips(live);
     }
+}
+
+/// The seam-contracts spec's scenario "The process's answers in JSON"
+/// (C.5).
+#[test]
+fn the_processs_answers_round_trip() {
+    for process in [
+        ProgramProcess::Runs { pid: 41 },
+        ProgramProcess::Nothing,
+        ProgramProcess::Unknown {
+            why: "the terminal did not answer within 5 seconds".into(),
+        },
+    ] {
+        round_trips(process);
+    }
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Runs { pid: 41 }).unwrap(),
+        serde_json::json!({ "runs": { "pid": 41 } })
+    );
+    assert_eq!(
+        serde_json::to_value(ProgramProcess::Nothing).unwrap(),
+        serde_json::json!("nothing")
+    );
+}
+
+/// The seam-contracts spec's scenario "A watched send's answers in JSON"
+/// (95, 171, C.5).
+#[test]
+fn a_watched_sends_answers_round_trip() {
+    for watched in [
+        SentWatching::Began,
+        SentWatching::NotSeen {
+            why: "agent_prompt_stalled: no turn began within 5000 ms".into(),
+        },
+        SentWatching::Refused {
+            reason: "the pane is gone".into(),
+        },
+    ] {
+        round_trips(watched);
+    }
+    assert_eq!(
+        serde_json::to_value(SentWatching::Began).unwrap(),
+        serde_json::json!("began")
+    );
+    assert_eq!(
+        serde_json::to_value(SentWatching::NotSeen {
+            why: "timeout".into()
+        })
+        .unwrap(),
+        serde_json::json!({ "not_seen": { "why": "timeout" } })
+    );
+}
+
+/// The seam-contracts spec's scenario "A profile that keeps the seam's
+/// defaults names no launcher" (35).
+#[test]
+fn a_profile_that_keeps_the_seams_defaults_names_no_launcher() {
+    assert!(
+        !Bare.launches(),
+        "a profile that keeps the defaults launches"
+    );
+    assert_eq!(Bare.launched("/folder", &identity()), None);
+}
+
+/// The seam-contracts spec's scenario "A command with the launcher's words
+/// and one without" (88, C.4).
+#[test]
+fn a_command_with_the_launchers_words_and_one_without() {
+    let without = AgentCommand {
+        program: "amp".into(),
+        kind: Some("amp".into()),
+        env: BTreeMap::from([("AMP_HOME".into(), "/scratch/work-2".into())]),
+        ..AgentCommand::default()
+    };
+    let with = AgentCommand {
+        launcher: vec![
+            "/opt/flume/bin/flume".into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
+        ..without.clone()
+    };
+    round_trips(with.clone());
+    round_trips(without.clone());
+    assert_eq!(
+        serde_json::to_value(&with).unwrap()["launcher"],
+        serde_json::json!(["/opt/flume/bin/flume", "ack", "launched", "--"])
+    );
+    let json = serde_json::to_value(&without).unwrap();
+    assert!(
+        json.get("launcher").is_none(),
+        "a command with no launcher wrote one: {json}"
+    );
+    let before: AgentCommand =
+        serde_json::from_str(r#"{"program":"amp","args":[],"env":{},"prompt_args":[]}"#).unwrap();
+    assert!(
+        before.launcher.is_empty(),
+        "a command written before named a launcher"
+    );
 }
 
 #[test]
@@ -4080,6 +4482,7 @@ fn two_programs() -> Affinity {
         gone: Some(50_000),
         pool: None,
         account: None,
+        last: None,
     }
 }
 
@@ -4126,6 +4529,32 @@ fn an_affinity_written_before() {
     assert!(written.get("pool").is_none() && written.get("account").is_none());
     assert!(written["moves"][0].get("program").is_none());
     assert_eq!(written["accounts"], serde_json::json!({}));
+}
+
+#[test]
+fn an_affinity_with_its_last_program() {
+    // The seam-contracts spec's "An affinity with its last program": an
+    // affinity whose last program is `other` reads back with it, and one
+    // written before, which names none, reads with none and is written
+    // again with no field for it (147, 153, 173).
+    let last = Affinity {
+        last: Some("other".into()),
+        ..two_programs()
+    };
+    round_trips(last.clone());
+    let json = serde_json::to_value(&last).unwrap();
+    assert_eq!(json["last"], serde_json::json!("other"));
+    let read: Affinity = serde_json::from_value(json).expect("read");
+    assert_eq!(read.last.as_deref(), Some("other"));
+    let before = serde_json::json!({
+        "stream": "work",
+        "accounts": {"agent": {"pool": "work", "account": "agent-1"}},
+        "moves": [],
+        "gone": null,
+    });
+    let read: Affinity = serde_json::from_value(before.clone()).expect("read");
+    assert_eq!(read.last, None);
+    assert_eq!(serde_json::to_value(&read).unwrap(), before);
 }
 
 #[test]
@@ -5312,6 +5741,12 @@ fn the_agent_seams_answers() {
             "/state/fix--one/agent/own.json".into(),
             r#"{"line":"a"}"#.into(),
         )]),
+        launcher: vec![
+            "/opt/flume/bin/flume".into(),
+            "ack".into(),
+            "launched".into(),
+            "--".into(),
+        ],
     });
     let before: AgentCommand =
         serde_json::from_str(r#"{"program":"agent","args":[],"env":{},"prompt_args":[]}"#).unwrap();
@@ -6283,6 +6718,52 @@ fn a_held_state_with_its_trace_and_waits() {
             serde_json::json!(party.word())
         );
     }
+}
+
+/// The seam-contracts spec's scenario "A start read waiting" (171).
+#[test]
+fn a_start_read_waiting() {
+    let mut held = held();
+    let start = held.stages[0].start.as_mut().expect("a start");
+    start.waiting = Some(WaitingRead {
+        since: 100,
+        at: 160,
+    });
+    round_trips(held.clone());
+    let json = serde_json::to_value(&held).expect("as JSON");
+    assert_eq!(
+        json["stages"][0]["start"]["waiting"],
+        serde_json::json!({ "since": 100, "at": 160 })
+    );
+    let read: HeldState = serde_json::from_value(json).expect("read back");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        Some(WaitingRead {
+            since: 100,
+            at: 160
+        })
+    );
+}
+
+/// The seam-contracts spec's scenario "A start written before" (171;
+/// core.16).
+#[test]
+fn a_start_written_before_reads_no_waiting() {
+    let before = serde_json::to_value(held()).expect("held state as JSON");
+    assert!(
+        before["stages"][0]["start"].get("waiting").is_none(),
+        "waiting written while none"
+    );
+    let read: HeldState = serde_json::from_value(before.clone()).expect("read from before");
+    assert_eq!(
+        read.stages[0].start.as_ref().expect("a start").waiting,
+        None
+    );
+    assert_eq!(
+        serde_json::to_value(&read).expect("written again"),
+        before,
+        "no waiting written where none is held"
+    );
 }
 
 #[test]

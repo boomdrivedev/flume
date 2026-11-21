@@ -76,16 +76,14 @@ pub const SKIPPED: &[u32] = &[];
 /// cache use in status.
 pub const STANDING: &str = "record 0021's change, the standing prompt, once its plan is approved";
 
-/// The change that builds record 0024's plan stage, after its mode.
+/// The change that builds record 0024's plan stage, after its mode. It
+/// also adds the plan to what makes an account able to run a stage that
+/// delivers a plan, which S72 tells of (173).
 pub const PLAN: &str = "record 0024's plan stage's change, built after the mode";
 
 /// The change that builds record 0025's points, a stream's points bound
 /// and its pace.
 pub const POINTS: &str = "record 0025's change, points, built after the mode";
-
-/// The change that builds record 0026's common profile and the degraded
-/// parts of the agent seam.
-pub const PROFILES: &str = "record 0026's change, every program the terminal starts, once accepted";
 
 /// What builds clause 183, an MCP server naming the labels whose places
 /// may have it: the answer to section 10's question on how a host's
@@ -139,16 +137,12 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
     let plan = [163, 164]
         .map(|clause| clause.to_string())
         .into_iter()
-        .chain(["S68".to_string()])
+        .chain(["S68".to_string(), "S72".to_string()])
         .map(|clause| (clause, PLAN));
     let points = (165..=168)
         .map(|clause| clause.to_string())
         .chain((69..=70).map(|scenario| format!("S{scenario}")))
         .map(|clause| (clause, POINTS));
-    let profiles = (170..=174)
-        .map(|clause| clause.to_string())
-        .chain((71..=75).map(|scenario| format!("S{scenario}")))
-        .map(|clause| (clause, PROFILES));
     let mcp_servers = std::iter::once(("183".to_string(), MCP_SERVERS));
     let origin = std::iter::once(("S92".to_string(), ORIGIN));
     let hibernate = ["S126", "S128"].map(|clause| (clause.to_string(), HIBERNATE));
@@ -163,7 +157,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
     standing
         .chain(plan)
         .chain(points)
-        .chain(profiles)
         .chain(mcp_servers)
         .chain(origin)
         .chain(hibernate)
@@ -234,10 +227,7 @@ mod tests {
     #[test]
     fn the_clauses_unbuilt_are_named_by_the_changes_that_build_them() {
         let unbuilt = unbuilt();
-        assert_eq!(
-            unbuilt.len(),
-            3 + 2 + 3 + 6 + 10 + 1 + 1 + 2 + 2 + 3 + 1 + 3
-        );
+        assert_eq!(unbuilt.len(), 3 + 2 + 4 + 6 + 1 + 1 + 2 + 2 + 3 + 1 + 3);
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
             "140", "141", "142", "143", "144", "145", "146", "147", "151", "153", "154", "157",
@@ -249,12 +239,21 @@ mod tests {
             "207", "S113", "S114", "S115", "S116", "S117", "195", "196", "S100", "S101", "S102",
             "197", "S103", "198", "S104", "S105", "202", "203", "204", "205", "206", "208", "S109",
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
-            "S119", "211", "216", "217", "218", "219", "220", "S129", "175", "176", "177", "178",
-            "S76", "S77", "212", "213", "S124", "S125", "S127", "214", "215",
+            "S119", "211", "216", "217", "218", "219", "220", "S129", "170", "172", "S75", "174",
+            "S74", "171", "S73", "212", "213", "S124", "S125", "S127", "173", "S71", "214", "215",
+            "175", "176", "177", "178", "S76", "S77",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),
                 "{built} is named unbuilt"
+            );
+        }
+        for still in ["163", "164", "S68", "S72"] {
+            assert!(
+                unbuilt
+                    .iter()
+                    .any(|(clause, by)| clause == still && *by == PLAN),
+                "{still} is not named unbuilt by record 0024's plan stage's change"
             );
         }
     }
