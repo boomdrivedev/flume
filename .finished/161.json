@@ -1,0 +1,30 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 161,
+  "branch": "bolt/flume-runs-kinds-on-weirs-engine",
+  "head": "0d770617317c4d0698fee0298e1301d97c23373e",
+  "from": {
+    "agent": "fix/flume-runs-kinds-on-weirs-engine--takes-main",
+    "worktree": "fix/flume-runs-kinds-on-weirs-engine--takes-main",
+    "path": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/places/fix-flume-runs-kinds-on-weirs-engine--takes-main",
+    "host": "deneb",
+    "session": "herdr:w2:p26@/Users/chuck/.config/herdr/sessions/boomdrive/herdr.sock"
+  },
+  "submitted": "2026-11-21T00:05:29Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "903d9e8f4cb5fcadbb35452d7ab0e86d6c90a984",
+    "on": "f90e84b4c8176331da8d3281ff090a6adce49251",
+    "submissions": [
+      161
+    ]
+  },
+  "result": "passed",
+  "landed_as": "a2fc447b415bc99fbc87106b80cbfcebe16d6f94",
+  "subject": "main at 8ca12fc into the bolt",
+  "trace": "00-7ee88554603aa0f1733e67328dcbd59c-c644b6b1ad6bcf62-01",
+  "under_test_ms": 216000
+}

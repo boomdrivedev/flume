@@ -1,0 +1,8 @@
+{"format": "weir-known/1", "reader": "change/flume-runs-statechart-kinds", "known_at": "2026-11-18T19:57:58Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-kinds-on-weirs-engine-1", "known_at": "2026-11-18T20:42:35Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-kinds-on-weirs-engine--record-0079-is-accepted-by-design", "known_at": "2026-11-19T01:21:23Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-kinds-on-weirs-engine-3", "known_at": "2026-11-20T02:45:44Z"}
+{"format": "weir-delivery/1", "key": "161:landed", "readers": ["fix/flume-runs-kinds-on-weirs-engine--takes-main"], "message": "[sluice] #161 landed on bolt/flume-runs-kinds-on-weirs-engine as a2fc447.", "recorded_at": "2026-11-21T00:09:31Z", "expires_at": "2026-11-28T00:09:31Z"}
+{"format": "weir-handover/1", "key": "161:landed", "reader": "fix/flume-runs-kinds-on-weirs-engine--takes-main", "by": "notice", "at": "2026-11-21T00:09:36Z"}
+{"format": "weir-confirmation/1", "key": "161:landed", "reader": "fix/flume-runs-kinds-on-weirs-engine--takes-main", "at": "2026-11-21T00:09:54Z"}
+{"format": "weir-known/1", "reader": "fix/flume-runs-kinds-on-weirs-engine--takes-main", "known_at": "2026-11-21T00:09:54Z"}

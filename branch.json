@@ -1,0 +1,23 @@
+{
+  "schema": "sluice/branch@1",
+  "branch": "bolt/flume-runs-kinds-on-weirs-engine",
+  "log": "sluice/log@1",
+  "base": "a2fc447b415bc99fbc87106b80cbfcebe16d6f94",
+  "verified": true,
+  "covered_by": {
+    "at": "a2fc447b415bc99fbc87106b80cbfcebe16d6f94",
+    "result": "passed",
+    "ran": 39,
+    "replayed": 0
+  },
+  "window": 4,
+  "next_place": 2,
+  "next_candidate": 2,
+  "candidates": [],
+  "landing": null,
+  "release": [],
+  "outbox": [],
+  "lead": "deneb",
+  "landed": "a2fc447b415bc99fbc87106b80cbfcebe16d6f94",
+  "kept": "2026-11-21T00:09:55Z"
+}
