@@ -14,6 +14,7 @@ sidebar:
 | `flume message <target> <words>` | Hand a place's agent words as a prompt, once it waits, or leave them at a role's address, `<stream>/<role>`, as a delivery its session takes at its next wait; to an agent kept open for its answer, the answer, `--answers <key>` naming the stop-short it answers. `flume tell` runs it too. |
 | `flume hold <place> <words>` | Hold the place's next stage, `--stage`, or its submission, `--submission`, with words saying what for; or, `--waiting`, the move the place waits on, with words saying who makes it and an optional bound. |
 | `flume retry <place>` | Start a stage again with a fresh agent, hand an answer to the agent kept open for it, or submit the place again; `--answers <key>` names the stop-short the words answer. |
+| `flume answer <place> <region> <answer>` | Answer the decision standing at a region of a statechart place; the next settle applies it. |
 | `flume stop <place>` | End the place's agent and nothing else. |
 | `flume finish <place>` | End a conversation's agent; the conversation counts as delivered. |
 | `flume drop <place>` | Give up the place's work, and tidy it. |
@@ -402,6 +403,11 @@ refuses a stage started, a submission made and undecided, a second hold
 and a place whose work is over. Only a retry naming the stage or the
 submission ends the hold.
 
+On a place of a statechart kind, `--stage` names a stage by its path,
+as `stages.test`, which holds each of its sessions not yet started,
+those of its next entry among them; or one session by its name, as
+`stages.test#1/2`. A session that has started is not held.
+
 `--waiting` holds the move the place waits on its caller for, with
 words saying who makes it and how, so the place is not stalled while
 the hold holds. A later hold on the move replaces the words, the bound
@@ -449,6 +455,32 @@ A retry with `--words` naming a stage whose agent hibernated waiting on
 its answer is that answer: it resumes the agent's session with the
 question and the words, its starts unchanged. A retry of any other
 hibernating stage starts it afresh, carrying no conversation.
+
+On a place of a statechart kind, `--stage` names one session by its
+name, as `stages.test#1/2`, and starts that session again alone,
+ending only its own agent: the place's other sessions work on, and no
+stage after it is run again. `--stage` naming a stage by its path, as
+`stages.test`, ends the hold on that stage and starts each session it
+held. The statechart decides where the run goes next, never a retry.
+
+## `flume answer`
+
+```sh
+flume answer <place> <region> <answer>
+```
+
+Answers the decision standing at a region of a statechart place's
+statechart. The region is its path, as status gives it with the
+decision, and the answer is one of the words the decision takes. flume
+records the answer with who gave it, the recipient the command runs as,
+and when, and the place's next settle gives it to the statechart, which
+applies it once. One answer is applied each settle, the oldest first.
+
+The answer is refused, recording nothing, where the region carries no
+decision standing, naming the regions where one does, and where an
+answer given that decision is not yet applied, naming that answer, who
+gave it and when. A place of a simple kind has no decision, and its
+answer is refused.
 
 ## `flume stop`, `finish`, `drop` and `done`
 

@@ -747,6 +747,7 @@ pub(crate) mod tests {
                 room: None,
                 made_from: None,
                 counts: None,
+                session: None,
             }],
             current: Some(0),
             submission: SubmissionHeld::default(),
@@ -767,6 +768,7 @@ pub(crate) mod tests {
             fixes: vec![],
             trace: None,
             waits: vec![],
+            chart: None,
         }
     }
 
@@ -1447,6 +1449,7 @@ pub(crate) mod tests {
                     stages: vec![code_stage()],
                     fix: None,
                     fix_limit: None,
+                    statechart: None,
                 }],
             );
             kinds.set_binding(

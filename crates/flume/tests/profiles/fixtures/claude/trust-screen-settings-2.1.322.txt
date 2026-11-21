@@ -1,4 +1,4 @@
-───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  Accessing workspace:
 
  /Users/someone/repository/places/fix--one
@@ -10,7 +10,6 @@
 
  ⚠ This folder pre-approves 6 tool permissions in .claude/settings.json:
    Bash, Edit, Write, Read, Glob, and Grep
-
  These will apply without asking. Only proceed if you trust this configuration.
 
  Security guide

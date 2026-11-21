@@ -19,7 +19,7 @@ change this list in the commit that adopts it.
 #### Scenario: The clauses listed
 
 - **WHEN** the suite's list is read
-- **THEN** it names boomdrivedev/blueprints main at 55b89a4, the revision that adds 211; Parts A and B hold every clause that revision states, 211 in Part B; the scenarios run to S123; and it names as unbuilt what it named before this change and S121 to S123, which that revision holds and records 0060 and 0061's changes built before the list held them, and nothing of 211
+- **THEN** it names boomdrivedev/blueprints at 3a3b287, the revision that states how flume runs statechart kinds; Parts A and B hold every clause that revision states, 175 to 177 in Part A and 178 in Part B; the scenarios run to S131; and it names as unbuilt what it named before this change but 175 to 178, S76 and S77, which this change builds and its scenarios cite
 
 ### Requirement: Every scenario cites its clauses
 
@@ -61,3 +61,35 @@ adds scenarios of its own (106).
 
 - **WHEN** the place scenarios are run against a second implementation of the place seam that admits a make over an existing branch
 - **THEN** the scenario citing 83 fails
+
+### Requirement: A profile's scenarios run side by side
+
+The conformance suite SHALL offer a runner that takes a profile's
+scenarios a bounded number at a time, each over a fresh harness made in
+its own thread, and that names every scenario that failed in the
+scenarios' order, as the one-at-a-time runner names them; a profile
+whose harnesses share nothing, each on a server and in a scratch of its
+own, SHALL run its scenarios on it (106).
+
+#### Scenario: The herdr profile's terminal scenarios
+
+- **WHEN** the herdr profile's terminal scenarios run in the tools layer
+- **THEN** they run five at a time, each on a herdr server of its own, and a failure is named with its scenario's name in the scenarios' order (106)
+
+### Requirement: A harness waits only for what a scenario awaits
+
+The terminal harness SHALL give what a recipient's session took once it
+took the number of inputs the scenario awaits, or by the harness's wait
+where it takes fewer, and at once where none is awaited; and SHALL give
+the seam a never-up program is opened on, its own by default or one
+with the shortest bound on a start its terminal takes (43, 94, 95, 106).
+
+#### Scenario: A session at work
+
+- **WHEN** the scenario of a session at work reads what the session took before its send
+- **THEN** it reads at once, and after the refused send it awaits one more input for the harness's wait and finds none (54, 95)
+
+#### Scenario: A program that never comes up under herdr
+
+- **WHEN** the herdr harness is asked for the seam a never-up program is opened on
+- **THEN** it gives the profile with a start bound of 3,001 milliseconds, and the open answers not come up (35, 94)

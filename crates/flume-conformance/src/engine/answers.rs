@@ -668,6 +668,8 @@ fn place_status() -> PlaceStatus {
                 submission: "40".into(),
             },
         }),
+        statechart: None,
+        agents: vec![],
         checkouts: vec![],
     }
 }
@@ -790,6 +792,8 @@ fn host_status() -> HostStatus {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: Some("/home/op/.agent-work-1".into()),
+                    home_unread: None,
                 },
                 AccountStatus {
                     name: "work-2".into(),
@@ -814,6 +818,11 @@ fn host_status() -> HostStatus {
                         window: "5-hour".into(),
                         until: 61_200,
                     }),
+                    home: None,
+                    home_unread: Some(
+                        "env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks"
+                            .into(),
+                    ),
                 },
             ],
         }],
@@ -1573,6 +1582,8 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.host.pools[].accounts[].running",
             "status.host.pools[].accounts[].spent_until",
             "status.host.pools[].accounts[].spent_unread",
+            "status.host.pools[].accounts[].home",
+            "status.host.pools[].accounts[].home_unread",
             "status.host.pools[].accounts[].reading",
             "status.host.pools[].accounts[].reading.read_at",
             "status.host.pools[].accounts[].reading.agent",

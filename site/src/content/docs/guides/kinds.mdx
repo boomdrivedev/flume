@@ -404,6 +404,180 @@ in the prompt: where the template does not place `{{needs}}`, flume
 adds it at the end. [Prompt parts](/flume/reference/prompt-parts/)
 lists every part.
 
+## Statechart kinds
+
+A kind may instead be a statechart: regions of states, each region in
+one state at a time, moving by the transitions its states declare. A
+stage is a state that runs flume's stage template, `stage`. Such a kind
+fits work that is not one line of stages: a stage that runs one agent
+per file, a stage sent back to an earlier one by what a later one
+found, or regions that run side by side. Both formats are read on one
+branch, and a repository may declare kinds of each beside one another.
+
+```toml
+# .config/flume.toml
+[kinds.persona]
+title = "Persona test"
+branch = "persona"
+lands = true
+
+[kinds.persona.regions.stages]
+initial = "build"
+
+[kinds.persona.regions.stages.states.build]
+machine = "stage"
+params = { agents = [{ model = "opus" }], deliverables = ["commits"], prompt = "prompts/build.md" }
+transitions = [
+  { when = { final = "passed" }, to = "test" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.test]
+machine = "stage"
+params = { agents = { rule = "every-file", pattern = "personas/*.md" }, join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["committed:results/{{file}}"], prompt = "prompts/test.md" }
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "sent-back" }, to = "build" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.passed]
+final = true
+
+[kinds.persona.regions.stages.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "build" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.persona.regions.stages.states.dropped]
+final = true
+```
+
+A table holds either `stages` or `regions`: one that holds both
+refuses the launch, naming the field. A statechart kind's `title`,
+`label`, `branch` and `lands` mean what a simple kind's do.
+
+### A stage's sessions
+
+A state whose `machine` is `stage` is a stage, named by its path: its
+regions' names and its own, joined by `.`, as `stages.test`. Its
+`params` give the stage template what it runs:
+
+| Parameter | Meaning | Left out |
+|---|---|---|
+| `agents` | a list of tables, one session for each with its settings; or `{ rule = "every-file", pattern = "<glob>" }`, one session for each file of the place's branch the glob matches | refused |
+| `join` | how many sessions must deliver for the stage to pass: `all`, `any` or `count:<n>` | `all` |
+| `deliverables` | what each session delivers, in the spellings of [deliverables](#deliverables) | refused |
+| `prompt` | the path of the sessions' prompt, relative to the declaration's own folder | refused |
+| `on_fail` | the stage it sends the place back to, which the kind's transition out of a `sent-back` end names | none |
+| `max_send_backs` | how many times the stage is sent back before it stops | 3 |
+
+A session is one agent's life, run by the rules a simple kind's stage
+runs by: it waits for room, takes an account, is prompted, ends on its
+deliverable, stops short, is answered, held and retried. Each is named
+`<path>#<entry>/<n>`, as `stages.test#1/2`: the stage's path, how many
+times the stage has been entered, and the session's number, each from
+1. A statechart place runs as many agents as it has live sessions.
+
+The rule `every-file` matches the glob against every file of the
+place's branch at the head flume reads when the stage starts: `*`
+within one part of a path, `**` across parts, `?` one character. Its
+sessions are numbered in path order. Settings for every stage reach
+each session, and a list entry's settings stand as its own stage's
+settings.
+
+A session's prompt and deliverables may name two parts a simple stage
+does not have: `{{session}}`, the session's number, and `{{file}}`, the
+file its rule gave it. Write `committed:results/{{file}}` so each
+session delivers its own file: a deliverable naming neither part is
+the same file for every session.
+
+### How a statechart kind runs
+
+flume runs a statechart kind on the family's engine and decides no
+move of its own. Each settle of the place steps its sessions as it
+steps a simple kind's stage, then reads the place's branch's head once
+and ticks the statechart once over what it read there. In each region,
+the first transition out of its state whose guard holds fires, and a
+region reading another's state sees a move made at that tick only at
+the next. A stage's sessions start at the tick after it is entered, so
+going from one stage to the next takes three settles. An agent going
+quiet and the host's watch settle a place, so the watch's bound sets
+the pace.
+
+A stage ends when its sessions say so:
+
+- **passed** once its join is met by sessions that delivered;
+- **sent back** once a session stops short with `flume needs --found`,
+  while the stage has been sent back fewer times than its
+  `max_send_backs`;
+- **stopped** once a session finds work past that bound, its rule
+  matched no file, or too few of its sessions are left for its join.
+
+A session that asks, is lost or stuck, or never begins keeps its stage
+working while the place waits on you, as a simple kind's stage does. The
+kind's own transitions take each end, `{ final = "passed" }` and the
+like, and a session still live once its stage ended is ended once quiet.
+The finding's words go to the sessions of the stage the kind enters
+next, in `{{words}}`.
+
+The run is over once every top region holds a final state. A kind that
+lands is then submitted through the merge queue, once none of its
+sessions is live; one that does not land waits on you, and `flume done`
+ends it. The submission's outcome is evidence the statechart reads:
+`place.submission` reads `open` while it is in flight, then `landed`,
+`failed`, `conflict`, `withdrawn` or `refused`. A transition out of a
+final state that reads `failed` can take the run back to a stage, whose
+sessions start with the merge queue's words. A failure no transition
+takes leaves the place waiting on you, and `flume retry <place>
+--submission` submits it again.
+
+### Decisions
+
+A state may carry a decision, `decision = { kind, answers, shows }`,
+that a person answers while its region holds the state. The place
+waits on you while one stands, status gives its region, its kind, the
+answers it takes and what it shows, and the place stalls as for any
+wait. Answer it with its region and one of its answers:
+
+```sh
+flume answer persona--checkout stages retry
+```
+
+The next settle gives the answer to the statechart, and a transition
+reading `{ response = "retry" }` moves the region on. An answer is
+taken once: a second one given before the first is applied is refused,
+naming the first, who gave it and when.
+
+### What a statechart kind may name
+
+flume binds one template, `stage`, one rule, `every-file`, and three
+evidences a transition may read: `region.entered`, when its region
+entered the state it holds; `place.submission`, the outcome of the
+place's newest submission; and `place.submissions`, how many times
+flume submitted it. A kind performs no effect of its own: the stage
+template starts its sessions.
+
+A launch of a statechart kind is refused, naming what it found and
+making nothing, where it names:
+
+- a template other than `stage`, or a rule other than `every-file`;
+- an evidence other than those three, or any effect;
+- a stage with no `prompt`, no deliverable, or one flume cannot read;
+- `{{file}}` in a deliverable of a stage whose agents are a list;
+- a `count:<n>` join above the agents a stage lists;
+- a `landing_fix`. How a statechart kind's landing fix lands beside its
+  own place is designed in a change of its own, and until then the
+  field refuses the launch.
+
+A launch's `--hold` names a statechart kind's stage by its path, and a
+path the kind does not hold refuses the launch. Otherwise a launch of a
+statechart kind is taken as any other: it makes the place, keeps the
+kind and the stage template as it read them, and records each region
+at its initial state.
+
 ## Kinds from a source on the host
 
 A kind that another project ships reaches the host's places through a

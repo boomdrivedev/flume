@@ -835,10 +835,7 @@ fn s59_the_repository_locks_change_1(_: &()) -> Outcome {
     let bare = launched(&launching(&world, "change", "plan"))?;
     ensure_eq!(bare.version, 1, "a bare change's version");
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
-    ensure!(
-        !held.place.kind.stages[1].repeats,
-        "change@1's code repeats"
-    );
+    ensure!(!held.declared(1).repeats, "change@1's code repeats");
     ensure_eq!(
         bare.identity.as_deref(),
         Some("flume/change@1"),

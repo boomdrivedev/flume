@@ -63,6 +63,9 @@ pub trait History: Send + Sync {
         path: &str,
     ) -> Option<Touch>;
 
+    /// The path of every file `revision` holds, in path order; nothing
+    /// for a revision the repository does not hold (178, section 9).
+    fn files(&self, repository: &str, revision: &Revision) -> Vec<String>;
     /// Whether `path` is in a commit at `head` made since `start` (24).
     fn in_commit_since(
         &self,

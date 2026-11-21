@@ -73,7 +73,8 @@ fn watching(host: &UnderHerdr, place: &str, what: &str, holds: impl Fn(&Value) -
         }
         assert!(
             began.elapsed() < Duration::from_secs(180),
-            "{place} never came to {what}: {status}"
+            "{place} never came to {what}: {status}\nsluice's records of main: {:?}",
+            host.submissions()
         );
         std::thread::sleep(Duration::from_millis(300));
     }

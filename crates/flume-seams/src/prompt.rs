@@ -28,10 +28,16 @@ pub enum PromptPart {
     /// The path of a repeating stage's notes, `notes/<stage>.md` in the
     /// place's own folder, which flume names and never reads (141, C.7).
     Notes,
+    /// A session's number within its stage's entry, for a session of a
+    /// statechart kind's stage (175, C.2).
+    Session,
+    /// The file a session's rule gave it, for a session of a stage whose
+    /// agents are named by a rule (175, C.2).
+    File,
 }
 
 impl PromptPart {
-    pub const ALL: [PromptPart; 15] = [
+    pub const ALL: [PromptPart; 17] = [
         PromptPart::Brief,
         PromptPart::Name,
         PromptPart::Kind,
@@ -47,6 +53,8 @@ impl PromptPart {
         PromptPart::Made,
         PromptPart::Group,
         PromptPart::Notes,
+        PromptPart::Session,
+        PromptPart::File,
     ];
 
     pub fn name(self) -> &'static str {
@@ -66,6 +74,8 @@ impl PromptPart {
             PromptPart::Made => "made",
             PromptPart::Group => "group",
             PromptPart::Notes => "notes",
+            PromptPart::Session => "session",
+            PromptPart::File => "file",
         }
     }
 

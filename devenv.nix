@@ -196,26 +196,28 @@ let
     installPhase = "install -Dm755 vale $out/bin/vale";
   };
   # Claude Code, which the agent profile starts and the plugin's checks run:
-  # sluice's version, so every host runs one engine, and never the user's
-  # own `claude`. Bump the version and the four checksums from the
-  # release's manifest.zst.json.
-  claudeVersion = "2.1.296";
+  # the release the hosts that run flume's agents run, and never the user's
+  # own `claude`. Every entry of the agent profile is checked against it
+  # (core.39): bump the version and the four checksums from the release's
+  # manifest.zst.json, then read each fragment the check-tools tests name
+  # again, and copy the engine types it writes (plugins/claude).
+  claudeVersion = "2.1.322";
   claudeAssets = {
     aarch64-darwin = {
       platform = "darwin-arm64";
-      sha256 = "26426aa3dcf41b0f554951766c3c583cf243345ca3d32fa590caf84685be5f97";
+      sha256 = "a542c514a07d0ca09408df2b8608be6c524389f232327d196b26f5b41056b813";
     };
     x86_64-darwin = {
       platform = "darwin-x64";
-      sha256 = "6f1d6f926a303c423eb4815a01764165ed4375054bfa8ef6203e55fc806f50ac";
+      sha256 = "d81496870c5f569b718137d2e94ec4a7d05ed3333e904444cf5d99735786689b";
     };
     aarch64-linux = {
       platform = "linux-arm64";
-      sha256 = "23aa91437a06eff80a65bfc32b0e4b5a6dda3e821019c543696c154274e56913";
+      sha256 = "2c6be1e9fca1dcb894e47e11672f4432f4cf8a879f5e530289ad30802100c5d7";
     };
     x86_64-linux = {
       platform = "linux-x64";
-      sha256 = "fac1d78be9446052ac084878c04c2648abb6b22d53279a685fa19ee517d74410";
+      sha256 = "9bb7558bd992ca457e6458bf1686572f7a3156b8331dd8443391dbfe590c1eed";
     };
   };
   claudeAsset = claudeAssets.${pkgs.stdenv.hostPlatform.system};

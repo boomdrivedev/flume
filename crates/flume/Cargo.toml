@@ -60,4 +60,5 @@ required-features = ["live"]
 [dev-dependencies]
 flume-conformance = { path = "../flume-conformance" }
 flume-fakes = { path = "../flume-fakes" }
+memchr = "2"
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

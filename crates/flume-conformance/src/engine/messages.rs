@@ -1,6 +1,6 @@
-//! A message to a role's address (53, 132, 193; a role's messages wait at
-//! its address as deliveries, record 0069): recorded at once in the
-//! host's deliveries under `message/<stream>/<role>/<token>`, its one
+//! A message to a role's address (53, 132, 193, 214; record 0069), a
+//! delivery pending at the address: recorded at once in the host's
+//! deliveries under `message/<stream>/<role>/<token>`, its one
 //! reader the address, its words after a first line naming who sent it,
 //! expiring after `[host] ends_expire`; its run woken where its source
 //! gives it one and none stands; refused, recording nothing, for an
@@ -23,7 +23,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
             name: "message: the pane ops messaging east/planner, whose source gives it a run and none is live, is answered with a key message/east/planner/<token>, the address and its run woken; the host's deliveries hold one delivery under that key, its one reader the address and its message ops messages east/planner: with the words after it, a role's messages waiting at its address; and one run of the address is launched",
-            cites: &["53", "132", "193", "43"],
+            cites: &["53", "132", "193", "43", "214"],
             run: a_message_to_a_role_with_no_run_live,
         },
         Scenario {
@@ -38,7 +38,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "message: on a host whose ends_expire is 48h, the pane ops messaging east/planner records one weir-delivery/1 keyed message/east/planner/ and eight hex characters, its readers east/planner alone, its message ops messages east/planner: and the words on the next line, expiring 48 hours after it was recorded, a role's messages waiting at its address",
-            cites: &["43", "53", "132"],
+            cites: &["43", "53", "132", "214"],
             run: a_message_recorded,
         },
         Scenario {
@@ -68,12 +68,12 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "message: status gives east/ops, whose run two working fixes report to and a message from ops is pending at, handed to it by nothing, with its run, messages holding the message's key, ops, when and its first line, handed to none, and reporting naming both fixes; once one lands and is tidied, reporting names the other alone, a role's messages waiting at its address",
-            cites: &["56", "7", "43", "132"],
+            cites: &["56", "7", "43", "132", "214"],
             run: a_roles_messages_and_the_places_reporting_to_it,
         },
         Scenario {
             name: "message: the run of east/ops launches a fix naming no recipient, its environment naming the run's place: the fix's recipients are east/ops from role-run, and once it delivers its end is pending at east/ops with the address's other deliveries, a place a role launches reporting to the role's address",
-            cites: &["7", "132", "43"],
+            cites: &["7", "132", "43", "214"],
             run: a_roles_run_launches_its_project,
         },
     ]

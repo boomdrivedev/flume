@@ -15,6 +15,7 @@ use super::agent_settings::{for_every_stage, kept_open};
 use super::base_places::{forecast_conflict, mend_fix, spring, spring_mended};
 use super::carried_conversations::{by_hand, lost_with_host, retry_talk, talk, talking};
 use super::open_sessions::{asking, code, stops_short, taken, QUESTION};
+use super::statecharts::persona;
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{
@@ -175,6 +176,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a most-left pool stating no threshold gives most-left and 90, an account's fresh reading with its window's use as a percentage and its reset, when flume took it and from which agent's session, another's stale reading, and a third's none with why, in the JSON form, and no path",
             cites: &["56", "184", "185"],
             run: a_pool_with_readings,
+        },
+        Scenario {
+            name: "status: each account of a pool gives its configuration home, the value of the variable its program's profile names read against the login environment, and none where the profile names none or its variables give none or an empty one, in the JSON form, and no other value of its variables",
+            cites: &["56", "144"],
+            run: each_accounts_home,
+        },
+        Scenario {
+            name: "status: an account whose home's value names a variable the login environment lacks gives no home and why, naming its variable and the one lacking and no value, and no account with a home or none gives why",
+            cites: &["56", "144"],
+            run: a_home_the_login_environment_cannot_read,
+        },
+        Scenario {
+            name: "status: an agent on an account whose variables name its home gives that variable from the account as <set>, and the home is given only with its account among the host's pools",
+            cites: &["56", "144"],
+            run: the_home_given_and_its_variable_masked,
         },
         Scenario {
             name: "status: an account whose 7-day window reads 95% used gives what holds it past its threshold, 7-day until its reset, and that window past, in the JSON form",
@@ -350,6 +366,21 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "status: a base place whose forecast could not be read gives it unread with the merge queue's words",
             cites: &["56", "203", "210"],
             run: a_forecast_unread_in_status,
+        },
+        Scenario {
+            name: "status: persona at its test stage, one session delivered and one working, gives region stages at test since its entry, stages.test.run working, the stage at entry 1 joined by all with its two sessions, each session as a stage with its state, and the run not over",
+            cites: &["56", "175"],
+            run: persona_at_its_test_stage,
+        },
+        Scenario {
+            name: "status: persona's region stages at stopped gives the decision there, its kind stalled and its two answers, and the place waiting on its caller for it since then",
+            cites: &["56", "130", "176"],
+            run: a_decision_standing,
+        },
+        Scenario {
+            name: "status: two sessions of a statechart place running give both agents, each with its identity naming its session and its settings with where each came from, and a simple kind's place gives no statechart and no agents in its JSON",
+            cites: &["30", "56"],
+            run: two_agents,
         },
         Scenario {
             name: "status: A hibernating standing role with nothing pending: status gives east/ops among the host's addresses with standing_role naming its place and since when it hibernates",
@@ -1706,6 +1737,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
                 AccountStatus {
                     name: "work-2".into(),
@@ -1718,6 +1751,8 @@ fn a_pool_with_a_spent_account(_: &()) -> Outcome {
                         unread: flume_core::NONE_REPORTED.into(),
                     }),
                     past: None,
+                    home: None,
+                    home_unread: None,
                 },
             ],
         }],
@@ -1766,6 +1801,7 @@ fn a_pool_with_readings(_: &()) -> Outcome {
             "bound": null,
             "spent_until": null,
             "reading": reading,
+            "home": null,
         })
     };
     ensure_eq!(
@@ -1802,6 +1838,181 @@ fn a_pool_with_readings(_: &()) -> Outcome {
             && !answer.contains("accounts/work"),
         "status gives a path: {answer}"
     );
+    Ok(())
+}
+
+/// The account `name` of `agent` whose `FAKE_HOME` is `home`.
+fn at_home(name: &str, home: &str) -> Account {
+    let mut account = account(name, None);
+    account.env.insert("FAKE_HOME".into(), home.into());
+    account
+}
+
+/// A world whose fake agent names `FAKE_HOME` as its home's variable and
+/// whose login environment's `HOME` is `/home/op`, with the host's pool
+/// `work` of `accounts` (56, C.4).
+fn homes(accounts: Vec<Account>) -> World {
+    let world = World::new();
+    world.agent.read_home_from("FAKE_HOME");
+    world.host.set_login("HOME", Some("/home/op"));
+    pool_at(&world, "work", Strategy::FillFirst, None, accounts);
+    world
+}
+
+/// The JSON form of the host's pool `work`'s accounts.
+fn accounts_json(world: &World) -> Result<Vec<serde_json::Value>, String> {
+    let json = serde_json::to_value(host(world)?).map_err(|error| error.to_string())?;
+    json["pools"][0]["accounts"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| format!("no accounts in {json}"))
+}
+
+/// The place-status spec's "Each account's home": work-1's `FAKE_HOME`
+/// read against the login environment's `HOME`, work-2's none, work-3's
+/// empty and other-1's, of a program whose profile names no variable,
+/// give no home, and no form gives the token (56, 144, C.4; core.30).
+fn each_accounts_home(_: &()) -> Outcome {
+    let mut work_1 = at_home("work-1", "~/.agent-work-1");
+    work_1
+        .env
+        .insert("AGENT_TOKEN".into(), "a-token-of-the-account".into());
+    let other_1 = Account {
+        program: "other".into(),
+        ..at_home("other-1", "~/.other")
+    };
+    let world = homes(vec![
+        work_1,
+        account("work-2", None),
+        at_home("work-3", ""),
+        other_1,
+    ]);
+    world.resolver.bind_agent(
+        "other",
+        std::sync::Arc::new(flume_fakes::FakeAgent::new(world.terminal.clone())),
+    );
+    let accounts = accounts_json(&world)?;
+    ensure_eq!(accounts.len(), 4, "the pool's accounts");
+    for (account, name, home) in [
+        (
+            &accounts[0],
+            "work-1",
+            serde_json::json!("/home/op/.agent-work-1"),
+        ),
+        (&accounts[1], "work-2", serde_json::Value::Null),
+        (&accounts[2], "work-3", serde_json::Value::Null),
+        (&accounts[3], "other-1", serde_json::Value::Null),
+    ] {
+        ensure_eq!(account["name"], serde_json::json!(name), "the account");
+        ensure_eq!(account.get("home"), Some(&home), format!("{name}'s home"));
+        ensure!(
+            account.get("home_unread").is_none(),
+            "{name} gives why it has no home: {account}"
+        );
+    }
+    let answer = world.engine().status(None).to_json();
+    ensure!(
+        !answer.contains("a-token-of-the-account"),
+        "status gives a value of an account's environment"
+    );
+    ensure!(
+        !answer.contains(".other") && !answer.contains("~/.agent-work-1"),
+        "status gives a variable's value as written, or a home its profile names no variable for: {answer}"
+    );
+    Ok(())
+}
+
+/// The place-status spec's "A home the login environment cannot read":
+/// work-4's `FAKE_HOME` names `$WORK_HOMES`, which the login environment
+/// lacks, so it gives no home and why, and work-1, with a home, and
+/// work-2, with none, give no why (56, 144, C.4).
+fn a_home_the_login_environment_cannot_read(_: &()) -> Outcome {
+    let world = homes(vec![
+        at_home("work-1", "~/.agent-work-1"),
+        account("work-2", None),
+        at_home("work-4", "$WORK_HOMES/four"),
+    ]);
+    world.host.set_login("WORK_HOMES", None);
+    let accounts = accounts_json(&world)?;
+    ensure_eq!(
+        accounts[2],
+        serde_json::json!({
+            "name": "work-4",
+            "program": "agent",
+            "running": 0,
+            "bound": null,
+            "spent_until": null,
+            "reading": {"unread": flume_core::NONE_REPORTED},
+            "home": null,
+            "home_unread": "env.FAKE_HOME names $WORK_HOMES, which the host user's login environment lacks",
+        }),
+        "work-4 in the JSON form"
+    );
+    for account in &accounts[..2] {
+        ensure!(
+            account.get("home_unread").is_none(),
+            "an account with a home or none gives why: {account}"
+        );
+    }
+    ensure_eq!(
+        accounts[0]["home"],
+        serde_json::json!("/home/op/.agent-work-1"),
+        "work-1's home"
+    );
+    let answer = world.engine().status(None).to_json();
+    ensure!(
+        !answer.contains("/four"),
+        "status gives work-4's value: {answer}"
+    );
+    Ok(())
+}
+
+/// The place-status spec's "The home given and its variable masked": a
+/// fix's code agent on work-1, whose `FAKE_HOME` names its home, gives
+/// the variable from `account` as `<set>`, and the home is given once,
+/// as work-1's among the host's pools (56, 144; core.30).
+fn the_home_given_and_its_variable_masked(_: &()) -> Outcome {
+    let world = homes(vec![at_home("work-1", "~/.agent-work-1")]);
+    let id = fix_in(&world, None, "one")?;
+    ensure_eq!(
+        account_of(&world, &id, "code"),
+        on("work", "work-1"),
+        "the code agent's account"
+    );
+    let agent = world.status(&id)?.agent.ok_or("no agent")?;
+    ensure_eq!(
+        agent.settings.env.get("FAKE_HOME").map(String::as_str),
+        Some(SET),
+        "the agent's variable, by name and <set>"
+    );
+    ensure_eq!(
+        agent.settings.from.get("env.FAKE_HOME"),
+        Some(&Given {
+            layer: Layer::Account,
+            value: SET.into(),
+            file: None,
+        }),
+        "the variable's source, its value unsaid"
+    );
+    ensure_eq!(
+        accounts_json(&world)?[0]["home"],
+        serde_json::json!("/home/op/.agent-work-1"),
+        "work-1's home"
+    );
+    for answer in [
+        world.engine().status(None).to_json(),
+        world.engine().status(Some(&id)).to_json(),
+    ] {
+        ensure_eq!(
+            answer.matches("/home/op/.agent-work-1").count(),
+            1,
+            format!("the home given but once as work-1's: {answer}")
+        );
+        ensure!(
+            !answer.contains("~/.agent-work-1"),
+            "status gives the variable as written: {answer}"
+        );
+    }
     Ok(())
 }
 
@@ -2994,6 +3205,181 @@ fn a_submission_whose_landing_the_forge_refused(_: &()) -> Outcome {
         json["submission"]["read"]["found"]["submission"]["state"],
         serde_json::json!({"held": {"words": FORGE}}),
         "the submission in the JSON form"
+    );
+    Ok(())
+}
+
+/// persona launched over two personas, its test stage's two sessions
+/// begun (175).
+fn persona_begun(world: &World, kind: Kind) -> Result<PlaceId, String> {
+    world.commit("main", &["personas/a.md", "personas/b.md"]);
+    world.kinds.set_kinds(REPOSITORY, vec![kind]);
+    launched(&world.engine.launch(&launch("persona", "a", None)))?;
+    let id = World::id("persona", "a");
+    world.settle(&id);
+    Ok(id)
+}
+
+fn persona_at_its_test_stage(_: &()) -> Outcome {
+    let world = World::new();
+    let id = persona_begun(&world, persona())?;
+    world.commit("persona/a", &["results/personas/a.md"]);
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let chart = status.statechart.ok_or("status gives no statechart")?;
+    let held = world.held(&id).ok_or("the place holds no state")?;
+    let entered = held
+        .chart
+        .as_ref()
+        .and_then(|chart| chart.state.entered_at.get("stages").copied());
+    ensure_eq!(
+        chart
+            .regions
+            .iter()
+            .map(|region| (
+                region.region.as_str(),
+                region.state.as_str(),
+                region.is_final
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("stages", "test", false),
+            ("stages.test.run", "working", false)
+        ],
+        "the regions"
+    );
+    ensure_eq!(
+        chart.regions[0].since,
+        entered,
+        "since when stages is at test"
+    );
+    ensure_eq!(
+        chart
+            .stages
+            .iter()
+            .map(|stage| (
+                stage.stage.as_str(),
+                stage.entry,
+                stage.join,
+                stage.sessions.clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            "stages.test",
+            1,
+            Join::All,
+            vec!["stages.test#1/1".to_string(), "stages.test#1/2".to_string()]
+        )],
+        "the stages"
+    );
+    ensure_eq!(
+        status
+            .stages
+            .iter()
+            .map(|stage| (stage.name.as_str(), stage.state))
+            .collect::<Vec<_>>(),
+        vec![
+            ("stages.test#1/1", StageState::Delivered),
+            ("stages.test#1/2", StageState::Begun)
+        ],
+        "the sessions as stages"
+    );
+    ensure!(!chart.over, "the run reads over");
+    Ok(())
+}
+
+fn a_decision_standing(_: &()) -> Outcome {
+    let world = World::new();
+    let mut kind = persona();
+    if let Some(statechart) = kind.statechart.as_mut() {
+        statechart
+            .stages
+            .values_mut()
+            .for_each(|stage| stage.send_back_limit = Some(0));
+    }
+    let id = persona_begun(&world, kind)?;
+    super::statecharts::stops_short(
+        &world,
+        ("persona", "a"),
+        "stages.test#1/1",
+        "personas/a.md fails.",
+        StopKind::FoundWork,
+    )?;
+    world.settle(&id);
+    world.settle(&id);
+    let status = world.status(&id)?;
+    let chart = status.statechart.ok_or("status gives no statechart")?;
+    ensure_eq!(
+        chart
+            .decisions
+            .iter()
+            .map(|decision| (
+                decision.region.as_str(),
+                decision.kind.as_str(),
+                decision.answers.clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            "stages",
+            "stalled",
+            vec!["retry".to_string(), "drop".to_string()]
+        )],
+        "the decisions standing"
+    );
+    let since = chart.decisions[0].since;
+    ensure!(since.is_some(), "the decision gives no since");
+    let waiting = status.waiting_on.ok_or("the place waits on nobody")?;
+    ensure_eq!(
+        (
+            waiting.act,
+            waiting.stage.as_deref(),
+            waiting.why,
+            waiting.since
+        ),
+        (Act::Decide, Some("stages"), Waits::Decision, since),
+        "the move the place waits on, and since when"
+    );
+    Ok(())
+}
+
+fn two_agents(_: &()) -> Outcome {
+    let world = World::new();
+    let id = persona_begun(&world, persona())?;
+    let status = world.status(&id)?;
+    ensure_eq!(
+        status
+            .agents
+            .iter()
+            .map(|agent| (agent.identity.clone(), agent.stage.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                World::identity("persona", "a", "stages.test#1/1", 1).to_string(),
+                "stages.test#1/1"
+            ),
+            (
+                World::identity("persona", "a", "stages.test#1/2", 1).to_string(),
+                "stages.test#1/2"
+            ),
+        ],
+        "the agents"
+    );
+    ensure!(
+        status
+            .agents
+            .iter()
+            .all(|agent| agent.settings.from.contains_key("program")),
+        "an agent's settings say not where its program came from"
+    );
+    let simple = world.begun("plain", Some(Deliverable::Commits), "b")?;
+    let json = serde_json::to_value(world.status(&simple)?).map_err(|error| error.to_string())?;
+    ensure!(
+        json.get("agents").is_none() && json.get("statechart").is_none(),
+        "a simple kind's place gives a statechart or agents: {json}"
+    );
+    ensure!(
+        json.get("agent").is_some_and(|agent| !agent.is_null()),
+        "a simple kind's place gives no agent"
     );
     Ok(())
 }
