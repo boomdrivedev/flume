@@ -405,6 +405,9 @@ impl Engine {
                 }
                 held.submission.due = false;
                 held.submission.waiting = None;
+                // A held landing's wait ends with it: the submission after
+                // the stages withdraws the held one (112; core.58).
+                held.submission.landing_refused = false;
             }
             Step::Write(())
         });

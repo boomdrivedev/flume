@@ -1,0 +1,17 @@
+{
+  "branch": "train/x",
+  "at": "7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d7a1b2c3d",
+  "gone": false,
+  "depth": 0,
+  "testing": null,
+  "window": 1,
+  "parallel": 1,
+  "submissions": [],
+  "warnings": [],
+  "stale": null,
+  "held": null,
+  "held_checkouts": [],
+  "copy": null,
+  "refused_writes": [],
+  "home": null
+}

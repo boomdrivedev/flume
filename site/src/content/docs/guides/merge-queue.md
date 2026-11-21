@@ -73,17 +73,24 @@ Each settle after the submission:
 1. runs `sluice inbox --json` in the place, which gives each outcome
    sluice owes the place's worktree, and acts on each;
 2. once the place's state holds what an outcome decided, confirms it
-   with `sluice confirm <key>`, so no later inbox gives it again;
-3. runs one round of the base's queue, `sluice step <base>`, which does
-   nothing where a `sluice run` on the host drives the queue.
+   with `sluice confirm <key>`, so no later inbox gives it again.
 
 An outcome a settle could not act on stays unconfirmed, and the next
 settle is given it again. An outcome of an earlier submission of the
 place, given again after the place was submitted anew, decides nothing:
 flume confirms it and sends nothing back for it.
 
-sluice keeps an outcome owed until its reader confirms it from release
-0.79.0 on, so flume needs sluice 0.79.0 or later.
+sluice's queue moves on its own once submitted, whichever way runs it:
+sluice's own host process, which the submit starts, a daemon on this
+machine or another, or a forge's jobs. flume runs no round of it. Each
+settle only reads the outcome, and that read starts sluice's host
+process again where work waits and none runs. So flume needs sluice
+0.97.0 or later, the first release whose own process moves its queues.
+flume reads sluice's version, `sluice --version`, before each submit.
+From an older sluice, or one whose version names no release, as a build
+of sluice's main does, it submits nothing: the place waits for you, with
+words naming what sluice said and the release flume needs. Once sluice
+is updated, `flume retry <place> --submission` submits it.
 
 sluice can decide a submission as it takes it in, as it can on a base
 that takes pull requests when the work conflicts with the base. Its
@@ -99,8 +106,8 @@ those settles. A caller keeping watch over the host runs them: `flume
 settle --every <time>`, run on that bound from a timer of the host's or
 whatever else keeps time there, settles the places where something is
 pending, an agent in them or none, a place whose submission is in flight
-among them. So every submitted place has its outcome read, and its
-base's queue run one round, within the bound
+among them. So every submitted place has its outcome read within the
+bound
 ([keeping watch over the host](/flume/guides/places-and-herdr/#keeping-watch-over-the-host)).
 A place that waits only on its caller is not read by the watch: a
 branch landed by hand while its place held its submission is read at
@@ -120,8 +127,7 @@ pull request and no entry. The request may wait for a review the base
 asks for, or for the host that takes the base's requests in. The
 submission is then open and waiting, never refused, and the place
 waits on nobody. Status names the pull request and says it is not yet
-taken in, and each settle runs one round of the base's queue, which
-takes the request in where this host takes them in.
+taken in, and sluice takes the request in wherever its queue runs.
 
 Once sluice takes the request in, flume follows the entry it made,
 which sluice records as submitted from `pull/<n>` and from the place's

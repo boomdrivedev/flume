@@ -630,6 +630,11 @@ pub enum Waits {
     /// A base place with no place on its branch live, whose submission
     /// its caller has not asked for (203).
     Unsubmitted,
+    /// The forge refused the landing of the place's submission, which
+    /// the merge queue holds open: the place waits on its caller to
+    /// retry its kind's fix round, with the forge's words (112, 130;
+    /// core.58).
+    ForgeRefused,
     /// A decision standing in a statechart place's region, with no answer
     /// given it unapplied (130, 176).
     Decision,
@@ -2439,4 +2444,10 @@ pub struct SubmissionHeld {
     /// one; the outcomes of every other branch were acted on (133).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub passed_over: Vec<PassedOver>,
+    /// The place's wait in `waiting` is a held landing's: the forge
+    /// refused the landing of its open submission, which the merge queue
+    /// holds, and the place waits on its caller; false in a state written
+    /// before (112, 130; core.58).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing_refused: bool,
 }

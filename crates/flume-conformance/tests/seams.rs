@@ -116,6 +116,134 @@ fn the_fake_merge_queue_passes_the_base_place_scenarios() {
 }
 
 #[test]
+fn the_fake_merge_queue_holds_a_landing_the_forge_refused() {
+    // seam-fakes "Held, pushed again, dropped and replaced": a held
+    // landing stays held through a round, lands pushed again, waits once
+    // dropped, and is withdrawn by a later submit of its branch (106, 112,
+    // 124).
+    use flume_fakes::{Plan, HELD_WITHOUT_WORDS};
+    use flume_seams::{
+        MergeQueue, Owed, PlaceRef, SubmissionOutcome, SubmissionState, SubmitHead, Submitted,
+    };
+    let harness = FakeMergeQueueHarness::default();
+    let (git, queue) = (&harness.git, &harness.queue);
+    let place = PlaceRef {
+        repository: "/repository".into(),
+        location: "/places/fix--x".into(),
+        branch: "fix/x".into(),
+        base: "main".into(),
+    };
+    let base = git.branch_head(&place.repository, "main").expect("main");
+    git.set_branch(&place.repository, &place.branch, &base);
+    let head = git.commit(&place.repository, &place.branch, &["work.rs"]);
+    let words = "push declined: the push holds what looks like a secret";
+    let held = |recorded| Plan::Held {
+        words: words.into(),
+        recorded,
+    };
+    let submit = || {
+        let Submitted::Submitted { submission } =
+            queue.submit(&place, &SubmitHead::Worktree { head: head.clone() })
+        else {
+            panic!("submitted")
+        };
+        submission
+    };
+    let state_of = |id: &str| {
+        queue
+            .submissions(&place.repository, &place.branch)
+            .into_iter()
+            .find(|submission| submission.id == id)
+            .expect("recorded")
+            .state
+    };
+
+    queue.plan_submits(vec![held(true)]);
+    let first = submit();
+    queue.run_round(&place.repository, "main");
+    let state = state_of(&first.id);
+    assert_eq!(
+        state,
+        SubmissionState::Held {
+            words: words.into()
+        }
+    );
+    assert!(!state.open(), "a held landing is not open");
+    let flume_seams::Inbox::Outcomes { outcomes, .. } = queue.inbox(&place) else {
+        panic!("read")
+    };
+    let key = format!("{}:held", first.id);
+    assert_eq!(
+        outcomes,
+        vec![Owed {
+            submission: first.id.clone(),
+            outcome: SubmissionOutcome::Held {
+                words: words.into()
+            },
+            key: Some(key.clone()),
+        }]
+    );
+    assert_eq!(
+        queue.pending(&place.location),
+        vec![SubmissionOutcome::Held {
+            words: words.into()
+        }],
+        "given until it is confirmed"
+    );
+    queue.confirm(&place, &key);
+    assert_eq!(queue.pending(&place.location), vec![], "confirmed");
+    queue.run_round(&place.repository, "main");
+    assert_eq!(
+        state_of(&first.id),
+        SubmissionState::Held {
+            words: words.into()
+        },
+        "a round leaves it held"
+    );
+    let commit = queue
+        .push_again(&place.repository, &place.branch)
+        .expect("a held landing pushed again");
+    assert_eq!(
+        state_of(&first.id),
+        SubmissionState::Landed {
+            commit: commit.clone()
+        }
+    );
+    assert_eq!(
+        queue.pending(&place.location),
+        vec![SubmissionOutcome::Landed { commit }]
+    );
+    queue.confirm(&place, &format!("{}:landed", first.id));
+
+    queue.plan_submits(vec![held(false)]);
+    let second = submit();
+    queue.run_round(&place.repository, "main");
+    assert_eq!(
+        state_of(&second.id),
+        SubmissionState::Held {
+            words: HELD_WITHOUT_WORDS.into()
+        },
+        "a record that carries no words"
+    );
+    queue.drop_held(&place.repository, &place.branch);
+    assert_eq!(state_of(&second.id), SubmissionState::Waiting);
+    // Kept waiting, so the round that holds the third leaves it be.
+    queue.decide(&place.repository, &place.branch, Plan::Hold);
+
+    queue.plan_submits(vec![held(true)]);
+    let third = submit();
+    queue.run_round(&place.repository, "main");
+    assert!(matches!(state_of(&third.id), SubmissionState::Held { .. }));
+    let fourth = submit();
+    assert_eq!(
+        state_of(&third.id),
+        SubmissionState::Withdrawn,
+        "a later submit of its branch withdraws it"
+    );
+    assert_eq!(state_of(&fourth.id), SubmissionState::Waiting);
+}
+
+#[test]
 fn the_fake_store_passes_the_store_scenarios() {
     pass_all("store", &store::scenarios(), FakeStoreHarness::default);
 }
