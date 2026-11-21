@@ -101,12 +101,17 @@
 //! through `flume relay`, its first line a screen, the text written to its
 //! input shown on a later screen, its input's close ending it by its
 //! caller, the place's held state unwritten and no file of flume's state
-//! holding what was typed (107, 221, 222, C.5).
+//! holding what was typed (107, 221, 222, C.5); and a standing role's
+//! session under herdr, words typed into its input and not submitted,
+//! takes a message for its address through the plugin's deliver part at
+//! an idle tick, the words typed left in its input and submitted as typed
+//! by the enter after it (54, 193, 214, 215, C.4).
 
 use super::walk::*;
 use flume::profiles::agent::claude::carry::{UNREACHED, UNREADABLE};
 use flume::profiles::kinds::weir::Weir;
 use flume::profiles::store::state_dir::StateDir;
+use flume::profiles::terminal::herdr::herdr_name;
 use flume_seams::{Kinds, PackageRead, PlaceId, Store, Written};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -1337,7 +1342,7 @@ fn holds_only(home: &Path, held: &BTreeMap<PathBuf, Holding>, sessions: &[String
                     && matches!(holding, Holding::File(_))
             }
             [projects] | [projects, _] if projects == "projects" => holding == &Holding::Folder,
-            // The folder 2.1.296 names its running sessions in, each
+            // The folder 2.1.322 names its running sessions in, each
             // record gone with its session.
             [sessions] if sessions == "sessions" => holding == &Holding::Folder,
             _ => false,
@@ -5013,6 +5018,121 @@ fn relayed_through_the_binary(host: &Walk, place: &str) {
         Vec::<PathBuf>::new(),
         "files of flume's state holding what was typed"
     );
+}
+
+/// Words typed into a session's input and not submitted.
+const DRAFT: &str = "a draft half typed";
+
+/// The herdr session and pane of the place's live agent: the server of
+/// the session that holds the agent its start names in herdr (C.5).
+fn agent_pane(host: &UnderHerdr, place: &str) -> (String, String) {
+    let held = StateDir::at(host.home().join("state/flume"))
+        .read(&PlaceId::new(place))
+        .unwrap_or_else(|| panic!("no held state of {place}"))
+        .state;
+    let start = held
+        .stages
+        .into_iter()
+        .filter_map(|stage| stage.start)
+        .find(|start| start.live)
+        .unwrap_or_else(|| panic!("no live start in {place}"));
+    let name = herdr_name(&start.identity);
+    host.running()
+        .into_iter()
+        .find_map(|(_, socket)| {
+            let agent = host.herdr(Some(&socket), &["agent", "get", &name]);
+            let pane = agent["agent"]["pane_id"].as_str()?.to_string();
+            Some((socket, pane))
+        })
+        .unwrap_or_else(|| panic!("herdr holds no agent {name}: {:?}", host.running()))
+}
+
+#[test]
+fn a_standing_roles_session_takes_a_message_through_its_deliver_part_its_draft_left_as_typed() {
+    // 54, 193, 214, 215, C.4; record 0069: the standing role `w/ops` is
+    // woken and its talk's stand-in takes its first prompt and waits.
+    // Words are typed into its pane and not submitted. A message for
+    // `w/ops` then reaches the session through the plugin's deliver part,
+    // which takes it at one of its idle ticks as the session's next
+    // prompt, the message with its confirm, recorded handed to `w/ops` by
+    // `message`; the words typed stay in the session's input, and the
+    // enter typed after it submits them as they were typed.
+    let host = Walk::under_herdr("walk-deliver");
+    host.configure("", "[streams.w]\npool = \"stand-in\"\n");
+    desk_source(&host.walk);
+    host.walk.flume(&["kinds", "lock", "--host", "acme/desk@1"]);
+    host.script(
+        "talk",
+        1,
+        json!([[{ "bash": "true" }], [{ "bash": "true" }], [{ "bash": "true" }]]),
+    );
+    host.walk.flume(&["wake", "w/ops"]);
+    let place = location(&host, "desk--w-ops");
+    settled_until(
+        &host,
+        "the talk of w/ops waiting after its first prompt",
+        || host.log("talk", 1).contains("stand-in: the turn ended"),
+    );
+    let (socket, pane) = agent_pane(&host, &place);
+    host.herdr(Some(&socket), &["pane", "send-text", &pane, DRAFT]);
+
+    let messaged = host
+        .walk
+        .flume(&["message", "w/ops", "the nightly job failed"]);
+    let key = messaged["messaged"]["key"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no message's key: {messaged}"))
+        .to_string();
+    settled_until(&host, "the talk's next prompt", || {
+        host.prompts("talk", 1).len() == 2
+    });
+    let prompt = &host.prompts("talk", 1)[1];
+    assert!(
+        prompt.contains("the nightly job failed")
+            && prompt.contains("; confirm: flume confirm --recipient w/ops "),
+        "{prompt}"
+    );
+    assert!(!prompt.contains(DRAFT), "the draft submitted: {prompt}");
+    let log = host.log("talk", 1);
+    assert!(
+        log.contains("stand-in: the plugin's module submitted what flume hook deliver printed"),
+        "{log}"
+    );
+    assert!(
+        log.contains(&format!(
+            "stand-in: its input still holds: {}",
+            json!(DRAFT)
+        )),
+        "{log}"
+    );
+    let ops = host.host()["addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|address| address["address"] == "w/ops")
+        .cloned()
+        .unwrap_or_else(|| panic!("status names no w/ops: {}", host.host()));
+    let message = ops["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|message| message["key"] == key.as_str())
+        .cloned()
+        .unwrap_or_else(|| panic!("no message {key} at w/ops: {ops}"));
+    assert_eq!(
+        message["handovers"].as_array().map(|handed| handed
+            .iter()
+            .map(|one| one["by"].clone())
+            .collect::<Vec<_>>()),
+        Some(vec![json!("message")]),
+        "{message}"
+    );
+
+    host.herdr(Some(&socket), &["pane", "send-keys", &pane, "enter"]);
+    settled_until(&host, "the draft submitted as typed", || {
+        host.prompts("talk", 1).len() == 3
+    });
+    assert_eq!(host.prompts("talk", 1)[2], DRAFT);
 }
 
 /// The repository's id as the walkthrough's agents' identities carry it.
