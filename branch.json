@@ -1,0 +1,45 @@
+{
+  "schema": "sluice/branch@1",
+  "branch": "main",
+  "log": "sluice/log@1",
+  "base": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+  "verified": true,
+  "covered_by": {
+    "at": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+    "result": "passed",
+    "ran": 39,
+    "replayed": 0
+  },
+  "window": 1,
+  "next_place": 30,
+  "next_candidate": 32,
+  "candidates": [],
+  "landing": null,
+  "release": [],
+  "outbox": [
+    {
+      "id": "165:failed",
+      "submission": 165,
+      "told": {
+        "outcome": "failed",
+        "failed": [
+          "flume:tools"
+        ],
+        "combination": "7d85ea787c3569fcad602918d5dd467705de0c48",
+        "submissions": [
+          165
+        ],
+        "timed_out": false,
+        "logs": [
+          {
+            "task": "flume:tools",
+            "text": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c31/flume:tools.log"
+          }
+        ]
+      }
+    }
+  ],
+  "lead": "deneb",
+  "landed": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+  "kept": "2026-11-21T00:50:05Z"
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 15,
+  "branch": "main",
+  "head": "e49a7d0b8ef8e04a419c2866741fc6e7164dbcc3",
+  "from": {
+    "agent": "takeover/weir-bolt",
+    "worktree": "pull/174",
+    "head": "takeover/weir-bolt"
+  },
+  "submitted": "2026-11-19T18:58:50Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "conflict",
+  "conflict": {
+    "paths": [
+      "crates/flume-conformance/src/engine/place_status.rs",
+      "crates/flume-core/src/acts.rs",
+      "crates/flume-seams/src/held.rs",
+      "crates/flume-seams/src/round_trip.rs",
+      "crates/flume/tests/profiles/main.rs"
+    ],
+    "with": [
+      {
+        "id": 13,
+        "from": {
+          "agent": "boomdrive-ops",
+          "worktree": "pull/169",
+          "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+        }
+      }
+    ]
+  },
+  "subject": "bolt/flume-runs-kinds-on-weirs-engine",
+  "act": 14
+}

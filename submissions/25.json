@@ -1,0 +1,31 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 25,
+  "branch": "main",
+  "head": "ef766058c913c1c4ba089caf5bef5d5d93589efc",
+  "from": {
+    "agent": "chore/main--gate-limit-25m",
+    "worktree": "pull/178",
+    "head": "chore/main--gate-limit-25m"
+  },
+  "submitted": "2026-11-19T22:15:49Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 4,
+  "state": "failed",
+  "tested": {
+    "combination": "1c9d7651327f157a0f7fddd50e3c95ed03df2fbb",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      25
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c22/flume:tools.log"
+    }
+  ],
+  "subject": "ci(sluice): main's and every bolt's runs have 25 minutes"
+}

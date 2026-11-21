@@ -1,0 +1,42 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 9,
+  "branch": "main",
+  "head": "e49a7d0b8ef8e04a419c2866741fc6e7164dbcc3",
+  "from": {
+    "agent": "takeover/weir-bolt",
+    "worktree": "pull/174",
+    "head": "takeover/weir-bolt"
+  },
+  "submitted": "2026-11-19T16:59:04Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "9891c1e0c88756660fc0c6fa025a85350bd201f4",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      9
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "e3447341b200cb7ba823f01496ee3456ab90f95c50885da719bdc45ebaaaf48a",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c11/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c11/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T18:58:50Z"
+  },
+  "subject": "bolt/flume-runs-kinds-on-weirs-engine",
+  "act": 8
+}

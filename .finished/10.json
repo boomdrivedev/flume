@@ -1,0 +1,42 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 10,
+  "branch": "main",
+  "head": "c5a0415256f203b09b580563fe51485d74b181ae",
+  "from": {
+    "agent": "change/a-statechart-kind-runs-a-command-stage--by-hand",
+    "worktree": "pull/175",
+    "head": "change/a-statechart-kind-runs-a-command-stage--by-hand"
+  },
+  "submitted": "2026-11-19T16:59:04Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "a08c5fd344351ff52137a4e04fc507764c6f13cf",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      10
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "1910b646048dd6c98fcb32a68b88d530b31813feec7ed33669326c7a47d22dae",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c13/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c13/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T18:58:50Z"
+  },
+  "subject": "change/a-statechart-kind-runs-a-command-stage",
+  "act": 8
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 13,
+  "branch": "main",
+  "head": "9e40705059b8c0c19def5a96d7e33f93f57aa749",
+  "from": {
+    "agent": "boomdrive-ops",
+    "worktree": "pull/169",
+    "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+  },
+  "submitted": "2026-11-19T18:57:44Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "6b0e048c4635f638ed6119500fbdc970bff748cf",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      13
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "b6d0a3eaedebf704d8ba6e3d1ee3b531cd141980e51bbde893f1aaa2763c0e64",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c14/root:format.log",
+      "unsigned": "root:format: .claude/settings.json is not in the tree"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c14/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-21T00:20:59Z"
+  },
+  "subject": "bolt/flume-leaves-the-merge-queue-to-sluice"
+}

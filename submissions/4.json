@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 4,
+  "branch": "main",
+  "head": "8c007bed44e8a262cef8e4b9cfe578252eed853e",
+  "from": {
+    "agent": "boomdrive-design",
+    "worktree": "pull/171",
+    "head": "design/a-bolt-takes-main-in-with-no-agent"
+  },
+  "submitted": "2026-11-19T13:57:34Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "failed",
+  "tested": {
+    "combination": "5e5cf67686179a7ffcbb82a128cdf1c492c24c36",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      4
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "67a1213ccd455f86c8e8309ce45f849c3a972aedc025cb0cb141c99a75862700",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c2/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c2/flume:tools.log"
+    }
+  ],
+  "subject": "design/a-bolt-takes-main-in-with-no-agent"
+}

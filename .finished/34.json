@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 34,
+  "branch": "main",
+  "head": "9f1af64d8d8c4d649d7716ecced6296e34a77f75",
+  "from": {
+    "agent": "bolt/flume-is-tested-against-the-claude-code-hosts-run",
+    "worktree": "pull/182",
+    "head": "bolt/flume-is-tested-against-the-claude-code-hosts-run"
+  },
+  "submitted": "2026-11-20T20:16:27Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "330a40276b6d03c00d911526c7d49f738a2fb643",
+    "on": "e9ec204cc276a2180a207a8b9cec607a4589d356",
+    "submissions": [
+      34
+    ]
+  },
+  "result": "passed",
+  "landed_as": "87dbdfb706aae00356028bd9dac7ea3df924d3cf",
+  "subject": "flume is tested against the Claude Code host's run",
+  "under_test_ms": 666000
+}

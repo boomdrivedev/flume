@@ -1,0 +1,33 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 14,
+  "branch": "main",
+  "head": "00e99fb5f235ed0a39315c47bee5306aba967149",
+  "from": {
+    "agent": "takeover/launcher-bolt",
+    "worktree": "pull/173",
+    "head": "takeover/launcher-bolt"
+  },
+  "submitted": "2026-11-19T18:58:50Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "conflict",
+  "conflict": {
+    "paths": [
+      "crates/flume/tests/profiles/main.rs"
+    ],
+    "with": [
+      {
+        "id": 13,
+        "from": {
+          "agent": "boomdrive-ops",
+          "worktree": "pull/169",
+          "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+        }
+      }
+    ]
+  },
+  "subject": "bolt/flume-runs-every-agent-its-terminal-can-start",
+  "act": 14
+}

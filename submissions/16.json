@@ -1,0 +1,38 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 16,
+  "branch": "main",
+  "head": "c5a0415256f203b09b580563fe51485d74b181ae",
+  "from": {
+    "agent": "change/a-statechart-kind-runs-a-command-stage--by-hand",
+    "worktree": "pull/175",
+    "head": "change/a-statechart-kind-runs-a-command-stage--by-hand"
+  },
+  "submitted": "2026-11-19T18:58:50Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "conflict",
+  "conflict": {
+    "paths": [
+      "crates/flume-conformance/src/engine/place_status.rs",
+      "crates/flume-core/src/acts.rs",
+      "crates/flume-seams/src/held.rs",
+      "crates/flume-seams/src/round_trip.rs",
+      "crates/flume/tests/profiles/main.rs",
+      "docs/architecture/core-details.md"
+    ],
+    "with": [
+      {
+        "id": 13,
+        "from": {
+          "agent": "boomdrive-ops",
+          "worktree": "pull/169",
+          "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+        }
+      }
+    ]
+  },
+  "subject": "change/a-statechart-kind-runs-a-command-stage",
+  "act": 14
+}
