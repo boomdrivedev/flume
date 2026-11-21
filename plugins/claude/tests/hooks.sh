@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The plugin's hooks, each run by the built binary as Claude Code 2.1.296
+# The plugin's hooks, each run by the built binary as Claude Code 2.1.322
 # runs it: `flume hook <event>` with the hook's input on standard input
 # (fixtures/, as that release handed them to a hook) and the agent's
 # environment, over a fixture transcript and a scratch state directory.

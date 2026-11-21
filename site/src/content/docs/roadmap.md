@@ -24,6 +24,7 @@ the same answers you do.
 | A question put to the role it is for, of any stream, the answerer behind a stream told of every stall, a hold on the waiting move with a bound, and an answer taken once by its key | ✓ | ✓ |
 | A role's address held by an agent that already runs, found by its name in its herdr session at each delivery, its ends delivered into it and no run woken | ✓ | ✓ |
 | The host's bound on agents running, with a queue by priority | ✓ | ✓ |
+| Statechart kinds beside simple kinds: regions of stages, a stage's sessions one per agent listed or per file a glob matches, decisions answered by `flume answer` | ✓ | ✓ |
 | Agent settings in eight layers, each program's own settings among them, given inline or by a settings file | ✓ | ✓ |
 | Streams, each with its own bound and priority, under the host's | ✓ | ✓ |
 | Each stream's agents in a herdr session of its own, or the one a launch names | ✓ | ✓ |

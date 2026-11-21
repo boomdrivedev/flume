@@ -171,3 +171,15 @@ from the stage's wait as the last settle left it (49, 200, 207).
 
 - **WHEN** the list is asked of a place whose lost talk waits on its session
 - **THEN** its line ends `waiting on its session · waits on its session`, and the list asks no agent program whether the session runs (49, 200, 207)
+
+### Requirement: The list names a statechart place's live stages
+
+The list SHALL give a place of a statechart kind a line naming its
+kind at its version, each stage whose sessions are live by its state's
+path, and the place's state in the words status gives it, read from its
+held state alone (200, core.52).
+
+#### Scenario: Persona's line
+
+- **WHEN** persona's test stage runs and the list is asked
+- **THEN** its line names `persona@1`, `stages.test` and its state, and the list reads no worktree, branch or deliverable for it (200, core.52)

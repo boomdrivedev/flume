@@ -529,11 +529,72 @@ pub struct PlaceStatus {
     /// the fix's number and its cause (56, 203).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_of: Option<FixOf>,
+    /// For a place of a statechart kind, its statechart's run: its
+    /// regions, counters, decisions, answers and stages; none for a simple
+    /// kind's place (56, 175, 176).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statechart: Option<ChartStatus>,
+    /// For a place of a statechart kind, each live session's agent, as
+    /// `agent` gives a simple kind's current stage's; empty for a simple
+    /// kind's place (30, 56; core.14).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<AgentStatus>,
     /// For a standing role's place, which has no branch, each of its
     /// checkouts, as its held state keeps it and as the place seam reads
     /// it at the ask; none for any other place (56, 80, 193; core.15).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checkouts: Vec<CheckoutStatus>,
+}
+
+/// A statechart place's run as status gives it (56, 175, 176): each live
+/// region with the state it holds, since when and whether it is final;
+/// its counters; whether its run is over; each decision standing; each
+/// answer given with whether the engine applied it; and each stage entered
+/// with its entry, join, send-backs and sessions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStatus {
+    pub regions: Vec<RegionStatus>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub counters: BTreeMap<String, u64>,
+    pub over: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<DecisionHeld>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<AnswerStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<ChartStageStatus>,
+}
+
+/// A live region of a statechart place: its path, the state it holds,
+/// since when, and whether that state is final (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionStatus {
+    pub region: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<Seconds>,
+    #[serde(rename = "final")]
+    pub is_final: bool,
+}
+
+/// An answer given a decision, with whether the engine applied it (176).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnswerStatus {
+    #[serde(flatten)]
+    pub given: AnswerGiven,
+    pub applied: bool,
+}
+
+/// A stage of a statechart place entered: its path, the entry its
+/// sessions run, how they join, how many times it was sent back, and its
+/// sessions of every entry by name, in order (175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStageStatus {
+    pub stage: String,
+    pub entry: u32,
+    pub join: Join,
+    pub send_backs: u32,
+    pub sessions: Vec<String>,
 }
 
 /// A checkout of a standing role's place as status gives it: its
@@ -1333,8 +1394,14 @@ fn threshold() -> u32 {
 /// none, the time it is spent until, none where it is not spent, and,
 /// where that time is the hour 146 gives because flume read no reset in
 /// its agent's words, those words, its reading or why it has none, and
-/// what holds it past its threshold, none where nothing does; never a
-/// value of its environment or a path.
+/// what holds it past its threshold, none where nothing does; and its
+/// configuration home, the value of the variable its program's profile
+/// names in its environment, read against the host user's login
+/// environment as a start reads it, none where the profile names none or
+/// the environment gives none or an empty one, or, where the login
+/// environment lacks a variable the value names, none and why, naming
+/// the variables and no value (56, C.4; core.30). The home is the one
+/// value of its environment and the one path it gives.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountStatus {
     pub name: String,
@@ -1348,6 +1415,10 @@ pub struct AccountStatus {
     pub reading: Option<ReadingStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub past: Option<Past>,
+    #[serde(default)]
+    pub home: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_unread: Option<String>,
 }
 
 /// An account's reading as status gives it (184): when flume took it,

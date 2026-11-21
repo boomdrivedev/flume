@@ -273,6 +273,31 @@ program reads them back. The place's held state keeps the launch's
 and `repository_agents`, the repository's `[agents]` as the launch read
 it.
 
+### A statechart place
+
+A place of a statechart kind keeps, beside its kind's statechart in
+`kind.statechart`, a `chart` of its run. Its `state` is the engine's:
+`regions`, each region path with the state it holds; `entered_at`, when
+each entered it, in seconds since the epoch; `counters`; `applied`, the
+answers the engine took; and `set_aside`, each stage's earlier entries.
+Its `template` is the stage template's text as the launch read it.
+`answers` lists each answer a caller gave a decision, with its `id`,
+`<region>#<n>`, its `region`, `answer`, `by` and `at`. `stages` gives
+each stage by its path, with the `entry` whose sessions it recorded and
+its `send_backs`. `words` holds a finding's or the merge queue's words
+until the next sessions recorded take them, and `over` says whether
+every top region held a final state at the last tick.
+
+Each session is one of the place's `stages`, named
+`<path>#<entry>/<n>`, as `stages.test#2/1`: the stage's path, the entry
+counting from 1 each time the stage is entered, and the session's
+number. Its `session` gives its `stage`, `entry`, `n`, the `file` its
+rule gave it, and `declared`, its declaration: the stage's prompt, its
+deliverables with `{{session}}` and `{{file}}` filled, and its one
+agent's settings. Its starts, its end and its answers are kept as any
+stage's are. A simple kind's place, and a place an earlier release
+launched, keeps no `chart` and no `session`.
+
 ## Elsewhere on the host
 
 | Path | What |
@@ -384,7 +409,7 @@ The host:
 | `bound`, `room` | the host's bound, and how many more may start; `null` with no bound |
 | `queue` | the stages waiting for room, in the order they start, each with its stream, its `label`, its priority and the room it wants. That room, by `room`, is the host's, `host`; its stream's, `stream`, at its `bound`; its stream's past what other labels hold reserved and do not use, `kept-free`, naming those `labels`; or a usable account of its pool, `pool`, with `until`, the soonest time an account of the pool is neither spent nor past its threshold, `null` where each is only at its bound. A stage whose pool holds no account of its program waits for none: it is refused ([a pool that cannot run a stage](/flume/guides/agent-settings/#a-pool-that-cannot-run-a-stage)). |
 | `streams` | each stream: `name`, `session`, the herdr session its agents open in with `from`, `stream`, `stream-name` or `own`; `multiplexer` and `terminal_app`, each its `profile` and `from`, `stream`, `host` or `neither`; `view`, its `view`, `terminal` or `app`, and `from`; `title`, its `title` and `from`, `stream` or `stream-name`; `priority`, `running`, `bound`, `room` and `queue`, `bound` and `room` `null` where the stream has no bound of its own; `labels`, each with its `name`, `owed`, what of the stream's agents it is owed, `reserved`, those it holds reserved, `running` and `waiting`, and `reserve` and `keep_free`, the same numbers as `owed` and `reserved` under the names a label's table gave before them; `answerer`, the role standing behind it as the sources declare it, `{"stands":{"address":…,"source":…}}`, or `{"contested":{"roles":[…]}}` where two or more each declare to, so none does, left out where no role stands behind it; `sessions`, each session it names for its kinds and their stages, `name`, `kinds` and `stages`, each `name`, the kind or `<kind>.<stage>`, and `layer`, `managed` or `local`, `kinds` or `stages` left out where it names the session for none; `faults`, each of its tables for a kind or a stage that refuses the starts that read it, `table`, its dotted key, and `refused`, the refusal's words; `reserves`, whether what its labels are owed is held: `held`, `passed-over` where the stream states no bound, or `none` where it gives no label a share; `refused`, why its labels, its multiplexer or its terminal app refuse it, `null` where none does; and `view_refused`, the terminal app's refusal alone, which refuses its `flume open` and none of its stages, left out where it holds none |
-| `pools` | each pool: `name`, `strategy`, `threshold`, `90` where the pool states none, and `accounts`, each account's `name`, `program`, `running`, `bound` and `spent_until`, `null` where it is not spent; `spent_unread`, while it is spent for an hour because flume read no reset in its agent's words, those words; `reading`; and `past`, while it is past its threshold, `window`, the window that holds it, and `until`, when that window resets, or, for a window that names no reset, when its reading stops being fresh. A `reading` is `read_at`, when flume took it, `agent`, the identity of the agent whose session reported it, `session`, that session, left out where its record named none, `fresh`, whether flume took it less than fifteen minutes ago, and `windows`, each with its `name`, `used`, the percentage the reading gives, `resets_at` where it gives one, and `past`, whether that window holds the account past its threshold now; or `unread`, why there is none: `no session flume started has reported its windows`, or `its program's profile gives no windows` |
+| `pools` | each pool: `name`, `strategy`, `threshold`, `90` where the pool states none, and `accounts`, each account's `name`, `program`, `running`, `bound` and `spent_until`, `null` where it is not spent; `spent_unread`, while it is spent for an hour because flume read no reset in its agent's words, those words; `reading`; and `past`, while it is past its threshold, `window`, the window that holds it, and `until`, when that window resets, or, for a window that names no reset, when its reading stops being fresh; `home`, the account's configuration home: the value its `env` gives the variable its program's profile names, Claude Code's `CLAUDE_CONFIG_DIR`, with its `~` and each `$VAR` read against the host user's login environment as a start reads it, and `null` where its `env` gives none or an empty one, or its program's profile names no variable, its agents then running their program's own default home; and `home_unread`, left out while none, why it has no home where the login environment lacks a variable the value names, naming the variable and the one lacking and no value. The home is the one value of an account's variables status gives. A `reading` is `read_at`, when flume took it, `agent`, the identity of the agent whose session reported it, `session`, that session, left out where its record named none, `fresh`, whether flume took it less than fifteen minutes ago, and `windows`, each with its `name`, `used`, the percentage the reading gives, `resets_at` where it gives one, and `past`, whether that window holds the account past its threshold now; or `unread`, why there is none: `no session flume started has reported its windows`, or `its program's profile gives no windows` |
 | `watch` | the watch a caller keeps over the host, `{"bound":{"seconds":…}}`, the bound its newest `flume settle --every` stated, whose settles settle the places where something is pending; or `none` where no caller keeps watch, and every command of flume's that acts settles the places where something is pending first |
 | `watch_settled` | when the newest `flume settle --every` began, by the host's clock; left out where the host holds no watch |
 | `watch_ended` | when that settle ended, by the host's clock; left out while it runs, where its command died before it ended, and where the host holds no watch |

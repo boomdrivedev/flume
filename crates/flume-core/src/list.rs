@@ -57,7 +57,13 @@ impl Engine {
         let at = (held.phase == Phase::Live)
             .then(|| stage_at(held))
             .flatten();
-        let stage = at.map(|index| label(&held.stages[index].name, None));
+        let stage = if held.chart.is_some() {
+            (held.phase == Phase::Live)
+                .then(|| crate::line::live_stages(held))
+                .flatten()
+        } else {
+            at.map(|index| label(&held.stages[index].name, None))
+        };
         let (state, waits_on) = self.state_of_place(held);
         let kept = kept_words(&held.phase);
         let name = place.short();

@@ -31,8 +31,14 @@ tasks:
     inputs: ['/crates/flume/**/*', '/crates/flume-seams/**/*', '/crates/flume-core/**/*', '/crates/flume-fakes/**/*', '/crates/flume-conformance/**/*', '/.config/flume.toml', '/plugins/claude/**/*', '/nix/tests/files/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
+  # The tools tests wait on real time, herdr's and Rex's sessions, the
+  # stand-in's answers and the walkthroughs' settles, and use little of
+  # a processor while they wait; they run as many at once as libtest
+  # takes on this host, not the share of its cores a sluice run is handed
+  # (`RUST_TEST_THREADS`, devenv.nix), which ran two at a time and took
+  # 581 seconds under the gate where all at once take 111.
   tools:
-    command: 'cargo test -p flume --features tools --test tools'
+    script: 'unset RUST_TEST_THREADS; cargo test -p flume --features tools --test tools'
     inputs: ['/crates/flume/**/*', '/crates/flume-seams/**/*', '/crates/flume-core/**/*', '/crates/flume-fakes/**/*', '/crates/flume-conformance/**/*', '/plugins/claude/**/*', '/plugins/herdr/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
     tags: [check-tools]
     options: {runFromWorkspaceRoot: true}

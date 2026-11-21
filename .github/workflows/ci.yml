@@ -7,7 +7,10 @@
 # marketplace is read at is moved to it. The flake's package is built on
 # each runner's system (nix:build), which the gate's sandbox cannot run.
 # flume's own gate is sluice (.config/sluice.toml); this is the public
-# check.
+# check. Each step that downloads from GitHub, the devenv shell's inputs,
+# the flake's, convco's nixpkgs and weir's crates, runs through
+# try-again.sh, which runs it again where GitHub turned a download away
+# for a moment and fails at once on any other failure.
 name: ci
 
 on:
@@ -46,7 +49,7 @@ jobs:
             ~/.cargo/git
           key: fast-${{ runner.os }}-${{ hashFiles('Cargo.lock', '.prototools') }}
           restore-keys: fast-${{ runner.os }}-
-      - run: devenv shell -- moon run ':#check-fast'
+      - run: sh try-again.sh devenv shell -- moon run ':#check-fast'
 
   # The flake's package, built for each runner's system in the devenv
   # shell: a package that no longer builds, a git crate's hash a weir bump
@@ -64,7 +67,7 @@ jobs:
         with:
           name: devenv
       - run: nix profile add nixpkgs#devenv
-      - run: devenv shell -- moon run nix:build
+      - run: sh try-again.sh devenv shell -- moon run nix:build
 
   # The commits since the last release are conventional (.versionrc): a
   # session can skip the commit-msg hook, and git-cliff releases from them.
@@ -87,7 +90,7 @@ jobs:
       - run: |
           last="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
           nixpkgs="$(jq -r '.nodes.nixpkgs.locked | "github:\(.owner)/\(.repo)/\(.rev)"' devenv.lock)"
-          nix shell "$nixpkgs#convco" -c convco check --ignore-reverts ${last:+"$last..HEAD"}
+          sh try-again.sh nix shell "$nixpkgs#convco" -c convco check --ignore-reverts ${last:+"$last..HEAD"}
 
   # The next version from the commits since the newest v* tag; empty when
   # it is already tagged. `--unreleased` starts the range at the newest tag,
@@ -150,7 +153,7 @@ jobs:
           rustup target add "$TARGET"
       - run: |
           sh set-version.sh "${TAG#v}"
-          cargo build --release --locked -p flume --bin flume --target "$TARGET"
+          sh try-again.sh cargo build --release --locked -p flume --bin flume --target "$TARGET"
           test "$("target/$TARGET/release/flume" --version)" = "flume ${TAG#v}"
           tar -czf "flume-${{ matrix.system }}.tar.gz" -C "target/$TARGET/release" flume
       - uses: actions/upload-artifact@v4

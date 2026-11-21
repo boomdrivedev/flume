@@ -12,9 +12,10 @@ use crate::{Engine, Step};
 use flume_seams::*;
 
 /// Whether a place of `kind` is a base place: its kind lands and has no
-/// stages (18, 202; core.53).
+/// stages and no statechart, a statechart kind's stages being its
+/// statechart's (18, 175, 202; core.53).
 pub(crate) fn base_place(kind: &Kind) -> bool {
-    kind.lands && kind.stages.is_empty()
+    kind.lands && kind.stages.is_empty() && !kind.is_statechart()
 }
 
 /// Whether two forecasts are one for holding: the same outcome, clear,

@@ -1,12 +1,12 @@
 //! `flume hook <event>` and `flume ack started|received` (C.4; design
 //! 14, 17; record 0016): what each of the plugin's hooks does with the
-//! input Claude Code 2.1.296 hands it on standard input, in an agent flume
+//! input Claude Code 2.1.322 hands it on standard input, in an agent flume
 //! started, whose environment names its start (`FLUME_AGENT`), the start's
 //! secret, its place and its stage. SessionStart compares the agent's
 //! program, its environment and, for a start that resumes a session, the
 //! session it runs with its start's record before it acks, and
 //! UserPromptSubmit, at the start's first prompt, the mode its session
-//! runs in, which 2.1.296 gives no SessionStart input, blocking the prompt
+//! runs in, which 2.1.322 gives no SessionStart input, blocking the prompt
 //! where it is another (161, 162). The plugin's module runs `usage` with
 //! each report of the program's usage windows, which it keeps beside the
 //! start's record and has the core take as the account's reading
@@ -50,6 +50,64 @@ pub const EVENTS: [(&str, &str); 8] = [
     ("stop-failure", "StopFailure"),
     ("session-end", "SessionEnd"),
 ];
+
+/// The source fragments of the pinned release the hooks rest on, each
+/// named and as the release's program holds it: the input every hook is
+/// built on, its session and its transcript; each event's input, with the
+/// fields the hooks read and, for SessionStart, StopFailure and
+/// SessionEnd, no mode; the answers the hooks give as the release reads
+/// them, a SessionStart's context and a PreToolUse's refusal, a block
+/// being [`mode`]'s; and the input of `ExitPlanMode`, which the asking
+/// mark keeps, its plan and its plan's file (90, 116, 134, 161, C.4;
+/// core.39).
+pub fn fragments() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "the input every hook is built on, its session and its transcript",
+            "return{session_id:e.id,transcript_path:q()?\"\":hm(e.id),cwd:V,".into(),
+        ),
+        (
+            "SessionStart's input, its source and no mode",
+            "{...Ip(Ee,by()),hook_event_name:\"SessionStart\",source:n,".into(),
+        ),
+        (
+            "PreToolUse's input, its tool, the tool's input and its call",
+            "{...Ip(s.session,by(),h,s),hook_event_name:\"PreToolUse\",tool_name:e,tool_input:r,tool_use_id:n,".into(),
+        ),
+        (
+            "PermissionRequest's input, its tool and the tool's input",
+            "{...Ip(s.session,by(),h,s),hook_event_name:\"PermissionRequest\",tool_name:e,tool_input:r,".into(),
+        ),
+        (
+            "PostToolUse's input, its tool, the tool's input and its call",
+            "{...Ip(h.session,by(),y,h),hook_event_name:\"PostToolUse\",tool_name:e,tool_input:r,tool_response:s,tool_use_id:n,".into(),
+        ),
+        (
+            "Stop's input, whether a stop hook already blocked it",
+            "{...Ae,hook_event_name:\"Stop\",stop_hook_active:s,last_assistant_message:Te,".into(),
+        ),
+        (
+            "StopFailure's input, its error and its words, and no mode",
+            "{...Ip(n.session,by(),void 0,n),hook_event_name:\"StopFailure\",error:h,error_details:e.errorDetails,last_assistant_message:s}".into(),
+        ),
+        (
+            "SessionEnd's input, its reason and no mode",
+            "{...Ip(e,by()),hook_event_name:\"SessionEnd\",reason:n}".into(),
+        ),
+        (
+            "a SessionStart hook's context given the session",
+            "case\"SessionStart\":if(Y.additionalContext=e.hookSpecificOutput.additionalContext,".into(),
+        ),
+        (
+            "a PreToolUse hook's refusal, its reason the tool's error",
+            "case\"deny\":Y.permissionBehavior=\"deny\",Y.blockingError={blockingError:e.hookSpecificOutput.permissionDecisionReason||e.reason||\"Blocked by hook\",command:n};break;".into(),
+        ),
+        (
+            "ExitPlanMode's input, its plan and its plan's file",
+            "plan:o().optional().describe(\"The plan content (injected by normalizeToolInput from disk)\"),planFilePath:o().optional().describe(\"The plan file path (injected by normalizeToolInput)\")".into(),
+        ),
+    ]
+}
 
 /// What the agent's environment says of its start.
 #[derive(Clone, Debug, Default)]
@@ -163,7 +221,7 @@ pub fn compare_mode(recorded: &StartRecord, began: Option<&str>) -> Option<ModeB
 /// where the record names the session the start resumes, the session is
 /// that one; it clears the asking mark.
 /// The mode is compared at the start's first prompt ([`ack_received`]),
-/// since 2.1.296 gives a SessionStart input none. Where anything differs
+/// since 2.1.322 gives a SessionStart input none. Where anything differs
 /// it is not taken: the agent's record says what differed, a variable by
 /// name alone, and a settle of the place is started detached, which ends
 /// the agent once quiet and starts its stage afresh (35, 90, 121, 135,
@@ -560,19 +618,62 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path
 }
 
 /// `flume settle <place>`, with `--on-quiet` where `on_quiet`, in a
-/// process group of its own that outlives the hook, its output nowhere.
+/// session of its own that outlives the hook and the agent's terminal,
+/// its output nowhere. A process group of its own is not enough: a
+/// terminal closing the agent's pane, as herdr 0.9.5 does once the
+/// settle ends the agent, ends every process of the pane's session, so
+/// a settle killed between claiming its place's submit and recording
+/// the merge queue's entry would leave the place submitted with no
+/// entry to read, never stepped again (46, 111).
 fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
-    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     let mut args = vec!["settle", place];
     if on_quiet {
         args.push("--on-quiet");
     }
-    let _ = Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn();
+        .stderr(Stdio::null());
+    let _ = in_a_session_of_its_own(command);
+}
+
+/// `command` started as the leader of a session of its own, which no
+/// terminal's session the caller runs in reaches.
+fn in_a_session_of_its_own(
+    mut command: std::process::Command,
+) -> std::io::Result<std::process::Child> {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: setsid is async-signal-safe and touches no memory of the
+    // parent's; it runs in the child between fork and exec.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    command.spawn()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_detached_settle_leads_a_session_of_its_own() {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("5");
+        let mut child = in_a_session_of_its_own(command).expect("sleep starts");
+        let pid = child.id() as libc::pid_t;
+        // SAFETY: getsid reads the session of a process this test started.
+        let (session, ours) = unsafe { (libc::getsid(pid), libc::getsid(0)) };
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(session, pid, "the child leads its own session");
+        assert_ne!(session, ours, "the child shares the test's session");
+    }
 }

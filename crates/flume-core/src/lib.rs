@@ -12,14 +12,17 @@ mod acts;
 pub mod address;
 mod agent_acts;
 mod answer;
+pub mod atoms;
 mod base;
 mod batch;
+mod chart;
 mod clues;
 mod deliver;
 pub mod deliveries;
 mod end;
 mod ends;
 mod fixes;
+mod glob;
 mod held;
 mod hibernate;
 mod kinds_lock;
@@ -136,6 +139,9 @@ pub struct Engine {
     /// The repositories and bases whose queue this command drove a round
     /// of, each at most once (125).
     stepped: Mutex<BTreeSet<(String, String)>>,
+    /// The host's deliveries as this engine last read or wrote them, and
+    /// what they owe, kept while their version stands (43; core.15).
+    reading: Mutex<deliveries::Reading>,
 }
 
 /// A repository's id from its common git directory's path: the first
@@ -226,6 +232,7 @@ impl Engine {
             defaults,
             telemetry: Arc::new(flume_seams::telemetry::Off),
             stepped: Mutex::default(),
+            reading: Mutex::default(),
         }
     }
 
@@ -312,6 +319,7 @@ mod tests {
                 label: None,
                 fix: None,
                 fix_limit: None,
+                statechart: None,
             },
             declared: Declared::Flume,
             kind_from: None,

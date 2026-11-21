@@ -955,7 +955,7 @@ impl Engine {
                     .map(move |(index, stage)| {
                         let room = stage.room.clone().unwrap_or_default();
                         let settings = self
-                            .resolve(&held.place, &held.place.kind.stages[index])
+                            .resolve(&held.place, held.declared(index))
                             .map(|resolved| resolved.settings)
                             .unwrap_or_default();
                         let session_refused = as_read
@@ -1162,15 +1162,20 @@ impl Engine {
                 accounts: pool
                     .accounts
                     .iter()
-                    .map(|room| AccountStatus {
-                        name: room.account.name.clone(),
-                        program: room.account.program.clone(),
-                        running: room.running,
-                        bound: room.account.agents,
-                        spent_until: room.spent_until,
-                        spent_unread: room.spent_unread.clone(),
-                        reading: room.reading_status(),
-                        past: room.past(),
+                    .map(|room| {
+                        let (home, home_unread) = self.account_home(&room.account);
+                        AccountStatus {
+                            name: room.account.name.clone(),
+                            program: room.account.program.clone(),
+                            running: room.running,
+                            bound: room.account.agents,
+                            spent_until: room.spent_until,
+                            spent_unread: room.spent_unread.clone(),
+                            reading: room.reading_status(),
+                            past: room.past(),
+                            home,
+                            home_unread,
+                        }
                     })
                     .collect(),
             })

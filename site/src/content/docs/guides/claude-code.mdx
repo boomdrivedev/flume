@@ -79,11 +79,13 @@ agent as Claude Code. Any other program refuses the launch, since
 Claude Code is the one agent program flume runs.
 
 flume checks the plugin's hooks against the Claude Code release its
-repository pins, 2.1.296. It checks there too the `--settings` option,
-the order Claude Code reads its settings in, each key flume reserves
-for another setting, `effortLevel` among them, and `attribution`'s two
-texts. It checks the `--effort` option and its five words there, and
-the variable Claude Code reads over it.
+repository pins, 2.1.322: the input each hook event hands them and how
+Claude Code reads their answers. It checks there too the options the
+command names, the folder-trust dialog it answers, the `--settings`
+option, the order Claude Code reads its settings in, each key flume
+reserves for another setting, `effortLevel` among them, and
+`attribution`'s two texts. It checks the `--effort` option and its five
+words there, and the variable Claude Code reads over it.
 
 ## What each hook does
 
@@ -189,7 +191,7 @@ first of two; `run <n>`, how many times that stage started; `tasks
 <t>/<n>`, the change's tasks ticked at the place's head; and the
 place's state in words. A part the place has none of is left out: a
 fix has no tasks, and a landed place shows only `fix--parser · fix@1 ·
-landed`. Claude Code 2.1.296 draws it on the row under the prompt's
+landed`. Claude Code 2.1.322 draws it on the row under the prompt's
 input, with a `⚠` and the plugin's name before it.
 
 The state is the first that holds of these:
@@ -277,6 +279,31 @@ flume asks Claude Code and its maker nothing for it, reads no sign-in
 and fetches nothing: the windows are what the session's own responses
 reported.
 
+## Each account's configuration home
+
+Claude Code keeps its settings, its plugins and its sign-in in its
+configuration home, the folder `CLAUDE_CONFIG_DIR` names. A pool's
+account whose `env` gives `CLAUDE_CONFIG_DIR` is a home of its own, and
+flume's configuration is what says which homes those are. Status gives
+each account's home as `home` at `host.pools[].accounts[]`, its `~`
+and variables read against your login environment as a start reads
+them, and the person's form names it under the account's line:
+
+```sh
+flume status --json | jq '.status.host.pools[].accounts[] | {name, home}'
+```
+
+A tool that installs something into every account's Claude Code, a
+plugin or a setting, reads the homes there. An account whose `env`
+gives no `CLAUDE_CONFIG_DIR` gives `null`: its agents run Claude Code's
+own default home. One whose value names a variable your login
+environment lacks gives `null` with `home_unread`, saying which. The
+home is the one value of an account's variables status gives:
+`CLAUDE_CONFIG_DIR` and every other variable stay `<set>` in an agent's
+settings and in the host's configuration values. flume writes nothing
+in a home, and whether the folder exists is for the installing tool to
+find.
+
 ## Prompt delivery
 
 <Delivery caption="The first sending is lost, and flume reads that it never arrived: it sends the prompt once more and reads it received. Later the pane goes quiet while the checks run; with no deliverable, the stage goes on until the change is committed." />
@@ -332,12 +359,11 @@ address, recorded handed as it is taken. Where the agent's program
 takes words so, flume types nothing into its pane.
 
 flume sets `FLUME_DELIVER` only where the agent's profile offers the
-part. The deliver row was read on Claude Code 2.1.322, and flume pins
-2.1.296, which no check has read running a hooks module's
-`$.prompt.submit` in an interactive session; so Claude Code's profile
-offers no deliver part yet, and the multiplexer hands every batch and
-message, as above, until a release flume pins is read doing it. Outside
-such a session the part registers no clock and runs nothing.
+part. Claude Code's profile offers it on the release flume pins,
+2.1.322, which runs a plugin's hooks module in an interactive session;
+so the plugin takes every batch and message for a Claude Code agent,
+and the multiplexer types none into its pane. Outside such a session
+the part registers no clock and runs nothing.
 
 ## How flume reads an agent
 
@@ -400,7 +426,7 @@ program before any hook runs, and flume reads that start as a carried
 start that did not begin, and starts the stage afresh as well.
 
 flume checks the option text of `--resume` and `--fork-session`, where
-2.1.296 keeps its `projects` folder, and its words for a session it
+2.1.322 keeps its `projects` folder, and its words for a session it
 cannot find, against the release its repository pins. flume never
 passes `--fork-session`, so a resumed session keeps its id.
 
