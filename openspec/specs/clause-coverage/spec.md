@@ -19,7 +19,7 @@ change this list in the commit that adopts it.
 #### Scenario: The clauses listed
 
 - **WHEN** the suite's list is read
-- **THEN** it names boomdrivedev/blueprints main at 55b89a4, the revision that adds 211; Parts A and B hold every clause that revision states, 211 in Part B; the scenarios run to S123; and it names as unbuilt what it named before this change and S121 to S123, which that revision holds and records 0060 and 0061's changes built before the list held them, and nothing of 211
+- **THEN** it names boomdrivedev/blueprints at 3a3b287, the revision that states how flume runs statechart kinds; Parts A and B hold every clause that revision states, 175 to 177 in Part A and 178 in Part B; the scenarios run to S131; and it names as unbuilt what it named before this change but 175 to 178, S76 and S77, which this change builds and its scenarios cite
 
 ### Requirement: Every scenario cites its clauses
 

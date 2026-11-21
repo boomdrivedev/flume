@@ -273,6 +273,31 @@ program reads them back. The place's held state keeps the launch's
 and `repository_agents`, the repository's `[agents]` as the launch read
 it.
 
+### A statechart place
+
+A place of a statechart kind keeps, beside its kind's statechart in
+`kind.statechart`, a `chart` of its run. Its `state` is the engine's:
+`regions`, each region path with the state it holds; `entered_at`, when
+each entered it, in seconds since the epoch; `counters`; `applied`, the
+answers the engine took; and `set_aside`, each stage's earlier entries.
+Its `template` is the stage template's text as the launch read it.
+`answers` lists each answer a caller gave a decision, with its `id`,
+`<region>#<n>`, its `region`, `answer`, `by` and `at`. `stages` gives
+each stage by its path, with the `entry` whose sessions it recorded and
+its `send_backs`. `words` holds a finding's or the merge queue's words
+until the next sessions recorded take them, and `over` says whether
+every top region held a final state at the last tick.
+
+Each session is one of the place's `stages`, named
+`<path>#<entry>/<n>`, as `stages.test#2/1`: the stage's path, the entry
+counting from 1 each time the stage is entered, and the session's
+number. Its `session` gives its `stage`, `entry`, `n`, the `file` its
+rule gave it, and `declared`, its declaration: the stage's prompt, its
+deliverables with `{{session}}` and `{{file}}` filled, and its one
+agent's settings. Its starts, its end and its answers are kept as any
+stage's are. A simple kind's place, and a place an earlier release
+launched, keeps no `chart` and no `session`.
+
 ## Elsewhere on the host
 
 | Path | What |

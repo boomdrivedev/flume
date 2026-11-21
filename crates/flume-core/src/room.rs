@@ -955,7 +955,7 @@ impl Engine {
                     .map(move |(index, stage)| {
                         let room = stage.room.clone().unwrap_or_default();
                         let settings = self
-                            .resolve(&held.place, &held.place.kind.stages[index])
+                            .resolve(&held.place, held.declared(index))
                             .map(|resolved| resolved.settings)
                             .unwrap_or_default();
                         let session_refused = as_read

@@ -668,6 +668,8 @@ fn place_status() -> PlaceStatus {
                 submission: "40".into(),
             },
         }),
+        statechart: None,
+        agents: vec![],
         checkouts: vec![],
     }
 }

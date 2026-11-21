@@ -2407,6 +2407,7 @@ fn kind_at(name: &str, version: u32) -> Kind {
         label: None,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 
@@ -2737,6 +2738,7 @@ fn kind_named(name: &str) -> Kind {
         label: None,
         fix: None,
         fix_limit: None,
+        statechart: None,
     }
 }
 
@@ -3256,4 +3258,83 @@ fn the_fake_telemetry_keeps_every_signal_in_order() {
         Some("s-1")
     );
     assert!(agent.log.calls().is_empty(), "read by no logged call");
+}
+
+/// A statechart kind's held text, one region of a stage running the
+/// template `stage` (175).
+const CHART_TEXT: &str = r#"[kinds.review]
+title = "Review"
+lands = true
+
+[kinds.review.regions.main]
+initial = "work"
+
+[kinds.review.regions.main.states.work]
+machine = "stage"
+params = { agents = [{}], deliverables = ["commits"], prompt = "prompts/work.md" }
+transitions = [{ when = { final = "passed" }, to = "done" }]
+
+[kinds.review.regions.main.states.done]
+final = true
+"#;
+
+/// A template `stage` of one region, final once it ends (175).
+const TEMPLATE_TEXT: &str = r#"[kinds.stage]
+title = "A stage"
+
+[kinds.stage.regions.run]
+initial = "working"
+
+[kinds.stage.regions.run.states.working]
+transitions = [{ when = { ev = "stage.end", is = "passed" }, to = "passed" }]
+
+[kinds.stage.regions.run.states.passed]
+final = true
+"#;
+
+#[test]
+fn the_fake_kinds_reads_a_held_statechart() {
+    // The seam-fakes spec's "A scripted statechart kind read back": a
+    // statechart kind scripted as the seam's kind with its text reads back
+    // through weir's crate as the kinds profile reads it, with the
+    // template `stage`; a text that is none refused (106, 176).
+    let kinds = FakeKinds::default();
+    let statechart = KindStatechart {
+        title: "Review".into(),
+        text: CHART_TEXT.into(),
+        stages: BTreeMap::new(),
+    };
+    let review = Kind {
+        name: "review".into(),
+        version: 1,
+        branch_prefix: "review".into(),
+        starts_unready: false,
+        lands: true,
+        agents: KindSettings::default(),
+        stages: vec![],
+        label: None,
+        fix: None,
+        fix_limit: None,
+        statechart: Some(statechart.clone()),
+    };
+    kinds.set_kinds("/r", vec![review.clone()]);
+    let KindsRead::Read { kinds: read, .. } = kinds.read_kinds("/r", &Revision::new("c1")) else {
+        panic!("the scripted kinds did not read");
+    };
+    assert_eq!(read, vec![review]);
+    let charts = kinds
+        .read_statechart(&statechart, TEMPLATE_TEXT)
+        .expect("read back");
+    let declared = weir_kinds::read_kinds(CHART_TEXT).expect("the text reads");
+    assert_eq!(charts.chart, declared.statecharts["review"].statechart);
+    assert_eq!(charts.templates.keys().collect::<Vec<_>>(), vec!["stage"]);
+    assert_eq!(
+        kinds.read_statechart(&statechart, TEMPLATE_TEXT),
+        Ok(charts),
+        "the same texts read back the same"
+    );
+    let words = kinds
+        .read_statechart(&statechart, "[kinds.stage")
+        .expect_err("an unreadable template read");
+    assert!(words.contains("stage template"), "{words}");
 }

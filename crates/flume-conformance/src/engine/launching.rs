@@ -405,10 +405,7 @@ fn the_identity_status_names(_: &()) -> Outcome {
         "the identity of change@1"
     );
     let held = world.held(&World::id("change", "one")).ok_or("no place")?;
-    ensure!(
-        !held.place.kind.stages[1].repeats,
-        "change@1's code repeats"
-    );
+    ensure!(!held.declared(1).repeats, "change@1's code repeats");
     Ok(())
 }
 
@@ -479,7 +476,7 @@ fn change_4_named(_: &()) -> Outcome {
 fn one_agent_in_full_from_the_kind(world: &World, version: u32) -> Outcome {
     let id = World::id("change", "plan");
     let held = world.held(&id).ok_or("no place")?;
-    let code = &held.place.kind.stages[1];
+    let code = held.declared(1);
     ensure!(
         !code.repeats && code.agents.len() == 1,
         "change@{version}'s code is not one agent for the whole change: {code:?}"
@@ -517,10 +514,7 @@ fn change_3_named(_: &()) -> Outcome {
     );
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
     ensure_eq!(held.place.branch, "change/plan", "the place's branch");
-    ensure!(
-        !held.place.kind.stages[1].repeats,
-        "change@3's code repeats"
-    );
+    ensure!(!held.declared(1).repeats, "change@3's code repeats");
     Ok(())
 }
 
@@ -538,10 +532,7 @@ fn change_2_named(_: &()) -> Outcome {
     );
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
     ensure_eq!(held.place.branch, "change/plan", "the place's branch");
-    ensure!(
-        held.place.kind.stages[1].repeats,
-        "change@2's code does not repeat"
-    );
+    ensure!(held.declared(1).repeats, "change@2's code does not repeat");
     Ok(())
 }
 
@@ -555,10 +546,7 @@ fn change_1_named(_: &()) -> Outcome {
     );
     let held = world.held(&World::id("change", "plan")).ok_or("no place")?;
     ensure_eq!(held.place.branch, "change/plan", "the place's branch");
-    ensure!(
-        !held.place.kind.stages[1].repeats,
-        "change@1's code repeats"
-    );
+    ensure!(!held.declared(1).repeats, "change@1's code repeats");
     Ok(())
 }
 

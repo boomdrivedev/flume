@@ -42,6 +42,120 @@ pub struct Kind {
     /// default for a stage's bound then (23, 58, 203; weir record 0005).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_limit: Option<u32>,
+    /// For a statechart kind, its statechart, its `stages` then empty and
+    /// its own fields the statechart kind's; none for a simple kind, and in
+    /// a kind read before (21, 175, 177).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statechart: Option<KindStatechart>,
+}
+
+impl Kind {
+    /// Whether it is a statechart kind, run on the family's engine and never
+    /// by a simple kind's stages (175 to 177; core.41, core.42).
+    pub fn is_statechart(&self) -> bool {
+        self.statechart.is_some()
+    }
+}
+
+/// A statechart kind as its kinds profile read it: its title, its table
+/// spelled as a declaration of it alone, which the kinds seam reads back
+/// into the engine's types at each settle, and the stage template's
+/// parameters of each state that gives them, by the state's path (21, 84,
+/// 175; core.4). Its fields are the statement's, never the format's:
+/// the engine's statechart is read only from `text`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KindStatechart {
+    /// The words a person reads for the kind (175).
+    pub title: String,
+    /// The kind's table spelled as a declaration of it alone, as the kinds
+    /// profile read it (21).
+    pub text: String,
+    /// Each state that gives stage parameters, by its path: its regions'
+    /// names and its own joined by `.`, as `stages.test` (175).
+    #[serde(default)]
+    pub stages: BTreeMap<String, ChartStage>,
+}
+
+/// The stage template's parameters a state gives (175, C.2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartStage {
+    /// The agents it runs its sessions as: entries it lists, or a rule
+    /// read against the place.
+    pub agents: ChartAgents,
+    /// How its sessions join: all where it names none.
+    #[serde(default)]
+    pub join: Join,
+    /// What each session delivers, each one of the forms of 24, a path
+    /// naming `{{session}}` or `{{file}}` filled for each.
+    #[serde(default)]
+    pub deliverables: Vec<Deliverable>,
+    /// Its sessions' prompt's text, read beside the declaration, with its
+    /// parts unfilled; none where it names none (27).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// The state of its own region a send-back returns to, as written
+    /// (112).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_fail: Option<String>,
+    /// How many times it is sent back before the place waits on its
+    /// caller; none where it names none, flume's default then (112).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send_back_limit: Option<u32>,
+}
+
+/// A statechart kind read back into the engine's types: its statechart,
+/// and the templates its states run by the name a state's `machine` gives
+/// them, the stage template's among them (175, 176; core.42).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Charts {
+    pub chart: weir_engine::Statechart,
+    pub templates: BTreeMap<String, weir_engine::Statechart>,
+}
+
+/// A stage's agents: entries, one session each with its settings, or a
+/// rule read against the place with its pattern (175).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChartAgents {
+    Entries(Vec<Settings>),
+    Rule {
+        rule: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pattern: Option<String>,
+    },
+}
+
+/// How a stage's sessions join: every one, any one, or a count (175).
+/// Its [`Display`](std::fmt::Display) is its spelling, `all`, `any` or
+/// `count:<n>`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Join {
+    #[default]
+    All,
+    Any,
+    Count(u32),
+}
+
+impl Join {
+    /// How many sessions that delivered meet it, of `sessions`.
+    pub fn needs(self, sessions: usize) -> usize {
+        match self {
+            Join::All => sessions,
+            Join::Any => 1.min(sessions),
+            Join::Count(n) => n as usize,
+        }
+    }
+}
+
+impl std::fmt::Display for Join {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Join::All => f.write_str("all"),
+            Join::Any => f.write_str("any"),
+            Join::Count(n) => write!(f, "count:{n}"),
+        }
+    }
 }
 
 /// One step of a kind (23), as declared: every agent and every
@@ -693,6 +807,17 @@ pub trait Kinds: Send + Sync {
     /// The repository's binding, read at its default branch's current
     /// revision (20, 105).
     fn read_binding(&self, repository: &str) -> BindingRead;
+
+    /// A held statechart kind's text and the stage template's text read back into the engine's statechart and templates, the same texts
+    /// always giving the same statechart; refused naming why where either
+    /// cannot be read. A profile that reads no statechart kind refuses
+    /// every one, naming it (21, 84, 85, 176; core.2).
+    fn read_statechart(&self, kind: &KindStatechart, _template: &str) -> Result<Charts, String> {
+        Err(format!(
+            "its kinds profile reads no statechart kind, \"{}\" among them",
+            kind.title
+        ))
+    }
 
     /// read-named: the parts of `text`, a kind as a launch or a role
     /// writes it, or why it names no kind (154; weir C.4).

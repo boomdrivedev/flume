@@ -447,6 +447,13 @@ impl Engine {
             if held.phase != Phase::Live {
                 return Step::Write(None);
             }
+            // A statechart place's outcome is evidence its statechart reads
+            // at the next tick: no fix round starts, and its words wait for
+            // the stage the run enters next (112, 176).
+            if let Some(chart) = held.chart.as_mut() {
+                chart.words = crate::chart::failure_words(&held.submission);
+                return Step::Write(None);
+            }
             if base_place(&held.place.kind) {
                 let submission = held.submission.id.clone().unwrap_or_default();
                 let found = Found::submission(&held.place, &submission, &verdict, onto.as_ref());
@@ -484,12 +491,16 @@ impl Engine {
     /// back nowhere: it changes nothing here, its agent kept as any
     /// stop-short's, and is taken as needing an answer, which a caller's
     /// retry gives (42, 49, 131). True when it changed something.
-    pub(crate) fn found_work(&self, id: &PlaceId) -> bool {
+    /// It reads the stage at `at`, else the current stage (131).
+    pub(crate) fn found_work(&self, id: &PlaceId, at: Option<usize>) -> bool {
         let Some(read) = self.store.read(id) else {
             return false;
         };
         let held = read.state;
-        let Some(index) = held.current.filter(|index| sent_back_by(&held, *index)) else {
+        let Some(index) = at
+            .or(held.current)
+            .filter(|index| sent_back_by(&held, *index))
+        else {
             return false;
         };
         if let Some(start) = held.stages[index].start.clone().filter(|start| start.live) {
@@ -507,7 +518,7 @@ impl Engine {
         }
         let limit = self.defaults.send_backs;
         let back = self.update(id, |held| {
-            if held.live_start().is_some() || held.current != Some(index) {
+            if held.live_start().is_some() || at.or(held.current) != Some(index) {
                 return Step::Keep(None);
             }
             if !sent_back_by(held, index) {
