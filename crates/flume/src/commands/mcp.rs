@@ -224,20 +224,20 @@ fn act(
     }))
 }
 
-/// The status tool's answer to `arguments`: the status's JSON, a refusal
-/// marked an error.
-fn status(
-    arguments: &Value,
-    build: &dyn Fn() -> Result<Engine, String>,
-    repository: Option<&Path>,
-) -> Value {
+/// The status tool's answer to `arguments`: the status's JSON, as the
+/// host's flume host gives it, a refusal marked an error
+/// (flume-host-serves-status-and-its-subscription-on-its-socket).
+fn status(arguments: &Value, repository: Option<&Path>) -> Value {
     let answer = (|| -> Result<Answer, String> {
         let named = arguments["place"]
             .as_str()
             .filter(|place| !place.is_empty())
             .map(|place| place::place(place, repository))
             .transpose()?;
-        Ok(build()?.status(named.as_ref()))
+        Ok(crate::served::status(&crate::served::Asked {
+            place: named.map(|place| place.0),
+            line: false,
+        }))
     })()
     .unwrap_or_else(Answer::refused);
     json!({
@@ -274,7 +274,7 @@ fn answer(
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools() }),
         "tools/call" if request["params"]["name"] == "status" => {
-            status(&request["params"]["arguments"], build, repository)
+            status(&request["params"]["arguments"], repository)
         }
         "tools/call" if act_named(&request["params"]["name"]) => act(
             request["params"]["name"].as_str().unwrap_or_default(),

@@ -1,5 +1,5 @@
 //! The merge-queue profile over sluice (C.6; design 13), every command
-//! and field it reads checked against the sluice the tree pins, 0.97.0.
+//! and field it reads checked against the sluice the tree pins, 0.110.0.
 //!
 //! submit is `sluice submit <base> --no-wait --json` in the place, with
 //! every multiplexer's session stripped from its environment, so sluice
@@ -54,11 +54,16 @@
 //! or before, and exit 1, nothing owed under the key, are each
 //! confirmed, since sluice hands nothing over under it again, and any
 //! other exit sluice unread in its words, the outcome left owed for the
-//! next inbox (101, 133; sluice 51). read-submission reads
-//! `sluice status <base> --all --json` for each branch `sluice overview
-//! --json` names, once for every branch of the repository asked at once,
-//! so a status of every place runs them once for each repository (58,
-//! C.6); for each branch asked, the newest entry submitted from it, by a
+//! next inbox (101, 133; sluice 51). read-submission asks sluice host's
+//! socket, never a sluice command, for the repository's `overview` and
+//! for `status <base> --all` of each branch the overview names, once for
+//! every branch of the repository asked at once, so a status of every
+//! place asks them once for each repository (58, C.6); the records of a
+//! base are kept in the process with the `version` the overview gave
+//! them, and asked again only once it moved, so flume host asks sluice
+//! host only for records that moved ([`ask`];
+//! flume-reads-sluices-records-on-sluice-hosts-socket); for each branch
+//! asked, the newest entry submitted from it, by a
 //! worktree on it or from a pull request opened from it, a conflict's
 //! base revision its `tested.on` where it holds one; a branch whose
 //! status sluice refuses, as it refuses one whose policy it no longer
@@ -78,9 +83,8 @@
 //! own, whichever way runs it, sluice's host process, a daemon on this
 //! host or another, or a forge's jobs, since sluice keeps one contract
 //! with flume for every way; a submit starts sluice's host process as it
-//! takes the entry in, and the settles' reads, the inbox and
-//! read-submission's overview and status, start it again where work
-//! waits and none runs, so the profile runs no `sluice step`, `run`,
+//! takes the entry in, and the inbox starts it again where work waits
+//! and none runs, so the profile runs no `sluice step`, `run`,
 //! `daemon` or `wait` (124, 125, C.6; sluice 135; sluice record 0093 as
 //! amended). The base lives at `<remote>/<base>` after one fetch where
 //! `.config/sluice.toml` lands it on a remote, and at the local base
@@ -114,6 +118,7 @@
 //! already submitted, and submits nothing; [`forecast_of`] reads its
 //! answer (203, 210, C.6; sluice 64, 65).
 
+pub mod ask;
 pub mod subscription;
 
 use crate::git::Git;
@@ -252,17 +257,6 @@ impl Sluice {
         ))
     }
 
-    /// sluice's JSON answer, or its words where it refused or could not
-    /// be read.
-    fn json(&self, dir: &Path, args: &[&str]) -> Result<Value, String> {
-        let (success, stdout, stderr) = self.run(dir, args)?;
-        let answer: Option<Value> = serde_json::from_str(stdout.trim()).ok();
-        match answer {
-            Some(answer) if success && answer.get("error").is_none() => Ok(answer),
-            _ => Err(words(args, &stdout, &stderr)),
-        }
-    }
-
     /// Whether the sluice run in `dir` merges work by itself: where
     /// `sluice --version` names a release from [`MERGES_BY_ITSELF`] on, and
     /// otherwise the words a submit is refused with, what sluice said and
@@ -329,16 +323,43 @@ impl Sluice {
         }
     }
 
-    /// Each branch sluice keeps a queue for in the repository.
-    fn branches(&self, dir: &Path) -> Result<Vec<String>, String> {
-        let overview = self.json(dir, &["overview", "--json"])?;
+    /// The variable `name` as sluice would see it: this profile's own
+    /// setting where it gives one, else the process's.
+    fn var(&self, name: &str) -> Option<std::ffi::OsString> {
+        match self.env.iter().rev().find(|(set, _)| set == name) {
+            Some((_, value)) => value.as_ref().map(Into::into),
+            None => std::env::var_os(name),
+        }
+    }
+
+    /// sluice host's JSON answer to `ask`, a read naming the folder `dir`,
+    /// asked on its socket, or its words where it refused or could not be
+    /// read (flume-reads-sluices-records-on-sluice-hosts-socket).
+    fn host_json(&self, ask: &Value) -> Result<Value, String> {
+        let read = ask["ask"].as_str().unwrap_or_default().to_string();
+        let socket = subscription::socket_from(|name| self.var(name))
+            .map_err(|reason| format!("sluice {read}: {reason}"))?;
+        let output = ask::ask(&socket, ask).map_err(|reason| format!("sluice {read}: {reason}"))?;
+        let answer: Option<Value> = serde_json::from_str(output.stdout.trim()).ok();
+        match answer {
+            Some(answer) if output.code == 0 && answer.get("error").is_none() => Ok(answer),
+            _ => Err(words(&[&read], &output.stdout, &output.stderr)),
+        }
+    }
+
+    /// Each branch sluice keeps a queue for in the repository, with the
+    /// version of its records, as sluice host's overview gives them.
+    fn bases(&self, folder: &str) -> Result<Vec<(String, Value)>, String> {
+        let overview = self.host_json(&ask::overview(folder))?;
         Ok(overview
             .get("branches")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|branch| branch.get("branch").and_then(Value::as_str))
-            .map(str::to_string)
+            .filter_map(|branch| {
+                let name = branch.get("branch").and_then(Value::as_str)?;
+                Some((name.to_string(), branch["version"].clone()))
+            })
             .collect())
     }
 }
@@ -611,8 +632,10 @@ fn said(record: &Value) -> String {
 fn state(record: &Value) -> Result<SubmissionState, String> {
     let name = text(record, "state").unwrap_or_default();
     Ok(match name.as_str() {
-        "queued" => SubmissionState::Waiting,
-        "testing" => SubmissionState::UnderTest,
+        "queued" | "waiting" => SubmissionState::Waiting,
+        // Tested and passed, or landing: under the merge queue's hand
+        // still, undecided until it lands (sluice 0.110.0's states).
+        "testing" | "passed" | "landing" => SubmissionState::UnderTest,
         "landed" => SubmissionState::Landed {
             commit: Revision::new(text(record, "landed_as").ok_or("a landing names no commit")?),
         },
@@ -981,9 +1004,8 @@ impl MergeQueue for Sluice {
     }
 
     fn read_submissions(&self, repository: &str, branches: &[&str]) -> Vec<ReadAcross> {
-        let git = Git::at(repository);
-        let dir = git.path();
-        let bases = match self.branches(dir) {
+        let folder = Git::at(repository).path().to_string_lossy().into_owned();
+        let bases = match self.bases(&folder) {
             Ok(bases) => bases,
             Err(reason) => {
                 return branches
@@ -997,18 +1019,25 @@ impl MergeQueue for Sluice {
                     .collect()
             }
         };
+        let names: Vec<String> = bases.iter().map(|(name, _)| name.clone()).collect();
         let mut newest: Vec<Option<(u64, Value)>> = vec![None; branches.len()];
         let mut passed_over = vec![];
-        for base in bases {
-            let status = match self.json(dir, &["status", &base, "--all", "--json"]) {
-                Ok(status) => status,
-                Err(words) => {
-                    passed_over.push(PassedOver {
-                        branch: base,
-                        words,
-                    });
-                    continue;
-                }
+        for (base, version) in bases {
+            let status = match ask::kept_at(&folder, &base, &version) {
+                Some(kept) => kept,
+                None => match self.host_json(&ask::status(&folder, &base)) {
+                    Ok(status) => {
+                        ask::keep(&folder, &names, &base, &version, &status);
+                        status
+                    }
+                    Err(words) => {
+                        passed_over.push(PassedOver {
+                            branch: base,
+                            words,
+                        });
+                        continue;
+                    }
+                },
             };
             for record in status
                 .get("submissions")
@@ -1139,6 +1168,23 @@ fn gone(branch: &str, stdout: &str, stderr: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_record_in_flight_is_read_undecided_in_each_state_sluice_names() {
+        for (name, read) in [
+            ("queued", SubmissionState::Waiting),
+            ("waiting", SubmissionState::Waiting),
+            ("testing", SubmissionState::UnderTest),
+            ("passed", SubmissionState::UnderTest),
+            ("landing", SubmissionState::UnderTest),
+        ] {
+            assert_eq!(
+                state(&serde_json::json!({ "state": name })),
+                Ok(read),
+                "{name}"
+            );
+        }
+    }
     use std::os::unix::fs::PermissionsExt;
 
     #[test]

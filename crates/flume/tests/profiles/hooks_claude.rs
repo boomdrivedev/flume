@@ -21,7 +21,10 @@ use std::time::{Duration, Instant};
 
 /// A host's scratch and a repository bound to `git-worktree` alone.
 struct Host {
+    /// Ends first, before its state is taken away.
+    resident: std::cell::RefCell<Option<resident::Resident>>,
     repository: Repository,
+    user: PathBuf,
 }
 
 /// One agent the printed command started, as its environment names it.
@@ -92,7 +95,11 @@ impl Host {
             "[profiles]\nplace = \"git-worktree\"\n",
         );
         repository.commit("the binding");
-        let host = Host { repository };
+        let host = Host {
+            resident: std::cell::RefCell::new(None),
+            repository,
+            user: resident::user_scratch(),
+        };
         for dir in [
             "state",
             "config/flume",
@@ -124,9 +131,8 @@ impl Host {
     }
 
     /// flume's binary in the repository, `env` over nothing of the
-    /// caller's flume, terminal or Claude Code session, `input` on its
-    /// standard input.
-    fn flume(&self, words: &[&str], env: &[(&str, &str)], input: &str) -> Ran {
+    /// caller's flume, terminal or Claude Code session.
+    fn command(&self, env: &[(&str, &str)]) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_flume"));
         command.current_dir(&self.repository.dir);
         for (name, _) in std::env::vars() {
@@ -142,7 +148,29 @@ impl Host {
             .env("XDG_CONFIG_HOME", self.path("config"))
             .env("XDG_DATA_HOME", self.path("data"))
             .env("HOME", self.path("home"))
-            .envs(env.iter().copied())
+            .env(resident::USER_SCRATCH, &self.user)
+            .envs(env.iter().copied());
+        command
+    }
+
+    /// The host's resident, started where none runs yet.
+    fn resident(&self) {
+        if self.resident.borrow().is_none() {
+            let mut command = self.command(&[]);
+            command.args(["host", "--every", resident::EVERY]);
+            *self.resident.borrow_mut() = Some(resident::Resident::start(command, &self.user));
+        }
+    }
+
+    /// flume's binary in the repository, `env` over nothing of the
+    /// caller's flume, terminal or Claude Code session, `input` on its
+    /// standard input.
+    fn flume(&self, words: &[&str], env: &[(&str, &str)], input: &str) -> Ran {
+        if resident::asks_status(words) {
+            self.resident();
+        }
+        let mut command = self.command(env);
+        command
             .args(words)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

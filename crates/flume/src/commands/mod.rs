@@ -558,9 +558,35 @@ impl Outcome {
     }
 }
 
+/// How a command builds the core, once it needs it: shared with the
+/// resident's tasks, which build it afresh for each settle and each read.
+pub type Build = std::sync::Arc<dyn Fn() -> Result<Engine, String> + Send + Sync>;
+
 /// Runs the command `args` give, the core built by `build` once it is
-/// needed (design 16).
+/// needed (design 16), `flume host` building the profiles' own.
 pub fn run<I, T>(args: I, build: &dyn Fn() -> Result<Engine, String>) -> Outcome
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    run_in(args, build, None)
+}
+
+/// Runs the command `args` give, the core built by `build` once it is
+/// needed, `flume host`'s among them (design 16).
+pub fn run_built<I, T>(args: I, build: &Build) -> Outcome
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    run_in(args, &**build, Some(build.clone()))
+}
+
+fn run_in<I, T>(
+    args: I,
+    build: &dyn Fn() -> Result<Engine, String>,
+    hosted: Option<Build>,
+) -> Outcome
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -586,7 +612,7 @@ where
             })
             .and_then(|bound| {
                 crate::resident::host(
-                    crate::profiles::core,
+                    hosted.unwrap_or_else(|| std::sync::Arc::new(crate::profiles::core)),
                     crate::profiles::merge_queue_subscription(),
                     bound,
                 )
@@ -710,12 +736,10 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         }
         Command::Status { place, line } => {
             let place = maybe(place)?;
-            let core = build()?;
-            if *line {
-                core.lines(place.as_ref())
-            } else {
-                core.status(place.as_ref())
-            }
+            crate::served::status(&crate::served::Asked {
+                place: place.map(|place| place.0),
+                line: *line,
+            })
         }
         Command::List { all } => build()?.list(*all),
         Command::Prompt { place, stage } => {

@@ -382,8 +382,10 @@ let
   rex = inputs.rex.packages.${pkgs.stdenv.hostPlatform.system}.rex or null;
 
   # sluice, which the merge-queue profile drives: a release that reads the
-  # host's configuration as the hosts' own sluice writes it; an older
-  # release refuses a key it does not know, and no place's checks run.
+  # host's configuration as the hosts' own sluice writes it, and whose
+  # sluice host answers the reads `overview` and `status` on its socket,
+  # as flume asks them (from 0.104.1); an older release refuses a key it
+  # does not know, and no place's checks run.
   # sluice publishes no x86_64-darwin build. Its builds are Nix's: on
   # Linux the loader and libgcc_s, on macOS libiconv, are store paths of the
   # machine that built them, set here to this tree's. Bump the version and
@@ -394,11 +396,11 @@ let
   # sandbox refuses: the walk's login shell puts first a sluice of its own
   # that gives those steps the walk's state folder and the test's scratch
   # (core.51).
-  sluiceVersion = "0.97.0";
+  sluiceVersion = "0.110.0";
   sluiceHashes = {
-    aarch64-darwin = "8f70e1b6d6eb546a1a92285f7d5203043d9d8943389d4133213b8b6e42b69bb9";
-    aarch64-linux = "d0e9d3f3bbb77d59a133674759e72a300991f3f240b59a709432d304a7617b64";
-    x86_64-linux = "c04784a0533a7bc741fab55e0dacaecbfab628ad63401440b6ad7e9159e690b9";
+    aarch64-darwin = "4852f87d72f3a882832d0768511c39d390db91ceeb58eb8031ce3ca01ef74d2a";
+    aarch64-linux = "c87687053304f5898dbb6f383a99f192e95f5a44acde0d330f76fb00d9c4ebf3";
+    x86_64-linux = "cb296e4a7908ce9e57241d81f2a41ccb481a6dbd2a4acee339245bb9eb1f6226";
   };
   sluiceSystem = pkgs.stdenv.hostPlatform.system;
   sluice = pkgs.stdenv.mkDerivation {

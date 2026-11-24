@@ -7,6 +7,7 @@
 #![allow(dead_code)]
 
 pub mod engine;
+pub mod resident;
 pub mod window;
 
 use std::path::{Path, PathBuf};
@@ -90,12 +91,15 @@ impl Drop for Scratch {
 }
 
 /// Runs git in `dir`, isolated, and gives its output; panics with git's
-/// words where it fails.
+/// words where it fails. It runs no hook of the repository's: the test's
+/// own git stands for a hand or another host, whose writes the branch
+/// protection a merge queue installs on this host never sees.
 pub fn git(dir: &Path, args: &[&str]) -> String {
     isolate();
     let output = Command::new("git")
         .arg("-C")
         .arg(dir)
+        .args(["-c", "core.hooksPath=/dev/null"])
         .args(args)
         .output()
         .expect("git runs");

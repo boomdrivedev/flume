@@ -415,7 +415,7 @@ fn stand_in_flume() {
         return;
     };
     let words: Vec<String> = serde_json::from_str(&words).expect("the command's words");
-    let build = || {
+    let build: commands::Build = std::sync::Arc::new(|| {
         let home = std::env::var("HOME").unwrap_or_default();
         let state = config::flume_state()?;
         core_with(
@@ -427,17 +427,22 @@ fn stand_in_flume() {
             )),
             Some(vec![("HOME".into(), home)]),
         )
-    };
-    let outcome = commands::run(std::iter::once("flume".to_string()).chain(words), &build);
+    });
+    let outcome = commands::run_built(std::iter::once("flume".to_string()).chain(words), &build);
     let mut out = std::io::stdout().lock();
     writeln!(out, "{}", outcome.text).expect("the answer written");
     out.flush().expect("the answer written");
     std::process::exit(i32::from(outcome.code));
 }
 
-/// One host's scratch: flume's state, its configuration, a home.
+/// One host's scratch: flume's state, its configuration, a home, and
+/// its resident once a command asks status, run as the stand-in flume
+/// (flume-host-serves-status-and-its-subscription-on-its-socket).
 struct Host {
+    /// Ends first, before its state is taken away.
+    resident: std::cell::RefCell<Option<common::resident::Resident>>,
     scratch: Scratch,
+    user: PathBuf,
 }
 
 /// What a command printed and its exit status.
@@ -462,7 +467,32 @@ impl Host {
         for dir in ["state", "config/flume", "home"] {
             std::fs::create_dir_all(scratch.path(dir)).expect("the host's directory");
         }
-        Host { scratch }
+        Host {
+            scratch,
+            user: common::resident::user_scratch(),
+            resident: std::cell::RefCell::new(None),
+        }
+    }
+
+    /// The host's resident, started where none runs yet, with `env` over
+    /// the host's own.
+    fn resident(&self, env: &[(&str, &str)]) {
+        if self.resident.borrow().is_some() {
+            return;
+        }
+        let me = std::env::current_exe().expect("the test binary");
+        let words = ["host", "--every", common::resident::EVERY];
+        let mut command = self.command(&me, &self.scratch.root, env);
+        command
+            .env(AS_FLUME, serde_json::to_string(&words).expect("words"))
+            .args([
+                "--exact",
+                "stand_in_flume",
+                "--nocapture",
+                "--test-threads=1",
+                "-q",
+            ]);
+        *self.resident.borrow_mut() = Some(common::resident::Resident::start(command, &self.user));
     }
 
     fn state(&self) -> PathBuf {
@@ -515,6 +545,7 @@ impl Host {
             }
         }
         command
+            .env(common::resident::USER_SCRATCH, &self.user)
             .env("XDG_STATE_HOME", self.scratch.path("state"))
             .env("XDG_CONFIG_HOME", self.scratch.path("config"))
             .env("XDG_DATA_HOME", self.home().join(".local/share"))
@@ -527,6 +558,9 @@ impl Host {
 
     /// flume's own binary.
     fn flume(&self, dir: &Path, words: &[&str], env: &[(&str, &str)]) -> Ran {
+        if common::resident::asks_status(words) {
+            self.resident(env);
+        }
         let env = launch_env(words, env);
         let output = self
             .command(Path::new(env!("CARGO_BIN_EXE_flume")), dir, &env)
@@ -541,6 +575,9 @@ impl Host {
 
     /// This test binary as flume, with the stand-ins.
     fn stand_in(&self, dir: &Path, words: &[&str], env: &[(&str, &str)]) -> Ran {
+        if common::resident::asks_status(words) {
+            self.resident(env);
+        }
         let me = std::env::current_exe().expect("the test binary");
         let env = launch_env(words, env);
         let output = self
@@ -670,11 +707,17 @@ fn the_same_answer_through_the_command_line_and_the_core() {
     let place = host.place_of(&repository, "fix--one");
     let ran = host.flume(&repository.dir, &["status", &place, "--json"], &[]);
     assert_eq!(ran.code, 0, "{}", ran.text);
-    let core = core_over(
+    // The host's resident answers status, over the profiles the stand-in
+    // flume builds its core with.
+    let home = host.home().to_string_lossy().into_owned();
+    let core = core_with(
         &host.state(),
         HostConfig::default(),
-        None,
-        BuiltIn::with_login(&[("HOME", &host.home().to_string_lossy())]),
+        flume::host::recipient(),
+        Arc::new(StandIn(
+            BuiltIn::with_login(&[("HOME", &home)]).over(&host.state()),
+        )),
+        Some(vec![("HOME".into(), home.clone())]),
     )
     .expect("the core over the same state");
     assert_eq!(ran.answer(), core.status(Some(&PlaceId::new(&place))));
@@ -1025,6 +1068,7 @@ fn a_watch_over_a_scratch_repository() {
             .filter(|line| line.starts_with("step "))
             .count()
     };
+    host.resident(&env);
     let before = steps();
     let began = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2320,6 +2364,7 @@ fn one_places_line_under_the_printed_command() {
     );
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "fix--one");
+    host.resident(&[]);
     let before = held_of(&host, &place);
     assert_eq!(before.state.stages[0].starts, 1, "the code stage started");
     let files = files_under(&host.state());
