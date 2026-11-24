@@ -7,14 +7,18 @@
 //! the one subscription it holds to the merge queue's own resident, which
 //! follows the repositories of the places a change there can move, and
 //! settles on each change it hears; where it heard none for a minute, its
-//! bound, it settles once as a backstop.
+//! bound, it settles once as a backstop. It serves status, and a
+//! subscription to status, on its own socket ([`crate::served`]), read
+//! again after each settle and at each event in flume's state folder
+//! (flume-host-serves-status-and-its-subscription-on-its-socket).
 //!
 //! The core stays synchronous behind this tokio edge: a settle is built
 //! and run on tokio's blocking pool, and the edge decides when to ask
 //! again. The edge names no merge queue (core.1): what it subscribes to is
 //! the profile's, through [`Subscribes`].
 
-use flume_core::{Answer, Engine};
+use crate::commands::Build;
+use flume_core::Answer;
 use flume_seams::Seconds;
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -64,10 +68,13 @@ pub type Say = Arc<dyn Fn(&str) + Send + Sync>;
 /// where none was heard. The subscription follows the repositories the
 /// newest settle gave, and is held again `every` after it ended. It ends
 /// once its subscription's task has (workers-end-with-their-owner).
+/// `changed` moves after each settle, so the subscriptions to status read
+/// it again.
 pub async fn run<S: Settles, Q: Subscribes>(
     settles: &S,
     queue: Q,
     every: Duration,
+    changed: watch::Sender<u64>,
     stop: CancellationToken,
     say: Say,
 ) {
@@ -108,6 +115,7 @@ pub async fn run<S: Settles, Q: Subscribes>(
             }
             Err(words) => say(&format!("the watch's settle was not asked: {words}")),
         }
+        changed.send_modify(|moves| *moves = moves.wrapping_add(1));
         let backstop = Instant::now() + every;
         tokio::select! {
             _ = stop.cancelled() => break,
@@ -129,20 +137,20 @@ pub async fn run<S: Settles, Q: Subscribes>(
 /// settle with `bound` on tokio's blocking pool, then reads the
 /// repositories to follow (208, 225; core.45).
 pub struct Watch {
-    build: fn() -> Result<Engine, String>,
+    build: Build,
     bound: Seconds,
     say: Say,
 }
 
 impl Watch {
-    pub fn new(build: fn() -> Result<Engine, String>, bound: Seconds, say: Say) -> Watch {
+    pub fn new(build: Build, bound: Seconds, say: Say) -> Watch {
         Watch { build, bound, say }
     }
 }
 
 impl Settles for Watch {
     async fn settle(&self) -> Result<BTreeSet<String>, String> {
-        let build = self.build;
+        let build = self.build.clone();
         let bound = self.bound;
         let (answer, followed) = tokio::task::spawn_blocking(move || {
             let core = build()?;
@@ -191,31 +199,44 @@ pub fn lock(state: &std::path::Path) -> Result<std::fs::File, String> {
 }
 
 /// `flume host`: the host's resident over its own core and the merge
-/// queue's subscription, keeping watch with `every` as its bound until a
-/// SIGTERM or a SIGINT, on a runtime of one thread, the core's calls on
-/// its blocking pool (the-runtime-flavour-is-chosen-in-main-and-tests-
-/// pause-tokios-clock); the words that kept it from running otherwise.
-pub fn host<Q: Subscribes>(
-    build: fn() -> Result<Engine, String>,
-    queue: Q,
-    every: Seconds,
-) -> Result<(), String> {
-    let _lock = lock(&crate::host::config::flume_state()?)?;
+/// queue's subscription, keeping watch with `every` as its bound and
+/// serving status on its socket until a SIGTERM or a SIGINT, on a runtime
+/// of one thread, the core's calls on its blocking pool (the-runtime-
+/// flavour-is-chosen-in-main-and-tests-pause-tokios-clock); the words that
+/// kept it from running otherwise.
+pub fn host<Q: Subscribes>(build: Build, queue: Q, every: Seconds) -> Result<(), String> {
+    let state = crate::host::config::flume_state()?;
+    let _lock = lock(&state)?;
+    let socket = crate::served::socket()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| format!("building flume host's runtime: {error}"))?;
-    runtime.block_on(async {
+    let ran = runtime.block_on(async {
         use tokio::signal::unix::{signal, SignalKind};
         let mut terminate = signal(SignalKind::terminate())
             .map_err(|error| format!("listening for SIGTERM: {error}"))?;
         let mut interrupt = signal(SignalKind::interrupt())
             .map_err(|error| format!("listening for SIGINT: {error}"))?;
+        let listener = crate::served::bind(&socket)?;
         let stop = CancellationToken::new();
         let say: Say = Arc::new(|words| eprintln!("flume host: {words}"));
         say(&format!(
-            "flume {} keeps watch over the host, settling at each change its merge queue's subscription hears and at least every {every} seconds",
-            crate::VERSION
+            "flume {} keeps watch over the host, settling at each change its merge queue's subscription hears and at least every {every} seconds, and serves status on {}",
+            crate::VERSION,
+            socket.display()
+        ));
+        let (changed, following) = watch::channel(0u64);
+        let _events = crate::served::watch_state(&state, changed.clone())
+            .map_err(|words| say(&format!("{words}; status is read again only after a settle")))
+            .ok();
+        let tasks = TaskTracker::new();
+        tasks.spawn(crate::served::serve(
+            listener,
+            Arc::new(crate::served::CoreReads::new(build.clone())),
+            following,
+            stop.clone(),
+            say.clone(),
         ));
         let stopping = stop.clone();
         let watch = Watch::new(build, every, say.clone());
@@ -223,6 +244,7 @@ pub fn host<Q: Subscribes>(
             &watch,
             queue,
             Duration::from_secs(every),
+            changed,
             stop,
             say.clone(),
         );
@@ -232,9 +254,13 @@ pub fn host<Q: Subscribes>(
             _ = terminate.recv() => { stopping.cancel(); running.await; }
             _ = interrupt.recv() => { stopping.cancel(); running.await; }
         }
+        tasks.close();
+        tasks.wait().await;
         say("stopped");
         Ok(())
-    })
+    });
+    let _ = std::fs::remove_file(&socket);
+    ran
 }
 
 #[cfg(test)]
@@ -323,8 +349,10 @@ mod tests {
     ) -> (CancellationToken, tokio::task::JoinHandle<()>) {
         let stop = CancellationToken::new();
         let run_stop = stop.clone();
-        let handle =
-            tokio::spawn(async move { run(&settles, queue, MINUTE, run_stop, quiet()).await });
+        let handle = tokio::spawn(async move {
+            let (changed, _) = watch::channel(0);
+            run(&settles, queue, MINUTE, changed, run_stop, quiet()).await
+        });
         (stop, handle)
     }
 
@@ -443,6 +471,32 @@ mod tests {
             2,
             "the backstop settled while none was held"
         );
+        stop.cancel();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn each_settle_moves_the_subscriptions_to_read_again() {
+        let settles = Counted::new(&[]);
+        let (changed, mut following) = watch::channel(0u64);
+        let stop = CancellationToken::new();
+        let run_stop = stop.clone();
+        let run_settles = settles.clone();
+        let handle = tokio::spawn(async move {
+            run(
+                &run_settles,
+                Driven::default(),
+                MINUTE,
+                changed,
+                run_stop,
+                quiet(),
+            )
+            .await
+        });
+        sleep(MINUTE * 2 + Duration::from_secs(1)).await;
+        assert_eq!(settles.count(), 3);
+        assert!(following.has_changed().unwrap(), "the settles moved it");
+        assert_eq!(*following.borrow_and_update(), 3, "once a settle");
         stop.cancel();
         handle.await.unwrap();
     }

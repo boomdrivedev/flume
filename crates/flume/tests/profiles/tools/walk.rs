@@ -38,6 +38,7 @@
 //! own script, and every Rex server under that state stopped when it ends,
 //! every Rex call it makes bounded.
 
+use crate::common::resident;
 use crate::common::*;
 use serde_json::Value;
 use std::os::unix::fs::PermissionsExt;
@@ -164,13 +165,27 @@ pub struct Walk {
     /// The folder the stand-in reads each start's script from, which its
     /// account gives as `STAND_IN_SCRIPTS`, on a host under herdr.
     scripts: Option<PathBuf>,
+    /// The host's resident, once a command asked status, shared with each
+    /// walkthrough of the same home.
+    resident: std::cell::RefCell<Option<std::sync::Arc<resident::Resident>>>,
+    /// The pinned sluice's host process, run as `sluice daemon` as a
+    /// host's service manager runs it, so flume asks its socket and starts
+    /// none (flume-reads-sluices-records-on-sluice-hosts-socket).
+    sluice: std::cell::RefCell<Option<std::sync::Arc<resident::Resident>>>,
+    /// The folder flume's commands find sluice host's socket in where it
+    /// is not sluice's own: the stand-in for sluice host on a base that
+    /// takes pull requests.
+    sluice_seen: std::cell::RefCell<Option<PathBuf>>,
 }
 
 impl Drop for Walk {
     fn drop(&mut self) {
-        // Released first, so every run ends and the host process of the
-        // walk's state folder ends with nothing in play.
+        // The resident first, so it settles nothing more; then released,
+        // so every run ends and the host process of the walk's state
+        // folder ends with nothing in play.
+        self.resident.borrow_mut().take();
         self.release();
+        self.sluice.borrow_mut().take();
         unlink_user_scratch(&self.repository);
     }
 }
@@ -271,8 +286,12 @@ impl Walk {
             runs: std::cell::Cell::new(0),
             account,
             scripts: None,
+            resident: std::cell::RefCell::new(None),
+            sluice: std::cell::RefCell::new(None),
+            sluice_seen: std::cell::RefCell::new(None),
         };
         walk.configure("");
+        walk.sluice_daemon();
         walk
     }
 
@@ -289,7 +308,73 @@ impl Walk {
     /// walkthrough's, so its repositories share one host.
     pub fn with_home(mut self, home: PathBuf) -> Walk {
         self.home = home;
+        self.sluice.borrow_mut().take();
+        self.sluice_daemon();
         self
+    }
+
+    /// The pinned sluice's host process the walkthrough runs ended at once,
+    /// as a crash ends it, and waited on; its pid.
+    pub fn sluice_daemon_killed(&self) -> i32 {
+        let daemon = self.sluice.borrow();
+        let daemon = daemon.as_ref().expect("the walkthrough's sluice daemon");
+        let pid = daemon.pid() as i32;
+        daemon.kill();
+        pid
+    }
+
+    /// The pinned sluice's host process for the walkthrough's home, as a
+    /// host's service manager keeps it, shared with each walkthrough of
+    /// the same home and repository.
+    fn sluice_daemon(&self) {
+        // One host process for each state folder: the walkthroughs that
+        // share a home share the first's user scratch, where its socket is.
+        static SCRATCHES: std::sync::Mutex<Vec<(PathBuf, PathBuf)>> =
+            std::sync::Mutex::new(Vec::new());
+        let folder = self.home.join("state/sluice");
+        std::fs::create_dir_all(&folder).expect("sluice's state folder");
+        let folder = folder.canonicalize().expect("sluice's state folder's path");
+        let scratch = {
+            let mut scratches = SCRATCHES.lock().unwrap_or_else(|e| e.into_inner());
+            match scratches.iter().find(|(at, _)| *at == folder) {
+                Some((_, scratch)) => scratch.clone(),
+                None => {
+                    let scratch = user_scratch(&self.repository);
+                    scratches.push((folder.clone(), scratch.clone()));
+                    scratch
+                }
+            }
+        };
+        if scratch != user_scratch(&self.repository) {
+            // Every sluice of this walkthrough's, its own and its login
+            // shell's, reaches the shared host process.
+            *self.sluice_seen.borrow_mut() = Some(scratch.clone());
+            pinned_sluice(&self.repository.scratch.path("bin"), &scratch);
+            if self.shell.is_some() {
+                login_shell(&self.repository.scratch.path("login"), &self.path, &scratch);
+            }
+        }
+        let env = |name: &str| -> Option<std::ffi::OsString> {
+            match name {
+                "XDG_STATE_HOME" => Some(self.home.join("state").into()),
+                "HOME" => Some(self.home.clone().into()),
+                USER_SCRATCH => Some(scratch.clone().into()),
+                _ => None,
+            }
+        };
+        let socket = flume::profiles::merge_queue::sluice::subscription::socket_from(env)
+            .expect("the pinned sluice's socket");
+        let key = folder.clone();
+        let started = resident::shared_until(
+            &key,
+            || {
+                let mut command = self.command("sluice", &self.repository.dir);
+                command.arg("daemon").env(USER_SCRATCH, &scratch);
+                command
+            },
+            Some(&socket),
+        );
+        *self.sluice.borrow_mut() = Some(started);
     }
 
     /// The walkthrough's home, its configuration under `config/flume`.
@@ -330,10 +415,30 @@ impl Walk {
     /// on `PATH` as `sluice`, so each submission is a pull request that
     /// waits to be taken in.
     pub fn sluice_takes_pull_requests(&self) {
-        stand_in_pull_requests(
-            &self.repository.scratch.path("bin"),
-            &user_scratch(&self.repository),
+        let bin = self.repository.scratch.path("bin");
+        stand_in_pull_requests(&bin, &user_scratch(&self.repository));
+        let state = self.home.join("state");
+        let socket = |scratch: &Path| {
+            let scratch = scratch.to_path_buf();
+            let state = state.clone();
+            flume::profiles::merge_queue::sluice::subscription::socket_from(|name| match name {
+                "XDG_STATE_HOME" => Some(state.clone().into()),
+                USER_SCRATCH => Some(scratch.clone().into()),
+                _ => None,
+            })
+            .expect("sluice host's socket")
+        };
+        // sluice's hook asks through it too, and takes a user scratch
+        // closed to everyone else.
+        let seen = resident::user_scratch();
+        std::fs::set_permissions(&seen, std::fs::Permissions::from_mode(0o700))
+            .expect("the stand-in's folder closed to others");
+        pull_request_host(
+            &socket(&seen),
+            &socket(&user_scratch(&self.repository)),
+            &bin.join(".sluice-request"),
         );
+        *self.sluice_seen.borrow_mut() = Some(seen);
     }
 
     /// The place's pull request taken in as an entry, as the host that
@@ -420,7 +525,17 @@ impl Walk {
             .env("XDG_DATA_HOME", self.home.join("data"))
             .env("PATH", &self.path)
             .env("OPENSPEC_TELEMETRY", "0")
-            .env(USER_SCRATCH, user_scratch(&self.repository))
+            .env(
+                USER_SCRATCH,
+                self.sluice_seen
+                    .borrow()
+                    .clone()
+                    .unwrap_or_else(|| user_scratch(&self.repository)),
+            )
+            .env(
+                resident::USER_SCRATCH,
+                resident::user_scratch_of(&self.home.join("state")),
+            )
             .stdin(Stdio::null());
         if let Some(shell) = &self.shell {
             command.env("SHELL", shell);
@@ -434,11 +549,30 @@ impl Walk {
     /// names no recipient and finds no role behind its stream is refused
     /// (7, 193).
     fn flume_command(&self, words: &[&str]) -> Command {
+        if resident::asks_status(words) {
+            self.resident();
+        }
         let mut command = self.command(env!("CARGO_BIN_EXE_flume"), &self.repository.dir);
         if words.contains(&"launch") {
             command.env("FLUME_RECIPIENT", "caller");
         }
         command
+    }
+
+    /// The host's resident, `flume host` as the host's service manager
+    /// runs it, started where none runs yet for the walkthrough's home
+    /// (a-tool-has-no-mode-that-only-its-tests-use).
+    pub fn resident(&self) {
+        if self.resident.borrow().is_some() {
+            return;
+        }
+        let dir = resident::user_scratch_of(&self.home.join("state"));
+        let started = resident::shared(&dir, || {
+            let mut command = self.command(env!("CARGO_BIN_EXE_flume"), &self.repository.dir);
+            command.args(["host", "--every", resident::EVERY]);
+            command
+        });
+        *self.resident.borrow_mut() = Some(started);
     }
 
     /// flume's answer to `words`, as JSON, and whether it refused.
@@ -451,6 +585,9 @@ impl Walk {
     /// from the session `env` names, or from none where it names none (7,
     /// 193).
     pub fn flume_ran_from(&self, words: &[&str], env: &[(&str, &str)]) -> (Value, bool) {
+        if resident::asks_status(words) {
+            self.resident();
+        }
         let mut command = self.command(env!("CARGO_BIN_EXE_flume"), &self.repository.dir);
         command.envs(env.iter().copied());
         Walk::answered(command, words)
@@ -983,6 +1120,91 @@ esac
         number = PULL_REQUEST,
     );
     sluice_script(bin, scratch, &body);
+}
+
+/// The stand-in for sluice host on a base that takes pull requests,
+/// listening on `socket` for flume's asks: each line passes to the
+/// pinned sluice's host process on `pinned` and back, but the output of a
+/// `status`, whose entries of the branch the stand-in for sluice records
+/// in `state` it gives as sluice records one intake took in from a pull
+/// request, `pull/<n>` its `from.worktree` and the branch its
+/// `from.head`, as the stand-in's own `status` does. Its threads end with
+/// the test's process.
+pub fn pull_request_host(socket: &Path, pinned: &Path, state: &Path) {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    let listener = UnixListener::bind(socket)
+        .unwrap_or_else(|error| panic!("no room for {}: {error}", socket.display()));
+    let (pinned, state) = (pinned.to_path_buf(), state.to_path_buf());
+    std::thread::spawn(move || {
+        for client in listener.incoming().flatten() {
+            let Ok(upstream) = UnixStream::connect(&pinned) else {
+                continue;
+            };
+            let asked_status = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (mut to_upstream, from_client) = (
+                upstream.try_clone().expect("upstream"),
+                client.try_clone().expect("client"),
+            );
+            let asked = asked_status.clone();
+            std::thread::spawn(move || {
+                for line in BufReader::new(from_client).lines().map_while(Result::ok) {
+                    if serde_json::from_str::<Value>(&line).is_ok_and(|ask| ask["ask"] == "status")
+                    {
+                        asked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if writeln!(to_upstream, "{line}").is_err() {
+                        return;
+                    }
+                }
+                let _ = to_upstream.shutdown(std::net::Shutdown::Write);
+            });
+            let state = state.clone();
+            std::thread::spawn(move || {
+                let mut to_client = client;
+                for line in BufReader::new(upstream).lines().map_while(Result::ok) {
+                    let mut line = line;
+                    if asked_status.load(std::sync::atomic::Ordering::SeqCst) {
+                        line = as_taken_in(&line, &state);
+                    }
+                    if writeln!(to_client, "{line}").is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+}
+
+/// sluice host's `output` line `line`, its `status` document's entries of
+/// the branch in `state/branch` given as taken in from the pull request.
+fn as_taken_in(line: &str, state: &Path) -> String {
+    let Ok(branch) = std::fs::read_to_string(state.join("branch")) else {
+        return line.to_string();
+    };
+    let branch = branch.trim();
+    let Ok(mut answer) = serde_json::from_str::<Value>(line) else {
+        return line.to_string();
+    };
+    let Some(stdout) = answer["output"]["stdout"].as_str() else {
+        return line.to_string();
+    };
+    let Ok(mut document) = serde_json::from_str::<Value>(stdout) else {
+        return line.to_string();
+    };
+    if let Some(entries) = document["submissions"].as_array_mut() {
+        for entry in entries {
+            if entry["from"]["worktree"] == branch {
+                entry["from"]["worktree"] = Value::from(format!("pull/{PULL_REQUEST}"));
+                entry["from"]["head"] = Value::from(branch);
+                if let Some(from) = entry["from"].as_object_mut() {
+                    from.remove("path");
+                }
+            }
+        }
+    }
+    answer["output"]["stdout"] = Value::from(document.to_string());
+    answer.to_string()
 }
 
 /// The stand-in's run waited on to its end.

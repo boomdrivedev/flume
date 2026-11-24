@@ -7,7 +7,8 @@ use flume::{commands, profiles};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    commands::run(std::env::args_os(), &profiles::core).exit()
+    let build: commands::Build = std::sync::Arc::new(profiles::core);
+    commands::run_built(std::env::args_os(), &build).exit()
 }
 
 #[cfg(test)]

@@ -2996,9 +2996,8 @@ fn an_agent_that_began_after_its_start_read_never_begun_is_begun_and_a_retry_lea
     );
 }
 
-/// `flume status --json` under the scratch host, the herdr terminal
-/// bound, its terminal setup.
-fn terminal_setup(server: &TestServer, flume: &Path) -> Value {
+/// flume's binary under the scratch host.
+fn flume_under(server: &TestServer, flume: &Path, user: &Path) -> Command {
     let mut command = Command::new(flume);
     for (name, _) in std::env::vars_os() {
         let name = name.to_string_lossy().into_owned();
@@ -3006,14 +3005,32 @@ fn terminal_setup(server: &TestServer, flume: &Path) -> Value {
             command.env_remove(name);
         }
     }
-    let output = command
-        .args(["status", "--json"])
+    command
         .current_dir(server.scratch.path("home"))
         .env("HOME", server.scratch.path("home"))
         .env("XDG_STATE_HOME", server.scratch.path("state"))
         .env("XDG_CONFIG_HOME", server.scratch.path("config"))
         .env("XDG_DATA_HOME", server.scratch.path("data"))
-        .stdin(Stdio::null())
+        .env(crate::common::resident::USER_SCRATCH, user)
+        .stdin(Stdio::null());
+    command
+}
+
+/// The scratch host's resident, `flume host` as a host's service manager
+/// runs it, which answers status.
+fn resident_under(server: &TestServer, flume: &Path) -> crate::common::resident::Resident {
+    let user = crate::common::resident::user_scratch_of(&server.scratch.path("state"));
+    let mut command = flume_under(server, flume, &user);
+    command.args(["host", "--every", crate::common::resident::EVERY]);
+    crate::common::resident::Resident::start(command, &user)
+}
+
+/// `flume status --json` under the scratch host, the herdr terminal
+/// bound, its terminal setup, as its resident answers it.
+fn terminal_setup(server: &TestServer, flume: &Path) -> Value {
+    let user = crate::common::resident::user_scratch_of(&server.scratch.path("state"));
+    let output = flume_under(server, flume, &user)
+        .args(["status", "--json"])
         .output()
         .expect("flume runs");
     let text = String::from_utf8_lossy(&output.stdout);
@@ -3032,6 +3049,7 @@ fn a_startups_setup_is_given_by_status_while_its_server_runs() {
     // server runs, and none once it has stopped.
     let mut server = TestServer::start("setup");
     let flume = Path::new(env!("CARGO_BIN_EXE_flume"));
+    let _resident = resident_under(&server, flume);
     let plugin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/herdr")
         .canonicalize()

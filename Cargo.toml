@@ -50,6 +50,10 @@ tokio-util = { version = "0.7", features = ["rt"] }
 # The key sluice names its host's socket by, the SHA-1 of its state
 # folder's path (record 0082).
 sha1 = "0.10"
+# The events of flume's state folder, by which flume host reads status
+# again for its subscriptions
+# (residents-learn-of-change-from-events-and-poll-once-a-minute-as-a-backstop).
+notify = "9"
 # The engine's times, a statechart region's entered time and a snapshot's
 # moment, at the version weir's engine reads them in.
 time = "0.3"

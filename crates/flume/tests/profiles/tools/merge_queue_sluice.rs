@@ -85,6 +85,10 @@ struct Harness {
     home: PathBuf,
     place: PlaceRef,
     locked: RefCell<Vec<PathBuf>>,
+    /// The pinned sluice's host process, run as `sluice daemon` as a
+    /// host's service manager runs it: the profile's reads ask its socket
+    /// and start none (flume-reads-sluices-records-on-sluice-hosts-socket).
+    daemon: RefCell<Option<crate::common::resident::Resident>>,
 }
 
 impl Harness {
@@ -125,13 +129,62 @@ impl Harness {
             Some(&user_scratch(&repository).to_string_lossy()),
         );
         let place = Harness::worktree(&repository, "fix/one", "fix--one", "work.rs");
-        Harness {
+        let harness = Harness {
             repository,
             seam,
             home,
             place,
             locked: RefCell::new(vec![]),
+            daemon: RefCell::new(None),
+        };
+        harness.daemon();
+        harness
+    }
+
+    /// sluice run by the test in `dir`, in the scratch home, with no
+    /// multiplexer's session.
+    fn sluice_command(&self, dir: &Path) -> Command {
+        let mut command = Command::new("sluice");
+        command.current_dir(dir).stdin(Stdio::null());
+        for (name, _) in std::env::vars() {
+            if name.starts_with("SLUICE_")
+                || name.starts_with("HERDR_")
+                || name.starts_with("REX_")
+                || name.starts_with("TMUX")
+            {
+                command.env_remove(name);
+            }
         }
+        command
+            .env("HOME", &self.home)
+            .env("XDG_STATE_HOME", self.home.join("state"))
+            .env("XDG_CONFIG_HOME", self.home.join("config"))
+            .env(USER_SCRATCH, user_scratch(&self.repository));
+        command
+    }
+
+    /// The pinned sluice's host process, started as `sluice daemon`, and
+    /// ready once its socket answers.
+    fn daemon(&self) {
+        let state = self.home.join("state");
+        fs::create_dir_all(state.join("sluice")).expect("sluice's state folder");
+        let scratch = user_scratch(&self.repository);
+        let socket =
+            flume::profiles::merge_queue::sluice::subscription::socket_from(|name| match name {
+                "XDG_STATE_HOME" => Some(state.clone().into()),
+                USER_SCRATCH => Some(scratch.clone().into()),
+                _ => None,
+            })
+            .expect("the pinned sluice's socket");
+        let mut command = self.sluice_command(&self.repository.dir);
+        command.arg("daemon");
+        let log = self.repository.scratch.path("sluice-daemon.log");
+        *self.daemon.borrow_mut() = Some(crate::common::resident::Resident::until(
+            command,
+            log,
+            None,
+            move || std::os::unix::net::UnixStream::connect(&socket).is_ok(),
+        ));
     }
 
     /// A worktree on `branch` cut from main at `places/<short>`, holding
@@ -207,22 +260,9 @@ impl Harness {
     /// sluice run by the test in `dir`, in the scratch home, with no
     /// multiplexer's session: whether it succeeded, and its JSON answer.
     fn sluice_ran(&self, dir: &Path, args: &[&str]) -> (bool, Value) {
-        let mut command = Command::new("sluice");
-        command.args(args).current_dir(dir).stdin(Stdio::null());
-        for (name, _) in std::env::vars() {
-            if name.starts_with("SLUICE_")
-                || name.starts_with("HERDR_")
-                || name.starts_with("REX_")
-                || name.starts_with("TMUX")
-            {
-                command.env_remove(name);
-            }
-        }
-        let output = command
-            .env("HOME", &self.home)
-            .env("XDG_STATE_HOME", self.home.join("state"))
-            .env("XDG_CONFIG_HOME", self.home.join("config"))
-            .env(USER_SCRATCH, user_scratch(&self.repository))
+        let output = self
+            .sluice_command(dir)
+            .args(args)
             .output()
             .expect("sluice runs");
         let answer = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
@@ -359,6 +399,7 @@ impl Drop for Harness {
         // Released first, so every run ends and the host process of the
         // test's state folder ends with nothing in play.
         self.release();
+        self.daemon.borrow_mut().take();
         for path in self.locked.borrow_mut().drain(..).rev() {
             let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
         }
@@ -1096,7 +1137,10 @@ fn a_failed_entry_is_given_with_sluices_notice_until_it_is_confirmed() {
 }
 
 #[test]
-fn every_branch_asked_at_once_is_read_from_one_overview_and_one_status_of_each_base() {
+fn every_branch_asked_at_once_is_read_from_sluice_hosts_socket_with_no_sluice_command() {
+    // flume-reads-sluices-records-on-sluice-hosts-socket: read-submission
+    // asks the pinned sluice's host process on its socket, and runs no
+    // sluice command; the documents' tests count its asks.
     let harness = Harness::new();
     let (one, head) = harness.place();
     let two = Harness::worktree(&harness.repository, "fix/two", "fix--two", "two.rs");
@@ -1155,24 +1199,24 @@ fn every_branch_asked_at_once_is_read_from_one_overview_and_one_status_of_each_b
         ],
         "each branch's own submission"
     );
-    let ran = fs::read_to_string(&ran).expect("sluice ran");
     assert_eq!(
-        ran.lines().collect::<Vec<_>>(),
-        vec!["overview", "status"],
-        "sluice's commands, once for the three branches"
+        fs::read_to_string(&ran).unwrap_or_default(),
+        "",
+        "the read ran a sluice command"
     );
 }
 
 #[test]
 fn a_queue_the_settles_never_step_is_decided_by_sluices_host_process() {
     // The merge-queue-profile scenarios "A queue the settles never step"
-    // and "A queue nothing drives": with no `sluice run` or `sluice
-    // daemon` live, the place's entry, its check held, is read open; once
-    // the hold goes, the profile's step, read-submission and inbox, asked
-    // as a settle asks them, find it landed by sluice's host process,
-    // which the submit started, each step answering that main's queue
-    // moves on its own, and every sluice command the profile ran after
-    // the submit a read (124, 125, C.6; sluice 135).
+    // and "A queue nothing drives": with sluice's host process run as
+    // `sluice daemon` and no `sluice run` live, the place's entry, its
+    // check held, is read open; once the hold goes, the profile's step,
+    // read-submission and inbox, asked as a settle asks them, find it
+    // landed by sluice's host process, each step answering that main's
+    // queue moves on its own, and every sluice command the profile ran
+    // after the submit the inbox or a confirm, read-submission asking
+    // sluice host's socket (124, 125, C.6; sluice 135).
     let harness = Harness::new();
     let (place, head) = harness.place();
     let (seam, asked) = harness.counting();
@@ -1233,10 +1277,7 @@ fn a_queue_the_settles_never_step_is_decided_by_sluices_host_process() {
     );
     for line in commands {
         assert!(
-            matches!(
-                line.split_whitespace().next(),
-                Some("inbox" | "confirm" | "overview" | "status")
-            ),
+            matches!(line.split_whitespace().next(), Some("inbox" | "confirm")),
             "a sluice command after the submit: {line}"
         );
     }
@@ -1437,10 +1478,30 @@ fn a_pull_request_with_no_entry_is_held_and_the_entry_taken_in_from_it_is_read_t
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
     .expect("a PATH");
+    // The profile's reads ask the stand-in for sluice host, which gives
+    // the entries as the stand-in's own `status` does.
+    let seen = crate::common::resident::user_scratch();
+    fs::set_permissions(&seen, fs::Permissions::from_mode(0o700)).expect("closed to others");
+    let state = harness.home.join("state");
+    let socket = |scratch: &Path| {
+        let (state, scratch) = (state.clone(), scratch.to_path_buf());
+        flume::profiles::merge_queue::sluice::subscription::socket_from(|name| match name {
+            "XDG_STATE_HOME" => Some(state.clone().into()),
+            USER_SCRATCH => Some(scratch.clone().into()),
+            _ => None,
+        })
+        .expect("sluice host's socket")
+    };
+    super::walk::pull_request_host(
+        &socket(&seen),
+        &socket(&user_scratch(&harness.repository)),
+        &bin.join(".sluice-request"),
+    );
     let seam = harness
         .seam
         .clone()
-        .with_env("PATH", Some(&path.to_string_lossy()));
+        .with_env("PATH", Some(&path.to_string_lossy()))
+        .with_env(USER_SCRATCH, Some(&seen.to_string_lossy()));
     let request = super::walk::PULL_REQUEST.to_string();
     assert_eq!(
         seam.submit(&place, &from_worktree(&head)),
@@ -1849,12 +1910,14 @@ fn host_pid(walk: &Walk) -> Option<i32> {
 }
 
 #[test]
-fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_read() {
+fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_inbox() {
     // S109 and sluice 135: the chore's check is held, and sluice's host
-    // process, which its submit started, is ended while the check waits,
-    // its run outliving it. The hold then goes, and the watch's first
-    // settle reads the submission, which starts a host process again;
-    // that one lands the chore, and a settle reads the landing and tidies
+    // process is ended while the check waits, its run outliving it. The
+    // hold then goes, and the watch's first settle collects the inbox, a
+    // sluice command, which starts a host process again, as sluice's own
+    // commands do; flume's reads ask its socket and start none
+    // (flume-reads-sluices-records-on-sluice-hosts-socket). That host
+    // process lands the chore, and a settle reads the landing and tidies
     // it, no settle running a round of the queue (124, 208, S109).
     let walk = Walk::new("watch-restart");
     let log = counting_sluice(&walk);
@@ -1885,17 +1948,11 @@ fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_rea
     // of a host process killed under a run waits.
     std::thread::sleep(Duration::from_secs(1));
     let ended = host_pid(&walk).expect("the host process the state folder records");
-    // SAFETY: a signal to the host process of the walk's own state folder.
-    unsafe { libc::kill(ended, libc::SIGKILL) };
-    let deadline = Instant::now() + Duration::from_secs(30);
-    // SAFETY: signal 0 only asks whether the process stands.
-    while unsafe { libc::kill(ended, 0) } == 0 {
-        assert!(
-            Instant::now() < deadline,
-            "the host process {ended} never ended"
-        );
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    assert_eq!(
+        walk.sluice_daemon_killed(),
+        ended,
+        "the host process is the walk's own"
+    );
     walk.release();
 
     let watched = asked(&log).len();
@@ -1903,7 +1960,7 @@ fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_rea
     let started = host_pid(&walk);
     assert!(
         started.is_some_and(|pid| pid != ended),
-        "the settle's read started no host process: {started:?} after {ended}"
+        "the settle's inbox started no host process: {started:?} after {ended}"
     );
     let began = Instant::now();
     loop {

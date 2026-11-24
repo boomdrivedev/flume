@@ -18,7 +18,17 @@ target=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Carg
 flume=$target/debug/flume
 
 scratch=$(mktemp -d "${SLUICE_TMP:-${TMPDIR:-/tmp}}/flume-plugin.XXXXXX")
-trap 'rm -rf "$scratch"' EXIT
+residents=()
+# Each resident the script started ends with it, then its scratch goes.
+end() {
+  local pid
+  for pid in "${residents[@]}"; do
+    kill "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+  done
+  rm -rf "$scratch"
+}
+trap end EXIT
 scratch=$(cd "$scratch" && pwd -P)
 
 # Nothing of the caller's flume, terminal or Claude Code session, and git
@@ -27,7 +37,7 @@ for name in $(env | grep -Eo '^(FLUME_|HERDR_|REX_|CLAUDE)[A-Za-z0-9_]*=' | tr -
   unset "$name"
 done
 export XDG_STATE_HOME=$scratch/state XDG_CONFIG_HOME=$scratch/config \
-  XDG_DATA_HOME=$scratch/data HOME=$scratch/home
+  XDG_DATA_HOME=$scratch/data HOME=$scratch/home FLUME_USER_SCRATCH=$scratch/resident
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
   GIT_AUTHOR_NAME="flume tests" GIT_AUTHOR_EMAIL=tests@flume.invalid \
   GIT_COMMITTER_NAME="flume tests" GIT_COMMITTER_EMAIL=tests@flume.invalid
@@ -72,6 +82,22 @@ git -C "$repo" add -A
 git -C "$repo" commit --quiet -m "the binding"
 (cd "$repo" && "$flume" launch --kind fix --name one --brief "fix the parser" \
   --kinds "$fixtures/kinds.toml" --recipient caller --json >/dev/null) || fail "the launch"
+# The host's resident for the state folder $XDG_STATE_HOME names, as its
+# service manager runs it, which answers status; read once its first
+# settle has ended, so it writes nothing after.
+resident() {
+  local log
+  log=$scratch/host-${#residents[@]}.log
+  "$flume" host --every 1h 2>"$log" &
+  residents+=($!)
+  for _ in $(seq 1 600); do
+    (cd "$repo" && "$flume" status --json 2>/dev/null) |
+      jq -e '.status.host | .watch_ended != null and .watch_ended >= .watch_settled' >/dev/null 2>&1 && return
+    sleep 0.1
+  done
+  fail "flume host never settled: $(cat "$log")"
+}
+resident
 # The place, named by its kind and name where flume made it: under its
 # data directory, as every place is (record 0027).
 located() {
@@ -356,6 +382,7 @@ socket=$scratch/no-herdr.sock
 session="herdr:w1-p2@$socket"
 (cd "$repo" && "$flume" launch --kind fix --name five --brief "fix the reader" \
   --kinds "$fixtures/kinds.toml" --recipient "$session" --json >/dev/null) || fail "the launch for the pane"
+resident
 place=$(located fix--five)
 printed=$(status | jq -r '.agent.printed')
 envfile=$(printf '%s\n' "$printed" | tr ' ' '\n' | tr -d "'" | grep '\.env$' | head -n 1)

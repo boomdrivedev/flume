@@ -907,14 +907,13 @@ fn a_bound_host_queues_launches_and_starts_them_by_priority() {
 }
 
 #[test]
-fn a_stage_waiting_for_room_starts_at_the_next_command_once_the_host_gives_room() {
+fn a_stage_waiting_for_room_starts_at_the_next_settle_once_the_host_gives_room() {
     // On deneb a stage waiting for room still waited once the host's
-    // configuration gave it room, until a settle by hand: no caller keeps
-    // watch, so a place moves on only when a command of flume's acts or an
-    // agent goes quiet (119, 208). Status says so and
-    // settles nothing; the next command that acts, a launch here, reads
-    // the configuration as it stands and starts the waiting stage before
-    // its own (46, 57, 70).
+    // configuration gave it room, until a settle. The host's resident
+    // keeps watch, so a command that acts settles nothing of its own; the
+    // next settle, a caller's here, reads the configuration as it stands
+    // and starts the waiting stage before a stage launched after it (46,
+    // 57, 70, 208). Status settles nothing.
     let walk = Walk::new("walk-room-given");
     walk.configure("[host]\nagents = 1\n");
     let first = walk.launch("fix", "first", &["--brief", "one"]);
@@ -927,13 +926,10 @@ fn a_stage_waiting_for_room_starts_at_the_next_command_once_the_host_gives_room(
         walk.status(&waiting)["agent"].is_null(),
         "the second launch started past the bound"
     );
-    assert_eq!(walk.host()["watch"], json!("none"));
-    let said = walk.person(&["status"]);
-    assert!(
-        said.contains(
-            "no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
-        ),
-        "{said}"
+    assert_eq!(
+        walk.host()["watch"],
+        json!({"bound": {"seconds": 3600}}),
+        "the resident keeps watch"
     );
 
     walk.configure("[host]\nagents = 2\n");
@@ -949,6 +945,11 @@ fn a_stage_waiting_for_room_starts_at_the_next_command_once_the_host_gives_room(
     );
 
     let third = walk.launch("fix", "third", &["--brief", "three"]);
+    assert!(
+        walk.status(&waiting)["agent"].is_null(),
+        "the launch settled under the resident's watch"
+    );
+    walk.flume(&["settle"]);
     let started = walk.status(&waiting);
     assert!(!started["agent"]["printed"].is_null(), "{started}");
     assert!(
@@ -4958,6 +4959,7 @@ fn relayed_through_the_binary(host: &Walk, place: &str) {
     use std::process::Stdio;
     use std::sync::mpsc::channel;
     use std::time::{Duration, Instant};
+    host.resident();
     let store = StateDir::at(host.home().join("state/flume"));
     let id = PlaceId::new(place);
     let before = store.read(&id).expect("the place's held state").version;

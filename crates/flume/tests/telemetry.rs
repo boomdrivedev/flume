@@ -164,9 +164,12 @@ fn serve(mut stream: TcpStream, answers: &Mutex<Answers>, requests: &Mutex<Vec<R
 /// repository bound to `git-worktree`, and a kind `fix` of one stage whose
 /// agent a person runs, its brief holding [`PHRASE`].
 struct Host {
+    /// Ends first, before its state is taken away.
+    resident: std::cell::RefCell<Option<common::resident::Resident>>,
     scratch: Scratch,
     repository: Repository,
     kinds: String,
+    user: PathBuf,
 }
 
 /// What a command printed, its exit status, when its answer came and
@@ -204,9 +207,11 @@ impl Host {
         );
         repository.commit("the binding");
         Host {
+            resident: std::cell::RefCell::new(None),
             scratch,
             repository,
             kinds: kinds.to_string_lossy().into_owned(),
+            user: common::resident::user_scratch(),
         }
     }
 
@@ -227,26 +232,11 @@ impl Host {
     /// nothing of the caller's flume, terminal or OpenTelemetry, read as
     /// it runs: when its answer came and when it exited.
     fn flume(&self, words: &[&str], env: &[(&str, &str)]) -> Ran {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_flume"));
-        command.current_dir(&self.repository.dir);
-        for (name, _) in std::env::vars() {
-            if ["FLUME_", "HERDR_", "REX_", "OTEL_", "TRACEPARENT"]
-                .iter()
-                .any(|prefix| name.starts_with(prefix))
-            {
-                command.env_remove(name);
-            }
+        if common::resident::asks_status(words) {
+            self.resident();
         }
-        command
-            .env("XDG_STATE_HOME", self.scratch.path("state"))
-            .env("XDG_CONFIG_HOME", self.scratch.path("config"))
-            .env("XDG_DATA_HOME", self.scratch.path("home/.local/share"))
-            .env("HOME", self.scratch.path("home"))
-            .env("FLUME_RECIPIENT", "caller");
-        for (name, value) in env {
-            command.env(name, value);
-        }
-        let mut child = command
+        let mut child = self
+            .command(env)
             .args(words)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -266,6 +256,42 @@ impl Host {
             answered,
             exited: Instant::now(),
         }
+    }
+
+    /// The host's resident, started where none runs yet.
+    fn resident(&self) {
+        if self.resident.borrow().is_none() {
+            let mut command = self.command(&[]);
+            command.args(["host", "--every", common::resident::EVERY]);
+            *self.resident.borrow_mut() =
+                Some(common::resident::Resident::start(command, &self.user));
+        }
+    }
+
+    /// flume's binary in the repository with `env` over nothing of the
+    /// caller's flume, terminal or OpenTelemetry.
+    fn command(&self, env: &[(&str, &str)]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_flume"));
+        command.current_dir(&self.repository.dir);
+        for (name, _) in std::env::vars() {
+            if ["FLUME_", "HERDR_", "REX_", "OTEL_", "TRACEPARENT"]
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+            {
+                command.env_remove(name);
+            }
+        }
+        command
+            .env("XDG_STATE_HOME", self.scratch.path("state"))
+            .env("XDG_CONFIG_HOME", self.scratch.path("config"))
+            .env("XDG_DATA_HOME", self.scratch.path("home/.local/share"))
+            .env("HOME", self.scratch.path("home"))
+            .env("FLUME_RECIPIENT", "caller")
+            .env(common::resident::USER_SCRATCH, &self.user);
+        for (name, value) in env {
+            command.env(name, value);
+        }
+        command
     }
 
     /// Launches `fix--one`, its stage held with words holding [`PHRASE`],

@@ -69,13 +69,13 @@ is ended (56, 112, 130, 198).
 
 ### Requirement: Status reads where each fact lives and writes nothing
 
-Status SHALL read every fact of a deliverable, a change or a submission
-from its seam when asked, at one head per place, SHALL keep none of
-them between asks, and SHALL start no agent, send nothing and write
-nothing (57, 58). It SHALL read its places side by side, ask each
-repository's merge queue once for all the places of that repository it
-gives, and read each live agent once, for its place and its base's
-count (58, 99, 139, C.6).
+Status SHALL read each fact of a deliverable, a change or a submission
+from its seam when asked, at one head per place, keeping none between
+asks but a base's records with their version until it moves, and SHALL
+start, send and write nothing (57, 58;
+flume-reads-sluices-records-on-sluice-hosts-socket). It SHALL read its
+places side by side, ask each repository's merge queue once for all its
+places, and read each live agent once (58, 99, 139, C.6).
 
 #### Scenario: A change ticked between two asks
 

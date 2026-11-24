@@ -1,9 +1,11 @@
 //! The merge-queue profile over sluice reading the documents sluice
 //! `44e33d4` prints, which the pinned 0.93.2 never prints since it holds
-//! no landing: a stand-in `sluice` under each test's scratch folder logs
-//! each command it is asked, a line each, and answers from the fixtures
-//! under `fixtures/sluice/`, whose `README.md` names the code each follows
-//! (99, 133, C.6; core.22, core.58).
+//! no landing: a stand-in `sluice` under each test's scratch folder, and a
+//! stand-in sluice host on a socket of the test's own for the reads, log
+//! each command and ask, a line each, and answer from the fixtures under
+//! `fixtures/sluice/`, whose `README.md` names the code each follows (99,
+//! 133, C.6; core.22, core.58; flume-reads-sluices-records-on-sluice-
+//! hosts-socket).
 
 use crate::common::*;
 use flume::profiles::merge_queue::sluice::{Sluice, HELD_UNSAID};
@@ -79,7 +81,14 @@ exit 2
             &std::env::var_os("PATH").unwrap_or_default(),
         )))
         .expect("a PATH");
-        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
+        let host = host_of(&folder, &given, &log);
+        let seam = Sluice::new()
+            .with_env("PATH", Some(&path.to_string_lossy()))
+            .with_env(
+                "XDG_STATE_HOME",
+                Some(&folder.join("state").to_string_lossy()),
+            )
+            .with_env("SLUICE_USER_SCRATCH", Some(&host.to_string_lossy()));
         let location = repository.scratch.path("places/fix--one");
         fs::create_dir_all(&location).expect("the place's folder");
         let place = PlaceRef {
@@ -125,6 +134,71 @@ exit 2
             }
         })
     }
+}
+
+/// A stand-in sluice host for the folder `folder`'s tests, its socket in
+/// a short folder of its own, which it gives: at each connection it reads
+/// the hello, answers with a version, then answers one read, `overview`
+/// from `overview.json` and `status` of a target from
+/// `status-<target with / as ->.json` in `answers`, logging it to `log`
+/// as the command it stands for; any other ask is an `error` line. Its
+/// thread ends with the test's process.
+fn host_of(folder: &std::path::Path, answers: &std::path::Path, log: &std::path::Path) -> PathBuf {
+    use std::io::{BufRead, BufReader, Write};
+    let state = folder.join("state/sluice");
+    fs::create_dir_all(&state).expect("sluice's state folder");
+    let user = crate::common::resident::user_scratch();
+    let socket =
+        flume::profiles::merge_queue::sluice::subscription::socket_from(|name| match name {
+            "XDG_STATE_HOME" => Some(folder.join("state").into()),
+            "SLUICE_USER_SCRATCH" => Some(user.clone().into()),
+            _ => None,
+        })
+        .expect("the stand-in host's socket");
+    let listener = std::os::unix::net::UnixListener::bind(&socket)
+        .unwrap_or_else(|error| panic!("no room for {}: {error}", socket.display()));
+    let (answers, log) = (answers.to_path_buf(), log.to_path_buf());
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut writer = stream.try_clone().expect("the connection");
+            let mut lines = BufReader::new(stream).lines();
+            let _hello = lines.next();
+            writeln!(writer, r#"{{"version":"0.110.0","pid":1,"since":"now"}}"#).ok();
+            let Some(Ok(line)) = lines.next() else {
+                continue;
+            };
+            let ask: serde_json::Value = serde_json::from_str(&line).expect("an ask");
+            let (said, file) = match ask["ask"].as_str() {
+                Some("overview") => ("overview --json".to_string(), "overview.json".to_string()),
+                Some("status") => {
+                    let target = ask["target"].as_str().unwrap_or_default();
+                    (
+                        format!("status {target} --all --json"),
+                        format!("status-{}.json", target.replace('/', "-")),
+                    )
+                }
+                _ => {
+                    writeln!(writer, r#"{{"error":"the stand-in answers no {line}"}}"#).ok();
+                    continue;
+                }
+            };
+            let mut logged = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log)
+                .expect("the log");
+            writeln!(logged, "{said}").ok();
+            let output = match fs::read_to_string(answers.join(&file)) {
+                Ok(stdout) => serde_json::json!({"output": {"stdout": stdout, "code": 0}}),
+                Err(_) => serde_json::json!({"output": {
+                    "stdout": format!(r#"{{"error": {{"kind": "refused", "message": "the stand-in answers no {said}", "next": []}}}}"#),
+                    "code": 2,
+                }}),
+            };
+            writeln!(writer, "{output}").ok();
+        }
+    });
+    user
 }
 
 /// A submission of `branch` to main, number `id`, held with `words`.
@@ -277,5 +351,58 @@ fn a_refused_record_without_them_is_held_saying_sluices_record_gives_none() {
         !stand_in.waited(),
         "read through a wait: {:?}",
         stand_in.asked()
+    );
+}
+
+#[test]
+fn a_bases_records_are_asked_again_only_once_their_version_moved() {
+    // merge-queue-profile "Records kept until their version moves": each
+    // read asks sluice host the overview, and the status of a base only
+    // where its records' version moved since the records kept were read
+    // (flume-reads-sluices-records-on-sluice-hosts-socket).
+    let stand_in = StandIn::new(&[
+        ("overview.json", "overview.json"),
+        ("status-main.json", "status-main.json"),
+        ("status-train-x.json", "status-train-x.json"),
+    ]);
+    let first = stand_in.read(&["fix/one"]);
+    assert_eq!(stand_in.read(&["fix/one"]), first, "the same records");
+    let statuses = |asked: &[String]| {
+        asked
+            .iter()
+            .filter(|asked| asked.starts_with("status "))
+            .count()
+    };
+    assert_eq!(
+        stand_in.asked(),
+        vec![
+            "overview --json",
+            "status main --all --json",
+            "status train/x --all --json",
+            "overview --json",
+        ],
+        "the second read asked no status"
+    );
+    let given = stand_in
+        .log
+        .parent()
+        .expect("the stand-in's folder")
+        .join("answers");
+    let overview = fs::read_to_string(given.join("overview.json")).expect("the overview");
+    fs::write(
+        given.join("overview.json"),
+        overview.replacen("\"version\": 41", "\"version\": 42", 1),
+    )
+    .expect("main's records moved");
+    assert_eq!(stand_in.read(&["fix/one"]), first);
+    let asked = stand_in.asked();
+    assert_eq!(
+        statuses(&asked),
+        3,
+        "main asked again, train/x not: {asked:?}"
+    );
+    assert_eq!(
+        asked.last().map(String::as_str),
+        Some("status main --all --json")
     );
 }
