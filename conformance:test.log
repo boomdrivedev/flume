@@ -1,0 +1,176 @@
+--- stdout ---
+
+running 10 tests
+test coverage::tests::a_clause_left_out_is_named ... ok
+test coverage::tests::a_citation_of_no_clause_names_the_scenario_and_the_number ... ok
+test coverage::tests::a_scenario_citing_nothing_is_named ... ok
+test coverage::tests::every_clause_cited_passes ... ok
+test coverage::tests::what_the_next_change_builds_is_asked_of_no_scenario_and_cited_by_none ... ok
+test no_tool::tests::a_name_is_found_as_a_word_only ... ok
+test no_tool::tests::a_profile_may_name_its_tool ... ok
+test coverage::tests::the_statements_100_is_no_clause ... ok
+test clauses::tests::the_clauses_unbuilt_are_named_by_the_changes_that_build_them ... ok
+test clauses::tests::the_clauses_listed ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test the_engine_passes_its_scenarios ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.36s
+
+
+running 2 tests
+test the_search_covers_the_commands ... ok
+test no_tool_is_named_outside_a_profile ... FAILED
+
+failures:
+
+---- no_tool_is_named_outside_a_profile stdout ----
+
+thread 'no_tool_is_named_outside_a_profile' (280730870) panicked at crates/flume-conformance/tests/no_tool.rs:10:5:
+a tool is named outside a profile (core.1):
+/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance/../flume/src/served.rs:9: sluice
+/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance/../flume/src/served.rs:109: sluice
+/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance/../flume/tests/common/resident.rs:51: sluice
+/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance/../flume/tests/common/resident.rs:162: sluice
+/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance/../flume/tests/common/resident.rs:213: sluice
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    no_tool_is_named_outside_a_profile
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+--- stderr ---
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling version_check v0.9.5
+   Compiling libc v0.2.191
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling typenum v1.20.1
+   Compiling syn v2.0.119
+   Compiling syn v3.0.9
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling cfg-if v1.0.5
+   Compiling memchr v2.8.3
+   Compiling serde v1.0.229
+   Compiling fnv v1.0.7
+   Compiling serde_derive v1.0.229
+   Compiling darling_core v0.20.11
+   Compiling heck v0.5.0
+   Compiling darling_macro v0.20.11
+   Compiling num-integer v0.1.47
+   Compiling zmij v1.0.23
+   Compiling zerocopy v0.8.63
+   Compiling darling v0.20.11
+   Compiling serde_json v1.0.154
+   Compiling getrandom v0.3.4
+   Compiling derive_builder_core v0.20.2
+   Compiling num-bigint v0.4.8
+   Compiling ahash v0.8.12
+   Compiling itoa v1.0.18
+   Compiling ref-cast v1.0.27
+   Compiling parking_lot_core v0.9.12
+   Compiling regex-syntax v0.8.11
+   Compiling num-rational v0.4.2
+   Compiling derive_builder_macro v0.20.2
+   Compiling num-iter v0.1.46
+   Compiling strum_macros v0.27.2
+   Compiling aho-corasick v1.1.5
+   Compiling num-complex v0.4.6
+   Compiling ref-cast-impl v1.0.27
+   Compiling hybrid-array v0.4.15
+   Compiling once_cell v1.21.4
+   Compiling jiff-core v0.1.8
+   Compiling scopeguard v1.2.0
+   Compiling winnow v1.0.4
+   Compiling smallvec v1.16.4
+   Compiling jiff v0.2.46
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling lock_api v0.4.14
+   Compiling strum v0.27.2
+   Compiling num v0.4.3
+   Compiling regex-automata v0.4.18
+   Compiling derive_builder v0.20.2
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling serde_spanned v1.1.2
+   Compiling unicode-general-category v1.1.0
+   Compiling equivalent v1.0.3
+   Compiling jsonschema-value v0.60.2
+   Compiling toml_writer v1.1.3+spec-1.1.0
+   Compiling foldhash v0.2.0
+   Compiling allocator-api2 v0.2.21
+   Compiling borrow-or-share v0.2.4
+   Compiling bit-vec v0.8.0
+   Compiling fluent-uri v0.4.1
+   Compiling hashbrown v0.17.1
+   Compiling bit-set v0.8.0
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling croner v4.0.3
+   Compiling fraction v0.17.0
+   Compiling parking_lot v0.12.5
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling strum_macros v0.28.0
+   Compiling micromap v0.3.0
+   Compiling time-core v0.1.9
+   Compiling const-oid v0.10.2
+   Compiling bytecount v0.6.9
+   Compiling vsimd v0.8.0
+   Compiling powerfmt v0.2.1
+   Compiling deranged v0.5.9
+   Compiling num-cmp v0.1.0
+   Compiling num-conv v0.2.2
+   Compiling outref v0.5.2
+   Compiling percent-encoding v2.3.2
+   Compiling time v0.3.55
+   Compiling uuid-simd v0.8.0
+   Compiling referencing v0.60.2
+   Compiling digest v0.11.3
+   Compiling strum v0.28.0
+   Compiling weir-cadence v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling fancy-regex v0.19.2
+   Compiling regex v1.13.1
+   Compiling email_address v0.2.9
+   Compiling jsonschema-regex v0.60.2
+   Compiling cpufeatures v0.3.1
+   Compiling generic-array v0.14.7
+   Compiling data-encoding v2.11.1
+   Compiling sha2 v0.11.1
+   Compiling weir-policy v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling jsonschema v0.60.2
+   Compiling weir-engine v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling subtle v2.6.1
+   Compiling chrono v0.4.45
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling weir-pack v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling hmac v0.12.1
+   Compiling sha2 v0.10.9
+   Compiling weir-capture v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling weir-delivery v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling weir-kinds v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling flume-seams v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-seams)
+   Compiling flume-fakes v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-fakes)
+   Compiling flume-core v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-core)
+   Compiling flume-conformance v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 28.84s
+     Running unittests src/lib.rs (target/debug/deps/flume_conformance-03a6a36b9262012b)
+     Running unittests src/bin/coverage.rs (target/debug/deps/coverage-ce18693cc9a1de24)
+     Running tests/engine.rs (target/debug/deps/engine-03493171201debd3)
+     Running tests/no_tool.rs (target/debug/deps/no_tool-e478db285861d972)
+error: test failed, to rerun pass `-p flume-conformance --test no_tool`

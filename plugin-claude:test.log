@@ -1,0 +1,83 @@
+--- stderr ---
+FAIL: the place is at null
+FAIL: the printed command names no environment file: null
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the printed command's environment holds no secret
+sed: can't read : No such file or directory
+FAIL: the printed command holds its secret
+FAIL: no plugin at 
+grep: /hooks/hooks.json: No such file or directory
+grep: /hooks/hooks.json: No such file or directory
+FAIL: the plugin's hooks do not name the binary by its path
+FAIL: status --line: refused: flume host answers on no socket at /private/tmp/flume-501/host-fa72fbabec.sock (No such file or directory (os error 2)); the host's service manager runs flume host
+FAIL: status-line printed '', status --line 'refused: flume host answers on no socket at /private/tmp/flume-501/host-fa72fbabec.sock (No such file or directory (os error 2)); the host's service manager runs flume host'
+FAIL: status-line printed '', status --line 'refused: flume host answers on no socket at /private/tmp/flume-501/host-fa72fbabec.sock (No such file or directory (os error 2)); the host's service manager runs flume host'
+FAIL: status-line printed '', status --line 'refused: flume host answers on no socket at /private/tmp/flume-501/host-fa72fbabec.sock (No such file or directory (os error 2)); the host's service manager runs flume host'
+FAIL: started before the ack
+FAIL: the started ack was not taken
+FAIL: a question open is not asking
+FAIL: a question answered is still asking
+FAIL: a permission prompt is not asking
+FAIL: the next prompt left the mark
+FAIL: a push was not refused: 
+jq: error (at <stdin>:1): Cannot iterate over null (null)
+FAIL: status does not report the refused push
+FAIL: a stop with nothing made: 
+FAIL: the stop's words: 
+jq: error (at <stdin>:1): startswith() requires string inputs
+FAIL: the failed turn's reason is not the last words
+jq: error (at <stdin>:1): startswith() requires string inputs
+FAIL: the usage limit's words are not the last words
+FAIL: the failed turn is not in the agent's record
+FAIL: the agent's record does not hold the failure's error, words and time: 
+tests/hooks.sh: line 193: null/parser.txt: No such file or directory
+fatal: cannot change to 'null': No such file or directory
+fatal: cannot change to 'null': No such file or directory
+FAIL: the stop did not settle the place: null
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the ack was taken with another CLAUDE_CONFIG_DIR
+FAIL: the record does not name CLAUDE_CONFIG_DIR as different: 
+FAIL: the settle did not read the start begun without its settings: null
+FAIL: the ack was taken under another program
+jq: error: Could not open file : No such file or directory
+FAIL: the record does not say the program differed
+FAIL: the start does not record bypassPermissions: null
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the started ack was not taken on the program and the variables
+FAIL: the first prompt in another mode was not blocked: 
+FAIL: the record does not name both modes: 
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the first start under carry-1 was not acked
+FAIL: the start after the spent one does not carry its conversation: null
+FAIL: the carried start's command resumes no session: null
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the ack was taken in another session
+FAIL: the record does not say another session: 
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+sed: can't read : No such file or directory
+FAIL: the stop-short
+FAIL: SessionStart in the restarted pane does not give 'fix--five (fix the reader)': 
+FAIL: SessionStart in the restarted pane does not give 'waits on a retry of code': 
+FAIL: SessionStart in the restarted pane does not give 'Which file holds the log?': 
+FAIL: SessionStart in the restarted pane does not give 'flume retry fix--five --stage code --answers stage/code/1/ended-short': 
+FAIL: SessionStart in the restarted pane does not give 'flume hold fix--five': 
+FAIL: SessionStart in the restarted pane does not give 'leave it': 
+46 of the plugin's hook checks failed

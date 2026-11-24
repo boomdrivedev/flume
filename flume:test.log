@@ -1,0 +1,510 @@
+--- stdout ---
+
+running 358 tests
+test commands::launch::tests::a_hold_with_its_words_or_none ... ok
+test commands::launch::tests::a_keep_open_in_another_form_is_refused ... ok
+test commands::launch::tests::a_launchs_hibernate_after_for_a_program_is_refused ... ok
+test commands::launch::tests::a_launchs_hibernate_after_in_another_form_is_refused ... ok
+test commands::launch::tests::a_mode_and_a_table_at_the_launch ... ok
+test commands::launch::tests::a_programs_keep_open_is_refused ... ok
+test commands::launch::tests::a_programs_own_value_given_bare_is_refused_naming_it ... ok
+test commands::launch::tests::a_key_given_twice_is_refused_naming_it ... ok
+test commands::launch::tests::a_refusal_names_the_effort_among_the_settings ... ok
+test commands::launch::tests::a_session_for_every_stage_and_one_for_a_stage ... ok
+test commands::launch::tests::a_file_at_the_launch ... ok
+test commands::launch::tests::a_setting_for_every_stage_and_one_for_a_stage ... ok
+test commands::launch::tests::an_effort_for_every_stage_and_for_one ... ok
+test commands::launch::tests::every_refusal_naming_the_fields_names_keep_open ... ok
+test commands::launch::tests::a_word_and_a_table_for_one_stage_are_refused_naming_both ... ok
+test commands::launch::tests::a_stages_keep_open ... ok
+test commands::launch::tests::a_launchs_hibernate_after_for_a_stage ... ok
+test commands::launch::tests::words_naming_no_setting_are_refused ... ok
+test commands::launch::tests::words_naming_no_own_setting_are_refused_naming_programs ... ok
+test commands::launch::tests::own_settings_at_the_launch ... ok
+test commands::print::tests::a_carried_conversation ... ok
+test commands::print::tests::a_carried_start_not_begun ... ok
+test commands::print::tests::a_base_places_branch_the_merge_queue_kept ... ok
+test commands::print::tests::a_conversation_that_stayed ... ok
+test commands::print::tests::a_bare_agent_left_in_its_pane ... ok
+test commands::print::tests::a_base_place_says_it_has_no_worktree_and_what_is_on_its_branch ... ok
+test commands::print::tests::a_duration_in_its_largest_whole_unit ... ok
+test commands::print::tests::a_doors_run_whose_stall_reached_no_one ... ok
+test commands::print::tests::a_drops_end_line ... ok
+test commands::print::tests::a_hibernating_stage_and_its_resumes ... ok
+test commands::print::tests::a_hold_on_the_waiting_move_and_its_lapse ... ok
+test commands::print::tests::a_host_under_a_watch ... ok
+test commands::print::tests::a_host_whose_watch_lapsed ... ok
+test commands::print::tests::a_fix_landed_in_the_persons_form ... ok
+test commands::print::tests::a_kind_of_a_hosts_source ... ok
+test commands::print::tests::a_host_with_no_places_lists_none_then_its_streams ... ok
+test commands::print::tests::a_line_each ... ok
+test commands::print::tests::a_lost_conversation_carried_and_one_started_afresh ... ok
+test commands::print::tests::a_missing_key_under_the_watch ... ok
+test commands::print::tests::a_mode_from_the_hosts_table ... ok
+test commands::print::tests::a_mode_not_read_back ... ok
+test commands::print::tests::a_long_own_setting_is_elided ... ok
+test commands::print::tests::a_move ... ok
+test commands::print::tests::a_move_off_an_account_past_its_threshold ... ok
+test commands::print::tests::a_move_with_its_conversation_and_without ... ok
+test commands::print::tests::a_move_with_no_agent_kept_open_gives_no_line_for_one ... ok
+test commands::print::tests::a_place_launched_before_this_change ... ok
+test commands::print::tests::a_place_kept_while_its_session_runs ... ok
+test commands::print::tests::a_place_waiting_in_the_inbox ... ok
+test commands::print::tests::a_places_heading_with_its_line ... ok
+test commands::print::tests::a_places_base_with_where_it_was_read ... ok
+test commands::print::tests::a_places_label ... ok
+test commands::print::tests::a_pool_waited_on_until_an_account_is_back ... ok
+test commands::print::tests::a_refusal_and_an_empty_host ... ok
+test commands::print::tests::a_pools_threshold_and_its_accounts_readings ... ok
+test commands::print::tests::a_repeating_stage_with_its_groups_place ... ok
+test commands::print::tests::a_roles_messages_and_the_places_reporting_to_it ... ok
+test commands::print::tests::a_sources_roles ... ok
+test commands::print::tests::a_stage_waiting_on_its_session ... ok
+test commands::print::tests::a_standing_address_not_read ... ok
+test commands::print::tests::a_standing_address_found_waiting ... ok
+test commands::print::tests::a_stall_with_its_stop_short_and_lapsed_hold ... ok
+test commands::print::tests::a_standing_address_with_none_of_its_name ... ok
+test commands::print::tests::a_standing_address_with_nothing_pending ... ok
+test commands::print::tests::a_standing_address_with_two_of_its_name ... ok
+test commands::print::tests::a_standing_roles_place_and_its_checkouts ... ok
+test commands::print::tests::a_start_in_another_conversation ... ok
+test commands::print::tests::a_start_in_another_mode ... ok
+test commands::print::tests::a_start_without_its_settings ... ok
+test commands::print::tests::a_stop_short_with_the_role_it_named ... ok
+test commands::print::tests::a_statechart_places_decision ... ok
+test commands::print::tests::a_statechart_place ... ok
+test commands::print::tests::a_stop_shorts_end_kept_open_in_the_inbox ... ok
+test commands::print::tests::a_streams_answerer ... ok
+test commands::print::tests::a_streams_display_and_a_terminal_app_refused ... ok
+test commands::print::tests::a_streams_named_sessions_and_its_tables_at_fault ... ok
+test commands::print::tests::a_tables_entry ... ok
+test commands::print::tests::a_streams_labels ... ok
+test commands::print::tests::a_wait_on_a_dialog_gives_its_lines_beneath ... ok
+test commands::print::tests::a_wait_on_readiness_leaves_its_words_to_the_readiness_lines ... ok
+test commands::print::tests::a_wake_of_a_standing_address_is_held ... ok
+test commands::print::tests::a_word_as_the_json_spells_it ... ok
+test commands::print::tests::an_account_from_its_conversation ... ok
+test commands::print::tests::an_accounts_configuration_home ... ok
+test commands::print::tests::an_address_carried_or_waking_nothing ... ok
+test commands::print::tests::an_agent_kept_open ... ok
+test commands::print::tests::an_agent_left_in_its_pane_and_the_end_that_says_so ... ok
+test commands::print::tests::an_agent_let_go_and_ended ... ok
+test commands::print::tests::an_agent_let_go_and_to_be_ended_once_quiet ... ok
+test commands::print::tests::an_agent_with_no_own_settings ... ok
+test commands::print::tests::an_agent_with_own_settings_from_a_file_and_inline ... ok
+test commands::print::tests::an_agent_stopped_by_its_caller ... ok
+test commands::print::tests::a_command_that_needs_a_variable ... ok
+test commands::print::tests::an_agents_account ... ok
+test commands::print::tests::an_effort_from_the_launch ... ok
+test commands::print::tests::an_answered_question_with_its_key ... ok
+test commands::print::tests::an_effort_the_accounts_variable_outranks ... ok
+test commands::print::tests::an_ends_recipients_pending_expired_and_confirmed ... ok
+test commands::print::tests::an_intents_move_for_its_program_and_one_recorded_before ... ok
+test commands::print::tests::each_starts_terminal ... ok
+test commands::print::tests::each_agents_session ... ok
+test commands::print::tests::each_terminal_a_tidy_closed_in ... ok
+test commands::print::tests::no_effort ... ok
+test commands::print::tests::the_hosts_expired_ends ... ok
+test commands::print::tests::the_hosts_pools ... ok
+test commands::print::tests::recipients_with_where_they_came_from ... ok
+test commands::print::tests::the_hosts_sources_with_a_fault ... ok
+test commands::print::tests::the_hosts_streams ... ok
+test commands::print::tests::the_hosts_local_layer ... ok
+test commands::print::tests::the_inbox_and_a_wait_confirm_as_their_recipient ... ok
+test commands::print::tests::the_opened_lines_of_a_session_named_for_a_kind_and_a_stage ... ok
+test commands::print::tests::the_opened_printed_and_app_lines ... ok
+test commands::print::tests::the_repositorys_a_launchs_and_flumes_own ... ok
+test commands::print::tests::the_list_by_repository_then_the_streams ... ok
+test commands::print::tests::two_answers ... ok
+test commands::print::tests::words_as_a_terminal_draws_them ... ok
+test commands::print::tests::readiness_gives_each_steps_outcome_and_a_failed_steps_last_lines ... ok
+test commands::relay::tests::a_line_of_input_read_as_text_keys_or_why_not ... ok
+test commands::tests::words_that_are_no_command_are_for_the_error_stream ... ok
+test git::tests::a_path_in_a_tree_is_resolved_against_its_directory ... ok
+test commands::tests::needs_outside_an_agent_builds_nothing ... ok
+test commands::tests::a_resident_with_no_bound_runs_nothing ... ok
+test host::config::tests::a_bound_that_is_no_count_is_refused ... ok
+test host::config::tests::a_bound_and_a_terminal_stated ... ok
+test commands::tests::a_watch_beside_a_place_or_with_no_bound_builds_nothing ... ok
+test host::config::tests::a_hosts_bound_of_zero_is_refused ... ok
+test host::config::tests::a_forks_table_for_every_kind ... ok
+test host::config::tests::a_configuration_that_refuses_names_the_key ... ok
+test host::config::tests::a_hosts_hibernate_after_in_another_form_is_refused ... ok
+test host::config::tests::a_hosts_hibernate_after_for_a_kind_and_for_one_stage ... ok
+test host::config::tests::a_keep_open_for_a_kind_and_for_one_stage ... ok
+test host::config::tests::a_keep_open_for_a_stream_and_for_every_agent ... ok
+test host::config::tests::a_keep_open_in_another_form_is_refused ... ok
+test host::config::tests::a_keep_open_table_of_programs_is_refused ... ok
+test host::config::tests::a_kinds_session_and_a_stages_read_with_each_other_key_unknown ... ok
+test host::config::tests::a_kinds_session_and_a_stages_set_locally ... ok
+test host::config::tests::a_hosts_file_read_where_its_link_leads ... ok
+test host::config::tests::a_kinds_settings_key_by_key ... ok
+test host::config::tests::a_hosts_file_flume_cannot_read ... ok
+test host::config::tests::a_label_by_repository_and_kind_then_kind ... ok
+test host::config::tests::a_labels_reserve_and_keep_free_are_read_unknown ... ok
+test host::config::tests::a_kinds_table_key_the_local_layer_cannot_set ... ok
+test host::config::tests::a_labels_table_holding_a_pool_is_read_with_the_pool_unknown ... ok
+test host::config::tests::a_label_that_is_no_word_is_refused_naming_its_key ... ok
+test host::config::tests::a_labels_share_that_is_no_count_is_refused ... ok
+test host::config::tests::a_local_file_that_sets_a_pool ... ok
+test host::config::tests::a_kinds_session_pinned ... ok
+test host::config::tests::a_local_file_at_fault ... ok
+test host::config::tests::a_mode_for_a_kind_and_a_table_for_a_repositorys_stage ... ok
+test host::config::tests::a_local_label_reserve_is_not_taken ... ok
+test host::config::tests::a_mode_that_is_neither_is_refused_naming_the_table_and_mode ... ok
+test host::config::tests::a_most_left_pool ... ok
+test host::config::tests::a_programs_that_is_no_table_of_entries ... ok
+test host::config::tests::a_repositorys_table_that_names_a_stage ... ok
+test host::config::tests::a_roles_table_in_the_local_layer_is_not_taken ... ok
+test host::config::tests::a_pin_of_a_repositorys_key_with_the_home_or_tilde ... ok
+test host::config::tests::a_roles_table_makes_the_configuration_unreadable ... ok
+test host::config::tests::a_setting_that_is_no_string_is_refused ... ok
+test host::config::tests::a_session_in_a_streams_table_and_none_in_an_agents_table ... ok
+test host::config::tests::a_session_that_is_no_word ... ok
+test host::config::tests::a_stream_named_by_repository_and_kind_then_repository_then_kind ... ok
+test host::config::tests::a_stream_only_the_local_layer_names ... ok
+test host::config::tests::a_streams_multiplexer_set_locally ... ok
+test host::config::tests::a_streams_bound_and_priority_set_locally ... ok
+test host::config::tests::a_streams_pool_set_locally ... ok
+test host::config::tests::a_pin_of_nothing_the_local_layer_sets ... ok
+test host::config::tests::a_streams_view_set_locally ... ok
+test host::config::tests::a_table_for_every_agent_or_a_stream_cannot_hold ... ok
+test host::config::tests::a_table_pinned ... ok
+test host::config::tests::a_threshold_and_a_strategy_that_refuse ... ok
+test host::config::tests::a_title_that_is_no_text ... ok
+test host::config::tests::a_view_no_word_names ... ok
+test host::config::tests::a_threshold_is_the_managed_layers ... ok
+test host::config::tests::a_word_left_out_is_none ... ok
+test host::config::tests::an_effort_for_every_agent_set_locally ... ok
+test host::config::tests::an_accounts_usage_is_no_word_of_an_account ... ok
+test host::config::tests::a_terminal_app_set_by_the_local_layer ... ok
+test host::config::tests::an_ends_expire_in_the_local_layer ... ok
+test host::config::tests::an_effort_that_is_no_word_is_refused_naming_the_table_and_effort ... ok
+test host::config::tests::an_ends_expire_stated ... ok
+test host::config::tests::an_ends_expire_refused ... ok
+test host::config::tests::an_effort_for_a_kind_and_one_for_a_repositorys_stage ... ok
+test host::config::tests::by_address_a_folder_table_reads_where_no_table_names_the_address ... ok
+test host::config::tests::by_address_a_key_is_matched_exactly ... ok
+test host::config::tests::by_address_a_repository_with_no_address_takes_its_folders_table ... ok
+test host::config::tests::an_own_setting_shaped_as_a_credential_is_given_as_set ... ok
+test host::config::tests::by_address_the_address_table_stands_whole_over_the_folders ... ok
+test host::config::tests::by_address_a_stream_is_set_locally_and_pinned ... ok
+test host::config::tests::each_key_the_local_layer_may_not_set_named_once ... ok
+test host::config::tests::by_address_the_address_table_gives_stream_label_and_settings ... ok
+test host::config::tests::every_value_as_toml_writes_it_and_no_variables ... ok
+test host::config::tests::no_local_file ... ok
+test host::config::tests::no_ends_expire_stated ... ok
+test host::config::tests::no_streams ... ok
+test host::config::tests::c7s_example_read_whole ... ok
+test host::config::tests::one_key_pinned ... ok
+test host::config::tests::one_stages_settings_and_a_mode_each_taken_whole ... ok
+test host::config::tests::labels_sessions_and_a_kinds_label_set_locally ... ok
+test host::config::tests::settings_for_a_kind_and_for_a_repositorys_kind ... ok
+test host::config::tests::telemetry_a_collector_off_the_loopback ... ok
+test host::config::tests::telemetry_a_collector_on_the_loopback ... ok
+test host::config::tests::telemetry_a_key_it_does_not_read ... ok
+test host::config::tests::own_settings_for_a_kind_and_for_a_repositorys_stage ... ok
+test host::config::tests::telemetry_a_table_that_sends ... ok
+test host::config::tests::telemetry_a_table_that_sends_names_its_collector ... ok
+test host::config::tests::telemetry_none_where_the_managed_layer_gives_none ... ok
+test host::config::tests::the_default_stream_states_its_own ... ok
+test host::config::tests::telemetry_set_by_the_local_layer ... ok
+test host::config::tests::the_keys_and_none ... ok
+test host::config::tests::the_streams_pool_before_the_hosts ... ok
+test host::config::tests::the_word_written_before ... ok
+test host::config::tests::settings_for_every_agent_and_for_a_stream ... ok
+test host::config::tests::two_streams_declared ... ok
+test host::config::tests::own_settings_set_locally_key_by_key ... ok
+test host::process::tests::a_program_by_its_path_or_on_path ... ok
+test host::process::tests::this_process_and_its_parent_are_read ... ok
+test mode::tests::a_mode_that_is_neither_is_refused_naming_why ... ok
+test mode::tests::one_of_the_four_or_a_table_of_programs ... ok
+test own::tests::a_file_flume_cannot_take_is_refused_naming_the_field_and_the_file ... ok
+test own::tests::a_file_that_gives_no_key_is_kept ... ok
+test own::tests::a_json_file_and_a_toml_file_beside_inline_keys ... ok
+test own::tests::a_shape_flume_cannot_take_is_refused_naming_its_key ... ok
+test own::tests::inline_settings_kept_as_json_values ... ok
+test own::tests::no_value_is_read_or_checked ... ok
+test profiles::agent::claude::effort::tests::a_word_refused_names_itself_claude_and_the_five ... ok
+test profiles::agent::claude::effort::tests::the_fragments_are_written_as_the_release_writes_them ... ok
+test profiles::agent::claude::guard::tests::a_merge_and_a_mention_are_not_refused ... ok
+test profiles::agent::claude::guard::tests::the_acts_flume_submits_are_refused_wherever_a_line_runs_them ... ok
+test profiles::agent::claude::hook::tests::a_detached_settle_leads_a_session_of_its_own ... ok
+test profiles::agent::claude::limit::tests::a_budget_with_its_plan_limits_reset ... ok
+test profiles::agent::claude::limit::tests::a_date_in_another_year ... ok
+test profiles::agent::claude::limit::tests::a_date_joined_by_a_comma ... ok
+test profiles::agent::claude::limit::tests::a_date_with_its_minutes ... ok
+test profiles::agent::claude::limit::tests::a_model_under_high_load ... ok
+test profiles::agent::claude::limit::tests::a_monthly_spend_limit ... ok
+test profiles::agent::claude::limit::tests::a_reset_in_the_minute_the_hook_ran ... ok
+test profiles::agent::claude::limit::tests::a_reset_past_midnight ... ok
+test profiles::agent::claude::limit::tests::a_session_limit_with_a_time_of_day ... ok
+test profiles::agent::claude::limit::tests::a_weekly_limit_with_a_date ... ok
+test profiles::agent::claude::limit::tests::a_zone_the_crate_does_not_know ... ok
+test profiles::agent::claude::limit::tests::every_opening_reads_a_usage_limit ... ok
+test profiles::agent::claude::limit::tests::no_reset_in_the_words ... ok
+test profiles::agent::claude::limit::tests::the_openings_fragment_is_the_releases_list ... ok
+test profiles::agent::claude::live::tests::a_procstart_read_and_written ... ok
+test profiles::agent::claude::live::tests::a_resume_is_read_in_its_three_forms ... ok
+test profiles::agent::claude::live::tests::a_wrapped_program_is_read_as_claude ... ok
+test profiles::agent::claude::mode::tests::default_is_taken_by_its_alias_alone ... ok
+test profiles::agent::claude::mode::tests::each_value_passed_reads_back_as_itself ... ok
+test profiles::agent::claude::mode::tests::the_fragments_are_written_as_the_release_writes_them ... ok
+test profiles::agent::claude::settings::tests::the_file_is_beside_the_starts_record ... ok
+test profiles::agent::claude::settings::tests::the_fragments_are_written_as_the_release_writes_them ... ok
+test profiles::agent::claude::settings::tests::the_text_is_one_json_object_of_the_keys_as_given ... ok
+test profiles::agent::claude::status_line::tests::an_identity_read_back_as_flume_spells_it ... ok
+test profiles::agent::claude::status_line::tests::nothing_outside_an_agent_flume_started ... ok
+test profiles::agent::claude::tests::deliver_is_offered_at_the_pinned_release ... ok
+test profiles::agent::claude::tests::the_command_names_no_flume_deliver_where_deliver_is_not_offered ... ok
+test profiles::agent::claude::tests::the_plugin_written_carries_its_module_naming_the_binary ... ok
+test profiles::agent::claude::tests::the_trust_fragments_are_written_as_the_release_writes_them ... ok
+test profiles::agent::claude::windows::tests::a_window_in_no_such_form_is_no_report ... ok
+test profiles::agent::claude::windows::tests::the_engines_form_read ... ok
+test profiles::agent::claude::windows::tests::the_windows_kept_and_read_back ... ok
+test profiles::agent::claude::withheld::tests::the_lists_are_written_as_the_release_writes_them ... ok
+test profiles::agent::claude::wrapper::tests::a_c_wrapper_is_read_from_the_command_it_carries ... ok
+test profiles::agent::claude::wrapper::tests::a_program_that_is_no_wrapper_is_run_as_named ... ok
+test profiles::agent::claude::wrapper::tests::a_shell_wrapper_is_read_from_its_exports_and_exec ... ok
+test profiles::change::openspec::tests::a_tasks_file_gives_its_checkbox_lines_in_order ... ok
+test profiles::change::openspec::tests::any_other_heading_starts_no_group ... ok
+test profiles::change::openspec::tests::groups_are_read_from_their_headings ... ok
+test profiles::change::openspec::tests::tasks_above_every_heading_are_a_group_of_their_own ... ok
+test profiles::merge_queue::sluice::subscription::tests::a_reading_holds_each_branchs_version_revision_and_gone ... ok
+test host::process::tests::this_process_and_a_child_are_listed ... ok
+test profiles::merge_queue::sluice::subscription::tests::no_state_folder_is_no_sluice_host ... ok
+test host::process::tests::a_childs_parent_and_a_parents_children_are_read ... ok
+test profiles::merge_queue::sluice::subscription::tests::the_socket_is_sluices_for_its_state_folder ... ok
+test profiles::merge_queue::sluice::tests::a_clear_forecast ... ok
+test profiles::merge_queue::sluice::tests::a_close_reads_gone_only_where_sluice_names_the_branch_itself ... ok
+test profiles::merge_queue::sluice::tests::a_conflict_with_entries_ahead ... ok
+test profiles::merge_queue::sluice::tests::a_conflicts_words ... ok
+test profiles::merge_queue::sluice::tests::a_failure_after_every_step_passed_is_sluices ... ok
+test profiles::merge_queue::sluice::tests::a_forecast_refused ... ok
+test profiles::merge_queue::sluice::tests::a_record_in_flight_is_read_undecided_in_each_state_sluice_names ... ok
+test profiles::merge_queue::sluice::tests::a_sluice_before_its_host_process_is_handed_no_work ... ok
+test profiles::merge_queue::sluice::subscription::tests::nothing_is_asked_while_there_is_nothing_to_follow_and_no_host_ends_it ... ok
+test profiles::merge_queue::sluice::subscription::tests::it_follows_hears_and_ends_over_sluice_hosts_socket ... ok
+test profiles::merge_queue::sluice::tests::a_step_runs_no_sluice_and_says_the_queue_moves_on_its_own ... ok
+test profiles::merge_queue::sluice::tests::an_answer_with_no_steps ... ok
+test profiles::merge_queue::sluice::tests::nothing_to_equip_is_no_step ... ok
+test profiles::merge_queue::sluice::tests::the_steps_sluice_equipped_with ... ok
+test profiles::store::state_dir::tests::a_document_that_opens_otherwise_gives_no_version_from_its_head ... ok
+test profiles::store::state_dir::tests::a_documents_version_is_read_from_the_bytes_it_opens_with ... ok
+test profiles::terminal::common::tests::a_bases_label_is_its_repositorys_folder_and_its_base ... ok
+test profiles::terminal::common::tests::a_digest_is_twelve_hex_digits_of_the_texts_sha256 ... ok
+test profiles::terminal::common::tests::a_record_is_written_and_read_back ... ok
+test profiles::terminal::common::tests::a_word_is_quoted_whole_for_a_shell ... ok
+test profiles::terminal::common::tests::the_folder_trust_question_and_its_focus_are_read_off_a_screen ... ok
+test profiles::terminal::common::tests::the_program_is_found_by_its_file_or_its_script_and_else_named ... ok
+test profiles::terminal::herdr::tests::a_place_in_two_sessions_shows_on_its_live_agents_server_and_its_base_on_each ... ok
+test profiles::terminal::herdr::tests::a_place_open_never_made_shows_nowhere ... ok
+test profiles::terminal::herdr::tests::a_refusal_of_typed_text_holds_no_word_of_it ... ok
+test profiles::terminal::herdr::tests::a_refusals_words_name_each_variable_and_hold_no_value ... ok
+test profiles::merge_queue::sluice::tests::a_sluice_that_names_no_release_is_handed_no_work ... ok
+test profiles::terminal::herdr::tests::a_resumes_herdr_name_differs_from_its_starts ... ok
+test profiles::terminal::herdr::tests::herdr_hands_a_running_agent_words ... ok
+test profiles::terminal::herdr::tests::records_written_before_are_read_as_their_servers ... ok
+test profiles::merge_queue::sluice::tests::a_sluice_with_its_host_process_is_handed_the_work ... ok
+test profiles::terminal::herdr::tests::relay_reads_the_pane_as_ansi_and_types_by_send_text_and_send_keys ... ok
+test profiles::terminal::herdr::tests::relay_finds_a_moved_pane_again_and_reads_a_gone_one_gone ... ok
+test profiles::terminal::herdr::tests::setup_gives_each_servers_words_in_order_and_once ... ok
+test profiles::terminal::herdr::tests::setup_is_a_running_servers_words_alone ... ok
+test profiles::terminal::herdr::tests::setup_is_none_for_nothing_lacking_or_nothing_written ... ok
+test profiles::terminal::herdr::tests::where_the_clues_show_is_read_from_the_records_alone ... ok
+test profiles::terminal::rex::tests::a_command_run_in_a_rex_block_names_its_block ... ok
+test profiles::terminal::rex::tests::a_herdr_sessions_name_is_none_of_rexs ... ok
+test profiles::terminal::rex::tests::a_kind_that_reports_nothing_to_rex_is_refused ... ok
+test profiles::terminal::rex::tests::a_label_is_its_place_and_clues_cut_to_128_characters ... ok
+test profiles::terminal::rex::tests::a_long_places_rex_name_is_128_characters_ending_in_its_digest ... ok
+test profiles::terminal::herdr::tests::relay_refuses_a_key_herdr_cannot_type_and_types_the_keys_after_it ... ok
+test profiles::terminal::rex::tests::a_relay_reads_a_gone_block_gone_and_another_refusal_unread ... ok
+test profiles::terminal::rex::tests::a_resumes_rex_name_differs_from_its_starts ... ok
+test profiles::terminal::rex::tests::a_session_name_the_socket_cannot_hold_is_refused ... ok
+test profiles::terminal::rex::tests::a_text_is_cut_between_characters_and_a_screen_is_its_last_rows ... ok
+test profiles::terminal::rex::tests::attach_for_a_window_is_refused_and_calls_nothing ... ok
+test profiles::terminal::rex::tests::attach_for_the_app_is_refused_naming_why ... ok
+test host::process::tests::a_program_run_under_a_bound ... ok
+test profiles::terminal::rex::tests::relay_of_an_agent_no_record_names_is_refused_and_calls_nothing ... ok
+test profiles::terminal::rex::tests::attach_for_the_app_selects_the_newest_rex_session_flume_made ... ok
+test profiles::terminal::rex::tests::relay_reads_the_blocks_last_rows_as_rex_writes_them ... ok
+test profiles::terminal::rex::tests::relay_types_a_character_send_key_refuses_as_text_and_refuses_it_led ... ok
+test profiles::terminal::rex::tests::show_and_shown_at_with_nothing_recorded_call_nothing ... ok
+test profiles::terminal::rex::tests::shown_at_names_the_window_the_block_and_the_bases_rex_sessions ... ok
+test profiles::terminal::rex::tests::relay_types_by_send_in_pieces_and_keys_by_send_key ... ok
+test profiles::terminal::rex::tests::the_state_is_read_from_the_programs_newest_report ... ok
+test profiles::window::printed::tests::a_line_a_person_runs ... ok
+test resident::tests::a_change_heard_settles_and_moves_the_backstop ... ok
+test resident::tests::a_second_resident_on_the_host_is_refused ... ok
+test resident::tests::a_stop_ends_the_resident_and_its_subscription ... ok
+test resident::tests::an_ended_subscription_is_held_again_a_minute_on_and_the_backstop_settles_meanwhile ... ok
+test resident::tests::each_settle_moves_the_subscriptions_to_read_again ... ok
+test resident::tests::it_settles_at_once_and_then_each_minute_with_nothing_heard ... ok
+test resident::tests::many_changes_heard_together_make_one_settle ... ok
+test resident::tests::the_subscription_follows_what_the_newest_settle_gave ... ok
+test served::tests::a_status_is_one_document_then_the_end ... ok
+test served::tests::a_subscription_gets_each_change_once ... ok
+test served::tests::an_ask_it_cannot_read_is_an_error ... ok
+test served::tests::asks_read_back_as_written ... ok
+test served::tests::no_flume_host_is_named_with_its_socket ... ok
+test served::tests::the_client_reads_the_document ... ok
+test served::tests::the_socket_is_named_as_sluice_names_its_own ... ok
+test shell::tests::a_steps_words_keep_their_end ... ok
+test shell::tests::a_word_quoted_only_where_a_shell_reads_it ... ok
+test telemetry::tests::a_warning_is_scrubbed_of_paths_and_credentials ... ok
+test telemetry::tests::metrics_name_no_place_intent_mark_conversation_or_account ... ok
+test telemetry::tests::spans_go_with_the_held_ids_and_times ... ok
+test telemetry::tests::the_resource_reads_no_variable_of_the_callers ... ok
+test telemetry::tests::the_signals_the_table_and_otels_variables_leave_on ... ok
+test profiles::terminal::rex::tests::the_start_script_holds_every_variable_and_no_argument_does ... ok
+test profiles::terminal::herdr::tests::a_relay_read_that_does_not_answer_is_unread_naming_one_second ... ok
+test profiles::terminal::rex::tests::a_relay_call_names_its_server_and_past_one_second_nothing_typed ... ok
+
+test result: ok. 358 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.74s
+
+
+running 2 tests
+test tests::profiles_holds_one_marker_per_seam ... ok
+test tests::the_answer_is_written_as_json_and_read_back ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 12 tests
+test a_bound_and_a_key_in_a_wrong_form ... ok
+test a_bound_on_a_stage_hold ... ok
+test a_message_to_an_address_answers_with_its_key ... ok
+test a_message_naming_its_key ... ok
+test a_hold_on_the_waiting_move_then_a_retry_naming_its_key ... ok
+test a_target_names_an_address_or_a_place ... ok
+test relay_writes_screens_and_types_each_line_of_input ... ok
+test relays_help_names_its_lines_and_no_caller ... ok
+test relay_gives_back_what_it_cannot_type_and_a_refusal_alone ... ok
+test settle_on_quiet_starts_a_conversations_quiet_again ... ok
+test a_tell_naming_its_key ... ok
+test tell_runs_as_message ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 71 tests
+test a_fix_under_the_printed_command_is_listed_outside_any_repository_running_no_tool ... ok
+test a_dropped_place_is_listed_only_with_all ... ok
+test a_base_the_merge_queue_lands_is_read_where_it_says ... ok
+test a_key_refused_through_the_binary ... ok
+test a_key_confirmed_through_the_binary ... ok
+test a_launch_given_an_address_finds_no_clone ... ok
+test a_hold_after_the_launch_and_a_stall_bound ... ok
+test a_launch_from_a_rex_block_names_its_block ... ok
+test a_base_no_merge_queue_lands_is_cut_from_origins_copy ... ok
+test a_launch_takes_its_stream_by_its_repositorys_address ... ok
+test a_name_no_streams_word_gives ... ok
+test a_mode_and_a_table_at_the_launch ... ok
+test a_lock_that_cannot_be_read ... ok
+test a_launch_naming_no_base_is_cut_from_the_remotes_default_branch ... ok
+test a_place_named_from_inside_it ... ok
+test a_readers_place_collected_by_its_inbox ... ok
+test a_refusal ... ok
+test a_repository_with_no_origin_is_cut_from_its_own_base ... ok
+test a_role_runs_launch_over_mcp_reports_to_its_address ... ok
+test a_place_made_in_the_repositorys_directory_is_read_and_tidied_where_it_stands ... ok
+test a_session_for_every_stage_and_for_one_at_the_launch ... ok
+test a_source_file_with_no_kinds_dir ... ok
+test a_stream_and_an_intent_at_the_launch ... ok
+test a_streams_multiplexer_flume_does_not_carry ... ok
+test a_wake_of_a_roles_address ... ok
+test a_wait_exits_by_its_outcome ... ok
+test a_watch_with_a_place_named ... ok
+test a_watch_over_a_scratch_repository ... ok
+test an_unknown_terminal_app ... ok
+test an_answer_naming_no_decision ... ok
+test agent_settings_at_the_launch ... ok
+test an_effort_for_every_stage_and_for_one_at_the_launch ... ok
+test fifty_places_are_listed_within_a_second ... ok
+test hibernation_through_the_binary_a_hibernate_of_a_fix_is_refused ... ok
+test every_place_is_made_under_flumes_own_data_directory ... ok
+test flume_writes_neither_configuration_file ... ok
+test kinds_lock_refuses_a_hash_the_content_does_not_have ... ok
+test hibernation_through_the_binary_a_resume_of_nothing_is_refused ... ok
+test kinds_lock_refuses_an_identity_no_lock_records ... ok
+test kinds_lock_two_writers_at_once_and_a_removal ... ok
+test kinds_lock_writes_a_working_copys_lock ... ok
+test kinds_lock_writes_the_hosts_lock ... ok
+test host_settings_and_an_account_for_a_kind ... ok
+test holds_and_recipients_at_the_launch ... ok
+test launch_over_mcp_refused_as_the_command_line_refuses_it ... ok
+test mcp_hibernate_refused_as_the_command_line_refuses_it ... ok
+test needs_from_outside_an_agent ... ok
+test needs_help ... ok
+test mcp_resume_refused_as_the_command_line_refuses_it ... ok
+test message_over_mcp ... ok
+test open_of_an_undeclared_stream ... ok
+test open_under_the_printed_command ... ok
+test one_places_line_under_the_printed_command ... FAILED
+test own_settings_and_a_file_at_the_launch ... ok
+test stand_in_flume ... ok
+test s83_the_local_layer_through_the_binary ... ok
+test the_helps_of_confirm_and_wait ... ok
+test needs_to_a_role_and_to_another_streams ... ok
+test the_keys_and_none_in_status ... ok
+test the_helps_of_needs_hold_retry_message_and_launch ... ok
+test no_environment_value_is_printed_or_kept ... ok
+test the_lists_help_names_status_for_a_places_every_fact ... ok
+test the_mcp_tools_listed ... ok
+test status_over_mcp ... FAILED
+test the_list_for_a_person_under_the_printed_command ... ok
+test the_list_through_the_command_line_and_the_core ... ok
+test the_wakes_help_names_a_stream_and_a_role ... ok
+test the_settings_agent_gives_are_named_in_its_refusal ... ok
+test the_same_answer_through_the_command_line_and_the_core ... ok
+test unlocked_then_locked_by_the_repository ... ok
+test the_recipient_a_wait_and_an_inbox_default_to ... ok
+
+failures:
+
+---- one_places_line_under_the_printed_command stdout ----
+
+thread 'one_places_line_under_the_printed_command' (280884830) panicked at crates/flume/tests/commands.rs:2390:5:
+assertion `left == right` failed: the line settled
+  left: 1795553678200787000
+ right: 1795553678147767000
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- status_over_mcp stdout ----
+
+thread 'status_over_mcp' (280889785) panicked at crates/flume/tests/commands.rs:2339:5:
+assertion `left == right` failed
+  left: "{\"status\":{\"places\":[{\"place\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one\",\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"kind\":\"fix\",\"version\":1,\"declared\":\"launch\",\"identity\":\"launch/fix@1\",\"kind_from\":{\"identity\":{\"source\":\"launch\",\"name\":\"fix\",\"version\":1,\"spelled\":\"launch/fix@1\"},\"source\":\"launch\",\"declaration_file\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/kinds/kinds.toml\"},\"name\":\"one\",\"branch\":\"fix/one\",\"base\":\"main\",\"base_from\":\"no-origin\",\"mark\":null,\"lands\":false,\"phase\":\"live\",\"readiness\":{\"steps\":[]},\"stages\":[{\"name\":\"code\",\"state\":\"begun\",\"starts\":1,\"end\":null,\"refused_part\":null,\"refused_setting\":null,\"conversation\":false}],\"current\":\"code\",\"agent\":{\"identity\":\"flume:bc7344f78393:fix--one:code:1\",\"stage\":\"code\",\"program\":\"stand-in\",\"settings\":{\"program\":\"stand-in\",\"model\":null,\"instructions\":null,\"beside\":null,\"keep_open\":\"1h\",\"hibernate_after\":\"1h\",\"env\":{},\"from\":{\"hibernate_after\":{\"layer\":\"default\",\"value\":\"1h\"},\"keep_open\":{\"layer\":\"default\",\"value\":\"1h\"},\"program\":{\"layer\":\"kind\",\"value\":\"stand-in\"}}},\"account\":null,\"state\":\"unknown\",\"started\":\"yes\",\"asking\":\"no\",\"own_work\":\"no\",\"past_limit\":false,\"screen\":null,\"printed\":\"cd /private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one && stand-in 'Do the work of the fix one in /private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one. To stop short: flume needs \\\"<words>\\\" Stopping short is your one way to ask for what your stage needs: write no card and no message to a person yourself, since whoever answers your question decides whether it is a person'\\\\''s.\\n'\",\"last_words\":null,\"notes\":[],\"mode\":null,\"session\":{\"from\":\"own\"},\"terminal\":{\"profile\":\"printed\",\"from\":\"neither\"}},\"head\":\"c53a5ee5b6199caa986811207c098644e0cfa576\",\"delivered\":false,\"tasks\":null,\"submission\":null,\"refused_acts\":[],\"cannot_read\":[\"the agent's state\"],\"failures\":[],\"recipients\":[\"caller\"],\"recipients_from\":{\"from\":\"environment\"},\"hold_words\":{},\"waiting_on\":null,\"stalled\":false,\"holds\":[],\"priority\":0,\"stream\":{\"name\":\"default\",\"from\":\"default\"},\"label\":null,\"intent\":{\"from\":\"base\",\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"base\":\"main\",\"digest\":\"009f83db3e48ea328c4029627ef16fc8c2ed517ca6dfcfc755f5834a54e122e4\"},\"moves\":[],\"unsettled\":[],\"uncarried\":[],\"ends\":[],\"clues\":{\"stage\":\"code\",\"state\":\"unknown\",\"title\":\"code · unknown\",\"display_agent\":\"fix--one\",\"shown_at\":{\"place\":null,\"agent\":null,\"base\":null}},\"line\":{\"name\":\"fix--one\",\"kind\":\"fix@1\",\"stage\":\"code\",\"run\":1,\"tasks\":null,\"state\":\"working\",\"full\":\"fix--one · fix@1 · code · run 1 · working\",\"short\":\"code · run 1 · working\"}}],\"host\":{\"running\":1,\"bound\":null,\"room\":null,\"queue\":[],\"streams\":[{\"name\":\"default\",\"session\":{\"from\":\"own\"},\"sessions\":[],\"faults\":[],\"multiplexer\":{\"profile\":\"printed\",\"from\":\"neither\"},\"view\":{\"view\":\"terminal\",\"from\":\"neither\"},\"terminal_app\":{\"profile\":\"printed\",\"from\":\"neither\"},\"title\":{\"title\":\"default\",\"from\":\"stream-name\"},\"priority\":0,\"running\":1,\"bound\":null,\"room\":null,\"queue\":[],\"labels\":[],\"reserves\":\"none\",\"refused\":null}],\"pools\":[],\"terminal_kept\":[],\"addresses\":[],\"watch\":{\"bound\":{\"seconds\":3600}},\"watch_settled\":1795553678,\"watch_ended\":1795553678,\"terminals\":[{\"profile\":\"printed\",\"kept\":[],\"watch\":\"none\"}],\"bases\":[{\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"base\":\"main\",\"count\":{\"running\":1,\"asking\":0,\"waiting_on_caller\":0,\"stalled\":0},\"line\":\"1 running · 0 asking · 0 waiting on caller · 0 stalled\",\"shown_at\":null}],\"terminal_setup\":[],\"configuration\":{\"local\":{\"state\":\"no-file\"},\"values\":[]},\"expired\":[]}}}"
+ right: "{\"status\":{\"places\":[{\"place\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one\",\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"kind\":\"fix\",\"version\":1,\"declared\":\"launch\",\"identity\":\"launch/fix@1\",\"kind_from\":{\"identity\":{\"source\":\"launch\",\"name\":\"fix\",\"version\":1,\"spelled\":\"launch/fix@1\"},\"source\":\"launch\",\"declaration_file\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/kinds/kinds.toml\"},\"name\":\"one\",\"branch\":\"fix/one\",\"base\":\"main\",\"base_from\":\"no-origin\",\"mark\":null,\"lands\":false,\"phase\":\"live\",\"readiness\":{\"steps\":[]},\"stages\":[{\"name\":\"code\",\"state\":\"begun\",\"starts\":1,\"end\":null,\"refused_part\":null,\"refused_setting\":null,\"conversation\":false}],\"current\":\"code\",\"agent\":{\"identity\":\"flume:bc7344f78393:fix--one:code:1\",\"stage\":\"code\",\"program\":\"stand-in\",\"settings\":{\"program\":\"stand-in\",\"model\":null,\"instructions\":null,\"beside\":null,\"keep_open\":\"1h\",\"hibernate_after\":\"1h\",\"env\":{},\"from\":{\"hibernate_after\":{\"layer\":\"default\",\"value\":\"1h\"},\"keep_open\":{\"layer\":\"default\",\"value\":\"1h\"},\"program\":{\"layer\":\"kind\",\"value\":\"stand-in\"}}},\"account\":null,\"state\":\"unknown\",\"started\":\"yes\",\"asking\":\"no\",\"own_work\":\"no\",\"past_limit\":false,\"screen\":null,\"printed\":\"cd /private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one && stand-in 'Do the work of the fix one in /private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-114/home/.local/share/flume/places/bc7344f78393/fix--one. To stop short: flume needs \\\"<words>\\\" Stopping short is your one way to ask for what your stage needs: write no card and no message to a person yourself, since whoever answers your question decides whether it is a person'\\\\''s.\\n'\",\"last_words\":null,\"notes\":[],\"mode\":null,\"session\":{\"from\":\"own\"},\"terminal\":{\"profile\":\"printed\",\"from\":\"neither\"}},\"head\":\"c53a5ee5b6199caa986811207c098644e0cfa576\",\"delivered\":false,\"tasks\":null,\"submission\":null,\"refused_acts\":[],\"cannot_read\":[\"the agent's state\"],\"failures\":[],\"recipients\":[\"caller\"],\"recipients_from\":{\"from\":\"environment\"},\"hold_words\":{},\"waiting_on\":null,\"stalled\":false,\"holds\":[],\"priority\":0,\"stream\":{\"name\":\"default\",\"from\":\"default\"},\"label\":null,\"intent\":{\"from\":\"base\",\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"base\":\"main\",\"digest\":\"009f83db3e48ea328c4029627ef16fc8c2ed517ca6dfcfc755f5834a54e122e4\"},\"moves\":[],\"unsettled\":[],\"uncarried\":[],\"ends\":[],\"clues\":{\"stage\":\"code\",\"state\":\"unknown\",\"title\":\"code · unknown\",\"display_agent\":\"fix--one\",\"shown_at\":{\"place\":null,\"agent\":null,\"base\":null}},\"line\":{\"name\":\"fix--one\",\"kind\":\"fix@1\",\"stage\":\"code\",\"run\":1,\"tasks\":null,\"state\":\"working\",\"full\":\"fix--one · fix@1 · code · run 1 · working\",\"short\":\"code · run 1 · working\"}}],\"host\":{\"running\":1,\"bound\":null,\"room\":null,\"queue\":[],\"streams\":[{\"name\":\"default\",\"session\":{\"from\":\"own\"},\"sessions\":[],\"faults\":[],\"multiplexer\":{\"profile\":\"printed\",\"from\":\"neither\"},\"view\":{\"view\":\"terminal\",\"from\":\"neither\"},\"terminal_app\":{\"profile\":\"printed\",\"from\":\"neither\"},\"title\":{\"title\":\"default\",\"from\":\"stream-name\"},\"priority\":0,\"running\":1,\"bound\":null,\"room\":null,\"queue\":[],\"labels\":[],\"reserves\":\"none\",\"refused\":null}],\"pools\":[],\"terminal_kept\":[],\"addresses\":[],\"watch\":{\"bound\":{\"seconds\":3600}},\"watch_settled\":1795553678,\"terminals\":[{\"profile\":\"printed\",\"kept\":[],\"watch\":\"none\"}],\"bases\":[{\"repository\":\"/private/tmp/sluice-501/65bbd268bb/af8751530b/flume-test-mcp-55694-115/repository\",\"base\":\"main\",\"count\":{\"running\":1,\"asking\":0,\"waiting_on_caller\":0,\"stalled\":0},\"line\":\"1 running · 0 asking · 0 waiting on caller · 0 stalled\",\"shown_at\":null}],\"terminal_setup\":[],\"configuration\":{\"local\":{\"state\":\"no-file\"},\"values\":[]},\"expired\":[]}}}"
+
+
+failures:
+    one_places_line_under_the_printed_command
+    status_over_mcp
+
+test result: FAILED. 69 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.01s
+
+--- stderr ---
+    Blocking waiting for file lock on build directory
+   Compiling tokio v1.54.1
+   Compiling opentelemetry v0.33.1
+   Compiling weir-pack v0.0.0 (https://github.com/boomdrivedev/weir?rev=cc9d41fba5e47b25ed1dde90c380d3c9f56a1785#cc9d41fb)
+   Compiling flume-fakes v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-fakes)
+   Compiling flume-conformance v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume-conformance)
+   Compiling tower v0.5.3
+   Compiling hyper v1.12.0
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.21
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling reqwest v0.13.5
+   Compiling opentelemetry-http v0.33.1
+   Compiling tokio-util v0.7.20
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling flume v0.0.0 (/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice/.places/sluice+2Ftry+2Fmain+2F39/crates/flume)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 10s
+     Running unittests src/lib.rs (target/debug/deps/flume-8db551d9af8739c1)
+     Running unittests src/main.rs (target/debug/deps/flume-f7acfd91dd9df105)
+     Running tests/command_line.rs (target/debug/deps/command_line-b1f6474603df1cb6)
+     Running tests/commands.rs (target/debug/deps/commands-74949dbe55451e06)
+error: test failed, to rerun pass `-p flume --test commands`
