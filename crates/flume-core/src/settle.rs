@@ -83,6 +83,21 @@ impl Engine {
         Answer::Settled { places, tidy }
     }
 
+    /// The repositories a change in their merge queue can move a place
+    /// of, each by the repository its places name: those of the live
+    /// places whose submission is in flight and of the base places, read
+    /// from held state alone, asking no seam (124, 203, 225; core.62). A
+    /// watch that hears its merge queue follows these, and no other
+    /// (record 0082; core.13).
+    pub fn followed(&self) -> std::collections::BTreeSet<String> {
+        self.store
+            .read_every()
+            .into_iter()
+            .filter(|read| crate::pending::moved_by_its_merge_queue(&read.state))
+            .map(|read| read.state.place.repository)
+            .collect()
+    }
+
     /// Writes the host's watch as `watched`, by compare-and-set, reading
     /// it again where its version moved; a watch that began later and
     /// stands is kept (73, 153, 208).
