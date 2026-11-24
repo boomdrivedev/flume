@@ -2,7 +2,8 @@
 # flume-publishes-its-own-flake-and-module, design 4 and 5): flake.nix's
 # outputs called with the lock's inputs are packages, darwinModules and
 # nixosModules alone, each module set flume and default, default the same
-# module as flume, and neither module declares a service of flume's.
+# module as flume, and each module declares flume-host alone of flume's
+# services (record 0082).
 t:
 let
   inherit (t) lib outputs;
@@ -57,11 +58,11 @@ in
     ) "the outputs are ${toString given}, not packages, darwinModules and nixosModules"
     ++ lib.concatMap setOf (builtins.filter (name: outputs ? ${name}) modules);
 
-  "No service of flume's" =
+  "flume host is flume's one service" =
     t.expect (
-      named jobs == [ ]
-    ) "the nix-darwin module declares the launchd jobs ${toString (named jobs)}"
+      named jobs == [ "flume-host" ]
+    ) "the nix-darwin module declares the launchd jobs ${toString (named jobs)}, not flume-host alone"
     ++ t.expect (
-      named units == [ ]
-    ) "the NixOS module declares the systemd units ${toString (named units)}";
+      named units == [ "flume-host" ]
+    ) "the NixOS module declares the systemd units ${toString (named units)}, not flume-host alone";
 }

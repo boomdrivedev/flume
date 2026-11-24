@@ -6,11 +6,14 @@
 # each source `sources` declares, rendered the same way, linked at
 # ~/.config/flume/sources/<source>.toml, and the module's link of a source
 # no longer declared removed (the change
-# flumes-module-writes-the-hosts-sources, design 5 and 7). flume runs no
-# service (core.13), so the module declares no launchd agent: the next
-# command reads the new files. The activation runs each step as the
-# primary user under their own home, as Boomdrive's does, and a step that
-# fails says why and stops nothing else.
+# flumes-module-writes-the-hosts-sources, design 5 and 7). Where it
+# installs a package, it declares the launchd agent `flume-host`, which
+# runs that package's `flume host`, flume's resident, as the primary user,
+# started at load and again whenever it ends (record 0082; core.13); a
+# command reads the new files at once, and the resident at its next
+# settle. The activation runs each step as the primary user under their
+# own home, as Boomdrive's does, and a step that fails says why and stops
+# nothing else.
 { packages }:
 {
   config,
@@ -37,6 +40,21 @@ let
 
   user = config.system.primaryUser;
   home = if user == null then null else config.users.users.${user}.home or null;
+  # The user's own profiles first, then the system's, as a login shell
+  # finds the tools the profiles run: git, the merge queue and the
+  # terminal.
+  path = lib.concatStringsSep ":" [
+    "/etc/profiles/per-user/${toString user}/bin"
+    "${toString home}/.nix-profile/bin"
+    "${toString home}/.local/state/nix/profile/bin"
+    "/run/current-system/sw/bin"
+    "/nix/var/nix/profiles/default/bin"
+    "/usr/local/bin"
+    "/usr/bin"
+    "/bin"
+    "/usr/sbin"
+    "/sbin"
+  ];
 in
 {
   imports = [ (import ./options.nix { inherit packages; }) ];
@@ -52,6 +70,31 @@ in
     ];
 
     environment.systemPackages = lib.optional (cfg.package != null) cfg.package;
+
+    # flume's resident (record 0082): one `flume host` for the primary
+    # user, kept running. A terminal's server one of its starts brought up
+    # is the terminal's, and outlives it (core.13's details), so launchd
+    # leaves its process group standing when it ends.
+    launchd.user.agents.flume-host = lib.mkIf (cfg.package != null) {
+      serviceConfig = {
+        ProgramArguments = [
+          "/bin/sh"
+          "-c"
+          "/bin/wait4path /nix/store && exec ${lib.getExe' cfg.package "flume"} host"
+        ];
+        EnvironmentVariables = {
+          HOME = toString home;
+          PATH = path;
+        };
+        KeepAlive = true;
+        RunAtLoad = true;
+        ProcessType = "Background";
+        AbandonProcessGroup = true;
+        ThrottleInterval = 30;
+        StandardOutPath = "${toString home}/Library/Logs/flume-host.log";
+        StandardErrorPath = "${toString home}/Library/Logs/flume-host.log";
+      };
+    };
 
     system.activationScripts.postActivation.text = ''
       sudo --user=${lib.escapeShellArg user} -- /usr/bin/env HOME=${lib.escapeShellArg home} \
