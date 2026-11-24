@@ -152,8 +152,10 @@ its bound waits for room, and the answer says so.
 flume status [<place>] [--line]
 ```
 
-With a place, its status; with none, every place on the host. Each
-place gives:
+With a place, its status; with none, every place on the host. The
+host's `flume host` answers it, so `flume status` starts no process of
+its own; where no `flume host` runs, `flume status` is refused, naming
+the socket it asked. Each place gives:
 
 - its line, the one `--line` prints;
 - its kind, version and origin, and its phase, live or tidied;
@@ -637,6 +639,32 @@ duration, is refused before anything is read:
 $ flume settle fix--one --every 2m
 refused: --every settles the places where something is pending as a caller's watch over the host, and takes no place: fix--one was named
 ```
+
+## `flume host`
+
+```sh
+flume host [--every <bound>]
+```
+
+flume's resident, which the host's service manager runs and keeps
+running, one on a host. It keeps watch over the host: it settles the
+places where something is pending at once, at each change it hears in
+the merge queue, and at least every `<bound>`, a minute by default.
+
+It serves status on a socket of its own, `host-<key>.sock` in
+`/tmp/flume-<uid>`, or in `$FLUME_USER_SCRATCH` where set, the key the
+first 10 hex digits of the SHA-1 of flume's state folder. Each line is
+one JSON object. A client says `{"hello":"<client>/<version>"}` and
+then asks one thing:
+
+- `{"ask":"status"}`: one `{"document": …}` line, the answer
+  `flume --json status` prints, and the connection closes;
+- `{"ask":"subscribe"}`: a `document` line at once, and another each
+  time the answer changes, until the client closes the connection.
+
+Either ask may name a `place` by its location, and ask each place's
+`line`. Status is read again after each settle, after each change heard
+in the merge queue, and after each change of flume's state folder.
 
 ## `flume wait`
 
