@@ -6,7 +6,8 @@
 //! The socket is `host-<key>.sock` in the user's own directory, `/tmp`
 //! resolved and `flume-<uid>`, or `$FLUME_USER_SCRATCH` where set, the
 //! key the first 10 hex digits of the SHA-1 of flume's resolved state
-//! folder, as sluice host names its own. Each line is one JSON object.
+//! folder, as the merge queue's resident names its own. Each line is one
+//! JSON object.
 //! The client says `{"hello":"<client>/<version>"}`; flume host answers
 //! `{"version", "protocol", "pid", "since"}`. The client then asks one
 //! thing: `{"ask":"status"}`, answered by one `{"document": <answer>}`
@@ -106,7 +107,7 @@ fn user_dir(var: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, String> 
 }
 
 /// The key a folder names its socket by: the first 10 hex digits of the
-/// SHA-1 of its path's bytes, as sluice keys its own.
+/// SHA-1 of its path's bytes, as the merge queue's resident keys its own.
 fn key(folder: &Path) -> String {
     use sha1::{Digest, Sha1};
     use std::os::unix::ffi::OsStrExt as _;
@@ -501,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn the_socket_is_named_as_sluice_names_its_own() {
+    fn the_socket_is_named_by_its_state_folders_digest() {
         let dir = scratch("socket");
         let state = dir.join("state");
         std::fs::create_dir_all(state.join("flume")).unwrap();

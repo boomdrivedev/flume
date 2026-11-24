@@ -575,29 +575,6 @@ impl Walk {
         *self.resident.borrow_mut() = Some(started);
     }
 
-    /// The host's resident started, and its first settle ended, so
-    /// nothing of its writes a place's held state until it hears a change
-    /// or its bound passes.
-    pub fn resident_settled(&self) {
-        self.resident();
-        let deadline = Instant::now() + Duration::from_secs(60);
-        loop {
-            let host = self.host();
-            if host["watch_ended"].as_u64().is_some_and(|ended| {
-                host["watch_settled"]
-                    .as_u64()
-                    .is_some_and(|began| ended >= began)
-            }) {
-                return;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the resident's first settle never ended: {host}"
-            );
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-
     /// flume's answer to `words`, as JSON, and whether it refused.
     pub fn flume_ran(&self, words: &[&str]) -> (Value, bool) {
         Walk::answered(self.flume_command(words), words)

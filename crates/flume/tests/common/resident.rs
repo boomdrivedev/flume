@@ -48,7 +48,7 @@ pub fn user_scratch() -> PathBuf {
     dir.canonicalize().expect("the resident's folder's path")
 }
 
-/// A running resident: `flume host`, or the `sluice daemon` a host's
+/// A running resident: `flume host`, or the merge queue's resident a host's
 /// service manager runs beside it.
 pub struct Resident {
     child: std::sync::Mutex<Child>,
@@ -72,9 +72,47 @@ impl Resident {
                 .any(|entry| std::os::unix::net::UnixStream::connect(entry.path()).is_ok())
         };
         let watched = dir.to_path_buf();
-        Resident::until(command, dir.join("host.log"), Some(dir), move || {
+        let resident = Resident::until(command, dir.join("host.log"), Some(dir), move || {
             answers(&watched)
-        })
+        });
+        resident.until_settled(dir);
+        resident
+    }
+
+    /// Waits until the resident's first settle has ended, as its status
+    /// gives its watch, so it writes no place's state after the test reads
+    /// it until it hears a change or its bound passes.
+    fn until_settled(&self, dir: &Path) {
+        let socket = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| path.extension().is_some_and(|ext| ext == "sock"))
+            .expect("the resident's socket");
+        let until = Instant::now() + Duration::from_secs(60);
+        loop {
+            let read = flume::served::status_at(&socket, &flume::served::Asked::default())
+                .ok()
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok());
+            let host = read.as_ref().map(|read| &read["status"]["host"]);
+            let ended = host.is_some_and(|host| {
+                host["watch_ended"].as_u64().is_some_and(|ended| {
+                    host["watch_settled"]
+                        .as_u64()
+                        .is_some_and(|began| ended >= began)
+                })
+            });
+            if ended {
+                return;
+            }
+            assert!(
+                Instant::now() < until,
+                "the resident's first settle never ended: {read:?} {}",
+                self.said()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     /// Starts `command`, its errors logged to `log`, and waits until
@@ -159,7 +197,7 @@ impl Drop for Resident {
         unsafe {
             libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
         }
-        // A sluice daemon ends its runs before it ends.
+        // The merge queue's resident ends its runs before it ends.
         let until = Instant::now() + Duration::from_secs(60);
         let ended = loop {
             match child.try_wait() {
@@ -210,7 +248,7 @@ pub fn shared(dir: &Path, command: impl FnOnce() -> Command) -> std::sync::Arc<R
 
 /// The resident keyed by `key`, as [`shared`] gives it, started by
 /// `command` and ready once a connection to `socket` is taken, where
-/// given: a `sluice daemon`, its log beside `key`.
+/// given: the merge queue's resident, its log beside `key`.
 pub fn shared_until(
     key: &Path,
     command: impl FnOnce() -> Command,

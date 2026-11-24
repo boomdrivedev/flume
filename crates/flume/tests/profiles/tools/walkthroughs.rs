@@ -4959,7 +4959,7 @@ fn relayed_through_the_binary(host: &Walk, place: &str) {
     use std::process::Stdio;
     use std::sync::mpsc::channel;
     use std::time::{Duration, Instant};
-    host.resident_settled();
+    host.resident();
     let store = StateDir::at(host.home().join("state/flume"));
     let id = PlaceId::new(place);
     let before = store.read(&id).expect("the place's held state").version;
