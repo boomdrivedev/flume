@@ -205,6 +205,17 @@ enum Command {
         #[arg(long)]
         every: Option<String>,
     },
+    /// The host's resident, run by the host's service manager: keep watch
+    /// over the host until stopped, settling the places where something
+    /// is pending at once, at each change its subscription to the merge
+    /// queue's resident hears, and every `--every` where it heard none
+    /// (208, 225; record 0082).
+    Host {
+        /// The watch's bound, as `<n>`, `<n>s`, `<n>m` or `<n>h`: the
+        /// longest it goes between settles.
+        #[arg(long, default_value = "60s")]
+        every: String,
+    },
     /// From an agent flume started: its stage cannot deliver without an
     /// answer, or found work, its end going to the place's recipients, or
     /// to the role `--to` names alone (41, 43, 132, C.4).
@@ -565,6 +576,34 @@ where
             };
         }
     };
+    if let Command::Host { every } = &cli.command {
+        let hosted = read_span(every)
+            .and_then(|bound| match bound {
+                0 => Err(format!(
+                    "--every {every} is no bound: a watch's bound is a positive duration"
+                )),
+                bound => Ok(bound),
+            })
+            .and_then(|bound| {
+                crate::resident::host(
+                    crate::profiles::core,
+                    crate::profiles::merge_queue_subscription(),
+                    bound,
+                )
+            });
+        return match hosted {
+            Ok(()) => Outcome {
+                text: String::new(),
+                usage: false,
+                code: 0,
+            },
+            Err(reason) => Outcome {
+                text: format!("refused: {reason}"),
+                usage: false,
+                code: 1,
+            },
+        };
+    }
     match &cli.command {
         Command::Hook { event } => {
             let mut input = String::new();
@@ -862,7 +901,11 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             })
         }
         Command::Open { session } => build()?.open_session(session.as_deref()),
-        Command::Hook { .. } | Command::Ack { .. } | Command::Mcp | Command::Relay { .. } => {
+        Command::Hook { .. }
+        | Command::Ack { .. }
+        | Command::Mcp
+        | Command::Relay { .. }
+        | Command::Host { .. } => {
             unreachable!("answered before the core's acts")
         }
     })
@@ -1036,6 +1079,21 @@ mod tests {
             ["flume", "settle", "fix--one", "--every", "2m"].as_slice(),
             ["flume", "settle", "--every", "0"].as_slice(),
             ["flume", "settle", "--every", "soon"].as_slice(),
+        ] {
+            let outcome = run(words.iter().copied(), &|| panic!("the core is built"));
+            assert_eq!(outcome.code, 1, "{words:?}: {}", outcome.text);
+            assert!(!outcome.usage, "{words:?}");
+            assert!(outcome.text.starts_with("refused: "), "{}", outcome.text);
+        }
+    }
+
+    #[test]
+    fn a_resident_with_no_bound_runs_nothing() {
+        // Record 0082: refused before the resident takes its lock or
+        // builds the core.
+        for words in [
+            ["flume", "host", "--every", "0"].as_slice(),
+            ["flume", "host", "--every", "soon"].as_slice(),
         ] {
             let outcome = run(words.iter().copied(), &|| panic!("the core is built"));
             assert_eq!(outcome.code, 1, "{words:?}: {}", outcome.text);

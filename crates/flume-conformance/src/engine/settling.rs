@@ -24,6 +24,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: an_outcome_handed_again_holds_no_stage,
         },
         Scenario {
+            name: "settle: a watch that hears its merge queue follows the repository of each place whose submission is in flight, none before the submit and none once the place landed",
+            cites: &["124", "208", "225"],
+            run: followed_while_in_flight,
+        },
+        Scenario {
             name: "settle: a delivered stage whose next waits on its caller starts nothing more",
             cites: &["S7", "47", "70", "17", "I6"],
             run: s7_two_held_places,
@@ -1270,6 +1275,40 @@ fn host_status(world: &World) -> Result<flume_core::HostStatus, String> {
         flume_core::Answer::Status { host, .. } => Ok(host),
         other => Err(format!("status answered {other:?}")),
     }
+}
+
+/// The repositories a watch that hears its merge queue follows: none
+/// while a chore works, its repository's while its submission is in
+/// flight, and none once it landed and was tidied (124, 208, 225; record
+/// 0082).
+fn followed_while_in_flight(_: &()) -> Outcome {
+    let world = World::new();
+    world.queue.plan_submits(vec![Plan::Hold]);
+    let id = World::id("chore", "one");
+    let mut chore = launch("chore", "one", Some("bump it"));
+    chore.recipients = vec!["ops".into()];
+    launched(&world.engine.launch(&chore))?;
+    world.settle(&id);
+    ensure!(
+        world.engine.followed().is_empty(),
+        "a repository followed while the chore works"
+    );
+    world.commit("chore/one", &["chore.rs"]);
+    world.settle(&id);
+    ensure_eq!(world.queue.log.count("submit"), 1, "the chore submitted");
+    ensure_eq!(
+        world.engine.followed().into_iter().collect::<Vec<_>>(),
+        vec![REPOSITORY.to_string()],
+        "the repositories followed while its submission is in flight"
+    );
+    world.queue.decide(REPOSITORY, "chore/one", Plan::Land);
+    world.settle(&id);
+    ensure!(world.held(&id).is_none(), "the landed chore is kept");
+    ensure!(
+        world.engine.followed().is_empty(),
+        "a repository followed once the chore landed"
+    );
+    Ok(())
 }
 
 /// A chore named `name` for the recipient `ops`, its code stage delivered

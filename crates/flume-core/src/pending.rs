@@ -185,3 +185,11 @@ fn time_come(held: &HeldState, now: Seconds) -> bool {
     let stalled = |held: &HeldState| held.waiting.as_ref().is_some_and(|waiting| waiting.stalled);
     next.ends != held.ends || next.holds != held.holds || stalled(&next) != stalled(held)
 }
+
+/// Whether a change in `held`'s merge queue can move it: a live place
+/// whose submission is in flight, or a base place, whose base may move
+/// (124, 202, 203, 225). A watch that hears its merge queue follows the
+/// repository of each such place (record 0082; core.13).
+pub(crate) fn moved_by_its_merge_queue(held: &HeldState) -> bool {
+    held.phase == Phase::Live && (submission_open(held) || base_place(&held.place.kind))
+}

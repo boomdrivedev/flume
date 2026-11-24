@@ -622,6 +622,13 @@ pub fn hook_events() -> Vec<&'static str> {
         .collect()
 }
 
+/// The subscription `flume host` holds to the merge queue's resident:
+/// sluice host's, the one merge queue whose resident serves one (record
+/// 0082; core.1).
+pub fn merge_queue_subscription() -> merge_queue::sluice::subscription::Subscription {
+    merge_queue::sluice::subscription::Subscription::of_host()
+}
+
 /// Whether the hook for `event` reads its input on standard input: every
 /// hook of the agent program's does, and the usage windows' report, and
 /// the status line reads none (211; design 5).

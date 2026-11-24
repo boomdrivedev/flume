@@ -32,6 +32,24 @@ weir-kinds = { git = "https://github.com/boomdrivedev/weir", rev = "cc9d41fba5e4
 weir-engine = { git = "https://github.com/boomdrivedev/weir", rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785" }
 weir-delivery = { git = "https://github.com/boomdrivedev/weir", rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785" }
 weir-pack = { git = "https://github.com/boomdrivedev/weir", rev = "cc9d41fba5e47b25ed1dde90c380d3c9f56a1785" }
+# flume host's tokio edge (record 0082): its runtime, its timers, the
+# socket of the merge queue's resident and the signals that stop it; its
+# tasks tracked and cancelled by tokio-util's TaskTracker and
+# CancellationToken; the core naming none of them
+# (a-residents-core-stays-synchronous-behind-a-tokio-edge).
+tokio = { version = "1", features = [
+  "rt",
+  "macros",
+  "net",
+  "io-util",
+  "time",
+  "sync",
+  "signal",
+] }
+tokio-util = { version = "0.7", features = ["rt"] }
+# The key sluice names its host's socket by, the SHA-1 of its state
+# folder's path (record 0082).
+sha1 = "0.10"
 # The engine's times, a statechart region's entered time and a snapshot's
 # moment, at the version weir's engine reads them in.
 time = "0.3"

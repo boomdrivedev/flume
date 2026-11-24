@@ -114,6 +114,8 @@
 //! already submitted, and submits nothing; [`forecast_of`] reads its
 //! answer (203, 210, C.6; sluice 64, 65).
 
+pub mod subscription;
+
 use crate::git::Git;
 use crate::shell;
 use flume_seams::{

@@ -53,6 +53,8 @@ let
     ++ builtins.attrNames systemd.timers
     ++ builtins.attrNames systemd.user.timers;
   says = evaluated: words: lib.hasInfix words (toString (t.failures evaluated));
+  # flume's resident's user unit (record 0082).
+  unit = base.config.systemd.user.services.flume-host;
 in
 {
   "Enabled on NixOS" =
@@ -60,8 +62,15 @@ in
     ++ t.expect (builtins.elem set.flume.outPath (profileOf base)) "the system profile holds not the flake's x86_64-linux flume"
     ++ links base
     ++
-      t.expect (!lib.any (lib.hasInfix "flume") (units base))
-        "a systemd unit is declared for flume: ${toString (builtins.filter (lib.hasInfix "flume") (units base))}";
+      t.expect (builtins.filter (lib.hasInfix "flume") (units base) == [ "flume-host" ])
+        "the units declared for flume are not flume-host alone: ${toString (builtins.filter (lib.hasInfix "flume") (units base))}"
+    ++ t.expect (builtins.elem "flume-host" (builtins.attrNames base.config.systemd.user.services)) "flume-host is no user unit"
+    ++ t.expect (
+      unit.serviceConfig.ExecStart == "${set.flume}/bin/flume host"
+    ) "flume-host runs no flake's flume host: ${unit.serviceConfig.ExecStart}"
+    ++ t.expect (unit.unitConfig.ConditionUser == "alice") "flume-host runs for others than alice"
+    ++ t.expect (unit.serviceConfig.Restart == "always") "flume-host is not kept running"
+    ++ t.expect (builtins.elem "default.target" unit.wantedBy) "flume-host is not started with alice's manager";
 
   "Sources on NixOS" =
     t.expect (t.failures sourced == [ ]) "the system fails: ${toString (t.failures sourced)}"
@@ -73,6 +82,9 @@ in
   "No package on NixOS" =
     t.expect (t.failures none == [ ]) "the system fails: ${toString (t.failures none)}"
     ++ t.expect (flumes none == [ ]) "the system profile holds a flume from the module"
+    ++ t.expect (
+      !lib.any (lib.hasInfix "flume") (units none)
+    ) "a unit is declared for flume with no package: ${toString (units none)}"
     ++ links none;
 
   "No such user on NixOS" =

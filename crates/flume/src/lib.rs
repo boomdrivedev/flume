@@ -13,6 +13,7 @@ pub mod host;
 pub mod mode;
 pub mod own;
 pub mod profiles;
+pub mod resident;
 pub mod shell;
 pub mod telemetry;
 

@@ -56,6 +56,9 @@ let
     ++ builtins.attrNames launchd.agents
     ++ builtins.attrNames launchd.daemons;
   says = evaluated: words: lib.hasInfix words (toString (t.failures evaluated));
+  ours = evaluated: builtins.filter (lib.hasInfix "flume") (jobs evaluated);
+  # flume's resident's agent, as launchd is given it (record 0082).
+  agent = base.config.launchd.user.agents.flume-host.serviceConfig;
 in
 {
   "Enabled on nix-darwin" =
@@ -64,8 +67,17 @@ in
     ++ links base
     ++ t.expect (builtins.elem "services.flume.enable" base.config.system.requiresPrimaryUser) "system.requiresPrimaryUser names no services.flume.enable"
     ++ t.expect (
-      !lib.any (lib.hasInfix "flume") (jobs base)
-    ) "a launchd job is declared for flume: ${toString (jobs base)}";
+      ours base == [ "flume-host" ]
+    ) "flume's launchd jobs are not flume-host alone: ${toString (ours base)}"
+    ++ t.expect (lib.hasSuffix "${set.flume}/bin/flume host" (lib.last agent.ProgramArguments)) "flume-host runs no flake's flume host: ${builtins.toJSON agent.ProgramArguments}"
+    ++ t.expect (
+      agent.KeepAlive && agent.RunAtLoad
+    ) "flume-host is not started at load and kept running"
+    ++ t.expect (
+      agent.EnvironmentVariables.HOME == "/Users/alice"
+    ) "flume-host runs under no home of alice's: ${builtins.toJSON agent.EnvironmentVariables}"
+    ++ t.expect (lib.hasPrefix "/etc/profiles/per-user/alice/bin:" agent.EnvironmentVariables.PATH) "flume-host's PATH holds not alice's profile first: ${agent.EnvironmentVariables.PATH}"
+    ++ t.expect agent.AbandonProcessGroup "flume-host's end ends its process group";
 
   "Sources on nix-darwin" =
     t.expect (t.failures sourced == [ ]) "the system fails: ${toString (t.failures sourced)}"
@@ -81,6 +93,9 @@ in
   "No package on nix-darwin" =
     t.expect (t.failures none == [ ]) "the system fails: ${toString (t.failures none)}"
     ++ t.expect (flumes none == [ ]) "the system profile holds a flume from the module"
+    ++ t.expect (
+      ours none == [ ]
+    ) "a launchd job of flume's is declared with no package: ${toString (ours none)}"
     ++ links none;
 
   "No home for the primary user" =
