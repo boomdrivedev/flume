@@ -1,0 +1,159 @@
+-- allium: 3
+-- flume at its seams (flume 7, 43, 111-113, 117, 133, 225, 228). flume
+-- reads sluice's records and writes Boom's change record; it names its
+-- callers only as recipients of what it owes them.
+
+-- What flume reads of sluice: the outcome sluice owes the place that
+-- submitted, until the place confirms it. sluice's own model states it;
+-- these are the fields flume relies on.
+external entity Outcome {
+    -- The place it is owed to, by the name the place submitted under.
+    submitter: String
+    word: landed | failed | conflict | held
+    status: owed | confirmed
+}
+
+entity Place {
+    name: String
+    -- The one input its kind takes (228), by hash.
+    input: intent | unit | failed_landing
+    input_hash: String
+    -- Who is owed the place's end: the runner, millpond, or a person.
+    recipient: String
+    change_record: String?
+    status: working | submitted | waiting_on_caller | over | dropped
+
+    transitions status {
+        working -> submitted
+        submitted -> working
+        submitted -> waiting_on_caller
+        submitted -> over
+        waiting_on_caller -> working
+        waiting_on_caller -> over
+        waiting_on_caller -> dropped
+        terminal: over, dropped
+    }
+}
+
+-- What flume owes a place's recipient once its work is over, until the
+-- recipient confirms it (43).
+entity End {
+    place: Place
+    recipient: String
+    status: owed | confirmed
+
+    transitions status {
+        owed -> confirmed
+        terminal: confirmed
+    }
+}
+
+rule Launched {
+    when: Launch(name, input, input_hash, recipient)
+    ensures: Place.created(name: name, input: input, input_hash: input_hash,
+        recipient: recipient, status: working)
+}
+
+-- construct writes the OpenSpec change of a unit; Boom records it.
+rule ChangeWritten {
+    when: ConstructDelivers(place, change, version)
+    requires: place.status = working
+    requires: place.input = unit
+    ensures: place.change_record = version
+    ensures: RecordChange(change, place.input_hash, version)
+}
+
+-- The kind's last stage delivers, and flume submits the place (117).
+rule PlaceSubmitted {
+    when: StagesDeliver(place)
+    requires: place.status = working
+    ensures: place.status = submitted
+    ensures:
+        if place.input = intent:
+            Submit(place.name, place.name, null, place.input_hash)
+        else:
+            Submit(place.name, place.name, place.change_record, null)
+}
+
+-- settle reads the outcome sluice owes the place (inbox, 133), acts on
+-- it, and only then confirms it (225). sluice owes it to the place by
+-- the name the place submitted under.
+rule SettleReadsLanding {
+    when: Settle(place)
+    let outcome = Outcome{submitter: place.name, status: owed}
+    requires: outcome.word = landed
+    requires: place.status = submitted or place.status = waiting_on_caller
+    ensures: place.status = over
+    ensures: End.created(place: place, recipient: place.recipient, status: owed)
+    ensures: Confirm(outcome)
+}
+
+-- A failed or conflicting submission starts the fix round (131).
+rule SettleReadsFailure {
+    when: Settle(place)
+    let outcome = Outcome{submitter: place.name, status: owed}
+    requires: outcome.word = failed or outcome.word = conflict
+    requires: place.status = submitted
+    ensures: place.status = working
+    ensures: Confirm(outcome)
+}
+
+-- A landing the forge refused: the place waits on its caller with the
+-- forge's words, its submission still open (112).
+rule SettleReadsHeld {
+    when: Settle(place)
+    let outcome = Outcome{submitter: place.name, status: owed}
+    requires: outcome.word = held
+    requires: place.status = submitted
+    ensures: place.status = waiting_on_caller
+    ensures: Confirm(outcome)
+}
+
+rule CallerRetries {
+    when: Retry(place)
+    requires: place.status = waiting_on_caller
+    ensures: place.status = working
+}
+
+rule CallerDrops {
+    when: Drop(place)
+    requires: place.status = waiting_on_caller
+    ensures: place.status = dropped
+}
+
+rule EndConfirmed {
+    when: ConfirmEnd(end)
+    requires: end.status = owed
+    ensures: end.status = confirmed
+}
+
+actor Caller {
+    identified_by: Place where recipient != ""
+}
+
+actor Agent {
+    identified_by: Place where status = working
+}
+
+-- flume's commands: a person or a control plane launches, settles,
+-- retries, drops and confirms.
+surface FlumeCommand {
+    facing caller: Caller
+    exposes:
+        caller.status
+    provides:
+        Launch(name, input, input_hash, recipient)
+        Settle(place)
+        Retry(place)
+        Drop(place)
+        ConfirmEnd(end)
+}
+
+-- What a place's agents deliver.
+surface PlaceStages {
+    facing agent: Agent
+    context place: Place where name = agent.name
+    provides:
+        ConstructDelivers(place, change, version) when place.status = working
+        StagesDeliver(place) when place.status = working
+}

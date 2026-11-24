@@ -2,8 +2,8 @@
 # Every tool the gate runs is the version the tree pins, on every host
 # (rule core.22): rustc, cargo, clippy and rustfmt the build .prototools
 # pins, which rust-toolchain.toml names too, and Claude Code, TypeScript,
-# OpenSpec, herdr, sluice and the nix project's nix, nixfmt, statix and
-# deadnix the releases devenv.nix pins. A tool found outside its pin, a
+# OpenSpec, herdr, sluice, Allium and the nix project's nix, nixfmt,
+# statix and deadnix the releases devenv.nix pins. A tool found outside its pin, a
 # runner's rustup default or the host's own `claude` say, fails here
 # rather than holding the tree to another version's rules.
 set -eu
@@ -57,6 +57,7 @@ release tsc "$(pinned typescriptVersion)" tsc --version
 release openspec "$(pinned openspecVersion)" openspec --version
 release herdr "$(pinned herdrVersion)" herdr --version
 release sluice "$(pinned sluiceVersion)" sluice --version
+release allium "$(pinned alliumVersion)" allium --version
 release nix "$(pinned nixVersion)" nix --version
 release nixfmt "$(pinned nixfmtVersion)" nixfmt --version
 release deadnix "$(pinned deadnixVersion)" deadnix --version

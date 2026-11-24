@@ -40,6 +40,7 @@ projects:
   plugin-herdr: 'plugins/herdr'
   site: 'site'
   nix: 'nix'
+  models: 'models'
   root: '.'
 
 # --affected compares against the merge-base with main.
