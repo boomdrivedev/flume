@@ -2,8 +2,10 @@
 # flume-publishes-its-own-flake-and-module, design 11), its conventional
 # check's convco (the change ci-checks-commits-with-the-hooks-convco) and
 # its steps that download from GitHub run through try-again.sh (the change
-# ci-tries-a-download-github-turns-away-again), held by the workflow's text: .github/workflows/ci.yml read line by line, as
-# yamlfmt lays it out. GitHub runs it; the gate holds what it says.
+# ci-tries-a-download-github-turns-away-again) and its releases, one run
+# at a time (the change releases-never-share-a-tag), held by the
+# workflow's text: .github/workflows/ci.yml read line by line, as yamlfmt
+# lays it out. GitHub runs it; the gate holds what it says.
 t:
 let
   inherit (t) lib;
@@ -29,7 +31,10 @@ let
   fast = blockAfter "  " "fast:" jobs;
   flake = blockAfter "  " "flake:" jobs;
   conventional = blockAfter "  " "conventional:" jobs;
+  concurrency = blockAfter "" "concurrency:" lines;
+  version = blockAfter "  " "version:" jobs;
   binaries = blockAfter "  " "binaries:" jobs;
+  release = blockAfter "  " "release:" jobs;
   has = line: from: builtins.elem line from;
   hasInfix = part: lib.any (lib.hasInfix part);
 in
@@ -63,4 +68,19 @@ in
     ) "a step of the job fast or flake enters the devenv shell other than through try-again.sh"
     ++ t.expect (hasInfix "sh try-again.sh nix shell \"$nixpkgs#convco\" -c convco check " conventional) "the job conventional runs no nix shell of convco through try-again.sh"
     ++ t.expect (hasInfix "sh try-again.sh cargo build --release --locked " binaries) "the job binaries runs no cargo build through try-again.sh";
+
+  "The releases one at a time" =
+    t.expect (has "  group: \${{ github.event_name == 'push' && 'release' || format('pull-request-{0}', github.run_id) }}" concurrency) "the workflow puts the runs of pushes in no one group release: ${builtins.toJSON concurrency}"
+    ++ t.expect (has "  cancel-in-progress: false" concurrency) "the workflow's group cancels a run in progress: ${builtins.toJSON concurrency}"
+    ++ t.expect (
+      !lib.any (lib.hasPrefix "    concurrency:") jobs
+    ) "a job names a group of its own, which waits on its own run"
+    ++ t.expect (
+      hasInfix "jq -r '.nodes.nixpkgs.locked | " version && hasInfix "' devenv.lock)" version
+    ) "the job version reads no nixpkgs devenv.lock pins"
+    ++ t.expect (has "          tag=\"$(nix shell \"$nixpkgs#git-cliff\" -c sh next-version.sh)\"" version) "the job version runs no sh next-version.sh under the git-cliff of the nixpkgs devenv.lock pins"
+    ++ t.expect (hasInfix "nix shell \"$nixpkgs#git-cliff\" -c " release) "the job release runs no git-cliff of the nixpkgs devenv.lock pins"
+    ++ t.expect (
+      !hasInfix " nixpkgs#git-cliff" (version ++ release)
+    ) "the workflow runs the flake registry's git-cliff";
 }
