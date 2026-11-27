@@ -31,7 +31,7 @@ use flume::profiles::agent::claude::{
     as_received, digest, written, Claude, NAME, PLUGIN, STANDING_PROMPT_FLAG, TRUST_CONFIRM,
     TRUST_FOCUS, TRUST_NEXT, TRUST_QUESTION, VERSION,
 };
-use flume::profiles::agent::claude::{carry, effort, live, mode, settings, transcript, windows};
+use flume::profiles::agent::claude::{carry, effort, live, settings, transcript, windows};
 use flume::profiles::{core_over, BuiltIn, DEFAULT_PROGRAM};
 use flume_conformance::scenario::pass_all;
 use flume_conformance::seams::agent::{self, AgentHarness, Efforts, Modes, OwnWay, WindowsFrom};
@@ -1350,14 +1350,9 @@ fn its_own_value_under_its_name() {
 
 #[test]
 fn the_mode_read_back() {
-    // 2.1.322 reports `--permission-mode manual` as `default`: the profile
-    // reads it back as `manual`, and every other choice as itself (161,
-    // C.4).
+    // The profile offers to read a session's mode back (161, C.4); how it
+    // reads each value is mode.rs's each_value_passed_reads_back_as_itself.
     assert_eq!(Harness::new().seam.mode_read_back(), Offered::Offered);
-    assert_eq!(
-        ["default", "acceptEdits", "plan"].map(mode::began),
-        ["manual", "acceptEdits", "plan"]
-    );
 }
 
 #[test]
