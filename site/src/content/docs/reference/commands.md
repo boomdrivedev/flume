@@ -8,7 +8,7 @@ sidebar:
 | Command | |
 |---|---|
 | `flume launch` | Make one place and start, hold or queue its first stage. |
-| `flume status [<place>]` | Every fact of a place, or of every place, and of the host; with `--line`, each place's one line. |
+| `flume status [<place>]` | Every fact of a place, or of every place, and of the host; with `--line`, each place's one line; with `--binding`, the repository's binding, its merge queue and which kinds land there. |
 | `flume list` | A line for each place on the host, under its repository, and each stream, reading only what flume keeps; `--all` adds the places that landed or were dropped. |
 | `flume prompt <place> <stage>` | The exact prompt a stage would be sent at its next start, starting nothing. |
 | `flume message <target> <words>` | Hand a place's agent words as a prompt, once it waits, or leave them at a role's address, `<stream>/<role>`, as a delivery its session takes at its next wait; to an agent kept open for its answer, the answer, `--answers <key>` naming the stop-short it answers. `flume tell` runs it too. |
@@ -149,7 +149,7 @@ its bound waits for room, and the answer says so.
 ## `flume status`
 
 ```sh
-flume status [<place>] [--line]
+flume status [<place>] [--line | --binding]
 ```
 
 With a place, its status; with none, every place on the host. The
@@ -214,6 +214,35 @@ $ flume status --line
 change--parser · change@2 · code 1/2 · run 1 · tasks 0/3 · working
 fix--the-parser-reads-tabs · fix@1 · code · run 2 · waiting on an answer
 ```
+
+**`--binding`** gives, beside the places, the repository the command
+runs in, or the one `--repository` names, as it holds its default
+branch: the `[profiles]` table of its `.config/flume.toml`, the merge
+queue it binds and whether that queue lands the default branch, and each
+kind flume can run there, whether it lands and why a launch of it there
+would be refused. It reads the branch as `origin` was last fetched, else
+the repository's own, and fetches, writes and launches nothing; where
+`origin` moved since, run `git fetch` first. Where the merge queue is not
+ready, it names what is missing:
+
+```console
+$ flume status --binding
+no place stands on this host
+…
+repository /src/app
+  binding: read at main (4f1c2a9, origin as last fetched) from .config/flume.toml
+    place: none
+    change: openspec
+    merge_queue: none
+  merge queue: not ready: .config/flume.toml at main (4f1c2a9) names no merge_queue in its [profiles]
+  kinds:
+    flume/fix@1 lands; refused: the kind flume/fix@1 lands, and no merge queue lands it: …
+```
+
+A caller about to launch reads it to offer only a kind the repository
+can run. `flume host`'s `status` and `subscribe` asks take the same
+report for each folder their `repositories` names. The Claude Code
+plugin's `setting-up-flume` skill writes the `[profiles]` table from it.
 
 The words are the ones status gives each place, the herdr plugin's
 sidebar and popup show, and every agent's status line pins under its

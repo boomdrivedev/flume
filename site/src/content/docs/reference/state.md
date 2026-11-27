@@ -346,8 +346,11 @@ carried as its text.
 ## The answer of flume status --json
 
 ```json
-{"status":{"places":[{…}],"host":{…}}}
+{"status":{"places":[{…}],"host":{…},"repositories":[{…}]}}
 ```
+
+`repositories` is there only where the ask named a repository, by
+`flume status --binding` or `flume host`'s `repositories`.
 
 Each place:
 
@@ -422,6 +425,15 @@ The host:
 | `terminal_setup` | what the host's own multiplexer's configuration lacks for flume's plugin there, each in words a person acts on, naming the file read: under herdr, the popup's `[[keys.command]]` entry or the sidebar rows' `$flume`, as the plugin's startup read herdr's configuration for each server still running; empty where nothing is missing, no server's startup wrote any or the terminal reads none |
 | `configuration` | the host's configuration: `local`, its local layer's `state`, `no-file`, `taken` or `not-taken` with each of its `keys` the local layer may not set or its `fault`; `values`, every value by its dotted `key`, as TOML writes it, with its `layer`, `managed` or `local`, an account's variables `<set>`; and `passed_over`, each local `key` a `pin` holds |
 | `sources` | each source of kinds the host declares, read when asked: `name`, `source_file`, `kinds_dir`, `kinds`, the identity of every package its directory holds, and `cannot_read`, the fault where the file or the directory cannot be read; `roles_file`, the roles file it names; `roles`, each address it declares; `roles_refused`, each `address` it declares nothing for with the `reason`; and `roles_cannot_read`, why its roles file declares no role, each left out where it has none |
+
+Each repository the ask named:
+
+| Field | |
+|---|---|
+| `repository` | the repository's folder |
+| `binding` | `{"read":{…}}`, the binding at the default branch as the repository holds it: `branch`, `revision`, `from`, `origin` where read as `origin` was last fetched or `local` for the repository's own branch, `declaration`, `.config/flume.toml` where that revision holds it and `null` where not, and `binding`, the profile its `[profiles]` names for `place`, `change` and `merge_queue`, each `null` where none; or `{"could_not_read":{"reason":…}}` |
+| `merge_queue` | `profile`, the merge queue the binding names, `null` where none; `ready`, whether flume has that profile and it lands the default branch; and `words`, what is missing where it is not ready, left out where it is: the declaration or its `merge_queue` missing, a profile flume does not have, or the merge queue's own words, such as its policy file missing |
+| `kinds` | each kind flume can run there, flume's own, the repository's, and each its lock records from a source of the host: `kind`, its identity; `lands`, `null` where flume could not read it; and `refused`, the words a launch of it is refused with by the binding, left out where none: a kind that lands while the merge queue is not ready, or one that reads a change where no change profile is bound |
 
 ## The answer of flume wake --json
 
