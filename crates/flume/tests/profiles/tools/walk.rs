@@ -1016,8 +1016,10 @@ esac
 /// `status`, whose entries of the branch the stand-in for sluice records
 /// in `state` it gives as sluice records one intake took in from a pull
 /// request, `pull/<n>` its `from.worktree` and the branch its
-/// `from.head`, as the stand-in's own `status` does. Its threads end with
-/// the test's process.
+/// `from.head`, as the stand-in's own `status` does, and the output of an
+/// `inbox`, which it gives with no outcomes, as the stand-in's own `inbox`
+/// does, sluice delivering them to the request. Its threads end with the
+/// test's process.
 pub fn pull_request_host(socket: &Path, pinned: &Path, state: &Path) {
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
@@ -1030,16 +1032,20 @@ pub fn pull_request_host(socket: &Path, pinned: &Path, state: &Path) {
                 continue;
             };
             let asked_status = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let asked_inbox = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let (mut to_upstream, from_client) = (
                 upstream.try_clone().expect("upstream"),
                 client.try_clone().expect("client"),
             );
-            let asked = asked_status.clone();
+            let (asked, inbox) = (asked_status.clone(), asked_inbox.clone());
             std::thread::spawn(move || {
                 for line in BufReader::new(from_client).lines().map_while(Result::ok) {
-                    if serde_json::from_str::<Value>(&line).is_ok_and(|ask| ask["ask"] == "status")
-                    {
+                    let ask = serde_json::from_str::<Value>(&line).unwrap_or_default();
+                    if ask["ask"] == "status" {
                         asked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if ask["ask"] == "inbox" {
+                        inbox.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
                     if writeln!(to_upstream, "{line}").is_err() {
                         return;
@@ -1055,6 +1061,9 @@ pub fn pull_request_host(socket: &Path, pinned: &Path, state: &Path) {
                     if asked_status.load(std::sync::atomic::Ordering::SeqCst) {
                         line = as_taken_in(&line, &state);
                     }
+                    if asked_inbox.load(std::sync::atomic::Ordering::SeqCst) {
+                        line = delivered_to_the_request(&line);
+                    }
                     if writeln!(to_client, "{line}").is_err() {
                         return;
                     }
@@ -1062,6 +1071,21 @@ pub fn pull_request_host(socket: &Path, pinned: &Path, state: &Path) {
             });
         }
     });
+}
+
+/// sluice host's `output` line `line` for an `inbox`, given with no
+/// outcomes, as sluice gives a place whose outcomes it delivered to its
+/// pull request.
+fn delivered_to_the_request(line: &str) -> String {
+    let Ok(mut answer) = serde_json::from_str::<Value>(line) else {
+        return line.to_string();
+    };
+    if answer.get("output").is_none() {
+        return line.to_string();
+    }
+    answer["output"]["stdout"] = Value::from(r#"{"outcomes":[]}"#);
+    answer["output"]["code"] = Value::from(0);
+    answer.to_string()
 }
 
 /// sluice host's `output` line `line`, its `status` document's entries of

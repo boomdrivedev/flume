@@ -1895,10 +1895,12 @@ fn host_pid(walk: &Walk) -> Option<i32> {
 fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_inbox() {
     // S109 and sluice 135: the chore's check is held, and sluice's host
     // process is ended while the check waits, its run outliving it. The
-    // hold then goes, and the watch's first settle collects the inbox, a
+    // hold then goes, and the watch's first settle collects the inbox,
+    // which finds no sluice host on its socket and runs `sluice inbox`, a
     // sluice command, which starts a host process again, as sluice's own
-    // commands do; flume's reads ask its socket and start none
-    // (flume-reads-sluices-records-on-sluice-hosts-socket). That host
+    // commands do on a bare install; flume's other reads ask its socket
+    // and start none (flume-reads-sluices-records-on-sluice-hosts-socket;
+    // the-service-manager-starts-each-resident). That host
     // process lands the chore, and a settle reads the landing and tidies
     // it, no settle running a round of the queue (124, 208, S109).
     let walk = Walk::new("watch-restart");
