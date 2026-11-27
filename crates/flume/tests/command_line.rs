@@ -9,7 +9,7 @@
 use flume::commands;
 use flume_conformance::engine::caller_acts::asks_ops;
 use flume_conformance::engine::role_waking::{configure_at, planner_run};
-use flume_conformance::engine::world::{launch, World};
+use flume_conformance::engine::world::{launch, launched, World};
 use flume_core::{Answer, PlaceStatus};
 use flume_seams::*;
 use serde_json::Value;
@@ -606,4 +606,165 @@ fn relays_help_names_its_lines_and_no_caller() {
     for caller in ["Boomdrive", "boomdrive", "runner", "crew"] {
         assert!(!words.contains(caller), "the help names {caller}: {text}");
     }
+}
+
+/// What `<command> --help` prints, its whitespace made single spaces.
+fn help(world: &World, command: &str) -> String {
+    let (text, code) = run(world, &[command, "--help"]);
+    assert_eq!(code, 0, "{command} --help: {text}");
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn each_commands_help_says_its_words() {
+    // The command-line spec's "The helps" and "The helps of confirm and
+    // wait": needs --to's says a role alone is the place's own stream's,
+    // hold's names the waiting move and its bound, retry's and message's
+    // the key an answer names, launch --recipient's a role's address of
+    // any stream, a name no pane holds collecting its ends and the
+    // answerer behind the place's stream, inbox's the place it may be
+    // given, confirm's the keys and `--recipient`, wait's `--confirm`,
+    // list's that status gives a place's every fact, and wake's that an
+    // address is a role a source declares for a stream the host declares;
+    // none names a word of ours, launch's names no `--caller`, and needs'
+    // never says "cannot deliver past" (7, 41, 42, 43, 49, 53, 61, 130,
+    // 132, 143, 193, 200; core.35).
+    let world = World::new();
+    for (command, said) in [
+        ("needs", "--to <ROLE OR ADDRESS>"),
+        ("needs", "a role alone, `<role>`, is the place's own stream's, and an address, `<stream>/<role>`, any stream's"),
+        ("needs", "in place of the place's recipients"),
+        ("needs", "--found The stage found work a stage before its own must do again"),
+        ("hold", "--waiting"),
+        ("hold", "--for <TIME>"),
+        ("hold", "hold the move the place waits on its caller for"),
+        ("hold", "once it passes, the hold lapses and the place stalls at once"),
+        ("retry", "--answers <KEY>"),
+        ("retry", "taken only while the place waits on that stop-short and only once"),
+        ("message", "--answers <KEY>"),
+        ("message", "its agent kept open for its answer"),
+        ("message", "a role's address, `<stream>/<role>`"),
+        ("launch", "a role's address, `<stream>/<role>`, of any stream"),
+        ("launch", "the answerer behind the place's stream"),
+        ("launch", "A name no pane holds is sent no notice"),
+        ("launch", "until it collects them by `flume inbox` or `flume wait` as that name"),
+        ("inbox", "[PLACE]"),
+        ("inbox", "--confirm"),
+        ("inbox", "an inbox naming a place collects that place's ends alone"),
+        ("inbox", "an end the inbox gives stays pending"),
+        ("inbox", "a tidied document's `<place>@<at>` naming that one alone"),
+        ("confirm", "<KEY>..."),
+        ("confirm", "--recipient <RECIPIENT>"),
+        ("confirm", "a hand-over delivers nothing until its recipient confirms it"),
+        ("wait", "--confirm"),
+        ("wait", "A hand-over delivers nothing until its recipient confirms it"),
+        ("list", "A line for each place on the host and each stream it declares"),
+        ("list", "reading only what flume keeps"),
+        ("list", "a place that landed or was dropped left out unless `--all` is given"),
+        ("list", "`flume status <place>` gives a place's every fact"),
+        ("list", "--all Every place, those that landed or were dropped among them"),
+        ("wake", "Wake a role's address, `<stream>/<role>`: a role a source of the host declares in its roles file, for a stream the host declares"),
+        ("wake", "launched in the address's stream where none stands"),
+        ("wake", "An address carried to another host, declared by no source or by two, or whose stream the host does not declare is refused, saying why"),
+        ("wake", "<ADDRESS> The role's address, `<stream>/<role>`"),
+    ] {
+        let words = help(&world, command);
+        assert!(
+            words.contains(said),
+            "{command}'s help says not {said:?}: {words}"
+        );
+    }
+    for (command, unsaid) in [
+        ("needs", "partition"),
+        ("needs", "cannot deliver past"),
+        ("hold", "partition"),
+        ("retry", "partition"),
+        ("message", "partition"),
+        ("launch", "partition"),
+        ("launch", "--caller"),
+        ("inbox", "partition"),
+        ("wake", "partition"),
+        ("wake", "[roles]"),
+    ] {
+        let words = help(&world, command);
+        assert!(
+            !words.contains(unsaid),
+            "{command}'s help says {unsaid:?}: {words}"
+        );
+    }
+}
+
+#[test]
+fn a_key_no_end_is_under_is_refused_naming_it() {
+    // The command-line spec's "A key refused": a key no end is under is
+    // refused naming it, in the JSON form, exiting 1 (43; weir 102).
+    let world = World::new();
+    let reason = refused(
+        &world,
+        &[
+            "confirm",
+            "no/such/key",
+            "--recipient",
+            "boomdrive",
+            "--json",
+        ],
+    );
+    assert!(reason.contains("no/such/key"), "{reason}");
+    assert!(reason.contains("`key`"), "{reason}");
+}
+
+#[test]
+fn a_refused_act_exits_1_in_either_form() {
+    // S26, 61, 212, 213: done of a fix, a hibernate of a fix, forced or
+    // not, and a resume of a fix that hibernates nothing are each refused
+    // naming the place, exiting 1, the person's form beginning
+    // `refused: `; the core's refusals are the scenarios' own.
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    world.settle(&World::id("fix", "one"));
+    let place = World::id("fix", "one").to_string();
+    for words in [
+        &["done", &place][..],
+        &["hibernate", &place],
+        &["hibernate", &place, "--force"],
+        &["resume", &place],
+    ] {
+        let json: Vec<&str> = words.iter().copied().chain(["--json"]).collect();
+        let reason = refused(&world, &json);
+        assert!(reason.contains(&place), "{words:?}: {reason}");
+        let (text, code) = run(&world, words);
+        assert_eq!(code, 1, "{words:?}: {text}");
+        assert!(text.starts_with("refused: "), "{words:?}: {text}");
+    }
+    let reason = refused(&world, &["hibernate", &place, "--json"]);
+    assert!(reason.contains("does not hibernate"), "{reason}");
+}
+
+#[test]
+fn a_watch_with_a_place_named_or_no_bound_is_refused_settling_nothing() {
+    // The command-line spec's "A watch with a place named": refused naming
+    // `--every`, the places it settles and the place, nothing settled and
+    // no watch recorded; a bound that is no positive duration refused the
+    // same (208, 225).
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    let id = World::id("fix", "one");
+    let version = world.store.read(&id).expect("the fix's document").version;
+    assert_eq!(
+        refused(&world, &["settle", &id.0, "--every", "2m", "--json"]),
+        format!("--every settles the places where something is pending as a caller's watch over the host, and takes no place: {} was named", id.0)
+    );
+    for bound in ["0", "0m", "soon"] {
+        let reason = refused(&world, &["settle", "--every", bound, "--json"]);
+        assert!(reason.contains(bound), "--every {bound}: {reason}");
+    }
+    assert_eq!(
+        world.store.read(&id).map(|read| read.version),
+        Some(version),
+        "the fix's document after the refusals"
+    );
+    assert!(
+        world.store.read_host(&HostKey::Watch).is_none(),
+        "a watch recorded by a refused settle"
+    );
 }

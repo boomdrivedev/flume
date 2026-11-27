@@ -982,100 +982,6 @@ fn a_base_the_merge_queue_lands_is_read_where_it_says() {
 }
 
 #[test]
-fn a_refusal() {
-    // S26, 61: done names a fix place, whose kind lands.
-    let host = Host::new("refusal");
-    let repository = repository("refusal", Some(STAND_IN_QUEUE));
-    let kinds = kinds_file(&host, true);
-    let launched = host.stand_in(
-        &repository.dir,
-        &[
-            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
-        ],
-        &[],
-    );
-    assert_eq!(launched.code, 0, "{}", launched.text);
-    let ran = host.flume(&repository.dir, &["done", "fix--one", "--json"], &[]);
-    assert_eq!(ran.code, 1, "{}", ran.text);
-    let place = host.place_of(&repository, "fix--one");
-    let reason = ran
-        .answer()
-        .refusal()
-        .map(str::to_string)
-        .expect("a refusal");
-    assert!(reason.contains(&place), "{reason}");
-    let person = host.flume(&repository.dir, &["done", "fix--one"], &[]);
-    assert_eq!(person.code, 1);
-    assert!(person.text.starts_with("refused: "), "{}", person.text);
-}
-
-#[test]
-fn hibernation_through_the_binary_a_hibernate_of_a_fix_is_refused() {
-    // 61, 212: the command-line spec's "A hibernate refused through the
-    // command line": a fix's kind hibernates nothing, so its hibernate is
-    // refused naming the place and that, exiting non-zero.
-    let host = Host::new("hibernate-fix");
-    let repository = repository("hibernate-fix", Some(STAND_IN_QUEUE));
-    let kinds = kinds_file(&host, true);
-    let launched = host.stand_in(
-        &repository.dir,
-        &[
-            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
-        ],
-        &[],
-    );
-    assert_eq!(launched.code, 0, "{}", launched.text);
-    let ran = host.flume(&repository.dir, &["hibernate", "fix--one", "--json"], &[]);
-    assert_eq!(ran.code, 1, "{}", ran.text);
-    let place = host.place_of(&repository, "fix--one");
-    let reason = ran
-        .answer()
-        .refusal()
-        .map(str::to_string)
-        .expect("a refusal");
-    assert!(
-        reason.contains(&place) && reason.contains("does not hibernate"),
-        "{reason}"
-    );
-    let forced = host.flume(
-        &repository.dir,
-        &["hibernate", "fix--one", "--force", "--json"],
-        &[],
-    );
-    assert_eq!(forced.code, 1, "{}", forced.text);
-}
-
-#[test]
-fn hibernation_through_the_binary_a_resume_of_nothing_is_refused() {
-    // 61, 213: the command-line spec's "A resume of nothing hibernating
-    // through the command line": refused naming the place, exiting
-    // non-zero, in the JSON and the person's form.
-    let host = Host::new("resume-nothing");
-    let repository = repository("resume-nothing", Some(STAND_IN_QUEUE));
-    let kinds = kinds_file(&host, true);
-    let launched = host.stand_in(
-        &repository.dir,
-        &[
-            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
-        ],
-        &[],
-    );
-    assert_eq!(launched.code, 0, "{}", launched.text);
-    let ran = host.flume(&repository.dir, &["resume", "fix--one", "--json"], &[]);
-    assert_eq!(ran.code, 1, "{}", ran.text);
-    let place = host.place_of(&repository, "fix--one");
-    let reason = ran
-        .answer()
-        .refusal()
-        .map(str::to_string)
-        .expect("a refusal");
-    assert!(reason.contains(&place), "{reason}");
-    let person = host.flume(&repository.dir, &["resume", "fix--one"], &[]);
-    assert_eq!(person.code, 1);
-    assert!(person.text.starts_with("refused: "), "{}", person.text);
-}
-
-#[test]
 fn a_watch_over_a_scratch_repository() {
     // The command-line spec's "A watch over a scratch repository": a
     // caller's settle with a bound steps the submitted place's base once,
@@ -1157,70 +1063,6 @@ fn a_watch_over_a_scratch_repository() {
 }
 
 #[test]
-fn a_watch_with_a_place_named() {
-    // The command-line spec's "A watch with a place named": refused
-    // naming `--every`, the places it settles and the place, nothing
-    // settled and no watch recorded; a bound that is no positive duration
-    // refused the same (208, 225).
-    let host = Host::new("settle-every-named");
-    let repository = repository("settle-every-named", None);
-    let kinds = kinds_file(&host, false);
-    let launched = host.stand_in(
-        &repository.dir,
-        &[
-            "launch", "--kind", "fix", "--name", "one", "--kinds", &kinds, "--json",
-        ],
-        &[],
-    );
-    assert_eq!(launched.code, 0, "{}", launched.text);
-    let place = host.place_of(&repository, "fix--one");
-    let store = StateDir::at(host.state());
-    let version = store
-        .read(&PlaceId::new(&place))
-        .expect("the place's document")
-        .version;
-    let ran = host.stand_in(
-        &repository.dir,
-        &["settle", "fix--one", "--every", "2m", "--json"],
-        &[],
-    );
-    assert_eq!(ran.code, 1, "{}", ran.text);
-    let reason = ran
-        .answer()
-        .refusal()
-        .map(str::to_string)
-        .expect("a refusal");
-    assert_eq!(
-        reason,
-        "--every settles the places where something is pending as a caller's watch over the host, and takes no place: fix--one was named"
-    );
-    for bound in ["0", "0m", "soon"] {
-        let ran = host.stand_in(
-            &repository.dir,
-            &["settle", "--every", bound, "--json"],
-            &[],
-        );
-        assert_eq!(ran.code, 1, "--every {bound}: {}", ran.text);
-        let reason = ran
-            .answer()
-            .refusal()
-            .map(str::to_string)
-            .expect("a refusal");
-        assert!(reason.contains(bound), "--every {bound}: {reason}");
-    }
-    assert_eq!(
-        store.read(&PlaceId::new(&place)).map(|read| read.version),
-        Some(version),
-        "the place's document after the refusals"
-    );
-    assert!(
-        store.read_host(&HostKey::Watch).is_none(),
-        "a watch recorded by a refused settle"
-    );
-    assert!(!host.state().join("watch.json").exists());
-}
-
-#[test]
 fn needs_from_outside_an_agent() {
     // 41, C.4: no FLUME_AGENT, so nothing is asked of the core.
     let host = Host::new("needs");
@@ -1241,23 +1083,6 @@ fn needs_from_outside_an_agent() {
     assert_eq!(found.code, 1, "{}", found.text);
     assert!(found.text.contains("FLUME_SECRET"), "{}", found.text);
     assert!(!host.state().join("places").exists(), "something changed");
-}
-
-#[test]
-fn needs_help() {
-    // 41, C.4: `--found`'s words name work a stage before the agent's own
-    // must do again, and none says "cannot deliver past".
-    let host = Host::new("needs-help");
-    let repository = repository("needs-help", None);
-    let help = host.flume(&repository.dir, &["needs", "--help"], &[]);
-    assert_eq!(help.code, 0, "{}", help.text);
-    let words = help.text.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        words.contains("--found The stage found work a stage before its own must do again"),
-        "--found's words: {}",
-        help.text
-    );
-    assert!(!words.contains("cannot deliver past"), "{}", help.text);
 }
 
 #[test]
@@ -2630,28 +2455,6 @@ fn the_list_for_a_person_under_the_printed_command() {
     assert_eq!(ran.text, "no places\nstreams\n  default · no session\n");
 }
 
-#[test]
-fn the_lists_help_names_status_for_a_places_every_fact() {
-    // 200; core.35.
-    let host = Host::new("list-help");
-    let ran = host.flume(&outside(&host, "elsewhere"), &["list", "--help"], &[]);
-    assert_eq!(ran.code, 0, "{}", ran.text);
-    let words = ran.text.split_whitespace().collect::<Vec<_>>().join(" ");
-    for said in [
-        "A line for each place on the host and each stream it declares",
-        "reading only what flume keeps",
-        "a place that landed or was dropped left out unless `--all` is given",
-        "`flume status <place>` gives a place's every fact",
-        "--all Every place, those that landed or were dropped among them",
-    ] {
-        assert!(
-            words.contains(said),
-            "the help says not {said:?}: {}",
-            ran.text
-        );
-    }
-}
-
 /// The place's held state as the store holds it.
 fn held_of(host: &Host, place: &str) -> Versioned {
     StateDir::at(host.state())
@@ -3034,36 +2837,6 @@ fn a_wake_of_a_roles_address() {
 }
 
 #[test]
-fn the_wakes_help_names_a_stream_and_a_role() {
-    // 132, 143, 193; core.35: an address is a role a source declares for
-    // a stream the host declares, and the host's configuration names
-    // none.
-    let host = Host::new("wake-help");
-    let ran = host.flume(&outside(&host, "elsewhere"), &["wake", "--help"], &[]);
-    assert_eq!(ran.code, 0, "{}", ran.text);
-    let words = ran.text.split_whitespace().collect::<Vec<_>>().join(" ");
-    for said in [
-        "Wake a role's address, `<stream>/<role>`: a role a source of the host declares in its roles file, for a stream the host declares",
-        "launched in the address's stream where none stands",
-        "An address carried to another host, declared by no source or by two, or whose stream the host does not declare is refused, saying why",
-        "<ADDRESS> The role's address, `<stream>/<role>`",
-    ] {
-        assert!(
-            words.contains(said),
-            "the help says not {said:?}: {}",
-            ran.text
-        );
-    }
-    for unsaid in ["partition", "[roles]"] {
-        assert!(
-            !words.contains(unsaid),
-            "the help says {unsaid:?}: {}",
-            ran.text
-        );
-    }
-}
-
-#[test]
 fn needs_to_a_role_and_to_another_streams() {
     // 41, 132, design 4: the command-line spec's "A stop-short addressed
     // by its role" and "A stop-short addressed to another stream". The
@@ -3144,61 +2917,6 @@ fn needs_to_a_role_and_to_another_streams() {
         Some(json!("west/ops")),
         "{ends}"
     );
-}
-
-#[test]
-fn the_helps_of_needs_hold_retry_message_and_launch() {
-    // 7, 41, 42, 43, 49, 53, 130, 132, 193; core.35: needs --to's help
-    // says a role alone is the place's own stream's, hold's names the
-    // waiting move and its bound, retry's and message's the key an answer
-    // names, launch --recipient's a role's address of any stream, a name
-    // no pane holds collecting its ends and the answerer behind the
-    // place's stream, launch's that it takes no --caller, and inbox's the
-    // place it may be given: the command-line spec's "The helps".
-    let host = Host::new("helps");
-    let help = |command: &str| {
-        let ran = host.flume(&outside(&host, "elsewhere"), &[command, "--help"], &[]);
-        assert_eq!(ran.code, 0, "{}", ran.text);
-        ran.text.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
-    for (command, said) in [
-        ("needs", "--to <ROLE OR ADDRESS>"),
-        ("needs", "a role alone, `<role>`, is the place's own stream's, and an address, `<stream>/<role>`, any stream's"),
-        ("needs", "in place of the place's recipients"),
-        ("hold", "--waiting"),
-        ("hold", "--for <TIME>"),
-        ("hold", "hold the move the place waits on its caller for"),
-        ("hold", "once it passes, the hold lapses and the place stalls at once"),
-        ("retry", "--answers <KEY>"),
-        ("retry", "taken only while the place waits on that stop-short and only once"),
-        ("message", "--answers <KEY>"),
-        ("message", "its agent kept open for its answer"),
-        ("message", "a role's address, `<stream>/<role>`"),
-        ("launch", "a role's address, `<stream>/<role>`, of any stream"),
-        ("launch", "the answerer behind the place's stream"),
-        ("launch", "A name no pane holds is sent no notice"),
-        ("launch", "until it collects them by `flume inbox` or `flume wait` as that name"),
-        ("inbox", "[PLACE]"),
-        ("inbox", "--confirm"),
-        ("inbox", "an inbox naming a place collects that place's ends alone"),
-        ("inbox", "an end the inbox gives stays pending"),
-        ("inbox", "a tidied document's `<place>@<at>` naming that one alone"),
-    ] {
-        let words = help(command);
-        assert!(
-            words.contains(said),
-            "{command}'s help says not {said:?}: {words}"
-        );
-    }
-    for command in ["needs", "hold", "retry", "message", "launch", "inbox"] {
-        let words = help(command);
-        assert!(
-            !words.contains("partition"),
-            "{command}'s help says partition: {words}"
-        );
-    }
-    let launch = help("launch");
-    assert!(!launch.contains("--caller"), "launch's help: {launch}");
 }
 
 /// The host's source acme carrying each of `addresses` with the words of
@@ -4446,65 +4164,6 @@ fn a_key_confirmed_through_the_binary() {
     }
     let next = inbox();
     assert_eq!(next["inbox"]["ends"], json!([]), "{next}");
-}
-
-#[test]
-fn a_key_refused_through_the_binary() {
-    // 43; weir 102: the command-line spec's "A key refused through the
-    // binary": a key no end is under is refused naming it, in the JSON
-    // form, and the command exits non-zero.
-    let host = Host::new("confirm-refused");
-    let ran = host.flume(
-        &outside(&host, "elsewhere"),
-        &[
-            "confirm",
-            "no/such/key",
-            "--recipient",
-            "boomdrive",
-            "--json",
-        ],
-        &[],
-    );
-    assert_ne!(ran.code, 0, "{}", ran.text);
-    let answer = ran.json();
-    let reason = answer["refused"]["refusal"]["reason"]
-        .as_str()
-        .unwrap_or_else(|| panic!("no refusal: {}", ran.text));
-    assert!(reason.contains("no/such/key"), "{reason}");
-    assert!(reason.contains("`key`"), "{reason}");
-}
-
-#[test]
-fn the_helps_of_confirm_and_wait() {
-    // 43, 61; core.35: the command-line spec's "The helps of confirm and
-    // wait": confirm's names the keys and `--recipient`, wait's names
-    // `--confirm`, and each says a hand-over delivers nothing until its
-    // recipient confirms it.
-    let host = Host::new("helps-confirm");
-    let help = |command: &str| {
-        let ran = host.flume(&outside(&host, "elsewhere"), &[command, "--help"], &[]);
-        assert_eq!(ran.code, 0, "{}", ran.text);
-        ran.text.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
-    for (command, said) in [
-        ("confirm", "<KEY>..."),
-        ("confirm", "--recipient <RECIPIENT>"),
-        (
-            "confirm",
-            "a hand-over delivers nothing until its recipient confirms it",
-        ),
-        ("wait", "--confirm"),
-        (
-            "wait",
-            "A hand-over delivers nothing until its recipient confirms it",
-        ),
-    ] {
-        let words = help(command);
-        assert!(
-            words.contains(said),
-            "{command}'s help says not {said:?}: {words}"
-        );
-    }
 }
 
 #[test]
