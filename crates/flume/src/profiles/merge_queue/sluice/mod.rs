@@ -124,9 +124,9 @@ pub mod subscription;
 use crate::git::Git;
 use crate::shell;
 use flume_seams::{
-    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, MergeQueue, Owed,
-    PassedOver, PlaceRef, ReadAcross, ReadyStep, Revision, Stepped, Submission, SubmissionOutcome,
-    SubmissionRead, SubmissionState, SubmitHead, Submitted,
+    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, LandsOn, MergeQueue,
+    Owed, PassedOver, PlaceRef, ReadAcross, ReadyStep, Revision, Stepped, Submission,
+    SubmissionOutcome, SubmissionRead, SubmissionState, SubmitHead, Submitted,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -1093,6 +1093,22 @@ impl MergeQueue for Sluice {
                 revision: Revision::new(revision),
             },
             Err(reason) => BaseRevision::Refused { reason },
+        }
+    }
+
+    /// Whether the policy, as the repository holds `base` and each
+    /// remote's copy of it, names a table for `base`: read with no fetch
+    /// and nothing run, so it moves nothing (126; core.15).
+    fn lands_on(&self, repository: &str, base: &str) -> LandsOn {
+        match policy(repository, base) {
+            Ok(None) => LandsOn::Not {
+                reason: format!("no {POLICY} at {base} or a remote's {base}"),
+            },
+            Ok(Some(policy)) if branch_table(&policy, base).is_none() => LandsOn::Not {
+                reason: format!("{POLICY} names no table for {base} under [branches]"),
+            },
+            Ok(Some(_)) => LandsOn::Lands,
+            Err(reason) => LandsOn::CouldNotRead { reason },
         }
     }
 

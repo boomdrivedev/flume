@@ -731,6 +731,51 @@ fn the_same_answer_through_the_command_line_and_the_core() {
 }
 
 #[test]
+fn status_with_binding_gives_the_repositorys_binding_through_flume_host() {
+    // 20, 105: `flume status --binding` asks flume host of the repository
+    // the command runs in, and the answer names the merge queue it lacks.
+    let host = Host::new("binding");
+    let repository = repository("binding", None);
+    let ran = host.flume(&repository.dir, &["status", "--binding", "--json"], &[]);
+    assert_eq!(ran.code, 0, "{}", ran.text);
+    let json = ran.json();
+    let read = &json["status"]["repositories"][0];
+    assert_eq!(
+        read["repository"],
+        repository
+            .dir
+            .canonicalize()
+            .expect("the repository")
+            .to_string_lossy()
+            .as_ref()
+    );
+    assert_eq!(read["binding"]["read"]["binding"]["place"], "git-worktree");
+    assert_eq!(read["merge_queue"]["ready"], false);
+    assert!(
+        read["merge_queue"]["words"]
+            .as_str()
+            .is_some_and(|words| words.contains("names no merge_queue")),
+        "{read}"
+    );
+    assert!(read["kinds"].as_array().is_some_and(|kinds| kinds
+        .iter()
+        .any(|kind| kind["kind"] == "flume/fix@1"
+            && kind["lands"] == true
+            && kind["refused"].is_string())));
+    let person = host.flume(&repository.dir, &["status", "--binding"], &[]);
+    assert_eq!(person.code, 0, "{}", person.text);
+    assert!(
+        person.text.contains("merge queue: not ready"),
+        "{}",
+        person.text
+    );
+    let plain = host.flume(&repository.dir, &["status", "--json"], &[]);
+    assert!(plain.json()["status"].get("repositories").is_none());
+    let both = host.flume(&repository.dir, &["status", "--binding", "--line"], &[]);
+    assert_ne!(both.code, 0, "a line names no repository: {}", both.text);
+}
+
+#[test]
 fn a_launch_naming_no_base_is_cut_from_the_remotes_default_branch() {
     // 2, 20: in a repository made by `git init --bare`, whose HEAD names
     // master, a branch never made, and that has no origin/HEAD, every

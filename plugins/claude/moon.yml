@@ -1,7 +1,7 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
 # flume's Claude Code plugin (design 17): its manifests, its hooks, the
-# /launch command, its MCP server's entry, and its one hooks module
+# /launch command, the setting-up-flume skill, its MCP server's entry, and its one hooks module
 # (hooks/flume.ts), which pins the place's line under the prompt, holds
 # the deliver part and registers the module that passes the account's
 # usage windows to `flume hook usage` (hooks/usage.ts). The command hooks
@@ -22,11 +22,11 @@ tasks:
     inputs: ['/plugins/claude/**/*', '/treefmt.nix', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
-  # The manifest, the hooks, the module and the command, by the pinned
+  # The manifest, the hooks, the module, the command and the skill, by the pinned
   # Claude Code's strict validation, which fails a warning as an error.
   validate:
     command: '../claude.sh plugin validate --strict .'
-    inputs: ['.claude-plugin/**/*', 'hooks/**/*', 'commands/**/*', '.mcp.json', '/plugins/claude.sh', '/devenv.nix', '/devenv.lock']
+    inputs: ['.claude-plugin/**/*', 'hooks/**/*', 'commands/**/*', 'skills/**/*', '.mcp.json', '/plugins/claude.sh', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
   # The engine types are the ones the pinned Claude Code writes, byte for
   # byte (tests/engine-types.sh).

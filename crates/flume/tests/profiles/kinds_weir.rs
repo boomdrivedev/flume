@@ -1832,6 +1832,70 @@ fn the_binding_is_read_at_origin_head_after_one_fetch() {
 }
 
 #[test]
+fn the_binding_held_is_read_at_origin_as_last_fetched_and_fetches_nothing() {
+    let origin = Repository::new("held-origin");
+    origin.write(DECLARATION, "[profiles]\nplace = \"git-worktree\"\n");
+    origin.commit("a binding");
+    let remote = origin.bare_remote();
+    let clone = Repository::clone_of(&remote, Scratch::new("held-clone"));
+    let fetched = clone.git(&["rev-parse", "origin/main"]).trim().to_string();
+    origin.write(
+        DECLARATION,
+        "[profiles]\nplace = \"git-worktree\"\nmerge_queue = \"sluice\"\n",
+    );
+    origin.commit("the merge queue bound");
+    origin.git(&["push", "--quiet", &remote.to_string_lossy(), "main"]);
+    clone.git(&["remote", "set-url", "origin", "/nowhere/remote.git"]);
+    assert_eq!(
+        Weir.read_binding_held(&clone.name()),
+        BindingHeld::Read {
+            branch: "main".into(),
+            revision: Revision::new(fetched.clone()),
+            from: HeldFrom::Origin,
+            declaration: Some(DECLARATION.into()),
+            binding: Binding {
+                place: Some("git-worktree".into()),
+                ..Binding::default()
+            },
+        },
+        "origin's main as the clone last fetched it, with no fetch, which would fail"
+    );
+    assert_eq!(
+        clone.git(&["rev-parse", "origin/main"]).trim(),
+        fetched,
+        "the tracking ref is not moved"
+    );
+}
+
+#[test]
+fn the_binding_held_with_no_origin_is_the_own_branch_and_may_have_no_declaration() {
+    let repository = Repository::new("held-local");
+    repository.write("README", "x\n");
+    let head = repository.commit("no declaration");
+    assert_eq!(
+        Weir.read_binding_held(&repository.name()),
+        BindingHeld::Read {
+            branch: "main".into(),
+            revision: Revision::new(head),
+            from: HeldFrom::Local,
+            declaration: None,
+            binding: Binding::default(),
+        }
+    );
+    repository.write(DECLARATION, "[profiles]\nmerge_queue = 3\n");
+    repository.commit("a binding flume cannot read");
+    match Weir.read_binding_held(&repository.name()) {
+        BindingHeld::CouldNotRead { reason } => {
+            assert!(
+                reason.contains(DECLARATION) && reason.contains("profiles.merge_queue"),
+                "{reason}"
+            )
+        }
+        other => panic!("an unreadable binding read as {other:?}"),
+    }
+}
+
+#[test]
 fn the_binding_is_read_beside_a_bare_repository() {
     let origin = Repository::new("bare-layout");
     origin.write(DECLARATION, "[profiles]\nchange = \"openspec\"\n");

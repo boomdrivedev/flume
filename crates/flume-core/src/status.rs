@@ -103,6 +103,7 @@ impl Engine {
         Answer::Status {
             places,
             host: self.host_status(&agents, &owing),
+            repositories: vec![],
         }
     }
 

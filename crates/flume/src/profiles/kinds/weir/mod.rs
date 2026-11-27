@@ -84,9 +84,9 @@
 use crate::git::{tree_path, Git, REMOTE};
 use crate::own::{self, Reader};
 use flume_seams::{
-    Binding, BindingRead, ChartAgents, ChartStage, Charts, Deliverable, Join, Kind, KindIdentity,
-    KindNamed, KindSettings, KindStatechart, Kinds, KindsRead, LockEntry, LockRead, PackageRead,
-    Packaged, Revision, Settings, SourceRead, Stage,
+    Binding, BindingHeld, BindingRead, ChartAgents, ChartStage, Charts, Deliverable, HeldFrom,
+    Join, Kind, KindIdentity, KindNamed, KindSettings, KindStatechart, Kinds, KindsRead, LockEntry,
+    LockRead, PackageRead, Packaged, Revision, Settings, SourceRead, Stage,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
@@ -323,6 +323,17 @@ impl Kinds for Weir {
         match default_revision(repository) {
             Ok(revision) => binding_at(repository, &revision),
             Err(reason) => BindingRead::CouldNotRead { reason },
+        }
+    }
+
+    /// `.config/flume.toml`'s `[profiles]` at the default branch as the
+    /// repository holds it, fetching nothing: `origin/<branch>` as the
+    /// last fetch left it, else the repository's own branch (20, 105;
+    /// core.15).
+    fn read_binding_held(&self, repository: &str) -> BindingHeld {
+        match binding_held(repository) {
+            Ok(held) => held,
+            Err(reason) => BindingHeld::CouldNotRead { reason },
         }
     }
 
@@ -686,6 +697,39 @@ pub fn default_revision(repository: &str) -> Result<Revision, String> {
     }
     let tracking = git.fetch_branch(REMOTE, &branch)?;
     git.commit(&tracking).map(Revision)
+}
+
+/// The binding at the default branch as the repository holds it, with
+/// the declaration's path where that revision holds one.
+fn binding_held(repository: &str) -> Result<BindingHeld, String> {
+    let git = Git::at(repository);
+    let branch = git
+        .default_branch()
+        .map_err(|reason| format!("{repository} names no default branch: {reason}"))?;
+    let tracking = format!("refs/remotes/{REMOTE}/{branch}");
+    let origin = git.remotes()?.iter().any(|remote| remote == REMOTE);
+    let (revision, from) = match git.commit(&tracking) {
+        Ok(revision) if origin => (revision, HeldFrom::Origin),
+        _ => (
+            git.commit(&format!("refs/heads/{branch}"))?,
+            HeldFrom::Local,
+        ),
+    };
+    let revision = Revision(revision);
+    let text = git.file(&revision.0, DECLARATION)?;
+    let binding = match &text {
+        Some(text) => {
+            profiles(text).map_err(|reason| format!("{DECLARATION} at {revision}: {reason}"))?
+        }
+        None => Binding::default(),
+    };
+    Ok(BindingHeld::Read {
+        branch,
+        revision,
+        from,
+        declaration: text.map(|_| DECLARATION.to_string()),
+        binding,
+    })
 }
 
 /// The `[profiles]` table of the repository's declaration at `revision`:

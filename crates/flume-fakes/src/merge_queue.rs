@@ -1,7 +1,7 @@
 use crate::{lock, FakeGit, Log};
 use flume_seams::{
-    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, MergeQueue, Owed,
-    PassedOver, PlaceRef, ReadAcross, Revision, Stepped, Submission, SubmissionOutcome,
+    BaseRevision, BranchClosed, BranchOpened, Confirmed, Forecast, Inbox, LandsOn, MergeQueue,
+    Owed, PassedOver, PlaceRef, ReadAcross, Revision, Stepped, Submission, SubmissionOutcome,
     SubmissionRead, SubmissionState, SubmitHead, Submitted,
 };
 use std::collections::{BTreeMap, VecDeque};
@@ -130,6 +130,9 @@ struct QueueState {
     /// The answer scripted for each branch's forecast, by repository and
     /// branch.
     forecasts: BTreeMap<(String, String), Forecast>,
+    /// The answer scripted for whether it lands each base, by repository
+    /// and base; it lands every other.
+    lands: BTreeMap<(String, String), LandsOn>,
     next: u64,
     next_request: u64,
 }
@@ -146,6 +149,14 @@ impl FakeMergeQueue {
     pub fn set_base(&self, repository: &str, base: &str, answer: BaseRevision) {
         lock(&self.state)
             .bases
+            .insert((repository.into(), base.into()), answer);
+    }
+
+    /// Whether it lands `base` in `repository`, as lands-on answers it;
+    /// it lands every base not set (126).
+    pub fn set_lands_on(&self, repository: &str, base: &str, answer: LandsOn) {
+        lock(&self.state)
+            .lands
             .insert((repository.into(), base.into()), answer);
     }
 
@@ -777,6 +788,15 @@ impl MergeQueue for FakeMergeQueue {
     fn base_revision(&self, repository: &str, base: &str) -> BaseRevision {
         self.log.push(format!("base_revision {repository} {base}"));
         self.where_base(repository, base)
+    }
+
+    fn lands_on(&self, repository: &str, base: &str) -> LandsOn {
+        self.log.push(format!("lands_on {repository} {base}"));
+        lock(&self.state)
+            .lands
+            .get(&(repository.to_string(), base.to_string()))
+            .cloned()
+            .unwrap_or(LandsOn::Lands)
     }
 
     fn open(&self, repository: &str, branch: &str, base: &str) -> BranchOpened {

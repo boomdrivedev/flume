@@ -795,7 +795,7 @@ fn a_long_queue(_: &()) -> Outcome {
         "two's code"
     );
     let status = match world.engine().status(None) {
-        Answer::Status { places, host } => {
+        Answer::Status { places, host, .. } => {
             ensure!(
                 host.queue.iter().any(|queued| queued.place == two),
                 "two is not in the host's queue"

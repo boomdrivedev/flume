@@ -246,6 +246,18 @@ pub enum BaseRevision {
     Unlanded,
 }
 
+/// lands-on: whether the merge queue lands `base` in a repository, read
+/// from what the repository holds with no fetch: it lands it; it does
+/// not, in its words naming what the repository lacks for it; or why the
+/// merge queue could not say (126; core.3, core.15).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandsOn {
+    Lands,
+    Not { reason: String },
+    CouldNotRead { reason: String },
+}
+
 /// What a submission sends: the place's worktree head, from the place,
 /// or a branch the merge queue lands on, named with its revision, from
 /// the repository, with no worktree as its submitter (117, 203).
@@ -376,4 +388,13 @@ pub trait MergeQueue: Send + Sync {
     /// no entry and moves nothing, and is never read as a verdict (203,
     /// 210).
     fn forecast(&self, repository: &str, branch: &str, base: &str) -> Forecast;
+
+    /// Whether the merge queue lands `base` in `repository`, as the
+    /// repository holds it, fetching nothing and moving nothing (126;
+    /// core.15). A profile that cannot say refuses.
+    fn lands_on(&self, _repository: &str, base: &str) -> LandsOn {
+        LandsOn::CouldNotRead {
+            reason: format!("its merge queue profile cannot say whether it lands {base}"),
+        }
+    }
 }

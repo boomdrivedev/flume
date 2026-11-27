@@ -64,6 +64,13 @@ enum Command {
         /// (57, 60).
         #[arg(long)]
         line: bool,
+        /// Beside the places, the repository's binding as it holds its
+        /// default branch, whether the merge queue it binds lands that
+        /// branch, and each kind flume would run there with whether it
+        /// lands: the repository the command runs in, or the one
+        /// `--repository` names. Reads; fetches and launches nothing.
+        #[arg(long, conflicts_with = "line")]
+        binding: bool,
     },
     /// A line for each place on the host and each stream it declares,
     /// reading only what flume keeps, a place that landed or was dropped
@@ -734,11 +741,21 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             let launch = launch_of(args, given)?;
             build()?.launch(&launch)
         }
-        Command::Status { place, line } => {
+        Command::Status {
+            place,
+            line,
+            binding,
+        } => {
             let place = maybe(place)?;
+            let repositories = if *binding {
+                vec![place::repository(given)?]
+            } else {
+                vec![]
+            };
             crate::served::status(&crate::served::Asked {
                 place: place.map(|place| place.0),
                 line: *line,
+                repositories,
             })
         }
         Command::List { all } => build()?.list(*all),

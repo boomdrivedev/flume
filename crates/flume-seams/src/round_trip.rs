@@ -4599,6 +4599,44 @@ fn a_binding() {
 }
 
 #[test]
+fn a_binding_held_and_a_base_landed_on() {
+    for from in [HeldFrom::Origin, HeldFrom::Local] {
+        round_trips(BindingHeld::Read {
+            branch: "main".into(),
+            revision: Revision::new("abc123"),
+            from,
+            declaration: Some(".config/flume.toml".into()),
+            binding: held().place.binding,
+        });
+    }
+    round_trips(BindingHeld::Read {
+        branch: "main".into(),
+        revision: Revision::new("abc123"),
+        from: HeldFrom::Local,
+        declaration: None,
+        binding: Binding::default(),
+    });
+    round_trips(BindingHeld::CouldNotRead {
+        reason: "no default branch".into(),
+    });
+    round_trips(LandsOn::Lands);
+    round_trips(LandsOn::Not {
+        reason: "no policy".into(),
+    });
+    round_trips(LandsOn::CouldNotRead {
+        reason: "unread".into(),
+    });
+}
+
+#[test]
+fn the_bare_kinds_reads_no_binding_held() {
+    assert!(matches!(
+        BareKinds.read_binding_held("/r"),
+        BindingHeld::CouldNotRead { .. }
+    ));
+}
+
+#[test]
 fn the_six_deliverable_forms() {
     for deliverable in [
         Deliverable::Commits,
