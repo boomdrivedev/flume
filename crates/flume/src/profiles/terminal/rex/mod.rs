@@ -328,10 +328,48 @@ struct Located {
     session: Option<String>,
 }
 
+/// One call of Rex's: the program, the server's socket it is led to, its
+/// arguments after the server, the runtime root its servers keep their
+/// state under where the profile names one, and the bound it answers
+/// within.
+#[derive(Clone, Copy, Debug)]
+pub struct RexCall<'a> {
+    pub program: &'a Path,
+    pub socket: &'a Path,
+    pub args: &'a [&'a str],
+    pub runtime_root: Option<&'a Path>,
+    pub bound: Duration,
+}
+
+/// What a call of Rex's came to, once it ended: whether it succeeded, its
+/// exit status in words, and its output and its errors.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RexRan {
+    pub success: bool,
+    pub status: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// How the profile runs a call of Rex's: as a process of its program for
+/// flume's binary ([`Process`]), or as a test's recorded answers; what it
+/// came to, or why it gave no answer.
+pub trait RexRuns: Send + Sync + std::fmt::Debug {
+    fn run(&self, call: &RexCall<'_>) -> Result<RexRan, String>;
+}
+
+/// Rex run as a process of its program, autostarting no server, led to
+/// the call's server, every `REX_*` of the caller's stripped, in a process
+/// group of its own that is ended once the call's bound has passed
+/// (core.29).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Process;
+
 /// The terminal over Rex.
 #[derive(Clone, Debug)]
 pub struct Rex {
     program: PathBuf,
+    runs: Arc<dyn RexRuns>,
     records: PathBuf,
     bound: Duration,
     start_timeout: Duration,
@@ -347,6 +385,7 @@ impl Rex {
     pub fn new(records: impl Into<PathBuf>) -> Rex {
         Rex {
             program: NAME.into(),
+            runs: Arc::new(Process),
             records: records.into(),
             bound: BOUND,
             start_timeout: START_TIMEOUT,
@@ -360,6 +399,13 @@ impl Rex {
     /// tests, which name the pinned one.
     pub fn with_program(mut self, program: impl Into<PathBuf>) -> Rex {
         self.program = program.into();
+        self
+    }
+
+    /// Its calls of Rex run by `runs`, in place of a process of its
+    /// program.
+    pub fn with_runs(mut self, runs: Arc<dyn RexRuns>) -> Rex {
+        self.runs = runs;
         self
     }
 
@@ -477,80 +523,26 @@ impl Rex {
     /// standard output as Rex wrote it, never read as JSON; or its refusal
     /// in its words, or no answer (98, 222; core.29).
     pub fn printed(&self, socket: &Path, args: &[&str], bound: Duration) -> Result<String, Call> {
-        let mut command = Command::new(&self.program);
-        command
-            .arg("--autostart=false")
-            .arg("-S")
-            .arg(format!("unix://{}", socket.display()))
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (name, _) in std::env::vars_os() {
-            if name.to_string_lossy().starts_with("REX_") {
-                command.env_remove(name);
-            }
-        }
-        if let Some(root) = &self.runtime_root {
-            command.env(RUNTIME_ROOT, root);
-        }
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(error) => return Err(Call::Unanswered(format!("rex could not be run: {error}"))),
-        };
-        let read = |pipe: Option<Box<dyn Read + Send>>| {
-            std::thread::spawn(move || {
-                let mut text = String::new();
-                if let Some(mut pipe) = pipe {
-                    let _ = pipe.read_to_string(&mut text);
-                }
-                text
+        let ran = self
+            .runs
+            .run(&RexCall {
+                program: &self.program,
+                socket,
+                args,
+                runtime_root: self.runtime_root.as_deref(),
+                bound,
             })
-        };
-        let stdout = read(child.stdout.take().map(|pipe| Box::new(pipe) as _));
-        let stderr = read(child.stderr.take().map(|pipe| Box::new(pipe) as _));
-        let deadline = Instant::now() + bound;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(10))
-                }
-                Ok(None) => {
-                    if let Ok(group) = libc::pid_t::try_from(child.id()) {
-                        // SAFETY: a signal to the process group this call
-                        // made for its rex.
-                        unsafe { libc::kill(-group, libc::SIGKILL) };
-                    }
-                    let _ = child.wait();
-                    return Err(Call::Unanswered(format!(
-                        "rex {} did not answer within {} seconds",
-                        words(args),
-                        bound.as_secs_f32()
-                    )));
-                }
-                Err(error) => {
-                    return Err(Call::Unanswered(format!(
-                        "rex could not be waited on: {error}"
-                    )))
-                }
-            }
-        };
-        let (stdout, stderr) = (
-            stdout.join().unwrap_or_default(),
-            stderr.join().unwrap_or_default(),
-        );
-        if !status.success() {
-            let said = stderr.trim();
+            .map_err(Call::Unanswered)?;
+        if !ran.success {
+            let said = ran.stderr.trim();
             let said = said.strip_prefix("Error: ").unwrap_or(said);
             return Err(Call::Refused(if said.is_empty() {
-                format!("rex {} exited with {status}", words(args))
+                format!("rex {} exited with {}", words(args), ran.status)
             } else {
                 said.to_string()
             }));
         }
-        Ok(stdout)
+        Ok(ran.stdout)
     }
 
     /// Rex's answer under the profile's bound.
@@ -2642,27 +2634,207 @@ impl Rex {
     }
 }
 
+/// The names among `names` of the `REX_*` variables Rex reads its caller's
+/// block and server from, which no call of the profile's passes on (7,
+/// core.29).
+fn rex_variables(names: impl Iterator<Item = std::ffi::OsString>) -> Vec<std::ffi::OsString> {
+    names
+        .filter(|name| name.to_string_lossy().starts_with("REX_"))
+        .collect()
+}
+
+impl RexRuns for Process {
+    fn run(&self, call: &RexCall<'_>) -> Result<RexRan, String> {
+        let mut command = Command::new(call.program);
+        command
+            .arg("--autostart=false")
+            .arg("-S")
+            .arg(format!("unix://{}", call.socket.display()))
+            .args(call.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for name in rex_variables(std::env::vars_os().map(|(name, _)| name)) {
+            command.env_remove(name);
+        }
+        if let Some(root) = call.runtime_root {
+            command.env(RUNTIME_ROOT, root);
+        }
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => return Err(format!("rex could not be run: {error}")),
+        };
+        let read = |pipe: Option<Box<dyn Read + Send>>| {
+            std::thread::spawn(move || {
+                let mut text = String::new();
+                if let Some(mut pipe) = pipe {
+                    let _ = pipe.read_to_string(&mut text);
+                }
+                text
+            })
+        };
+        let stdout = read(child.stdout.take().map(|pipe| Box::new(pipe) as _));
+        let stderr = read(child.stderr.take().map(|pipe| Box::new(pipe) as _));
+        let deadline = Instant::now() + call.bound;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Ok(None) => {
+                    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+                        // SAFETY: a signal to the process group this call
+                        // made for its rex.
+                        unsafe { libc::kill(-group, libc::SIGKILL) };
+                    }
+                    let _ = child.wait();
+                    return Err(format!(
+                        "rex {} did not answer within {} seconds",
+                        words(call.args),
+                        call.bound.as_secs_f32()
+                    ));
+                }
+                Err(error) => return Err(format!("rex could not be waited on: {error}")),
+            }
+        };
+        Ok(RexRan {
+            success: status.success(),
+            status: status.to_string(),
+            stdout: stdout.join().unwrap_or_default(),
+            stderr: stderr.join().unwrap_or_default(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// What a test's Rex answers a call: what it came to, or why no answer
+    /// came.
+    type Answer = Result<RexRan, String>;
+
+    /// Marks a test sets for its Rex's answers to read, by name.
+    type Marks = std::sync::Mutex<BTreeMap<String, String>>;
+
+    /// How a test's Rex answers a call, given the marks the test set.
+    type Answering = dyn Fn(&RexCall<'_>, &BTreeMap<String, String>) -> Answer + Send + Sync;
+
+    /// Rex's recorded answers to the profile's calls, each call logged
+    /// first as the words a process of Rex is given: led to its server,
+    /// then its arguments.
+    struct RexAnswers {
+        log: std::sync::Mutex<Vec<String>>,
+        marks: Marks,
+        answer: Box<Answering>,
+    }
+
+    impl std::fmt::Debug for RexAnswers {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("RexAnswers").finish_non_exhaustive()
+        }
+    }
+
+    impl RexRuns for RexAnswers {
+        fn run(&self, call: &RexCall<'_>) -> Answer {
+            self.log.lock().expect("the log").push(format!(
+                "--autostart=false -S unix://{} {}",
+                call.socket.display(),
+                call.args.join(" ")
+            ));
+            let marks = self.marks.lock().expect("the marks").clone();
+            (self.answer)(call, &marks)
+        }
+    }
+
+    impl RexAnswers {
+        fn new(
+            answer: impl Fn(&RexCall<'_>, &BTreeMap<String, String>) -> Answer + Send + Sync + 'static,
+        ) -> Arc<RexAnswers> {
+            Arc::new(RexAnswers {
+                log: std::sync::Mutex::default(),
+                marks: Marks::default(),
+                answer: Box::new(answer),
+            })
+        }
+
+        /// Sets the mark `name` to `value` for the answers that follow.
+        fn mark(&self, name: &str, value: &str) {
+            self.marks
+                .lock()
+                .expect("the marks")
+                .insert(name.into(), value.into());
+        }
+
+        /// Whether no call was made.
+        fn none(&self) -> bool {
+            self.log.lock().expect("the log").is_empty()
+        }
+
+        fn clear(&self) {
+            self.log.lock().expect("the log").clear();
+        }
+
+        /// Each call's words after the server it was led to, which is
+        /// asserted to be `--autostart=false -S unix://<socket>`.
+        fn calls(&self, socket: &Path) -> Vec<String> {
+            let led = format!("--autostart=false -S unix://{} ", socket.display());
+            self.log
+                .lock()
+                .expect("the log")
+                .iter()
+                .map(|line| {
+                    line.strip_prefix(&led)
+                        .unwrap_or_else(|| panic!("a call not led to its server: {line}"))
+                        .to_string()
+                })
+                .collect()
+        }
+    }
+
+    /// Rex's printing of `stdout`, succeeding.
+    fn printed(stdout: impl Into<String>) -> Answer {
+        Ok(RexRan {
+            success: true,
+            status: "exit status: 0".into(),
+            stdout: stdout.into(),
+            stderr: String::new(),
+        })
+    }
+
+    #[test]
+    fn no_rex_variable_of_the_callers_is_passed_on() {
+        // 7, core.29: every `REX_*` of the calling command's environment,
+        // which names its own block and server, is left out of a call.
+        let names = ["REX_BLOCK", "PATH", "REX_SERVER", "HOME", "REXY"]
+            .map(std::ffi::OsString::from)
+            .into_iter();
+        assert_eq!(
+            rex_variables(names),
+            ["REX_BLOCK", "REX_SERVER"].map(std::ffi::OsString::from)
+        );
+    }
+
     /// The profile over records in a scratch folder of its own, short
     /// enough for its sockets, its rex a script that marks it was run;
     /// and the folder and that mark.
-    fn over_records(name: &str) -> (Rex, PathBuf, PathBuf) {
+    fn over_records(name: &str) -> (Rex, PathBuf, Arc<RexAnswers>) {
         let scratch = std::env::temp_dir().join(format!("frx-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&scratch);
         fs::create_dir_all(&scratch).expect("a scratch folder");
-        let program = scratch.join("rex");
-        let ran = scratch.join("ran");
-        fs::write(
-            &program,
-            format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 1\n", ran.display()),
-        )
-        .expect("the stand-in rex");
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
-        let rex = Rex::new(scratch.join("terminal/rex")).with_program(&program);
-        (rex, scratch, ran)
+        let answers = RexAnswers::new(|_, _| {
+            Ok(RexRan {
+                success: false,
+                status: "exit status: 1".into(),
+                ..RexRan::default()
+            })
+        });
+        let rex = Rex::new(scratch.join("terminal/rex"))
+            .with_program(scratch.join("no-rex"))
+            .with_runs(answers.clone());
+        (rex, scratch, answers)
     }
 
     fn place() -> PlaceRef {
@@ -2714,39 +2886,24 @@ mod tests {
             1,
         );
         assert_eq!(refused(&rex), format!("no agent runs under {}", identity()));
-        assert!(
-            !ran.exists(),
-            "rex was called: {:?}",
-            fs::read_to_string(&ran)
-        );
+        assert!(ran.none(), "rex was called: {:?}", ran.log);
         let _ = fs::remove_dir_all(scratch);
     }
 
-    /// The profile over records in a scratch folder of its own, its rex a
-    /// stand-in run by `/bin/sh` whose body is `body`, with `$MARK` a path
-    /// in the scratch the test may touch, each call logged first to `log`
-    /// as its words and the names of the `REX_` variables of its
-    /// environment to `log.env`; the agent `identity()` recorded in the
-    /// block `block:b1` of the Rex session `s1` on the server at the
-    /// socket `<scratch>/s.sock`. The profile, the scratch, the log and
-    /// the socket.
-    fn over_relay(name: &str, body: &str) -> (Rex, PathBuf, PathBuf, PathBuf) {
+    /// The profile over records in a scratch folder of its own, its calls
+    /// of Rex answered by `answer`; the agent `identity()` recorded in the
+    /// block `block:b1` of the Rex session `s1` on the server at the socket
+    /// `<scratch>/s.sock`. The profile, the scratch, its answers and the
+    /// socket.
+    fn over_relay(
+        name: &str,
+        answer: impl Fn(&RexCall<'_>, &BTreeMap<String, String>) -> Answer + Send + Sync + 'static,
+    ) -> (Rex, PathBuf, Arc<RexAnswers>, PathBuf) {
         let (_, scratch, _) = over_records(name);
-        let program = scratch.join("rex");
-        let log = scratch.join("log");
-        fs::write(
-            &program,
-            format!(
-                "#!/bin/sh\nLOG='{log}'\nMARK='{mark}'\nprintf '%s\\n' \"$*\" >> \"$LOG\"\n\
-                 printf 'REX=%s\\n' \"$(env | sed -n 's/^\\(REX_[A-Za-z0-9_]*\\)=.*/\\1/p' | tr '\\n' ' ')\" >> \"$LOG.env\"\n\
-                 {body}\n",
-                log = log.display(),
-                mark = scratch.join("mark").display(),
-            ),
-        )
-        .expect("the stand-in rex");
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
-        let rex = Rex::new(scratch.join("terminal/rex")).with_program(&program);
+        let answers = RexAnswers::new(answer);
+        let rex = Rex::new(scratch.join("terminal/rex"))
+            .with_program(scratch.join("no-rex"))
+            .with_runs(answers.clone());
         let socket = scratch.join("s.sock");
         recorded(
             &rex.agent_record(&identity()),
@@ -2760,44 +2917,33 @@ mod tests {
             }),
             1,
         );
-        (rex, scratch, log, socket)
+        (rex, scratch, answers, socket)
     }
 
-    /// Each call the stand-in logged, its words after the server it was
-    /// led to, which is asserted to be `--autostart=false -S
-    /// unix://<socket>`.
-    fn relay_calls(log: &Path, socket: &Path) -> Vec<String> {
-        let led = format!("--autostart=false -S unix://{} ", socket.display());
-        fs::read_to_string(log)
-            .unwrap_or_default()
-            .lines()
-            .map(|line| {
-                line.strip_prefix(&led)
-                    .unwrap_or_else(|| panic!("a call not led to its server: {line}"))
-                    .to_string()
-            })
-            .collect()
-    }
-
-    /// The stand-in's answer to a relay's reads: `size` with `rows` rows,
-    /// and `capture` with what `$MARK.capture` holds.
-    fn relay_reads(rows: u32) -> String {
-        format!(
-            "case \"$*\" in\n  *' capture '*) cat \"$MARK.capture\" ;;\n  \
-             *' size') printf '{{\"rows\":{rows},\"cols\":80}}\\n' ;;\nesac"
-        )
+    /// Rex's answer to a relay's reads: `size` with `rows` rows, and
+    /// `capture` with the mark `capture`.
+    fn relay_reads(rows: u32) -> impl Fn(&RexCall<'_>, &BTreeMap<String, String>) -> Answer {
+        move |call, marks| {
+            if call.args.contains(&"capture") {
+                printed(marks.get("capture").cloned().unwrap_or_default())
+            } else if call.args.last() == Some(&"size") {
+                printed(format!("{{\"rows\":{rows},\"cols\":80}}\n"))
+            } else {
+                printed("")
+            }
+        }
     }
 
     #[test]
     fn relay_reads_the_blocks_last_rows_as_rex_writes_them() {
         // The terminal-profiles scenarios "Reads over a stand-in rex" and
         // "A screen that reads as JSON" (136, 222, C.5's Rex relay row).
-        let (rex, scratch, log, socket) = over_relay("reads", &relay_reads(3));
+        let (rex, scratch, answers, socket) = over_relay("reads", relay_reads(3));
         let line = |n: u32| format!("\x1b[0m\x1b[38;5;1mline {n}\x1b[0m\r\n");
         let captured: String = (1..=5).map(line).collect();
-        fs::write(scratch.join("mark.capture"), &captured).expect("the capture");
+        answers.mark("capture", &captured);
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
-        assert!(!log.exists(), "the ask called rex");
+        assert!(answers.none(), "the ask called rex");
         assert_eq!(relay.every(), Duration::from_millis(250));
         let screen: String = (3..=5).map(line).collect();
         for _ in 0..2 {
@@ -2811,16 +2957,16 @@ mod tests {
         let capture = "capture -s s1 -b block:b1 --format vt --trim".to_string();
         let size = "block call -s s1 -b block:b1 size".to_string();
         assert_eq!(
-            relay_calls(&log, &socket),
+            answers.calls(&socket),
             vec![capture.clone(), size.clone(), capture, size]
         );
         drop(relay);
         assert_eq!(
-            relay_calls(&log, &socket).len(),
+            answers.calls(&socket).len(),
             4,
             "dropping the relay called rex"
         );
-        fs::write(scratch.join("mark.capture"), "{\"a\": 1}\n").expect("the capture");
+        answers.mark("capture", "{\"a\": 1}\n");
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         assert_eq!(
             relay.screen(),
@@ -2829,12 +2975,15 @@ mod tests {
             }
         );
         let _ = fs::remove_dir_all(scratch);
-        let (rex, scratch, _, _) = over_relay(
-            "rows",
-            "case \"$*\" in *' capture '*) cat \"$MARK.capture\" ;; esac",
-        );
+        let (rex, scratch, answers, _) = over_relay("rows", |call, marks| {
+            if call.args.contains(&"capture") {
+                printed(marks.get("capture").cloned().unwrap_or_default())
+            } else {
+                printed("")
+            }
+        });
         let captured: String = (1..=30).map(line).collect();
-        fs::write(scratch.join("mark.capture"), &captured).expect("the capture");
+        answers.mark("capture", &captured);
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         assert_eq!(
             relay.screen(),
@@ -2850,23 +2999,23 @@ mod tests {
     fn relay_types_by_send_in_pieces_and_keys_by_send_key() {
         // The terminal-profiles scenarios "Types over a stand-in rex" and
         // "A long text" (95, 222, C.5's Rex relay row).
-        let (rex, scratch, log, socket) = over_relay("types", ":");
+        let (rex, scratch, answers, socket) = over_relay("types", |_, _| printed(""));
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         assert_eq!(relay.typed(&Typed::Text("yes".into())), Ok(()));
         let keys = Typed::Keys(vec!["ctrl+c".parse().unwrap(), "enter".parse().unwrap()]);
         assert_eq!(relay.typed(&keys), Ok(()));
         assert_eq!(
-            relay_calls(&log, &socket),
+            answers.calls(&socket),
             vec![
                 "send -s s1 -b block:b1 -- yes".to_string(),
                 "send-key -s s1 -b block:b1 ctrl+c enter".into(),
             ]
         );
-        fs::remove_file(&log).expect("the log cleared");
+        answers.clear();
         let long = format!("a{}a", "\u{e9}".repeat(74_999));
         assert_eq!(long.len(), 150_000);
         assert_eq!(relay.typed(&Typed::Text(long.clone())), Ok(()));
-        let calls = relay_calls(&log, &socket);
+        let calls = answers.calls(&socket);
         assert_eq!(calls.len(), 3, "three sends");
         let mut whole = String::new();
         for call in &calls {
@@ -2890,7 +3039,7 @@ mod tests {
         // over a stand-in rex" and "Capitals and keys Rex types otherwise
         // over a stand-in rex" (222, C.5's Rex relay row at blueprints
         // bf9e16f).
-        let (rex, scratch, log, socket) = over_relay("chars", ":");
+        let (rex, scratch, answers, socket) = over_relay("chars", |_, _| printed(""));
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         let keys =
             |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
@@ -2903,7 +3052,7 @@ mod tests {
              and the keys around it were typed"
         );
         assert_eq!(
-            relay_calls(&log, &socket),
+            answers.calls(&socket),
             vec![
                 "send-key -s s1 -b block:b1 a".to_string(),
                 "send -s s1 -b block:b1 -- !?".into(),
@@ -2993,7 +3142,7 @@ mod tests {
                 "{name}"
             );
         }
-        fs::remove_file(&log).expect("the log cleared");
+        answers.clear();
         let refused = relay
             .typed(&keys(&[
                 "A",
@@ -3012,14 +3161,14 @@ mod tests {
             );
         }
         assert_eq!(
-            relay_calls(&log, &socket),
+            answers.calls(&socket),
             vec![
                 "send -s s1 -b block:b1 -- A".to_string(),
                 "send-key -s s1 -b block:b1 b".into(),
                 "send-key -s s1 -b block:b1 enter".into(),
             ]
         );
-        fs::remove_file(&log).expect("the log cleared");
+        answers.clear();
         let refused = relay
             .typed(&keys(&["alt+!", "~", "shift+~"]))
             .expect_err("each led one");
@@ -3031,7 +3180,7 @@ mod tests {
             "{refused}"
         );
         assert_eq!(
-            relay_calls(&log, &socket),
+            answers.calls(&socket),
             vec!["send -s s1 -b block:b1 -- ~".to_string()]
         );
         let _ = fs::remove_dir_all(scratch);
@@ -3041,12 +3190,20 @@ mod tests {
     fn a_relay_reads_a_gone_block_gone_and_another_refusal_unread() {
         // The terminal-profiles scenarios "A block not found", "A server
         // not running" and "Another refusal" (96, 98, 222).
-        let body = "if [ -f \"$MARK.said\" ]; then cat \"$MARK.said\" >&2; exit \"$(cat \"$MARK.exit\")\"; fi";
-        let (rex, scratch, _, socket) = over_relay("gone", body);
+        let (rex, scratch, answers, socket) =
+            over_relay("gone", |_, marks| match marks.get("said") {
+                Some(said) => Ok(RexRan {
+                    success: false,
+                    status: format!("exit status: {}", marks["exit"]),
+                    stdout: String::new(),
+                    stderr: said.clone(),
+                }),
+                None => printed(""),
+            });
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
         let refusing = |said: &str, exit: u8| {
-            fs::write(scratch.join("mark.said"), said).expect("the words");
-            fs::write(scratch.join("mark.exit"), exit.to_string()).expect("the exit");
+            answers.mark("said", said);
+            answers.mark("exit", &exit.to_string());
         };
         refusing("Error: block target \"block:b1\" not found\n", 3);
         assert_eq!(relay.screen(), RelayScreen::Gone);
@@ -3073,19 +3230,24 @@ mod tests {
         // The terminal-profiles scenarios "Each call names the block's
         // server", "A read that does not answer" and "A text that does not
         // answer" (98, 221; core.29, core.57).
-        let body = format!(
-            "if [ -e \"$MARK.slow\" ]; then exec sleep 5; fi\n{}",
-            relay_reads(24)
-        );
-        let (rex, scratch, log, socket) = over_relay("bound", &body);
-        fs::write(scratch.join("mark.capture"), "a screen\r\n").expect("the capture");
+        // Past its bound Rex gives no answer, as Process words a call it
+        // ended at its bound.
+        let reads = relay_reads(24);
+        let (rex, scratch, answers, socket) = over_relay("bound", move |call, marks| {
+            if marks.contains_key("slow") {
+                Err(format!(
+                    "rex {} did not answer within {} seconds",
+                    words(call.args),
+                    call.bound.as_secs_f32()
+                ))
+            } else {
+                reads(call, marks)
+            }
+        });
+        answers.mark("capture", "a screen\r\n");
         let mut relay = rex.relay(&identity()).expect("the block is recorded");
-        std::env::set_var("REX_BLOCK", "block:the-callers");
-        std::env::set_var("REX_SERVER", "unix:///tmp/the-callers.sock");
         let read = relay.screen();
         let typed = relay.typed(&Typed::Text("yes".into()));
-        std::env::remove_var("REX_BLOCK");
-        std::env::remove_var("REX_SERVER");
         assert_eq!(
             read,
             RelayScreen::Shows {
@@ -3094,14 +3256,11 @@ mod tests {
         );
         assert_eq!(typed, Ok(()));
         assert_eq!(
-            relay_calls(&log, &socket).len(),
+            answers.calls(&socket).len(),
             3,
             "each call led to its server"
         );
-        let env = fs::read_to_string(log.with_extension("env")).expect("the environments");
-        assert_eq!(env.lines().count(), 3, "{env}");
-        assert!(env.lines().all(|line| line.trim() == "REX="), "{env}");
-        fs::write(scratch.join("mark.slow"), "").expect("the mark");
+        answers.mark("slow", "");
         match relay.screen() {
             RelayScreen::Unread { reason } => {
                 assert!(reason.contains("within 1 second"), "{reason}")
@@ -3169,7 +3328,7 @@ mod tests {
                 "{opened:?}"
             );
         }
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         assert!(
             !records.join("agents").exists(),
             "an identity was claimed for a refused open"
@@ -3262,7 +3421,7 @@ mod tests {
         assert_eq!(rex.session(), None);
         let rex = rex.with_caller(Some(block.clone()));
         assert_eq!(rex.session(), Some(block.session()));
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         let _ = fs::remove_dir_all(scratch);
     }
 
@@ -3283,7 +3442,7 @@ mod tests {
             assert_eq!(rex.session_state(name), None, "{name}");
             assert_eq!(Block::named(name), None, "{name}");
         }
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         let _ = fs::remove_dir_all(scratch);
     }
 
@@ -3505,7 +3664,7 @@ mod tests {
                 assert!(reason.contains(kind.as_str()), "{reason}");
             }
         }
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         assert!(!scratch.join("terminal").exists(), "something was recorded");
         let _ = fs::remove_dir_all(scratch);
     }
@@ -3595,38 +3754,60 @@ mod tests {
         found
     }
 
-    /// The profile over records in a scratch folder of its own, its rex a
-    /// stand-in that logs each call's words to `log` and answers
-    /// `server.status`, `client.list`, `session.list` and `do
+    /// The profile over records in a scratch folder of its own, its calls
+    /// of Rex logged to `log` as the words a process of Rex is given, and
+    /// answering `server.status`, `client.list`, `session.list` and `do
     /// session.select` with what the test writes in `answers` under the
     /// method's name, refusing in the words of `<method>.refused` where the
     /// test writes one; and the folder, `answers` and `log`.
     fn over_stand_in(name: &str) -> (Rex, PathBuf, PathBuf, PathBuf) {
         let (_, scratch, _) = over_records(name);
-        let program = scratch.join("rex");
         let answers = scratch.join("answers");
         let log = scratch.join("log");
         fs::create_dir_all(&answers).expect("the answers' folder");
-        fs::write(
-            &program,
-            format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{log}'\na='{answers}'\nfor word in \"$@\"; do\n  \
-                 case \"$word\" in\n    server.status|client.list|session.list|session.select)\n      \
-                 if [ -f \"$a/$word.refused\" ]; then cat \"$a/$word.refused\" >&2; exit 1; fi\n      \
-                 if [ -f \"$a/$word\" ]; then cat \"$a/$word\"; fi\n      exit 0;;\n  esac\ndone\n\
-                 echo \"Error: the stand-in answers no $*\" >&2\nexit 1\n",
-                log = log.display(),
-                answers = answers.display()
-            ),
-        )
-        .expect("the stand-in rex");
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
         fs::write(
             answers.join("server.status"),
             json!({"api_revision": API_REVISION, "rex_version": "0.1.0-preview.14"}).to_string(),
         )
         .expect("the server's status");
-        let rex = Rex::new(scratch.join("terminal/rex")).with_program(&program);
+        let (written, logged) = (answers.clone(), log.clone());
+        let runs = RexAnswers::new(move |call, _| {
+            let words = format!(
+                "--autostart=false -S unix://{} {}",
+                call.socket.display(),
+                call.args.join(" ")
+            );
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&logged)
+                .expect("the log");
+            std::io::Write::write_all(&mut file, format!("{words}\n").as_bytes())
+                .expect("the call logged");
+            let refused = |stderr: String| {
+                Ok(RexRan {
+                    success: false,
+                    status: "exit status: 1".into(),
+                    stdout: String::new(),
+                    stderr,
+                })
+            };
+            for word in call.args {
+                if matches!(
+                    *word,
+                    "server.status" | "client.list" | "session.list" | "session.select"
+                ) {
+                    if let Ok(said) = fs::read_to_string(written.join(format!("{word}.refused"))) {
+                        return refused(said);
+                    }
+                    return printed(fs::read_to_string(written.join(word)).unwrap_or_default());
+                }
+            }
+            refused(format!("Error: the stand-in answers no {words}\n"))
+        });
+        let rex = Rex::new(scratch.join("terminal/rex"))
+            .with_program(scratch.join("no-rex"))
+            .with_runs(runs);
         (rex, scratch, answers, log)
     }
 
@@ -3716,7 +3897,7 @@ mod tests {
                 "{reason}"
             );
         }
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         assert!(!scratch.join("terminal").exists(), "something was recorded");
         let _ = fs::remove_dir_all(scratch);
     }
@@ -3737,7 +3918,7 @@ mod tests {
         );
         assert_eq!(rex.shown_at(&place(), None), ShownAt::default());
         assert_eq!(rex.setup(), Vec::<String>::new());
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         let _ = fs::remove_dir_all(scratch);
     }
 
@@ -3793,7 +3974,7 @@ mod tests {
                 bases: vec![at("session:own", &own), at("session:w", &w)],
             }
         );
-        assert!(!ran.exists(), "a rex command was run");
+        assert!(ran.none(), "a rex command was run");
         let _ = fs::remove_dir_all(scratch);
     }
 
