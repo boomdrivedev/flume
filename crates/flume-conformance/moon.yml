@@ -24,8 +24,12 @@ tasks:
     inputs: ['/crates/flume-conformance/**/*', '/crates/flume-seams/**/*', '/crates/flume-fakes/**/*', '/crates/flume-core/**/*', '/crates/flume/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
+  # It builds `coverage` in a target folder of its own: `test` builds it
+  # too, for the integration tests, and cargo writes `target/debug/coverage`
+  # again at each build (root:targets).
   coverage:
     command: 'cargo run -q -p flume-conformance --bin coverage'
     inputs: ['/crates/flume-conformance/**/*', '/crates/flume-seams/**/*', '/crates/flume-fakes/**/*', '/crates/flume-core/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
+    env: {CARGO_TARGET_DIR: '$workspaceRoot/target/coverage'}
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}

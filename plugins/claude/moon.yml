@@ -41,8 +41,10 @@ tasks:
     tags: [check-fast]
   # Each hook run by the built binary with fixture inputs and a fixture
   # transcript on a scratch state directory (tests/hooks.sh), then the
-  # module's tests, run by the pinned engine (tests/*.test.ts).
+  # module's tests, run by the pinned engine (tests/*.test.ts). It builds
+  # the binary in a target folder of its own (root:targets).
   test:
     script: 'bash tests/hooks.sh && ../claude.sh plugin test .'
     inputs: ['**/*', '/plugins/claude.sh', '/crates/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
+    env: {CARGO_TARGET_DIR: '$workspaceRoot/target/plugin-claude'}
     tags: [check-fast]

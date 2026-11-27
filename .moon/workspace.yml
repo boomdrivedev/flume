@@ -10,8 +10,8 @@
 #                 manifest, its lint and its scripts against stand-in
 #                 herdr and flume; the conformance suite's clause
 #                 coverage; the root's format, toolchain, specs,
-#                 changes and their check's cases, hooks, layers and
-#                 versions; the flake's format, lint, evaluation and
+#                 changes and their check's cases, hooks, layers,
+#                 target folders and versions; the flake's format, lint, evaluation and
 #                 tests. Every branch
 #                 requires it, and CI runs it on Linux and macOS
 #   check-tools   the sluice and herdr profiles against the pinned tools,

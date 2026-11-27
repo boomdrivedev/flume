@@ -11,6 +11,12 @@ $schema: 'https://moonrepo.dev/schemas/project.json'
 # landing on a local bare remote, in the check-tools layer; and `live`, the walkthroughs with the
 # pinned Claude Code under herdr, in the check-live layer, run by hand
 # with a test account's token (`tests/profiles/live/`).
+# Each task that builds the binary builds it in a target folder of its
+# own: cargo writes `target/debug/flume` again at each build, one with
+# nothing to do among them, and a gate runs its tasks at once in one
+# checkout, so a test that runs the binary while another task's cargo
+# writes it finds no file there, or finds a binary of other features.
+# `test` keeps cargo's `target`; root:targets holds the tasks to this.
 language: 'rust'
 layer: 'application'
 dependsOn: [seams, core, fakes, conformance]
@@ -40,10 +46,12 @@ tasks:
   tools:
     script: 'unset RUST_TEST_THREADS; cargo test -p flume --features tools --test tools'
     inputs: ['/crates/flume/**/*', '/crates/flume-seams/**/*', '/crates/flume-core/**/*', '/crates/flume-fakes/**/*', '/crates/flume-conformance/**/*', '/plugins/claude/**/*', '/plugins/herdr/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
+    env: {CARGO_TARGET_DIR: '$workspaceRoot/target/tools'}
     tags: [check-tools]
     options: {runFromWorkspaceRoot: true}
   live:
     command: 'cargo test -p flume --features live --test live -- --nocapture'
     inputs: ['/crates/flume/**/*', '/crates/flume-seams/**/*', '/crates/flume-core/**/*', '/crates/flume-fakes/**/*', '/crates/flume-conformance/**/*', '/plugins/claude/**/*', '/Cargo.toml', '/Cargo.lock', '/devenv.nix', '/devenv.lock', '/.prototools', '/rust-toolchain.toml']
+    env: {CARGO_TARGET_DIR: '$workspaceRoot/target/live'}
     tags: [check-live]
     options: {runFromWorkspaceRoot: true, cache: false, runInCI: false}
