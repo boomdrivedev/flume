@@ -2401,4 +2401,58 @@ agents = [{ instructions = "keep it short" }]
             })
         );
     }
+
+    #[test]
+    fn a_settings_file_outside_the_repository_or_not_at_the_revision_fails_the_read() {
+        // 4, 157; core.34: a file by `..` past the repository's root, and
+        // one the revision does not hold though the working tree does, each
+        // fail the read naming the field and the file.
+        let repository = Tree::new("own-file");
+        repository.write(
+            DECLARATION,
+            "[kinds.change.agents.programs.claude]\nfile = \"../../claude.json\"\n\n\
+             [kinds.bump.agents.programs.claude]\nfile = \"claude-bump.json\"\n\n\
+             [[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/bump-code.md\"\n\
+             deliverables = [\"commits\"]\n",
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("files flume cannot read");
+        repository.write(".config/claude-bump.json", "{}");
+        let reason = repository.could_not_read();
+        for field in [
+            "kinds.change.agents.programs.claude.file: ../../claude.json lies outside the repository",
+            "kinds.bump.agents.programs.claude.file: .config/claude-bump.json is not in",
+        ] {
+            assert!(reason.contains(field), "the read names not {field}: {reason}");
+        }
+    }
+
+    #[test]
+    fn a_statechart_stages_prompt_the_revision_lacks_is_named() {
+        // The kinds-profile spec's "A prompt the revision lacks": a stage's
+        // `prompt` is read beside the declaration at the revision as a
+        // simple stage's is, and named by its path where it cannot be read;
+        // a key of `params` weir does not name is the template's, and
+        // ignored (20, 23, C.2).
+        let repository = Tree::new("persona-no-prompt");
+        repository.write(
+            DECLARATION,
+            &PERSONA.replace(
+                "prompt = \"prompts/build.md\"",
+                "prompt = \"prompts/build.md\", colour = \"blue\"",
+            ),
+        );
+        repository.write(".config/prompts/build.md", "Build.");
+        repository.commit("persona with no test prompt");
+        let reason = repository.could_not_read();
+        assert!(
+            reason.contains("kinds.persona.regions.stages.states.test.params.prompt")
+                && reason.contains(".config/prompts/test.md"),
+            "{reason}"
+        );
+        assert!(
+            !reason.contains("colour") && !reason.contains("states.build"),
+            "{reason}"
+        );
+    }
 }

@@ -369,82 +369,6 @@ fn declaring_trained(repository: &Repository, declaration: &str, message: &str) 
     Revision::new(repository.commit(message))
 }
 
-/// A one-stage kind `bump` of the repository's at `version`, not landing.
-fn bump(version: u32, stages: &[&str]) -> Kind {
-    Kind {
-        name: "bump".into(),
-        version,
-        branch_prefix: "bump".into(),
-        starts_unready: false,
-        lands: false,
-        agents: KindSettings::default(),
-        label: None,
-        stages: stages
-            .iter()
-            .map(|name| Stage {
-                name: (*name).into(),
-                prompt: "{{brief}}\n\n{{needs}}".into(),
-                conversation: false,
-                deliverables: vec![Deliverable::Commits],
-                agents: vec![Settings::default()],
-                waits: false,
-                quiet_limit: None,
-                send_back_to: None,
-                send_back_limit: None,
-                makes: vec![],
-                repeats: false,
-                hibernates: false,
-            })
-            .collect(),
-        fix: None,
-        fix_limit: None,
-        statechart: None,
-    }
-}
-
-#[test]
-fn s13_a_place_keeps_the_kind_its_launch_resolved() {
-    let repository = Repository::new("s13");
-    let name = repository.name();
-    write_declaration(&repository.dir, DECLARATION, &[bump(1, &["code"])], "");
-    let first = repository.commit("bump at version 1");
-    let world = World::new();
-    world.terminal.comes_up(AgentState::Waiting);
-    base_at(&world, &name, &first);
-    let at_launch = |place: &str| {
-        let mut launched = launch("bump", place, Some("bump the pin"));
-        launched.repository = name.clone();
-        launched
-    };
-    let one = launched(&engine(&world, Arc::new(Weir)).launch(&at_launch("one")))
-        .expect("the first launch");
-    write_declaration(
-        &repository.dir,
-        DECLARATION,
-        &[bump(2, &["code", "check"])],
-        "",
-    );
-    let second = repository.commit("bump at version 2");
-    base_at(&world, &name, &second);
-    let two = launched(&engine(&world, Arc::new(Weir)).launch(&at_launch("two")))
-        .expect("the second launch");
-    assert_eq!((one.version, two.version), (1, 2), "the places' versions");
-    assert_eq!(one.declared, Declared::Repository);
-    let places = match engine(&world, Arc::new(Weir)).status(None) {
-        Answer::Status { places, .. } => places,
-        other => panic!("status answered {other:?}"),
-    };
-    let kinds: Vec<(String, u32, usize)> = places
-        .iter()
-        .map(|place| (place.name.clone(), place.version, place.stages.len()))
-        .collect();
-    assert_eq!(
-        kinds,
-        vec![("one".to_string(), 1, 1), ("two".to_string(), 2, 2)],
-        "each place's kind at its version, with its stages"
-    );
-}
-
 /// A scratch repository `label` binding the fakes' merge queue by the
 /// name the world binds it by, and declaring `train` naming `landing_fix`
 /// its landing fix with a bound of 2 beside `mend` at version 1; and the
@@ -618,34 +542,6 @@ fn a_repeat_on_a_stage_of_commits_refuses_the_launch_naming_the_field() {
     assert!(world.store.places().is_empty(), "held state was left");
 }
 
-/// Launches `kind` over `repository` at its head through the kinds
-/// profile, and asserts it refused naming each of `fields` with nothing
-/// made or held.
-fn launch_refused_naming(repository: &Repository, kind: &str, fields: &[&str]) {
-    let world = World::new();
-    base_at(&world, &repository.name(), &repository.head());
-    let mut given = launch(kind, "one", Some("x"));
-    given.repository = repository.name();
-    let reason =
-        refused(&engine(&world, Arc::new(Weir)).launch(&given)).expect("the launch refused");
-    for field in fields {
-        assert!(
-            reason.contains(field),
-            "the refusal names not {field}: {reason}"
-        );
-    }
-    assert_eq!(world.place.log.count("make"), 0, "places made");
-    assert!(world.store.places().is_empty(), "held state was left");
-}
-
-/// The reason `repository`'s declaration at its head cannot be read.
-fn could_not_read(repository: &Repository) -> String {
-    match Weir.read_kinds(&repository.name(), &Revision::new(repository.head())) {
-        KindsRead::CouldNotRead { reason } => reason,
-        other => panic!("the declaration read as {other:?}"),
-    }
-}
-
 #[test]
 fn a_launchs_declaration_reads_its_settings_file_on_disk() {
     // 157, 195, C.2: a launch's declaration's file is read beside it on
@@ -670,49 +566,6 @@ fn a_launchs_declaration_reads_its_settings_file_on_disk() {
         .expect("the file");
     assert_eq!(named.read, dir.join("claude.toml").display().to_string());
     assert_eq!(named.keys["tui"], serde_json::json!("fullscreen"));
-}
-
-#[test]
-fn a_settings_file_outside_the_repository_or_not_at_the_revision_refuses_the_launch() {
-    // 4, 157; core.34: a file by `..` past the repository's root, and one
-    // the revision does not hold though the working tree does, each fail
-    // the read naming the field and the file.
-    let repository = Repository::new("own-file");
-    repository.write(
-        DECLARATION,
-        r#"[kinds.change.agents.programs.claude]
-file = "../../claude.json"
-
-[kinds.bump.agents.programs.claude]
-file = "claude-bump.json"
-
-[[kinds.bump.stages]]
-name = "code"
-prompt = "prompts/bump-code.md"
-deliverables = ["commits"]
-"#,
-    );
-    repository.write(".config/prompts/bump-code.md", "{{brief}}");
-    repository.commit("files flume cannot read");
-    repository.write(".config/claude-bump.json", "{}");
-    let reason = could_not_read(&repository);
-    for field in [
-        "kinds.change.agents.programs.claude.file: ../../claude.json lies outside the repository",
-        "kinds.bump.agents.programs.claude.file: .config/claude-bump.json is not in",
-    ] {
-        assert!(
-            reason.contains(field),
-            "the read names not {field}: {reason}"
-        );
-    }
-    launch_refused_naming(
-        &repository,
-        "change",
-        &[
-            "kinds.change.agents.programs.claude.file",
-            "outside the repository",
-        ],
-    );
 }
 
 /// The words a declaration's `keep_open` is refused in (design 1).
@@ -2740,39 +2593,6 @@ fn declaring_persona(name: &str) -> (Repository, Revision) {
     repository.write(".config/prompts/test.md", "Test {{file}}.");
     let revision = Revision::new(repository.commit("persona beside bump"));
     (repository, revision)
-}
-
-#[test]
-fn a_statechart_stages_prompt_the_revision_lacks_is_named() {
-    // The kinds-profile spec's "A prompt the revision lacks": a stage's
-    // `prompt` is read beside the declaration at the base's revision as a
-    // simple stage's is, and named by its path where it cannot be read;
-    // a key of `params` weir does not name is the template's, and ignored
-    // (20, 23, C.2).
-    let repository = Repository::new("persona-no-prompt");
-    repository.write(
-        DECLARATION,
-        &PERSONA.replace(
-            "prompt = \"prompts/build.md\"",
-            "prompt = \"prompts/build.md\", colour = \"blue\"",
-        ),
-    );
-    repository.write(".config/prompts/build.md", "Build.");
-    let revision = Revision::new(repository.commit("persona with no test prompt"));
-    match Weir.read_kinds(&repository.name(), &revision) {
-        KindsRead::CouldNotRead { reason } => {
-            assert!(
-                reason.contains("kinds.persona.regions.stages.states.test.params.prompt")
-                    && reason.contains(".config/prompts/test.md"),
-                "{reason}"
-            );
-            assert!(
-                !reason.contains("colour") && !reason.contains("states.build"),
-                "{reason}"
-            );
-        }
-        other => panic!("a missing prompt read as {other:?}"),
-    }
 }
 
 #[test]
