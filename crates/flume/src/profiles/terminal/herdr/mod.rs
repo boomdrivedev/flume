@@ -182,8 +182,17 @@ const SHORTEST_START: Duration = Duration::from_millis(3001);
 const NOT_YET_TAKEN: &str = "agent_start_input_failed";
 
 /// How long apart agent start is asked again while herdr answers that
-/// the pane's terminal cannot yet take its line.
+/// the pane's terminal cannot yet take its line, and the pane's
+/// foreground read again while herdr shows nothing in it.
 const TAKEN_BEAT: Duration = Duration::from_millis(250);
+
+/// Why a reading found the pane's foreground not running the program:
+/// nothing in it yet, or another program or a call refused, each in the
+/// words of the open's refusal.
+enum Ran {
+    Nothing(String),
+    Other(String),
+}
 
 /// How long, once the folder-trust question is answered, herdr is waited
 /// on for the agent to idle: herdr's own default for a start.
@@ -1380,9 +1389,27 @@ impl Herdr {
 
     /// Whether the program in the pane's foreground is `program`, by its
     /// path or, for a program a script starts, the script's path among its
-    /// arguments; or what ran in its place (32; record 0018).
-    fn runs(&self, pane: &Pane, program: &Path) -> Result<(), String> {
-        let info = self.answered(&pane.socket, &["pane", "process-info", "--pane", &pane.id])?;
+    /// arguments; or what ran in its place (32; record 0018). While herdr
+    /// shows nothing in the foreground, as when a loaded host's shell has
+    /// not yet run the line herdr answered for, the pane is read again
+    /// until `deadline`, the start's own bound.
+    fn runs(&self, pane: &Pane, program: &Path, deadline: Instant) -> Result<(), String> {
+        loop {
+            match self.runs_now(pane, program) {
+                Err(Ran::Nothing(_)) if Instant::now() + TAKEN_BEAT < deadline => {
+                    std::thread::sleep(TAKEN_BEAT);
+                }
+                Err(Ran::Nothing(reason) | Ran::Other(reason)) => return Err(reason),
+                Ok(()) => return Ok(()),
+            }
+        }
+    }
+
+    /// One reading of whether the pane's foreground runs `program`.
+    fn runs_now(&self, pane: &Pane, program: &Path) -> Result<(), Ran> {
+        let info = self
+            .answered(&pane.socket, &["pane", "process-info", "--pane", &pane.id])
+            .map_err(Ran::Other)?;
         let processes: Vec<Running> = info["process_info"]["foreground_processes"]
             .as_array()
             .into_iter()
@@ -1403,17 +1430,17 @@ impl Herdr {
             .collect();
         match runs_program(&processes, program) {
             Ok(()) => Ok(()),
-            Err(ran) if ran.is_empty() => Err(format!(
+            Err(ran) if ran.is_empty() => Err(Ran::Nothing(format!(
                 "herdr shows nothing running in the pane {}, not {}",
                 pane.id,
                 program.display()
-            )),
-            Err(ran) => Err(format!(
+            ))),
+            Err(ran) => Err(Ran::Other(format!(
                 "the pane {} ran {} rather than {}, the program the settings name",
                 pane.id,
                 ran.join(", "),
                 program.display()
-            )),
+            ))),
         }
     }
 
@@ -2097,7 +2124,7 @@ impl Terminal for Herdr {
                 return Opened::Refused { reason: words };
             }
         }
-        if let Err(reason) = self.runs(&pane, &program) {
+        if let Err(reason) = self.runs(&pane, &program, deadline) {
             self.abandon(identity, &pane, &bin);
             return Opened::Refused { reason };
         }
