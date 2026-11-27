@@ -14,8 +14,9 @@
 //! prompts say the rest.
 
 use super::common::git;
-use super::walk::{desk_source, now, session_limit_after, stage};
+use super::walk::{now, stage};
 use super::Live;
+use super::{desk_source, session_limit_after};
 use flume::profiles::agent::claude::record::Record;
 use flume::profiles::terminal::herdr::herdr_name;
 use serde_json::{json, Value};

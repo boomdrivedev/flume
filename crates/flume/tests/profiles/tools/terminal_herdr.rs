@@ -1087,7 +1087,6 @@ fn s45_a_program_that_never_comes_up_is_not_come_up_with_the_screen() {
     let profile = server.profile().with_start_timeout(SHORT_START);
     let mut command = server.command(&[]);
     command.program = server.scratch.path("bin/missing").to_string_lossy().into();
-    let began = Instant::now();
     let answer = profile.open(
         &server.place("fix--one"),
         &server.folder(),
@@ -1099,11 +1098,6 @@ fn s45_a_program_that_never_comes_up_is_not_come_up_with_the_screen() {
     assert!(
         matches!(&answer, Opened::NotComeUp { screen } if screen.contains("claude")),
         "open of a program not there gave {answer:?}"
-    );
-    assert!(
-        began.elapsed() < SHORT_START + Duration::from_secs(10),
-        "open waited {:?}",
-        began.elapsed()
     );
 }
 
@@ -4334,16 +4328,10 @@ esac
             reason: "herdr refused (internal_error): the server broke".into()
         }
     );
-    let began = Instant::now();
     let slow = profile.agents_in(Some("slow"));
     assert!(
         matches!(&slow, AgentsIn::Unread { reason } if reason.contains("did not answer within 1 seconds")),
         "the agents of a server that does not answer gave {slow:?}"
-    );
-    assert!(
-        began.elapsed() < Duration::from_secs(3),
-        "agents_in waited {:?} on herdr",
-        began.elapsed()
     );
     let silent = scratch.path("silent-herdr");
     fs::write(

@@ -375,21 +375,28 @@ impl Live {
         pause: Duration,
         holds: impl Fn(&Value) -> bool,
     ) -> Value {
-        self.walk.until_within(
-            place,
-            what,
-            Duration::from_secs(minutes * 60),
-            pause,
-            |status| {
-                // Checked before anything prints the status (32, 56).
-                assert!(
-                    !status.to_string().contains(&self.token),
-                    "{place}'s status holds the value of the test account's token"
-                );
-                failing(place, status);
-                holds(status)
-            },
-        )
+        // The live walkthroughs run by hand and by no gate, so each waits
+        // for up to its minutes.
+        let limit = Duration::from_secs(minutes * 60);
+        let began = std::time::Instant::now();
+        loop {
+            self.walk.settle(place);
+            let status = self.walk.status(place);
+            // Checked before anything prints the status (32, 56).
+            assert!(
+                !status.to_string().contains(&self.token),
+                "{place}'s status holds the value of the test account's token"
+            );
+            failing(place, &status);
+            if holds(&status) {
+                return status;
+            }
+            assert!(
+                began.elapsed() < limit,
+                "{place} never came to {what}: {status}"
+            );
+            std::thread::sleep(pause);
+        }
     }
 
     /// Settles the place until it is tidied, its work landed.
@@ -545,4 +552,66 @@ fn pinned_claude() {
         "the first claude on PATH, {}, is {version:?}, not the pinned {pinned}: run in the devenv shell",
         found.display()
     );
+}
+
+/// The top of the UTC hour two hours on from `at`, well clear of any
+/// walk's length, and the session limit naming it in the words the pinned
+/// Claude Code writes, a time of day in en-US's 12-hour form (151, C.4).
+pub fn session_limit_after(at: u64) -> (u64, String) {
+    let reset = at - at % 3600 + 2 * 3600;
+    let hour = reset % 86_400 / 3600;
+    let clock = match hour {
+        0 => "12am".to_owned(),
+        1..=11 => format!("{hour}am"),
+        12 => "12pm".to_owned(),
+        _ => format!("{}pm", hour - 12),
+    };
+    (
+        reset,
+        format!("You've hit your session limit · resets {clock} (UTC)"),
+    )
+}
+
+/// The prompt of the talk of `desk@1`: the inbox read once, then a wait
+/// for what comes later (43, 214).
+pub const DESK_PROMPT: &str = "You are w's ops desk. Read what is pending for you with `flume inbox`, say in one line what it holds, and then wait: what comes for you later reaches you here, and you answer each in one line.\n";
+
+/// The source acme of the walk's host, its kind `desk@1`, whose one stage
+/// `talk` is a conversation that hibernates and lands nothing, and its
+/// roles file declaring `w/ops` the standing role of the walk's
+/// repository in the stream `w`, which the host's configuration declares
+/// and `desk@1` is locked for by the caller (132, 143, 191, 193, 212).
+pub fn desk_source(walk: &Walk) {
+    let config = walk.config_dir();
+    let kinds = config.join("kinds/acme");
+    let dir = kinds.join("desk@1");
+    std::fs::create_dir_all(dir.join("prompts")).expect("the package's folder");
+    std::fs::write(
+        dir.join("kind.toml"),
+        "[kinds.desk]\nversion = 1\nbranch = \"desk\"\nstarts_unready = true\nlands = false\n\n\
+         [[kinds.desk.stages]]\nname = \"talk\"\nprompt = \"prompts/talk.md\"\n\
+         conversation = true\nhibernate = true\nagents = [{}]\n",
+    )
+    .expect("the package's declaration");
+    std::fs::write(dir.join("prompts/talk.md"), DESK_PROMPT).expect("the package's prompt");
+    let roles = config.join("acme-roles.toml");
+    let repository = walk.repository.dir.display().to_string();
+    std::fs::write(
+        &roles,
+        format!(
+            "[roles.\"w/ops\"]\nkind = \"desk\"\nrepositories = [{repository:?}]\n\
+             answers = \"w's live systems\"\n"
+        ),
+    )
+    .expect("acme's roles file");
+    std::fs::create_dir_all(config.join("sources")).expect("the sources folder");
+    std::fs::write(
+        config.join("sources/acme.toml"),
+        format!(
+            "kinds_dir = {:?}\nroles = {:?}\n",
+            kinds.display().to_string(),
+            roles.display().to_string()
+        ),
+    )
+    .expect("acme's source file");
 }

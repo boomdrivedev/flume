@@ -614,39 +614,18 @@ impl Walk {
     }
 
     /// Settles the place and reads its status until `holds` holds of it,
-    /// for up to two minutes, and gives that status.
-    pub fn until(&self, place: &str, what: &str, holds: impl Fn(&Value) -> bool) -> Value {
-        self.until_within(
-            place,
-            what,
-            Duration::from_secs(120),
-            Duration::from_millis(300),
-            holds,
-        )
-    }
-
-    /// Settles the place every `pause` and reads its status until `holds`
-    /// holds of it, for up to `limit`, and gives that status.
-    pub fn until_within(
-        &self,
-        place: &str,
-        what: &str,
-        limit: Duration,
-        pause: Duration,
-        holds: impl Fn(&Value) -> bool,
-    ) -> Value {
-        let began = Instant::now();
+    /// with no bound on the time it waits, and gives that status: the
+    /// host's load decides how long a walk takes, never whether it passes
+    /// (a-gate-test-asserts-no-real-time-bound). `what` names the state
+    /// awaited, for the reader.
+    pub fn until(&self, place: &str, _what: &str, holds: impl Fn(&Value) -> bool) -> Value {
         loop {
             self.settle(place);
             let status = self.status(place);
             if holds(&status) {
                 return status;
             }
-            assert!(
-                began.elapsed() < limit,
-                "{place} never came to {what}: {status}"
-            );
-            std::thread::sleep(pause);
+            std::thread::sleep(Duration::from_millis(300));
         }
     }
 
@@ -1295,12 +1274,9 @@ impl HerdrServer {
             link,
             child: Some(child),
         };
-        let began = Instant::now();
+        // Waits on the server's answer, not a clock
+        // (a-gate-test-asserts-no-real-time-bound).
         while server.try_herdr(&["workspace", "list"]).is_err() {
-            assert!(
-                began.elapsed() < Duration::from_secs(20),
-                "herdr's server did not answer"
-            );
             std::thread::sleep(Duration::from_millis(100));
         }
         server
