@@ -4,7 +4,7 @@
 //! No command computes a stage's end, a status, a submission or a tidy of
 //! its own (core.14), and none names a tool (core.1).
 
-mod launch;
+pub mod launch;
 pub mod mcp;
 pub mod place;
 mod print;
