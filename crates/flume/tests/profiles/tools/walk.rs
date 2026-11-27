@@ -382,12 +382,6 @@ impl Walk {
         &self.home
     }
 
-    /// The walkthrough's `PATH`: the stand-in, then flume's own folder,
-    /// then the test's.
-    pub fn path(&self) -> &str {
-        &self.path
-    }
-
     /// The `PATH` the walk's login shell gives: the folder of its
     /// [`login_sluice`], then the walkthrough's.
     pub fn login_path(&self) -> String {
@@ -400,62 +394,6 @@ impl Walk {
         self.shell
             .as_deref()
             .expect("a walkthrough with a login shell of its own")
-    }
-
-    /// The stand-in for sluice first on `PATH` as `sluice`, so the
-    /// first submission is answered decided.
-    pub fn sluice_decides_the_first_submit(&self) {
-        stand_in_sluice(
-            &self.repository.scratch.path("bin"),
-            &user_scratch(&self.repository),
-        );
-    }
-
-    /// The stand-in for sluice on a base that takes pull requests first
-    /// on `PATH` as `sluice`, so each submission is a pull request that
-    /// waits to be taken in.
-    pub fn sluice_takes_pull_requests(&self) {
-        let bin = self.repository.scratch.path("bin");
-        stand_in_pull_requests(&bin, &user_scratch(&self.repository));
-        let state = self.home.join("state");
-        let socket = |scratch: &Path| {
-            let scratch = scratch.to_path_buf();
-            let state = state.clone();
-            flume::profiles::merge_queue::sluice::subscription::socket_from(|name| match name {
-                "XDG_STATE_HOME" => Some(state.clone().into()),
-                USER_SCRATCH => Some(scratch.clone().into()),
-                _ => None,
-            })
-            .expect("sluice host's socket")
-        };
-        // sluice's hook asks through it too, and takes a user scratch
-        // closed to everyone else.
-        let seen = resident::user_scratch();
-        std::fs::set_permissions(&seen, std::fs::Permissions::from_mode(0o700))
-            .expect("the stand-in's folder closed to others");
-        pull_request_host(
-            &socket(&seen),
-            &socket(&user_scratch(&self.repository)),
-            &bin.join(".sluice-request"),
-        );
-        *self.sluice_seen.borrow_mut() = Some(seen);
-    }
-
-    /// The place's pull request taken in as an entry, as the host that
-    /// takes the base's requests in does: the entry's record.
-    pub fn take_in_request(&self) -> Value {
-        let output = self
-            .command("sluice", &self.repository.dir)
-            .arg("take-in")
-            .output()
-            .expect("the stand-in for sluice runs");
-        assert!(
-            output.status.success(),
-            "sluice take-in: {}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        serde_json::from_slice(&output.stdout).expect("the entry's record")
     }
 
     /// The host's configuration, `[host]` and beside it, with the
@@ -676,39 +614,18 @@ impl Walk {
     }
 
     /// Settles the place and reads its status until `holds` holds of it,
-    /// for up to two minutes, and gives that status.
-    pub fn until(&self, place: &str, what: &str, holds: impl Fn(&Value) -> bool) -> Value {
-        self.until_within(
-            place,
-            what,
-            Duration::from_secs(120),
-            Duration::from_millis(300),
-            holds,
-        )
-    }
-
-    /// Settles the place every `pause` and reads its status until `holds`
-    /// holds of it, for up to `limit`, and gives that status.
-    pub fn until_within(
-        &self,
-        place: &str,
-        what: &str,
-        limit: Duration,
-        pause: Duration,
-        holds: impl Fn(&Value) -> bool,
-    ) -> Value {
-        let began = Instant::now();
+    /// with no bound on the time it waits, and gives that status: the
+    /// host's load decides how long a walk takes, never whether it passes
+    /// (a-gate-test-asserts-no-real-time-bound). `what` names the state
+    /// awaited, for the reader.
+    pub fn until(&self, place: &str, _what: &str, holds: impl Fn(&Value) -> bool) -> Value {
         loop {
             self.settle(place);
             let status = self.status(place);
             if holds(&status) {
                 return status;
             }
-            assert!(
-                began.elapsed() < limit,
-                "{place} never came to {what}: {status}"
-            );
-            std::thread::sleep(pause);
+            std::thread::sleep(Duration::from_millis(300));
         }
     }
 
@@ -719,25 +636,6 @@ impl Walk {
             .as_str()
             .unwrap_or_else(|| panic!("no command printed for {place}: {status}"))
             .to_string()
-    }
-
-    /// The session the printed command resumes, none where it resumes
-    /// none (179).
-    pub fn resumes(&self, place: &str) -> Option<String> {
-        let printed = self.printed(place);
-        let (_, after) = printed.split_once(" --resume ")?;
-        after.split_whitespace().next().map(str::to_string)
-    }
-
-    /// The file the printed command names by `--settings`, none where it
-    /// passes no own settings (195, 196).
-    pub fn own_settings(&self, place: &str) -> Option<PathBuf> {
-        let printed = self.printed(place);
-        let (_, after) = printed.split_once(" --settings ")?;
-        after
-            .split_whitespace()
-            .next()
-            .map(|file| PathBuf::from(file.trim_matches('\'')))
     }
 
     /// The prompt the printed command carries, its last word, which
@@ -813,16 +711,6 @@ impl Walk {
     /// A file in the scratch folder, for a stand-in's `wait_for`.
     pub fn signal(&self, name: &str) -> PathBuf {
         self.repository.scratch.path(name)
-    }
-
-    /// A commit landed on the remote's main by someone else, as another
-    /// host lands one.
-    pub fn landed_elsewhere(&self, file: &str, text: &str) -> String {
-        let elsewhere = Repository::clone_of(&self.remote, Scratch::new("elsewhere"));
-        elsewhere.write(file, text);
-        let head = elsewhere.commit("landed elsewhere");
-        elsewhere.git(&["push", "--quiet", "origin", "main"]);
-        head
     }
 
     /// The file at `path` on the remote's main, none where it holds none.
@@ -1228,68 +1116,6 @@ pub fn now() -> u64 {
         .as_secs()
 }
 
-/// The top of the UTC hour two hours on from `at`, well clear of any
-/// walk's length, and the session limit naming it in the words the pinned
-/// Claude Code writes, a time of day in en-US's 12-hour form (151, C.4).
-pub fn session_limit_after(at: u64) -> (u64, String) {
-    let reset = at - at % 3600 + 2 * 3600;
-    let hour = reset % 86_400 / 3600;
-    let clock = match hour {
-        0 => "12am".to_owned(),
-        1..=11 => format!("{hour}am"),
-        12 => "12pm".to_owned(),
-        _ => format!("{}pm", hour - 12),
-    };
-    (
-        reset,
-        format!("You've hit your session limit · resets {clock} (UTC)"),
-    )
-}
-
-/// The prompt of the talk of `desk@1`: the inbox read once, then a wait
-/// for what comes later (43, 214).
-pub const DESK_PROMPT: &str = "You are w's ops desk. Read what is pending for you with `flume inbox`, say in one line what it holds, and then wait: what comes for you later reaches you here, and you answer each in one line.\n";
-
-/// The source acme of the walk's host, its kind `desk@1`, whose one stage
-/// `talk` is a conversation that hibernates and lands nothing, and its
-/// roles file declaring `w/ops` the standing role of the walk's
-/// repository in the stream `w`, which the host's configuration declares
-/// and `desk@1` is locked for by the caller (132, 143, 191, 193, 212).
-pub fn desk_source(walk: &Walk) {
-    let config = walk.config_dir();
-    let kinds = config.join("kinds/acme");
-    let dir = kinds.join("desk@1");
-    std::fs::create_dir_all(dir.join("prompts")).expect("the package's folder");
-    std::fs::write(
-        dir.join("kind.toml"),
-        "[kinds.desk]\nversion = 1\nbranch = \"desk\"\nstarts_unready = true\nlands = false\n\n\
-         [[kinds.desk.stages]]\nname = \"talk\"\nprompt = \"prompts/talk.md\"\n\
-         conversation = true\nhibernate = true\nagents = [{}]\n",
-    )
-    .expect("the package's declaration");
-    std::fs::write(dir.join("prompts/talk.md"), DESK_PROMPT).expect("the package's prompt");
-    let roles = config.join("acme-roles.toml");
-    let repository = walk.repository.dir.display().to_string();
-    std::fs::write(
-        &roles,
-        format!(
-            "[roles.\"w/ops\"]\nkind = \"desk\"\nrepositories = [{repository:?}]\n\
-             answers = \"w's live systems\"\n"
-        ),
-    )
-    .expect("acme's roles file");
-    std::fs::create_dir_all(config.join("sources")).expect("the sources folder");
-    std::fs::write(
-        config.join("sources/acme.toml"),
-        format!(
-            "kinds_dir = {:?}\nroles = {:?}\n",
-            kinds.display().to_string(),
-            roles.display().to_string()
-        ),
-    )
-    .expect("acme's source file");
-}
-
 /// The place's stage named `name`, as status gives it.
 pub fn stage<'a>(status: &'a Value, name: &str) -> &'a Value {
     status["stages"]
@@ -1448,12 +1274,9 @@ impl HerdrServer {
             link,
             child: Some(child),
         };
-        let began = Instant::now();
+        // Waits on the server's answer, not a clock
+        // (a-gate-test-asserts-no-real-time-bound).
         while server.try_herdr(&["workspace", "list"]).is_err() {
-            assert!(
-                began.elapsed() < Duration::from_secs(20),
-                "herdr's server did not answer"
-            );
             std::thread::sleep(Duration::from_millis(100));
         }
         server

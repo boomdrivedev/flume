@@ -93,7 +93,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "standing-roles: Two places launched and the role asleep: east/ops' talk launches a fix and a chore naming no recipient and hibernates; the chore's question resumes the talk as its prompt; once the talk hibernates again, the two ends resume it as one prompt; and while they ran, status gave both under east/ops (S128)",
-            cites: &["7", "56", "132", "193", "213", "214"],
+            cites: &["S128", "7", "56", "132", "193", "213", "214"],
             run: two_places_launched_and_the_role_asleep,
         },
         Scenario {

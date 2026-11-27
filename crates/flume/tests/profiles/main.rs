@@ -9,6 +9,7 @@ mod common;
 mod agent_claude;
 mod built_in;
 mod change_openspec;
+mod hooks;
 mod hooks_claude;
 mod kinds_weir;
 mod merge_queue_sluice_documents;

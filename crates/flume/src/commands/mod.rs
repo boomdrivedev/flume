@@ -4,7 +4,7 @@
 //! No command computes a stage's end, a status, a submission or a tidy of
 //! its own (core.14), and none names a tool (core.1).
 
-mod launch;
+pub mod launch;
 pub mod mcp;
 pub mod place;
 mod print;
@@ -559,32 +559,42 @@ impl Outcome {
     }
 }
 
+/// The environment a command reads, a variable's value by its name: the
+/// process's own for flume's binary (7, 41, 132).
+pub type Env<'a> = dyn Fn(&str) -> Option<String> + 'a;
+
+/// The process's environment, which flume's binary gives each command.
+pub fn process_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
 /// How a command builds the core, once it needs it: shared with the
 /// resident's tasks, which build it afresh for each settle and each read.
 pub type Build = std::sync::Arc<dyn Fn() -> Result<Engine, String> + Send + Sync>;
 
 /// Runs the command `args` give, the core built by `build` once it is
 /// needed (design 16), `flume host` building the profiles' own.
-pub fn run<I, T>(args: I, build: &dyn Fn() -> Result<Engine, String>) -> Outcome
+pub fn run<I, T>(args: I, env: &Env<'_>, build: &dyn Fn() -> Result<Engine, String>) -> Outcome
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    run_in(args, build, None)
+    run_in(args, env, build, None)
 }
 
 /// Runs the command `args` give, the core built by `build` once it is
 /// needed, `flume host`'s among them (design 16).
-pub fn run_built<I, T>(args: I, build: &Build) -> Outcome
+pub fn run_built<I, T>(args: I, env: &Env<'_>, build: &Build) -> Outcome
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    run_in(args, &**build, Some(build.clone()))
+    run_in(args, env, &**build, Some(build.clone()))
 }
 
 fn run_in<I, T>(
     args: I,
+    env: &Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     hosted: Option<Build>,
 ) -> Outcome
@@ -690,6 +700,7 @@ where
             mcp::serve(
                 stdin.lock(),
                 stdout.lock(),
+                env,
                 build,
                 cli.repository.as_deref(),
             );
@@ -701,7 +712,7 @@ where
         }
         _ => {}
     }
-    let answer = act(&cli, build).unwrap_or_else(Answer::refused);
+    let answer = act(&cli, env, build).unwrap_or_else(Answer::refused);
     let text = if cli.json {
         answer.to_json()
     } else {
@@ -716,14 +727,18 @@ where
 
 /// The core's answer to the command, or the refusal naming what kept it
 /// from being asked.
-fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, String> {
+fn act(
+    cli: &Cli,
+    env: &Env<'_>,
+    build: &dyn Fn() -> Result<Engine, String>,
+) -> Result<Answer, String> {
     let given = cli.repository.as_deref();
     let named = |place: &str| place::place(place, given);
     let maybe = |place: &Option<String>| place.as_deref().map(named).transpose();
     Ok(match &cli.command {
         Command::Needs { found, to, words } => {
-            let identity = from_agent(AGENT)?;
-            let secret = from_agent(SECRET)?;
+            let identity = from_agent(env, AGENT)?;
+            let secret = from_agent(env, SECRET)?;
             let kind = if *found {
                 StopKind::FoundWork
             } else {
@@ -732,7 +747,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             build()?.needs_to(&identity, &secret, words, kind, to.as_deref())
         }
         Command::Launch(args) => {
-            let launch = launch_of(args, given)?;
+            let launch = launch_of(args, env, given)?;
             build()?.launch(&launch)
         }
         Command::Status {
@@ -767,12 +782,12 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             let key = key_of(answers)?;
             if flume_core::message::names_an_address(target) {
                 let core = build()?;
-                let answering = answering(&core, key);
+                let answering = answering(&core, env, key);
                 core.message_address(target, words, within, &answering)
             } else {
                 let place = named(target)?;
                 let core = build()?;
-                let answering = answering(&core, key);
+                let answering = answering(&core, env, key);
                 core.message_answering(&place, words, within, &answering)
             }
         }
@@ -783,7 +798,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         } => {
             let place = named(place)?;
             let core = build()?;
-            let by = recipient_of(&core, &None)
+            let by = recipient_of(&core, env, &None)
                 .unwrap_or_else(|_| "a caller that named no recipient".into());
             core.answer_decision(&place, region, answer, &by)
         }
@@ -812,7 +827,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             };
             let key = key_of(answers)?;
             let core = build()?;
-            let answering = answering(&core, key);
+            let answering = answering(&core, env, key);
             core.retry_answering(&place, target, words.clone(), *force, &answering)
         }
         Command::Hold {
@@ -890,7 +905,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             };
             let timeout = timeout.as_deref().map(read_span).transpose()?;
             let core = build()?;
-            let recipient = recipient_of(&core, recipient)?;
+            let recipient = recipient_of(&core, env, recipient)?;
             core.wait(&place, &of, &recipient, timeout, *confirm)
         }
         Command::Inbox {
@@ -900,12 +915,12 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
         } => {
             let place = maybe(place)?;
             let core = build()?;
-            let recipient = recipient_of(&core, recipient)?;
+            let recipient = recipient_of(&core, env, recipient)?;
             core.inbox(&recipient, place.as_ref(), *confirm)
         }
         Command::Confirm { keys, recipient } => {
             let core = build()?;
-            let recipient = recipient_of(&core, recipient)?;
+            let recipient = recipient_of(&core, env, recipient)?;
             core.confirm(&recipient, keys)
         }
         Command::Wake { address } => build()?.wake(address),
@@ -952,12 +967,11 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
 /// in holds, or the terminal's session; the core's refusal, where the
 /// agent stands for several addresses, is the command's (7, 132;
 /// core.28).
-fn recipient_of(core: &Engine, named: &Option<String>) -> Result<String, String> {
+fn recipient_of(core: &Engine, env: &Env<'_>, named: &Option<String>) -> Result<String, String> {
     if let Some(named) = named {
         return Ok(named.clone());
     }
-    let here = std::env::var(PLACE)
-        .ok()
+    let here = env(PLACE)
         .filter(|place| !place.is_empty())
         .map(PlaceId::new);
     core.recipient(here.as_ref())?.ok_or_else(|| {
@@ -971,10 +985,10 @@ fn recipient_of(core: &Engine, named: &Option<String>) -> Result<String, String>
 /// the stop-short it answers; none where no recipient is read or the
 /// reading is refused, so a retry or a message is never refused for its
 /// giver (42, 49, 132).
-fn answering(core: &Engine, key: Option<EndKey>) -> Answering {
+fn answering(core: &Engine, env: &Env<'_>, key: Option<EndKey>) -> Answering {
     Answering {
         key,
-        by: recipient_of(core, &None).ok(),
+        by: recipient_of(core, env, &None).ok(),
     }
 }
 
@@ -997,17 +1011,14 @@ fn build_for(
 
 /// What an agent's environment gives in `name`, or the refusal saying the
 /// command runs only in an agent flume started (41).
-fn from_agent(name: &str) -> Result<String, String> {
-    std::env::var(name)
-        .ok()
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            format!("flume needs runs only in an agent flume started, and {name} is not set")
-        })
+fn from_agent(env: &Env<'_>, name: &str) -> Result<String, String> {
+    env(name).filter(|value| !value.is_empty()).ok_or_else(|| {
+        format!("flume needs runs only in an agent flume started, and {name} is not set")
+    })
 }
 
 /// The launch the words give, in the repository the command runs in.
-fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> {
+fn launch_of(args: &LaunchArgs, env: &Env<'_>, given: Option<&Path>) -> Result<Launch, String> {
     let repository = place::repository(given)?;
     let base = match &args.base {
         Some(base) => base.clone(),
@@ -1064,8 +1075,7 @@ fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> 
         stall_after: args.stall_after.as_deref().map(read_span).transpose()?,
         stream: args.stream.clone(),
         intent: args.intent.clone(),
-        from_place: std::env::var(PLACE)
-            .ok()
+        from_place: env(PLACE)
             .filter(|place| !place.is_empty())
             .map(PlaceId::new),
     })
@@ -1104,7 +1114,7 @@ mod tests {
 
     #[test]
     fn words_that_are_no_command_are_for_the_error_stream() {
-        let outcome = run(["flume", "launch"], &|| Err("not built".into()));
+        let outcome = run(["flume", "launch"], &|_| None, &|| Err("not built".into()));
         assert!(outcome.usage);
         assert_eq!(outcome.code, 2);
     }
@@ -1118,7 +1128,9 @@ mod tests {
             ["flume", "settle", "--every", "0"].as_slice(),
             ["flume", "settle", "--every", "soon"].as_slice(),
         ] {
-            let outcome = run(words.iter().copied(), &|| panic!("the core is built"));
+            let outcome = run(words.iter().copied(), &|_| None, &|| {
+                panic!("the core is built")
+            });
             assert_eq!(outcome.code, 1, "{words:?}: {}", outcome.text);
             assert!(!outcome.usage, "{words:?}");
             assert!(outcome.text.starts_with("refused: "), "{}", outcome.text);
@@ -1133,7 +1145,9 @@ mod tests {
             ["flume", "host", "--every", "0"].as_slice(),
             ["flume", "host", "--every", "soon"].as_slice(),
         ] {
-            let outcome = run(words.iter().copied(), &|| panic!("the core is built"));
+            let outcome = run(words.iter().copied(), &|_| None, &|| {
+                panic!("the core is built")
+            });
             assert_eq!(outcome.code, 1, "{words:?}: {}", outcome.text);
             assert!(!outcome.usage, "{words:?}");
             assert!(outcome.text.starts_with("refused: "), "{}", outcome.text);
@@ -1142,12 +1156,17 @@ mod tests {
 
     #[test]
     fn needs_outside_an_agent_builds_nothing() {
-        let outcome = run(["flume", "needs", "which?", "--json"], &|| {
-            panic!("the core is built")
-        });
-        if std::env::var_os(AGENT).is_none() {
-            assert_eq!(outcome.code, 1);
-            assert!(outcome.text.contains(AGENT));
+        // 41, C.4: with no FLUME_AGENT, or FLUME_AGENT and no FLUME_SECRET,
+        // needs is refused naming the variable, and nothing is asked of
+        // the core.
+        for (env, named) in [(None, AGENT), (Some("flume:x:fix--one:code:1"), SECRET)] {
+            let outcome = run(
+                ["flume", "needs", "--found", "more work", "--json"],
+                &|name| (name == AGENT).then(|| env.map(str::to_string)).flatten(),
+                &|| panic!("the core is built"),
+            );
+            assert_eq!(outcome.code, 1, "{}", outcome.text);
+            assert!(outcome.text.contains(named), "{}", outcome.text);
         }
     }
 }

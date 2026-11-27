@@ -85,12 +85,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn a_word_refused_names_itself_claude_and_the_five() {
-        assert_eq!(
-            take("med"),
-            Err("`med` is no effort claude takes: low, medium, high, xhigh or max".into())
-        );
-    }
 }

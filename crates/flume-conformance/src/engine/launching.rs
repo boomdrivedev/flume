@@ -95,7 +95,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "launch: a base no merge queue lands is cut at origin's after flume's fetch, the host's own lagging it, bound to a merge queue or to none, and status says so",
-            cites: &["9", "56", "126"],
+            cites: &["S92", "9", "56", "126"],
             run: a_base_no_queue_lands,
         },
         Scenario {

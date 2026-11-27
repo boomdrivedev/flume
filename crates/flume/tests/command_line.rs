@@ -9,7 +9,7 @@
 use flume::commands;
 use flume_conformance::engine::caller_acts::asks_ops;
 use flume_conformance::engine::role_waking::{configure_at, planner_run};
-use flume_conformance::engine::world::{launch, World};
+use flume_conformance::engine::world::{launch, launched, World};
 use flume_core::{Answer, PlaceStatus};
 use flume_seams::*;
 use serde_json::Value;
@@ -18,11 +18,22 @@ use serde_json::Value;
 /// it (42, 43).
 const KEY: &str = "stage/construct/1/ended-short";
 
-/// What flume printed for `words`, asked of a core built over `world`,
-/// and its exit status.
+/// What flume printed for `words`, asked of a core built over `world`
+/// in an environment that sets no variable, and its exit status.
 fn run(world: &World, words: &[&str]) -> (String, u8) {
+    run_in(world, &[], words)
+}
+
+/// What flume printed for `words` in the environment `env`, asked of a
+/// core built over `world`, and its exit status.
+fn run_in(world: &World, env: &[(&str, &str)], words: &[&str]) -> (String, u8) {
     let outcome = commands::run(
         std::iter::once("flume").chain(words.iter().copied()),
+        &|name| {
+            env.iter()
+                .find(|(given, _)| *given == name)
+                .map(|(_, value)| value.to_string())
+        },
         &|| Ok(world.engine()),
     );
     (outcome.text, outcome.code)
@@ -606,4 +617,416 @@ fn relays_help_names_its_lines_and_no_caller() {
     for caller in ["Boomdrive", "boomdrive", "runner", "crew"] {
         assert!(!words.contains(caller), "the help names {caller}: {text}");
     }
+}
+
+/// What `<command> --help` prints, its whitespace made single spaces.
+fn help(world: &World, command: &str) -> String {
+    let (text, code) = run(world, &[command, "--help"]);
+    assert_eq!(code, 0, "{command} --help: {text}");
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn each_commands_help_says_its_words() {
+    // The command-line spec's "The helps" and "The helps of confirm and
+    // wait": needs --to's says a role alone is the place's own stream's,
+    // hold's names the waiting move and its bound, retry's and message's
+    // the key an answer names, launch --recipient's a role's address of
+    // any stream, a name no pane holds collecting its ends and the
+    // answerer behind the place's stream, inbox's the place it may be
+    // given, confirm's the keys and `--recipient`, wait's `--confirm`,
+    // list's that status gives a place's every fact, and wake's that an
+    // address is a role a source declares for a stream the host declares;
+    // none names a word of ours, launch's names no `--caller`, and needs'
+    // never says "cannot deliver past" (7, 41, 42, 43, 49, 53, 61, 130,
+    // 132, 143, 193, 200; core.35).
+    let world = World::new();
+    for (command, said) in [
+        ("needs", "--to <ROLE OR ADDRESS>"),
+        ("needs", "a role alone, `<role>`, is the place's own stream's, and an address, `<stream>/<role>`, any stream's"),
+        ("needs", "in place of the place's recipients"),
+        ("needs", "--found The stage found work a stage before its own must do again"),
+        ("hold", "--waiting"),
+        ("hold", "--for <TIME>"),
+        ("hold", "hold the move the place waits on its caller for"),
+        ("hold", "once it passes, the hold lapses and the place stalls at once"),
+        ("retry", "--answers <KEY>"),
+        ("retry", "taken only while the place waits on that stop-short and only once"),
+        ("message", "--answers <KEY>"),
+        ("message", "its agent kept open for its answer"),
+        ("message", "a role's address, `<stream>/<role>`"),
+        ("launch", "a role's address, `<stream>/<role>`, of any stream"),
+        ("launch", "the answerer behind the place's stream"),
+        ("launch", "A name no pane holds is sent no notice"),
+        ("launch", "until it collects them by `flume inbox` or `flume wait` as that name"),
+        ("inbox", "[PLACE]"),
+        ("inbox", "--confirm"),
+        ("inbox", "an inbox naming a place collects that place's ends alone"),
+        ("inbox", "an end the inbox gives stays pending"),
+        ("inbox", "a tidied document's `<place>@<at>` naming that one alone"),
+        ("confirm", "<KEY>..."),
+        ("confirm", "--recipient <RECIPIENT>"),
+        ("confirm", "a hand-over delivers nothing until its recipient confirms it"),
+        ("wait", "--confirm"),
+        ("wait", "A hand-over delivers nothing until its recipient confirms it"),
+        ("list", "A line for each place on the host and each stream it declares"),
+        ("list", "reading only what flume keeps"),
+        ("list", "a place that landed or was dropped left out unless `--all` is given"),
+        ("list", "`flume status <place>` gives a place's every fact"),
+        ("list", "--all Every place, those that landed or were dropped among them"),
+        ("wake", "Wake a role's address, `<stream>/<role>`: a role a source of the host declares in its roles file, for a stream the host declares"),
+        ("wake", "launched in the address's stream where none stands"),
+        ("wake", "An address carried to another host, declared by no source or by two, or whose stream the host does not declare is refused, saying why"),
+        ("wake", "<ADDRESS> The role's address, `<stream>/<role>`"),
+    ] {
+        let words = help(&world, command);
+        assert!(
+            words.contains(said),
+            "{command}'s help says not {said:?}: {words}"
+        );
+    }
+    for (command, unsaid) in [
+        ("needs", "partition"),
+        ("needs", "cannot deliver past"),
+        ("hold", "partition"),
+        ("retry", "partition"),
+        ("message", "partition"),
+        ("launch", "partition"),
+        ("launch", "--caller"),
+        ("inbox", "partition"),
+        ("wake", "partition"),
+        ("wake", "[roles]"),
+    ] {
+        let words = help(&world, command);
+        assert!(
+            !words.contains(unsaid),
+            "{command}'s help says {unsaid:?}: {words}"
+        );
+    }
+}
+
+#[test]
+fn a_key_no_end_is_under_is_refused_naming_it() {
+    // The command-line spec's "A key refused": a key no end is under is
+    // refused naming it, in the JSON form, exiting 1 (43; weir 102).
+    let world = World::new();
+    let reason = refused(
+        &world,
+        &[
+            "confirm",
+            "no/such/key",
+            "--recipient",
+            "boomdrive",
+            "--json",
+        ],
+    );
+    assert!(reason.contains("no/such/key"), "{reason}");
+    assert!(reason.contains("`key`"), "{reason}");
+}
+
+#[test]
+fn a_refused_act_exits_1_in_either_form() {
+    // S26, 61, 212, 213: done of a fix, a hibernate of a fix, forced or
+    // not, and a resume of a fix that hibernates nothing are each refused
+    // naming the place, exiting 1, the person's form beginning
+    // `refused: `; the core's refusals are the scenarios' own.
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    world.settle(&World::id("fix", "one"));
+    let place = World::id("fix", "one").to_string();
+    for words in [
+        &["done", &place][..],
+        &["hibernate", &place],
+        &["hibernate", &place, "--force"],
+        &["resume", &place],
+    ] {
+        let json: Vec<&str> = words.iter().copied().chain(["--json"]).collect();
+        let reason = refused(&world, &json);
+        assert!(reason.contains(&place), "{words:?}: {reason}");
+        let (text, code) = run(&world, words);
+        assert_eq!(code, 1, "{words:?}: {text}");
+        assert!(text.starts_with("refused: "), "{words:?}: {text}");
+    }
+    let reason = refused(&world, &["hibernate", &place, "--json"]);
+    assert!(reason.contains("does not hibernate"), "{reason}");
+}
+
+#[test]
+fn a_watch_with_a_place_named_or_no_bound_is_refused_settling_nothing() {
+    // The command-line spec's "A watch with a place named": refused naming
+    // `--every`, the places it settles and the place, nothing settled and
+    // no watch recorded; a bound that is no positive duration refused the
+    // same (208, 225).
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    let id = World::id("fix", "one");
+    let version = world.store.read(&id).expect("the fix's document").version;
+    assert_eq!(
+        refused(&world, &["settle", &id.0, "--every", "2m", "--json"]),
+        format!("--every settles the places where something is pending as a caller's watch over the host, and takes no place: {} was named", id.0)
+    );
+    for bound in ["0", "0m", "soon"] {
+        let reason = refused(&world, &["settle", "--every", bound, "--json"]);
+        assert!(reason.contains(bound), "--every {bound}: {reason}");
+    }
+    assert_eq!(
+        world.store.read(&id).map(|read| read.version),
+        Some(version),
+        "the fix's document after the refusals"
+    );
+    assert!(
+        world.store.read_host(&HostKey::Watch).is_none(),
+        "a watch recorded by a refused settle"
+    );
+}
+
+#[test]
+fn the_recipient_an_inbox_defaults_to() {
+    // 7, 132, design 7: an inbox naming no recipient where none is read
+    // is refused naming each way to name one; $FLUME_PLACE naming a
+    // role's run collects as its address; and the recipient the host
+    // reads from the command's environment, $FLUME_RECIPIENT, before it.
+    // Which recipient the core reads is the role-waking scenarios' own.
+    let world = World::new();
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    assert!(world.engine.wake(PLANNER).refusal().is_none());
+    let planner = World::id("turn", "east-planner");
+    world.settle(&planner);
+    world.host.set_recipient(None);
+
+    let reason = refused(&world, &["inbox", "--json"]);
+    for way in [
+        "--recipient",
+        "$FLUME_RECIPIENT",
+        "a terminal's session",
+        "a role's run",
+        "a standing agent's pane",
+    ] {
+        assert!(reason.contains(way), "the refusal names no {way}: {reason}");
+    }
+    let recipient = |env: &[(&str, &str)]| {
+        let (text, code) = run_in(&world, env, &["inbox", "--json"]);
+        assert_eq!(code, 0, "{text}");
+        let answer: Value = serde_json::from_str(text.trim()).expect("the answer's JSON");
+        answer["inbox"]["recipient"].clone()
+    };
+    assert_eq!(recipient(&[("FLUME_PLACE", &planner.0)]), PLANNER);
+    world.host.set_recipient(Some("ops"));
+    assert_eq!(recipient(&[("FLUME_PLACE", &planner.0)]), "ops");
+    let (text, code) = run(&world, &["inbox", "--recipient", "ops"]);
+    assert_eq!(code, 0, "{text}");
+    assert_eq!(text.trim(), "nothing pending for ops");
+}
+
+/// The replies of flume's MCP server to `requests`, each given an id in
+/// turn, served over a core built over `world` in the environment `env`.
+fn mcp(world: &World, env: &[(&str, &str)], requests: &[Value]) -> Vec<Value> {
+    let input: String = requests
+        .iter()
+        .enumerate()
+        .map(|(id, request)| {
+            let mut request = request.clone();
+            request["jsonrpc"] = "2.0".into();
+            request["id"] = id.into();
+            format!("{request}\n")
+        })
+        .collect();
+    let mut output = Vec::new();
+    commands::mcp::serve(
+        input.as_bytes(),
+        &mut output,
+        &|name| {
+            env.iter()
+                .find(|(given, _)| *given == name)
+                .map(|(_, value)| value.to_string())
+        },
+        &|| Ok(world.engine()),
+        None,
+    );
+    String::from_utf8(output)
+        .expect("the replies")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a reply's JSON"))
+        .collect()
+}
+
+/// A tool's result as its JSON answer, and whether it is marked an error.
+fn over_mcp(world: &World, tool: &str, arguments: Value) -> (Value, bool) {
+    let replies = mcp(
+        world,
+        &[],
+        &[serde_json::json!({
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": arguments },
+        })],
+    );
+    let result = &replies[0]["result"];
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("the result's text");
+    (
+        serde_json::from_str(text).expect("the result's JSON"),
+        result["isError"] == true,
+    )
+}
+
+#[test]
+fn the_mcp_tools_listed() {
+    // The agent program's plugin spec's "The tools listed" (section 9;
+    // design 12): status, message, launch, wake, hibernate and resume,
+    // each with its input schema, status alone read-only (212, 213).
+    let replies = mcp(
+        &World::new(),
+        &[],
+        &[serde_json::json!({"method": "tools/list"})],
+    );
+    let tools = replies[0]["result"]["tools"].as_array().expect("the tools");
+    let names: Vec<&str> = tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["status", "message", "launch", "wake", "hibernate", "resume"]
+    );
+    for tool in tools {
+        assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
+        assert_eq!(
+            tool["annotations"]["readOnlyHint"],
+            tool["name"] == "status",
+            "{tool}"
+        );
+    }
+    let required = |name: &str| {
+        tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .map(|tool| tool["inputSchema"]["required"].clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(required("message"), serde_json::json!(["target", "words"]));
+    assert_eq!(required("launch"), serde_json::json!(["kind", "name"]));
+    assert_eq!(required("wake"), serde_json::json!(["address"]));
+    assert_eq!(required("hibernate"), serde_json::json!(["place"]));
+    assert_eq!(required("resume"), serde_json::json!(["place"]));
+}
+
+#[test]
+fn an_act_over_mcp_answers_as_the_command_line_answers() {
+    // The agent program's plugin spec's "A hibernate refused as the
+    // command line refuses it", "A resume of nothing hibernating" and
+    // "message over MCP" (53, 60, 212, 213, 214, C.2): each tool's result
+    // is the JSON the command line gives for the same words, a refusal
+    // marked an error, and a refused resume starts nothing.
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    let starts = |world: &World| world.held(&id).expect("the fix").stages[0].starts;
+    let before = starts(&world);
+    for (tool, arguments, words) in [
+        (
+            "hibernate",
+            serde_json::json!({"place": id.0, "force": true}),
+            vec!["hibernate", "--force", "--json", "--", &id.0],
+        ),
+        (
+            "resume",
+            serde_json::json!({"place": id.0}),
+            vec!["resume", "--json", "--", &id.0],
+        ),
+    ] {
+        let (answer, error) = over_mcp(&world, tool, arguments);
+        assert!(error, "{tool}: {answer}");
+        let (text, code) = run(&world, &words);
+        assert_eq!(code, 1, "{text}");
+        let by_hand: Value = serde_json::from_str(text.trim()).expect("the JSON");
+        assert_eq!(answer, by_hand, "{tool}");
+        let reason = answer["refused"]["refusal"]["reason"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(reason.contains(&id.0), "{tool}: {reason}");
+    }
+    assert_eq!(starts(&world), before, "a refused act started a stage");
+
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    let (answer, error) = over_mcp(
+        &world,
+        "message",
+        serde_json::json!({"target": PLANNER, "words": "--look at the nightly job"}),
+    );
+    assert!(!error, "{answer}");
+    let (text, code) = run(
+        &world,
+        &["message", PLANNER, "and the weekly one", "--json"],
+    );
+    assert_eq!(code, 0, "{text}");
+    let by_hand: Value = serde_json::from_str(text.trim()).expect("the JSON");
+    for answer in [&answer, &by_hand] {
+        let messaged = &answer["messaged"];
+        assert_eq!(messaged["address"], PLANNER, "{answer}");
+        assert!(
+            messaged["key"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("message/east/planner/")),
+            "{answer}"
+        );
+    }
+    assert_eq!(
+        answer
+            .as_object()
+            .map(|answer| answer.keys().collect::<Vec<_>>()),
+        by_hand
+            .as_object()
+            .map(|answer| answer.keys().collect::<Vec<_>>()),
+    );
+}
+
+#[test]
+fn flume_host_reads_a_repositorys_binding_beside_the_places_and_no_line() {
+    // 20, 105: the status flume host serves gives each repository asked
+    // by its folder beside the places, its binding read; one asked with
+    // no repository gives none; and a status of lines naming one is
+    // refused. What the binding gives is the core's repository report's
+    // own tests'.
+    use flume::served::{read_core, Asked};
+    use flume_conformance::engine::world::REPOSITORY;
+    let world = World::new();
+    let build = || Ok(world.engine());
+    let read = |asked: Asked| -> Value {
+        serde_json::from_str(&read_core(&build, &asked)).expect("the answer's JSON")
+    };
+    let binding = read(Asked {
+        repositories: vec![REPOSITORY.into()],
+        ..Asked::default()
+    });
+    let repositories = binding["status"]["repositories"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no repositories: {binding}"));
+    assert_eq!(repositories.len(), 1, "{binding}");
+    assert_eq!(repositories[0]["repository"], REPOSITORY, "{binding}");
+    assert!(repositories[0]["binding"].is_object(), "{binding}");
+    let plain = read(Asked::default());
+    assert!(plain["status"].get("repositories").is_none(), "{plain}");
+    let lines = read(Asked {
+        line: true,
+        repositories: vec![REPOSITORY.into()],
+        ..Asked::default()
+    });
+    assert!(
+        lines["refused"]["refusal"]["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("names no repository")),
+        "{lines}"
+    );
 }

@@ -27,6 +27,7 @@ use crate::host::process::{parent_executable, program_path};
 use flume_core::{variable_digest, Answer, Engine};
 use flume_seams::{ModeBegan, PlaceId, Secret, StartRecord, Unsettled};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The variable Claude Code gives a hook naming the plugin's own
@@ -109,7 +110,9 @@ pub fn fragments() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// What the agent's environment says of its start.
+/// What the agent's environment says of its start, with the environment
+/// itself and the program the hook's parent runs, which the started ack
+/// compares with the start's record (161).
 #[derive(Clone, Debug, Default)]
 pub struct Start {
     pub agent: Option<String>,
@@ -118,22 +121,46 @@ pub struct Start {
     pub stage: Option<String>,
     /// The plugin's own directory, whose manifest names its version.
     pub plugin_root: Option<PathBuf>,
-}
-
-fn variable(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
+    /// Every variable of the hook's environment.
+    pub env: BTreeMap<String, String>,
+    /// The program the hook's parent runs; none where it cannot be read.
+    pub ran: Option<PathBuf>,
+    /// The socket the host's flume host answers on, as the environment
+    /// names it; none where it names none.
+    pub host: Option<PathBuf>,
 }
 
 impl Start {
-    /// The start this process's environment names.
-    pub fn of_process() -> Start {
+    /// The start the environment `env` names, the hook's parent running
+    /// `ran`.
+    pub fn of(env: BTreeMap<String, String>, ran: Option<PathBuf>) -> Start {
+        let variable = |name: &str| env.get(name).filter(|value| !value.is_empty()).cloned();
         Start {
             agent: variable(AGENT),
             secret: variable(SECRET),
             place: variable(PLACE),
             stage: variable(STAGE),
             plugin_root: variable(PLUGIN_ROOT).map(PathBuf::from),
+            host: crate::served::socket_from(|name| env.get(name).map(std::ffi::OsString::from))
+                .ok(),
+            env,
+            ran,
         }
+    }
+
+    /// The start this process's environment names, under its parent.
+    pub fn of_process() -> Start {
+        Start::of(
+            std::env::vars_os()
+                .map(|(name, value)| {
+                    (
+                        name.to_string_lossy().into_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                })
+                .collect(),
+            parent_executable(),
+        )
     }
 
     /// The plugin's version, as its manifest gives it; none where it
@@ -241,9 +268,9 @@ pub fn ack_started(
     let unsettled = compare(
         &recorded,
         &Secret(secret.clone()),
-        |name| std::env::var_os(name).map(|value| value.to_string_lossy().into_owned()),
-        parent_executable().as_deref(),
-        &std::env::var("PATH").unwrap_or_default(),
+        |name| start.env.get(name).cloned(),
+        start.ran.as_deref(),
+        start.env.get("PATH").map_or("", String::as_str),
         &started.session_id,
     );
     if unsettled != Unsettled::default() {
@@ -358,11 +385,14 @@ fn began_otherwise(
     if let Err(error) = written {
         return format!("{}: {error}", record.dir().display());
     }
-    if let Some(place) = &start.place {
-        let _ = crate::served::settle(&crate::served::Settling {
-            place: place.clone(),
-            on_quiet: false,
-        });
+    if let (Some(place), Some(socket)) = (&start.place, &start.host) {
+        let _ = crate::served::settle_at(
+            socket,
+            &crate::served::Settling {
+                place: place.clone(),
+                on_quiet: false,
+            },
+        );
     }
     format!(
         "{agent} began {}, not as its start recorded, so it is not its stage's agent",
@@ -614,11 +644,14 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>) -> String {
     if let Some(words) = words {
         return json!({ "decision": "block", "reason": words }).to_string();
     }
-    if let Some(place) = &start.place {
-        let _ = crate::served::settle(&crate::served::Settling {
-            place: place.clone(),
-            on_quiet: true,
-        });
+    if let (Some(place), Some(socket)) = (&start.place, &start.host) {
+        let _ = crate::served::settle_at(
+            socket,
+            &crate::served::Settling {
+                place: place.clone(),
+                on_quiet: true,
+            },
+        );
     }
     String::new()
 }

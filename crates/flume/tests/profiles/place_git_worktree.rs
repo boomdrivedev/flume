@@ -416,46 +416,6 @@ fn s10_an_untracked_file_and_a_failed_teardown_keep_their_places() {
 }
 
 #[test]
-fn s9_a_branch_is_kept_while_it_holds_a_change_its_base_lacks() {
-    let repository = Repository::new("s9");
-    let profile = profile(PlaceData::default(), &repository.scratch);
-    let dropped = made(&profile, &repository, "dropped");
-    let lacking = work(&dropped, "dropped.rs");
-    let picked = made(&profile, &repository, "picked");
-    let taken = work(&picked, "picked.rs");
-    for place in [&dropped, &picked] {
-        assert_eq!(profile.remove(place), Removed::Removed);
-    }
-    repository.write("base.txt", "the base moves on\n");
-    repository.commit("the base moves on");
-    repository.git(&["cherry-pick", &taken]);
-    assert_ne!(
-        repository.head(),
-        taken,
-        "the base took the change by a commit of its own"
-    );
-
-    assert_eq!(
-        profile.remove_branch(&repository.name(), "fix/dropped", "main"),
-        BranchRemoved::Kept {
-            commits: vec![Revision::new(lacking)]
-        }
-    );
-    assert!(repository
-        .git(&["branch", "--list", "fix/dropped"])
-        .contains("fix/dropped"));
-    assert_eq!(
-        profile.remove_branch(&repository.name(), "fix/picked", "main"),
-        BranchRemoved::Removed
-    );
-    assert_eq!(repository.git(&["branch", "--list", "fix/picked"]), "");
-    assert_eq!(
-        profile.remove_branch(&repository.name(), "fix/picked", "main"),
-        BranchRemoved::Gone
-    );
-}
-
-#[test]
 fn a_branch_is_judged_against_the_base_where_it_lands() {
     let origin = Repository::new("landing");
     let remote = origin.bare_remote();
@@ -1497,34 +1457,6 @@ fn checkouts_made_of_a_bare_repository_and_a_clone() {
         MakeOutcome::LocationExists,
         "a second make"
     );
-}
-
-/// place-profile's "A move git refuses": an uncommitted change to a file
-/// the base's new head changes keeps the checkout where it stood, its
-/// change with it, answered kept with git's words (193, 213; core.18).
-#[test]
-fn checkouts_moved_where_git_refuses() {
-    let repository = Repository::new("checkouts-refused");
-    let profile = profile(PlaceData::default(), &repository.scratch);
-    let (location, checkouts) = checkouts_made(&profile, &[(&repository.name(), "repository")]);
-    let place = checkout_ref(&location, &checkouts[0]);
-    std::fs::write(Path::new(&place.location).join("README"), "mine\n").expect("a change");
-    repository.write("README", "the base's\n");
-    let tip = Revision::new(repository.commit("the base moves on"));
-    match profile.move_checkout(&place, &tip) {
-        Moved::Kept { reason } => {
-            assert!(reason.contains("would be overwritten"), "{reason}")
-        }
-        other => panic!("the move was {other:?}"),
-    }
-    assert_eq!(
-        std::fs::read_to_string(Path::new(&place.location).join("README")).unwrap(),
-        "mine\n"
-    );
-    assert!(matches!(
-        profile.read(&place),
-        PlaceRead::Live { head, .. } if head == checkouts[0].revision
-    ));
 }
 
 /// place-profile's "A move git carries a change over": a change to a file

@@ -51,31 +51,20 @@ fn waits_on(status: &Value, question: &str) -> bool {
 
 /// Settles the place until it is tidied, its work landed.
 fn until_landed(host: &UnderHerdr, place: &str) {
-    host.until_within(
-        place,
-        "landed and tidied",
-        Duration::from_secs(180),
-        Duration::from_millis(300),
-        Value::is_null,
-    );
+    host.until(place, "landed and tidied", Value::is_null);
 }
 
 /// Settles every place, as a caller keeping watch over the host does
-/// (208), and reads the place's status until `holds` holds of it, for up
-/// to three minutes; that status.
-fn watching(host: &UnderHerdr, place: &str, what: &str, holds: impl Fn(&Value) -> bool) -> Value {
-    let began = std::time::Instant::now();
+/// (208), and reads the place's status until `holds` holds of it, with no
+/// bound on the time it waits (a-gate-test-asserts-no-real-time-bound);
+/// that status. `what` names the state awaited, for the reader.
+fn watching(host: &UnderHerdr, place: &str, _what: &str, holds: impl Fn(&Value) -> bool) -> Value {
     loop {
         host.flume(&["settle"]);
         let status = host.status(place);
         if holds(&status) {
             return status;
         }
-        assert!(
-            began.elapsed() < Duration::from_secs(180),
-            "{place} never came to {what}: {status}\nsluice's records of main: {:?}",
-            host.submissions()
-        );
         std::thread::sleep(Duration::from_millis(300));
     }
 }

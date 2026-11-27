@@ -31,7 +31,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "batch: two messages and a fix's end for east/ops come while its run's agent works; nothing is typed while it works, and once it goes quiet and its place settles its session takes one prompt holding the two messages and the end in the order recorded, each with its confirm, each recorded handed to the address, a role's deliveries taken as one prompt at its wait",
-            cites: &["43", "54", "121", "132", "214"],
+            cites: &["S126", "43", "54", "121", "132", "214"],
             run: two_messages_and_an_end_while_a_role_works,
         },
         Scenario {

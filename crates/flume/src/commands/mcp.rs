@@ -210,6 +210,7 @@ fn words(name: &str, arguments: &Value) -> Option<Vec<String>> {
 fn act(
     name: &str,
     arguments: &Value,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) -> Option<Value> {
@@ -221,7 +222,7 @@ fn act(
         ]);
     }
     argv.extend(words(name, arguments)?);
-    let outcome = super::run(argv, build);
+    let outcome = super::run(argv, env, build);
     Some(json!({
         "content": [{ "type": "text", "text": outcome.text.trim() }],
         "isError": outcome.code != 0,
@@ -268,6 +269,7 @@ fn act_named(name: &Value) -> bool {
 /// The answer to one request, none for a notification.
 fn answer(
     request: &Value,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) -> Option<Value> {
@@ -289,6 +291,7 @@ fn answer(
         "tools/call" if act_named(&request["params"]["name"]) => act(
             request["params"]["name"].as_str().unwrap_or_default(),
             &request["params"]["arguments"],
+            env,
             build,
             repository,
         )?,
@@ -315,6 +318,7 @@ fn answer(
 pub fn serve(
     input: impl BufRead,
     mut output: impl Write,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) {
@@ -326,7 +330,7 @@ pub fn serve(
             continue;
         }
         let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(request) => answer(&request, build, repository),
+            Ok(request) => answer(&request, env, build, repository),
             Err(error) => Some(json!({
                 "jsonrpc": "2.0",
                 "id": null,
@@ -341,5 +345,72 @@ pub fn serve(
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_acts_tool_gives_the_command_lines_words() {
+        // Section 9, design 12: a tool's arguments become the command
+        // line's words, each switch by its long name and its words after
+        // `--`, so none is read as a switch; a tool of no act's gives none.
+        let launch = words(
+            "launch",
+            &json!({
+                "kind": "acme/planner",
+                "name": "tidy",
+                "brief": "--tidy the notes",
+                "recipient": ["east/planner", "ops"],
+                "hold": ["verify=after review"],
+                "agent": ["model=opus"],
+                "hold_submission": true,
+                "priority": -2,
+            }),
+        );
+        assert_eq!(
+            launch,
+            Some(
+                [
+                    "launch",
+                    "--kind",
+                    "acme/planner",
+                    "--name",
+                    "tidy",
+                    "--brief",
+                    "--tidy the notes",
+                    "--recipient",
+                    "east/planner",
+                    "--recipient",
+                    "ops",
+                    "--hold",
+                    "verify=after review",
+                    "--agent",
+                    "model=opus",
+                    "--hold-submission",
+                    "--priority=-2",
+                ]
+                .map(str::to_string)
+                .to_vec()
+            )
+        );
+        assert_eq!(
+            words("wake", &json!({"address": "-east/planner"})),
+            Some(["wake", "--", "-east/planner"].map(str::to_string).to_vec())
+        );
+        assert_eq!(
+            words(
+                "message",
+                &json!({"target": "east/planner", "words": "--look", "within": "5m"})
+            ),
+            Some(
+                ["message", "--within", "5m", "--", "east/planner", "--look"]
+                    .map(str::to_string)
+                    .to_vec()
+            )
+        );
+        assert_eq!(words("status", &json!({})), None);
     }
 }

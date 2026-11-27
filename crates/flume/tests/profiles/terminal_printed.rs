@@ -562,3 +562,65 @@ fn an_agent_whose_record_says_its_session_ended_reads_stopped() {
         "a start whose agent's record says its session ended with no word that it started"
     );
 }
+
+#[test]
+fn an_agents_environment_is_kept_where_the_hosts_user_alone_reads_it() {
+    // 32, 56, 144: a token the agent's account gives it is in no word of
+    // the printed command, which names the environment's file, and that
+    // file, which the host's user alone may read, holds it.
+    use std::os::unix::fs::PermissionsExt;
+    let token = "sk-the-accounts-own-token";
+    let harness = Harness {
+        scratch: Scratch::new("printed-environment"),
+        seam: Printed,
+    };
+    let mut command = harness.command();
+    command
+        .env
+        .insert("CLAUDE_CODE_OAUTH_TOKEN".into(), token.into());
+    let identity = World::identity("fix", "one", "code", 1);
+    let opened = harness.seam.open(
+        &harness.place(),
+        &harness.folder(),
+        &command,
+        &identity,
+        &OpenIn::Own,
+        None,
+    );
+    let Opened::Opened {
+        printed: Some(printed),
+        ..
+    } = opened
+    else {
+        panic!("not opened: {opened:?}");
+    };
+    assert!(
+        !printed.contains(token),
+        "the command holds the token: {printed}"
+    );
+    let env: Vec<_> = files_under(std::path::Path::new(&harness.folder()))
+        .into_iter()
+        .filter(|path| path.extension().is_some_and(|ext| ext == "env"))
+        .collect();
+    assert_eq!(env.len(), 1, "the environment's files: {env:?}");
+    assert!(
+        printed.contains(&env[0].display().to_string()),
+        "the command names not {}: {printed}",
+        env[0].display()
+    );
+    let mode = std::fs::metadata(&env[0])
+        .expect("the environment's file")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o077,
+        0,
+        "{} is readable by others",
+        env[0].display()
+    );
+    let text = std::fs::read_to_string(&env[0]).expect("the environment");
+    assert!(
+        text.contains(token),
+        "the environment lacks the token: {text}"
+    );
+}

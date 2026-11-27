@@ -140,7 +140,7 @@ pub fn scenarios<H: PlaceHarness>() -> Vec<Scenario<H>> {
             run: remove_runs_the_teardown::<H>,
         },
         Scenario {
-            name: "place: remove-branch keeps a branch holding a change its base lacks",
+            name: "place: remove-branch keeps a branch holding a change its base lacks, removes it once the base holds that change by a commit of its own, and reads it gone after",
             cites: &["82", "67", "I4"],
             run: remove_branch_judges_by_change::<H>,
         },
@@ -553,6 +553,13 @@ fn remove_branch_judges_by_change<H: PlaceHarness>(harness: &H) -> Outcome {
         harness.head(&place.repository, &place.branch),
         None,
         "a removed branch"
+    );
+    ensure_eq!(
+        harness
+            .seam()
+            .remove_branch(&place.repository, &place.branch, &place.base),
+        BranchRemoved::Gone,
+        "a branch removed already"
     );
     Ok(())
 }
