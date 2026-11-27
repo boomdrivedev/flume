@@ -17,7 +17,13 @@
 //! the last one sent, until the client closes it. Each ask may name a
 //! `place`, by its location, and ask each place's `line`; and, asking no
 //! line, may name `repositories` by their folders, each read beside the
-//! places under the answer's `repositories`. A line flume
+//! places under the answer's `repositories`. Or the client asks
+//! `{"ask":"settle","place":<location>}`, with `"on_quiet":true` where the
+//! agent's own quiet asks it, answered by one `{"taken":true}` line, after
+//! which flume host closes the connection and settles the place itself:
+//! a settle a hook asks for is a request to flume host, so a terminal
+//! that closes the agent's pane ends only the client (121;
+//! nothing-detached; one-resident-per-tool). A line flume
 //! host cannot read gets `{"error": <words>}`, and the connection closes.
 
 use crate::resident::{Say, GATHER};
@@ -33,7 +39,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::watch;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, Instant};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -56,7 +62,28 @@ pub enum Ask {
     Status(Asked),
     /// An answer at once and one at each change, until the client closes.
     Subscribe(Asked),
+    /// One `taken` line, then the connection closes and flume host
+    /// settles the place.
+    Settle(Settling),
 }
+
+/// The place a client asks flume host to settle, by its location, and
+/// whether its agent's own quiet asks it, so flume host first reads the
+/// agent until it is quiet (121).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settling {
+    pub place: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_quiet: bool,
+}
+
+/// How long flume host, or `flume settle --on-quiet`, reads a place's
+/// agent for until it is quiet, before a settle its quiet asks for (121;
+/// design 14).
+pub const ON_QUIET_WITHIN: Duration = Duration::from_secs(60);
+
+/// How often flume host reads the agent while it waits for its quiet.
+pub const QUIET_EVERY: Duration = Duration::from_secs(1);
 
 /// What status a client asks: one place's by its location, or every
 /// place's, each place's line alone where `line`; and each repository it
@@ -135,6 +162,35 @@ fn unanswered(socket: &Path, error: impl std::fmt::Display) -> String {
 /// answer's JSON as `flume --json status` prints it, or the words saying
 /// why none came. It builds no core and starts no process.
 pub fn status_at(socket: &Path, asked: &Asked) -> Result<String, String> {
+    let answer = ask_at(socket, &Ask::Status(asked.clone()))?;
+    answer
+        .get("document")
+        .map(Value::to_string)
+        .ok_or_else(|| format!("flume host gave no document: {answer}"))
+}
+
+/// Asks the flume host answering on `socket` to settle the place
+/// `settling` names; the words saying why it did not take the ask. It
+/// waits for no settle, builds no core and starts no process
+/// (nothing-detached).
+pub fn settle_at(socket: &Path, settling: &Settling) -> Result<(), String> {
+    let answer = ask_at(socket, &Ask::Settle(settling.clone()))?;
+    match answer.get("taken") {
+        Some(Value::Bool(true)) => Ok(()),
+        _ => Err(format!("flume host did not take the settle: {answer}")),
+    }
+}
+
+/// Asks this host's flume host to settle the place `settling` names; the
+/// words saying why it did not take the ask.
+pub fn settle(settling: &Settling) -> Result<(), String> {
+    socket().and_then(|socket| settle_at(&socket, settling))
+}
+
+/// Says the hello to the flume host answering on `socket`, asks `ask`,
+/// and gives the first line of its answer; the words saying why none came,
+/// or its refusal.
+fn ask_at(socket: &Path, ask: &Ask) -> Result<Value, String> {
     use std::io::{BufRead, Write};
     let stream =
         std::os::unix::net::UnixStream::connect(socket).map_err(|e| unanswered(socket, e))?;
@@ -162,7 +218,7 @@ pub fn status_at(socket: &Path, asked: &Asked) -> Result<String, String> {
     if named.get("version").and_then(Value::as_str).is_none() {
         return Err(format!("flume host's hello names no version: {named}"));
     }
-    send(&serde_json::to_value(Ask::Status(asked.clone())).map_err(|e| e.to_string())?)?;
+    send(&serde_json::to_value(ask).map_err(|e| e.to_string())?)?;
     let answer = next("its answer")?;
     if let Some(words) = answer.get("error") {
         let words = words
@@ -170,10 +226,7 @@ pub fn status_at(socket: &Path, asked: &Asked) -> Result<String, String> {
             .map_or_else(|| words.to_string(), str::to_string);
         return Err(format!("flume host refused the ask: {words}"));
     }
-    answer
-        .get("document")
-        .map(Value::to_string)
-        .ok_or_else(|| format!("flume host gave no document: {answer}"))
+    Ok(answer)
 }
 
 /// The status `asked` names, from this host's flume host: its answer, or
@@ -195,9 +248,19 @@ pub trait Reads: Send + Sync + 'static {
     fn read(&self, asked: &Asked) -> impl Future<Output = String> + Send;
 }
 
-/// The reads of the host's own core: each builds the core afresh on
-/// tokio's blocking pool, as a settle does, and asks it status
-/// (a-residents-core-stays-synchronous-behind-a-tokio-edge).
+/// How flume host settles the place a client asks it to.
+pub trait Settles: Send + Sync + 'static {
+    /// Whether the place's agent is quiet: neither working nor asking,
+    /// nor waiting on own work; a place with no agent is quiet (121).
+    fn quiet(&self, place: &str) -> impl Future<Output = bool> + Send;
+    /// Settles the place, as its agent's own quiet starts a settle where
+    /// `on_quiet` (121, 212).
+    fn settle(&self, place: &str, on_quiet: bool) -> impl Future<Output = ()> + Send;
+}
+
+/// The reads and settles of the host's own core: each builds the core
+/// afresh on tokio's blocking pool, as a settle does, and asks it status
+/// or a settle (a-residents-core-stays-synchronous-behind-a-tokio-edge).
 pub struct CoreReads {
     build: crate::commands::Build,
 }
@@ -217,6 +280,34 @@ impl Reads for CoreReads {
             .unwrap_or_else(|error| {
                 Answer::refused(format!("the status's task ended: {error}")).to_json()
             })
+    }
+}
+
+impl Settles for CoreReads {
+    async fn quiet(&self, place: &str) -> bool {
+        let build = self.build.clone();
+        let place = PlaceId::new(place);
+        tokio::task::spawn_blocking(move || {
+            build().map_or(true, |core| crate::commands::quiet(&core, &place))
+        })
+        .await
+        .unwrap_or(true)
+    }
+
+    async fn settle(&self, place: &str, on_quiet: bool) {
+        let build = self.build.clone();
+        let place = PlaceId::new(place);
+        let _ = tokio::task::spawn_blocking(move || {
+            let Ok(core) = build() else {
+                return;
+            };
+            if on_quiet {
+                core.settle_on_quiet(&place);
+            } else {
+                core.settle(Some(&place));
+            }
+        })
+        .await;
     }
 }
 
@@ -271,9 +362,10 @@ pub fn bind(socket: &Path) -> Result<UnixListener, String> {
 
 /// Serves `listener` until `stop` is cancelled: each connection on a task
 /// of its own, a subscription read again at each move of `changed`, the
-/// moves that come within [`GATHER`] of the first making one read. It
-/// ends once every connection's task has (workers-end-with-their-owner).
-pub async fn serve<R: Reads>(
+/// moves that come within [`GATHER`] of the first making one read, and a
+/// settle asked run on its connection's task. It ends once every
+/// connection's task has (workers-end-with-their-owner).
+pub async fn serve<R: Reads + Settles>(
     listener: UnixListener,
     reads: Arc<R>,
     changed: watch::Receiver<u64>,
@@ -305,7 +397,7 @@ pub async fn serve<R: Reads>(
 }
 
 /// One client's connection: its hello, then its one ask.
-async fn connection<R: Reads>(
+async fn connection<R: Reads + Settles>(
     stream: UnixStream,
     reads: &R,
     mut changed: watch::Receiver<u64>,
@@ -349,6 +441,12 @@ async fn connection<R: Reads>(
         }
     };
     match ask {
+        Ask::Settle(settling) => {
+            send(&mut writer, &json!({ "taken": true })).await?;
+            drop(writer);
+            settle_asked(reads, &settling, &stop).await;
+            Ok(())
+        }
         Ask::Status(asked) => {
             let document = reads.read(&asked).await;
             send(&mut writer, &document_line(&document)).await
@@ -384,6 +482,26 @@ async fn connection<R: Reads>(
             }
         }
     }
+}
+
+/// The settle a client asked: where its agent's quiet asked it, the agent
+/// read each [`QUIET_EVERY`] until it is quiet or [`ON_QUIET_WITHIN`] has
+/// passed, a stop meanwhile ending it with no settle; then the place
+/// settled, which runs to its end (121; workers-end-with-their-owner).
+async fn settle_asked<S: Settles>(settles: &S, settling: &Settling, stop: &CancellationToken) {
+    if settling.on_quiet {
+        let until = Instant::now() + ON_QUIET_WITHIN;
+        while !settles.quiet(&settling.place).await && Instant::now() < until {
+            tokio::select! {
+                _ = stop.cancelled() => return,
+                _ = sleep(QUIET_EVERY) => {}
+            }
+        }
+        if stop.is_cancelled() {
+            return;
+        }
+    }
+    settles.settle(&settling.place, settling.on_quiet).await;
 }
 
 /// The `document` line of an answer's JSON.
@@ -439,17 +557,42 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    /// Reads that give the answer the test holds, counting themselves.
+    /// Reads that give the answer the test holds, counting themselves;
+    /// and settles that record when they ran, the agent read quiet from
+    /// its `quiet_at`th read on, and never where it holds none.
     #[derive(Default)]
     struct Held {
         answer: Mutex<String>,
         reads: Mutex<Vec<Asked>>,
+        quiet_at: Mutex<Option<usize>>,
+        quiet_reads: Mutex<Vec<(String, Instant)>>,
+        settles: Mutex<Vec<(String, bool, Instant)>>,
+        settled: tokio::sync::Notify,
     }
 
     impl Reads for Held {
         async fn read(&self, asked: &Asked) -> String {
             self.reads.lock().unwrap().push(asked.clone());
             self.answer.lock().unwrap().clone()
+        }
+    }
+
+    impl Settles for Held {
+        async fn quiet(&self, place: &str) -> bool {
+            let mut reads = self.quiet_reads.lock().unwrap();
+            reads.push((place.to_string(), Instant::now()));
+            self.quiet_at
+                .lock()
+                .unwrap()
+                .is_some_and(|at| reads.len() >= at)
+        }
+
+        async fn settle(&self, place: &str, on_quiet: bool) {
+            self.settles
+                .lock()
+                .unwrap()
+                .push((place.to_string(), on_quiet, Instant::now()));
+            self.settled.notify_one();
         }
     }
 
@@ -628,13 +771,10 @@ mod tests {
     #[tokio::test]
     async fn an_ask_it_cannot_read_is_an_error() {
         let served = served("error");
-        let mut lines = client(&served.socket, r#"{"ask":"settle"}"#).await;
+        let mut lines = client(&served.socket, r#"{"ask":"tidy"}"#).await;
         line(&mut lines).await.unwrap();
         let error = line(&mut lines).await.unwrap();
-        assert!(
-            error["error"].as_str().unwrap().contains("settle"),
-            "{error}"
-        );
+        assert!(error["error"].as_str().unwrap().contains("tidy"), "{error}");
         assert_eq!(line(&mut lines).await, None);
         served.stop.cancel();
         served.handle.await.unwrap();
@@ -666,6 +806,103 @@ mod tests {
             3,
             "the first read, the unchanged one and one for the five moves"
         );
+        served.stop.cancel();
+        served.handle.await.unwrap();
+    }
+
+    /// Asks `ask` of `served` and reads its answer: the `taken` line, and
+    /// then the connection's end.
+    async fn taken(served: &Served, ask: &str) {
+        let mut lines = client(&served.socket, ask).await;
+        line(&mut lines).await.unwrap();
+        assert_eq!(line(&mut lines).await.unwrap(), json!({"taken": true}));
+        assert_eq!(line(&mut lines).await, None, "flume host closed it");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_settle_is_taken_then_settled_with_no_read_of_the_agent() {
+        let served = served("settle");
+        let began = Instant::now();
+        taken(&served, r#"{"ask":"settle","place":"/p"}"#).await;
+        served.held.settled.notified().await;
+        assert_eq!(
+            served.held.settles.lock().unwrap().clone(),
+            vec![("/p".to_string(), false, began)]
+        );
+        assert!(served.held.quiet_reads.lock().unwrap().is_empty());
+        served.stop.cancel();
+        served.handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_settle_on_quiet_waits_for_the_agents_quiet() {
+        let served = served("on-quiet");
+        *served.held.quiet_at.lock().unwrap() = Some(3);
+        let began = Instant::now();
+        taken(&served, r#"{"ask":"settle","place":"/p","on_quiet":true}"#).await;
+        served.held.settled.notified().await;
+        let reads: Vec<Duration> = served
+            .held
+            .quiet_reads
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(place, at)| {
+                assert_eq!(place, "/p");
+                *at - began
+            })
+            .collect();
+        assert_eq!(reads, [0, 1, 2].map(Duration::from_secs));
+        assert_eq!(
+            served.held.settles.lock().unwrap().clone(),
+            vec![("/p".to_string(), true, began + QUIET_EVERY * 2)]
+        );
+        served.stop.cancel();
+        served.handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_agent_never_quiet_is_settled_at_the_bound() {
+        let served = served("never-quiet");
+        let began = Instant::now();
+        taken(&served, r#"{"ask":"settle","place":"/p","on_quiet":true}"#).await;
+        served.held.settled.notified().await;
+        assert_eq!(
+            served.held.settles.lock().unwrap().clone(),
+            vec![("/p".to_string(), true, began + ON_QUIET_WITHIN)]
+        );
+        served.stop.cancel();
+        served.handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_during_the_wait_for_quiet_settles_nothing() {
+        let served = served("stopped");
+        taken(&served, r#"{"ask":"settle","place":"/p","on_quiet":true}"#).await;
+        sleep(QUIET_EVERY * 5).await;
+        assert!(!served.held.quiet_reads.lock().unwrap().is_empty());
+        served.stop.cancel();
+        served.handle.await.unwrap();
+        assert!(
+            served.held.settles.lock().unwrap().is_empty(),
+            "no settle after the stop"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_client_asks_a_settle() {
+        let served = served("settle-client");
+        let socket = served.socket.clone();
+        let asked = Settling {
+            place: "/p".into(),
+            on_quiet: false,
+        };
+        tokio::task::spawn_blocking(move || settle_at(&socket, &asked))
+            .await
+            .unwrap()
+            .expect("flume host took the settle");
+        served.held.settled.notified().await;
+        assert_eq!(served.held.settles.lock().unwrap()[0].0, "/p");
         served.stop.cancel();
         served.handle.await.unwrap();
     }

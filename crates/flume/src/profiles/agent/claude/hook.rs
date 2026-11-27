@@ -223,14 +223,13 @@ pub fn compare_mode(recorded: &StartRecord, began: Option<&str>) -> Option<ModeB
 /// The mode is compared at the start's first prompt ([`ack_received`]),
 /// since 2.1.322 gives a SessionStart input none. Where anything differs
 /// it is not taken: the agent's record says what differed, a variable by
-/// name alone, and a settle of the place is started detached, which ends
+/// name alone, and flume host is asked to settle the place, which ends
 /// the agent once quiet and starts its stage afresh (35, 90, 121, 135,
 /// 161).
 pub fn ack_started(
     start: &Start,
     started: &Started,
     build: &dyn Fn() -> Result<Engine, String>,
-    binary: &Path,
 ) -> Result<String, String> {
     let (Some(agent), Some(secret)) = (&start.agent, &start.secret) else {
         return Err(format!(
@@ -254,7 +253,6 @@ pub fn ack_started(
             unsettled,
             &started.session_id,
             &started.transcript_path,
-            binary,
         ));
     }
     let started = Started {
@@ -295,7 +293,7 @@ impl Unacked {
 /// compared first ([`compare_mode`]): where it is another or none, the ack
 /// is not taken, the agent's record names the mode asked and the mode
 /// begun with `session` and `transcript`, the started ack's where it
-/// stands, and a settle of the place is started detached, which ends the
+/// stands, and flume host is asked to settle the place, which ends the
 /// agent once quiet and starts its stage afresh (161, 162). A later
 /// prompt compares no mode, since a started session's mode is its own.
 pub fn ack_received(
@@ -305,7 +303,6 @@ pub fn ack_received(
     session: &str,
     transcript: &str,
     build: &dyn Fn() -> Result<Engine, String>,
-    binary: &Path,
 ) -> Result<String, Unacked> {
     let (Some(agent), Some(secret)) = (&start.agent, &start.secret) else {
         return Err(Unacked::Failed(format!(
@@ -330,7 +327,7 @@ pub fn ack_received(
             ..Unsettled::default()
         };
         return Err(Unacked::Mode(began_otherwise(
-            start, &record, unsettled, session, transcript, binary,
+            start, &record, unsettled, session, transcript,
         )));
     }
     record
@@ -341,8 +338,8 @@ pub fn ack_received(
 }
 
 /// The agent's record told that it began as `unsettled` says, in
-/// `session` with `transcript` and the transcript's length now, and a
-/// settle of the place started detached; the words saying so, or why the
+/// `session` with `transcript` and the transcript's length now, and flume
+/// host asked to settle the place; the words saying so, or why the
 /// record could not be written (161, 179).
 fn began_otherwise(
     start: &Start,
@@ -350,7 +347,6 @@ fn began_otherwise(
     unsettled: Unsettled,
     session: &str,
     transcript: &str,
-    binary: &Path,
 ) -> String {
     let agent = start.agent.as_deref().unwrap_or_default();
     let written = record.set_unsettled(&record::Unsettled {
@@ -363,7 +359,10 @@ fn began_otherwise(
         return format!("{}: {error}", record.dir().display());
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, false);
+        let _ = crate::served::settle(&crate::served::Settling {
+            place: place.clone(),
+            on_quiet: false,
+        });
     }
     format!(
         "{agent} began {}, not as its start recorded, so it is not its stage's agent",
@@ -403,7 +402,6 @@ pub fn hook(
     input: &str,
     start: &Start,
     build: &dyn Fn() -> Result<Engine, String>,
-    binary: &Path,
 ) -> String {
     if event == status_line::EVENT {
         return status_line::line(start.place.as_deref(), start.agent.as_deref(), build);
@@ -437,7 +435,7 @@ pub fn hook(
                 plugin_version: start.plugin_version(),
                 from: 0,
             };
-            let _ = ack_started(start, &started, build, binary);
+            let _ = ack_started(start, &started, build);
             String::new()
         }
         "user-prompt-submit" if !subagent => {
@@ -448,7 +446,6 @@ pub fn hook(
                 &text("session_id"),
                 &text("transcript_path"),
                 build,
-                binary,
             );
             match acked {
                 // The prompt is held back, so the agent takes no turn in
@@ -505,7 +502,7 @@ pub fn hook(
             }
             String::new()
         }
-        "stop" => stop(start, build, binary),
+        "stop" => stop(start, build),
         "stop-failure" => {
             if let Ok(record) = start.record(build) {
                 let error = text("error");
@@ -599,10 +596,16 @@ fn mark(
 }
 
 /// The Stop hook: the stop blocked with the core's stop-check words where
-/// it answers some, never a conversation's agent; else `flume settle
-/// <place> --on-quiet` started detached, so the place moves on the moment
-/// its agent is quiet (46, 109, 110, 115, 121).
-fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path) -> String {
+/// it answers some, never a conversation's agent; else flume host asked
+/// to settle the place once its agent is quiet, so the place moves on the
+/// moment its agent is quiet. It starts no process: a terminal closing
+/// the agent's pane, as herdr 0.9.5 does once the settle ends the agent,
+/// ends only this client and never the settle, which is flume host's.
+/// Where no flume host takes the ask, the next settle of the resident or
+/// a caller moves the place (46, 109, 110, 115, 121; core.13;
+/// nothing-detached; a-session-in-a-herdr-pane-is-herdrs-child-and-flume-
+/// owns-its-place).
+fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>) -> String {
     let agent = start.agent.as_deref().unwrap_or_default();
     let words = match build().map(|core| core.stop_check(agent)) {
         Ok(Answer::StopCheck { words }) => words,
@@ -612,68 +615,10 @@ fn stop(start: &Start, build: &dyn Fn() -> Result<Engine, String>, binary: &Path
         return json!({ "decision": "block", "reason": words }).to_string();
     }
     if let Some(place) = &start.place {
-        settle_detached(binary, place, true);
-    }
-    String::new()
-}
-
-/// `flume settle <place>`, with `--on-quiet` where `on_quiet`, in a
-/// session of its own that outlives the hook and the agent's terminal,
-/// its output nowhere. A process group of its own is not enough: a
-/// terminal closing the agent's pane, as herdr 0.9.5 does once the
-/// settle ends the agent, ends every process of the pane's session, so
-/// a settle killed between claiming its place's submit and recording
-/// the merge queue's entry would leave the place submitted with no
-/// entry to read, never stepped again (46, 111).
-fn settle_detached(binary: &Path, place: &str, on_quiet: bool) {
-    use std::process::{Command, Stdio};
-    let mut args = vec!["settle", place];
-    if on_quiet {
-        args.push("--on-quiet");
-    }
-    let mut command = Command::new(binary);
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let _ = in_a_session_of_its_own(command);
-}
-
-/// `command` started as the leader of a session of its own, which no
-/// terminal's session the caller runs in reaches.
-fn in_a_session_of_its_own(
-    mut command: std::process::Command,
-) -> std::io::Result<std::process::Child> {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: setsid is async-signal-safe and touches no memory of the
-    // parent's; it runs in the child between fork and exec.
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
+        let _ = crate::served::settle(&crate::served::Settling {
+            place: place.clone(),
+            on_quiet: true,
         });
     }
-    command.spawn()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_detached_settle_leads_a_session_of_its_own() {
-        let mut command = std::process::Command::new("/bin/sleep");
-        command.arg("5");
-        let mut child = in_a_session_of_its_own(command).expect("sleep starts");
-        let pid = child.id() as libc::pid_t;
-        // SAFETY: getsid reads the session of a process this test started.
-        let (session, ours) = unsafe { (libc::getsid(pid), libc::getsid(0)) };
-        let _ = child.kill();
-        let _ = child.wait();
-        assert_eq!(session, pid, "the child leads its own session");
-        assert_ne!(session, ours, "the child shares the test's session");
-    }
+    String::new()
 }

@@ -12,9 +12,7 @@ pub mod relay;
 
 use clap::{Args, Parser, Subcommand};
 use flume_core::{Answer, Answering, Engine, KindsLock, LockOf, Retry, WaitFor};
-use flume_seams::{
-    read_span, AgentState, EndKey, HoldOn, Launch, PlaceId, Reading, Seconds, StopKind,
-};
+use flume_seams::{read_span, AgentState, EndKey, HoldOn, Launch, PlaceId, Reading, StopKind};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -30,10 +28,6 @@ pub const SECRET: &str = "FLUME_SECRET";
 /// The variable an agent flume started names its place in, by which a
 /// command run in a role's run finds the role it serves (132, C.4).
 pub const PLACE: &str = "FLUME_PLACE";
-
-/// How long `settle --on-quiet` reads the agent for until it is quiet
-/// (121; design 14).
-pub const ON_QUIET_WITHIN: Seconds = 60;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -871,7 +865,7 @@ fn act(cli: &Cli, build: &dyn Fn() -> Result<Engine, String>) -> Result<Answer, 
             let core = build()?;
             match (&place, *on_quiet) {
                 (Some(place), true) => {
-                    until_quiet(&core, place, Duration::from_secs(ON_QUIET_WITHIN));
+                    until_quiet(&core, place, crate::served::ON_QUIET_WITHIN);
                     core.settle_on_quiet(place)
                 }
                 _ => core.settle(place.as_ref()),
@@ -1082,22 +1076,25 @@ fn launch_of(args: &LaunchArgs, given: Option<&Path>) -> Result<Launch, String> 
 /// on own work (121). A place with no agent is read once.
 fn until_quiet(core: &Engine, place: &PlaceId, within: Duration) {
     let began = Instant::now();
-    loop {
-        let quiet = match core.status(Some(place)) {
-            Answer::Status { places, .. } => places
-                .first()
-                .and_then(|status| status.agent.as_ref())
-                .is_none_or(|agent| {
-                    matches!(agent.state, AgentState::Waiting | AgentState::Stopped)
-                        && agent.asking == Reading::No
-                        && agent.own_work == Reading::No
-                }),
-            _ => true,
-        };
-        if quiet || began.elapsed() >= within {
-            return;
-        }
+    while !quiet(core, place) && began.elapsed() < within {
         std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+/// Whether the place's current agent, as status gives it, is quiet:
+/// neither working nor asking, nor waiting on own work; a place with no
+/// agent, or one status does not give, is quiet (121).
+pub fn quiet(core: &Engine, place: &PlaceId) -> bool {
+    match core.status(Some(place)) {
+        Answer::Status { places, .. } => places
+            .first()
+            .and_then(|status| status.agent.as_ref())
+            .is_none_or(|agent| {
+                matches!(agent.state, AgentState::Waiting | AgentState::Stopped)
+                    && agent.asking == Reading::No
+                    && agent.own_work == Reading::No
+            }),
+        _ => true,
     }
 }
 

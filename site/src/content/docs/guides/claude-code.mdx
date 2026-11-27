@@ -172,9 +172,11 @@ asks flume whether the stage's deliverable exists. It may be missing
 while the agent has no background work running and no question open.
 Then the hook blocks the stop with words naming the deliverable, each
 declared thing with no line in `made.jsonl`, and the way to stop short.
-Otherwise it starts `flume settle <place> --on-quiet` in the
-background, which waits up to sixty seconds for the agent to be quiet
-and then moves the place on. A conversation stage is never sent back.
+Otherwise it asks `flume host` on its socket to settle the place, and
+starts no process. `flume host` waits up to sixty seconds for the agent
+to be quiet and then moves the place on. Where no `flume host` answers,
+the next settle moves the place. A conversation stage is never sent
+back.
 
 ## The status line
 

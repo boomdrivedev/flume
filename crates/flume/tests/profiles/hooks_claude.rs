@@ -323,6 +323,70 @@ impl Host {
         ran
     }
 
+    /// The hook for `event` run as [`Host::hook`] runs it, with one more
+    /// descriptor, 3, the write end of a pipe that each process the hook
+    /// starts inherits; and whether a process still held that end when the
+    /// hook ended, which is a process that the hook left running
+    /// (nothing-detached). It reads the pipe once, after the hook ended,
+    /// and waits for nothing.
+    fn hook_leaving(&self, agent: &Agent, event: &str, input: Value) -> (Ran, bool) {
+        use command_fds::{CommandFdExt as _, FdMapping};
+        let (reader, writer) = std::io::pipe().expect("the pipe");
+        let mut command = self.command(&[]);
+        command
+            .envs(agent.env())
+            .args(["hook", event])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .fd_mappings(vec![FdMapping {
+                parent_fd: writer.into(),
+                child_fd: 3,
+            }])
+            .expect("descriptor 3 given to the hook");
+        let mut input = input;
+        let common = json!({
+            "session_id": "4e3c05c8-51c4-4449-8577-4f7038e394bf",
+            "transcript_path": agent.transcript,
+            "cwd": agent.place,
+            "hook_event_name": event_name(event),
+        });
+        for (key, value) in common.as_object().expect("an object") {
+            input
+                .as_object_mut()
+                .expect("an object")
+                .entry(key)
+                .or_insert(value.clone());
+        }
+        let mut child = command.spawn().expect("flume runs");
+        // The write end is the child's alone once it started.
+        drop(command);
+        child
+            .stdin
+            .take()
+            .expect("its input")
+            .write_all(input.to_string().as_bytes())
+            .expect("the input written");
+        let output = child.wait_with_output().expect("flume ends");
+        let mut reader = reader;
+        nix::fcntl::fcntl(
+            &reader,
+            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+        )
+        .expect("the pipe's read end made non-blocking");
+        let left = match std::io::Read::read(&mut reader, &mut [0u8; 1]) {
+            Ok(0) => false,
+            Ok(_) => true,
+            Err(error) => error.kind() == std::io::ErrorKind::WouldBlock,
+        };
+        let ran = Ran {
+            out: String::from_utf8_lossy(&output.stdout).into_owned(),
+            code: output.status.code().unwrap_or(-1),
+        };
+        assert_eq!(ran.code, 0, "the hook {event} exits 0: {}", ran.out);
+        (ran, left)
+    }
+
     /// `flume hook status-line` in `env`, as the plugin's module runs it,
     /// its standard input held open and never written: it reads none, so
     /// it ends with it open (design 5).
@@ -442,6 +506,18 @@ fn until(host: &Host, place: &str, within: Duration, holds: impl Fn(&Value) -> b
     loop {
         let status = host.status(place);
         if holds(&status) || began.elapsed() > within {
+            return status;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// The place's status once `holds` holds, read again each quarter of a
+/// second, with no bound on the time it waits.
+fn until_it_holds(host: &Host, place: &str, holds: impl Fn(&Value) -> bool) -> Value {
+    loop {
+        let status = host.status(place);
+        if holds(&status) {
             return status;
         }
         std::thread::sleep(Duration::from_millis(250));
@@ -1207,8 +1283,8 @@ fn now() -> u64 {
 fn the_stop_check_sends_back_then_the_stop_settles() {
     // S24: the agent tries to stop with nothing made, and the stop is
     // blocked with words naming commits and `flume needs`. It commits; the
-    // next stop is let through and starts `flume settle <place>
-    // --on-quiet`, which settles the place once the agent is quiet (under
+    // next stop is let through and asks flume host to settle the place
+    // on its quiet, which it settles once the agent is quiet (under
     // the printed command, once its session ended): the code stage ends at
     // its deliverable and the next starts, with no settle of the test's
     // (S29, 46, 115, 121).
@@ -1242,6 +1318,63 @@ fn the_stop_check_sends_back_then_the_stop_settles() {
     let place = &status["places"][0];
     assert_eq!(place["current"], "review", "{status}");
     assert_eq!(place["stages"][0]["state"], "delivered", "{status}");
+}
+
+#[test]
+fn the_stop_asks_flume_host_and_leaves_no_process() {
+    // The Stop hook lets an agent with its deliverable made stop. It asks
+    // flume host to settle the place and starts no process: when the hook
+    // ends, no process that it started runs (nothing-detached;
+    // a-session-in-a-herdr-pane-is-herdrs-child-and-flume-owns-its-place).
+    // flume host settles the place, and the next stage starts with no
+    // settle of the test's (121).
+    let host = Host::new("stop-host");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    host.hook(
+        &agent,
+        "user-prompt-submit",
+        json!({ "prompt": agent.prompt }),
+    );
+    commit_in(&agent.place, "parser.rs");
+    let (ran, left) = host.hook_leaving(&agent, "stop", json!({ "stop_hook_active": false }));
+    assert_eq!(decision(&ran), None, "a stop with the deliverable made");
+    assert!(!left, "the Stop hook left a process running");
+    host.hook(
+        &agent,
+        "session-end",
+        json!({ "reason": "prompt_input_exit" }),
+    );
+    let status = until_it_holds(&host, &agent.place, |status| {
+        status["places"][0]["current"] == "review"
+    });
+    assert_eq!(
+        status["places"][0]["stages"][0]["state"], "delivered",
+        "{status}"
+    );
+}
+
+#[test]
+fn with_no_flume_host_the_stop_leaves_no_process() {
+    // Where nothing answers on flume host's socket, the Stop hook lets the
+    // stop through and starts no process (nothing-detached).
+    let host = Host::new("stop-no-host");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    host.hook(
+        &agent,
+        "user-prompt-submit",
+        json!({ "prompt": agent.prompt }),
+    );
+    commit_in(&agent.place, "parser.rs");
+    host.resident
+        .borrow()
+        .as_ref()
+        .expect("the host's resident")
+        .kill();
+    let (ran, left) = host.hook_leaving(&agent, "stop", json!({ "stop_hook_active": false }));
+    assert_eq!(decision(&ran), None, "the stop let through");
+    assert!(!left, "the Stop hook left a process running");
 }
 
 #[test]
@@ -1853,7 +1986,6 @@ fn deliver_hook(
         "",
         start,
         &|| Ok(world.engine()),
-        Path::new("flume"),
     )
 }
 
