@@ -18,11 +18,22 @@ use serde_json::Value;
 /// it (42, 43).
 const KEY: &str = "stage/construct/1/ended-short";
 
-/// What flume printed for `words`, asked of a core built over `world`,
-/// and its exit status.
+/// What flume printed for `words`, asked of a core built over `world`
+/// in an environment that sets no variable, and its exit status.
 fn run(world: &World, words: &[&str]) -> (String, u8) {
+    run_in(world, &[], words)
+}
+
+/// What flume printed for `words` in the environment `env`, asked of a
+/// core built over `world`, and its exit status.
+fn run_in(world: &World, env: &[(&str, &str)], words: &[&str]) -> (String, u8) {
     let outcome = commands::run(
         std::iter::once("flume").chain(words.iter().copied()),
+        &|name| {
+            env.iter()
+                .find(|(given, _)| *given == name)
+                .map(|(_, value)| value.to_string())
+        },
         &|| Ok(world.engine()),
     );
     (outcome.text, outcome.code)
@@ -767,4 +778,47 @@ fn a_watch_with_a_place_named_or_no_bound_is_refused_settling_nothing() {
         world.store.read_host(&HostKey::Watch).is_none(),
         "a watch recorded by a refused settle"
     );
+}
+
+#[test]
+fn the_recipient_an_inbox_defaults_to() {
+    // 7, 132, design 7: an inbox naming no recipient where none is read
+    // is refused naming each way to name one; $FLUME_PLACE naming a
+    // role's run collects as its address; and the recipient the host
+    // reads from the command's environment, $FLUME_RECIPIENT, before it.
+    // Which recipient the core reads is the role-waking scenarios' own.
+    let world = World::new();
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    assert!(world.engine.wake(PLANNER).refusal().is_none());
+    let planner = World::id("turn", "east-planner");
+    world.settle(&planner);
+    world.host.set_recipient(None);
+
+    let reason = refused(&world, &["inbox", "--json"]);
+    for way in [
+        "--recipient",
+        "$FLUME_RECIPIENT",
+        "a terminal's session",
+        "a role's run",
+        "a standing agent's pane",
+    ] {
+        assert!(reason.contains(way), "the refusal names no {way}: {reason}");
+    }
+    let recipient = |env: &[(&str, &str)]| {
+        let (text, code) = run_in(&world, env, &["inbox", "--json"]);
+        assert_eq!(code, 0, "{text}");
+        let answer: Value = serde_json::from_str(text.trim()).expect("the answer's JSON");
+        answer["inbox"]["recipient"].clone()
+    };
+    assert_eq!(recipient(&[("FLUME_PLACE", &planner.0)]), PLANNER);
+    world.host.set_recipient(Some("ops"));
+    assert_eq!(recipient(&[("FLUME_PLACE", &planner.0)]), "ops");
+    let (text, code) = run(&world, &["inbox", "--recipient", "ops"]);
+    assert_eq!(code, 0, "{text}");
+    assert_eq!(text.trim(), "nothing pending for ops");
 }

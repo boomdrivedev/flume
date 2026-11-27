@@ -210,6 +210,7 @@ fn words(name: &str, arguments: &Value) -> Option<Vec<String>> {
 fn act(
     name: &str,
     arguments: &Value,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) -> Option<Value> {
@@ -221,7 +222,7 @@ fn act(
         ]);
     }
     argv.extend(words(name, arguments)?);
-    let outcome = super::run(argv, build);
+    let outcome = super::run(argv, env, build);
     Some(json!({
         "content": [{ "type": "text", "text": outcome.text.trim() }],
         "isError": outcome.code != 0,
@@ -268,6 +269,7 @@ fn act_named(name: &Value) -> bool {
 /// The answer to one request, none for a notification.
 fn answer(
     request: &Value,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) -> Option<Value> {
@@ -289,6 +291,7 @@ fn answer(
         "tools/call" if act_named(&request["params"]["name"]) => act(
             request["params"]["name"].as_str().unwrap_or_default(),
             &request["params"]["arguments"],
+            env,
             build,
             repository,
         )?,
@@ -315,6 +318,7 @@ fn answer(
 pub fn serve(
     input: impl BufRead,
     mut output: impl Write,
+    env: &super::Env<'_>,
     build: &dyn Fn() -> Result<Engine, String>,
     repository: Option<&Path>,
 ) {
@@ -326,7 +330,7 @@ pub fn serve(
             continue;
         }
         let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(request) => answer(&request, build, repository),
+            Ok(request) => answer(&request, env, build, repository),
             Err(error) => Some(json!({
                 "jsonrpc": "2.0",
                 "id": null,

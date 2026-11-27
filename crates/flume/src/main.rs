@@ -8,7 +8,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let build: commands::Build = std::sync::Arc::new(profiles::core);
-    commands::run_built(std::env::args_os(), &build).exit()
+    commands::run_built(std::env::args_os(), &commands::process_env, &build).exit()
 }
 
 #[cfg(test)]

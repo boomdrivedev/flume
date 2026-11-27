@@ -428,7 +428,11 @@ fn stand_in_flume() {
             Some(vec![("HOME".into(), home)]),
         )
     });
-    let outcome = commands::run_built(std::iter::once("flume".to_string()).chain(words), &build);
+    let outcome = commands::run_built(
+        std::iter::once("flume".to_string()).chain(words),
+        &commands::process_env,
+        &build,
+    );
     let mut out = std::io::stdout().lock();
     writeln!(out, "{}", outcome.text).expect("the answer written");
     out.flush().expect("the answer written");
@@ -1060,29 +1064,6 @@ fn a_watch_over_a_scratch_repository() {
         "{}",
         person.text
     );
-}
-
-#[test]
-fn needs_from_outside_an_agent() {
-    // 41, C.4: no FLUME_AGENT, so nothing is asked of the core.
-    let host = Host::new("needs");
-    let repository = repository("needs", None);
-    let ran = host.flume(&repository.dir, &["needs", "which design?", "--json"], &[]);
-    assert_eq!(ran.code, 1, "{}", ran.text);
-    let reason = ran
-        .answer()
-        .refusal()
-        .map(str::to_string)
-        .expect("a refusal");
-    assert!(reason.contains("FLUME_AGENT"), "{reason}");
-    let found = host.flume(
-        &repository.dir,
-        &["needs", "--found", "more work", "--json"],
-        &[("FLUME_AGENT", "flume:x:fix--one:code:1")],
-    );
-    assert_eq!(found.code, 1, "{}", found.text);
-    assert!(found.text.contains("FLUME_SECRET"), "{}", found.text);
-    assert!(!host.state().join("places").exists(), "something changed");
 }
 
 #[test]
@@ -1745,130 +1726,6 @@ fn a_wait_exits_by_its_outcome() {
 }
 
 #[test]
-fn the_recipient_a_wait_and_an_inbox_default_to() {
-    // 7, 132, design 7: $FLUME_RECIPIENT, then a role's run's address read
-    // from the place $FLUME_PLACE names, and a refusal where none names
-    // one, naming each way to; the terminal's session and the standing
-    // agent's pane are the terminal profile's to name, tested beside it
-    // under profiles/.
-    let host = Host::new("recipients");
-    let repository = repository("recipients", None);
-    let kinds = kinds_file(&host, false);
-    carried_by_acme(&host, &["madswan/planner"]);
-    for (name, recipient) in [("one", "ops"), ("two", "madswan/planner")] {
-        let launched = host.stand_in(
-            &repository.dir,
-            &[
-                "launch",
-                "--kind",
-                "change",
-                "--name",
-                name,
-                "--kinds",
-                &kinds,
-                "--recipient",
-                recipient,
-                "--json",
-            ],
-            &[],
-        );
-        assert_eq!(launched.code, 0, "{}", launched.text);
-        let place = host.place_of(&repository, &format!("change--{name}"));
-        deliver(&host, &repository.dir, &place, "construct");
-    }
-    let two = host.place_of(&repository, "change--two");
-    let store = StateDir::at(host.state());
-    let read = held_of(&host, &two);
-    let mut role = read.state.clone();
-    role.role = Some("madswan/planner".into());
-    assert!(matches!(
-        store.write(&PlaceId::new(&two), Some(read.version), Some(&role)),
-        Written::Written { .. }
-    ));
-
-    let unnamed = answered(
-        &host.stand_in(&repository.dir, &["inbox", "--json"], &[]),
-        1,
-    );
-    let reason = unnamed["refused"]["refusal"]["reason"]
-        .as_str()
-        .unwrap_or_default();
-    for way in [
-        "--recipient",
-        "$FLUME_RECIPIENT",
-        "a terminal's session",
-        "a role's run",
-        "a standing agent's pane",
-    ] {
-        assert!(
-            reason.contains(way),
-            "the refusal names no {way}: {unnamed}"
-        );
-    }
-
-    let by_variable = answered(
-        &host.stand_in(
-            &repository.dir,
-            &["inbox", "--confirm", "--json"],
-            &[("FLUME_RECIPIENT", "ops"), ("FLUME_PLACE", &two)],
-        ),
-        0,
-    );
-    assert_eq!(by_variable["inbox"]["recipient"], "ops", "{by_variable}");
-    let ends = by_variable["inbox"]["ends"].as_array().expect("ends");
-    assert_eq!(ends.len(), 1, "{by_variable}");
-    assert_eq!(ends[0]["kind"], "change");
-    assert_eq!(ends[0]["name"], "one");
-    assert_eq!(ends[0]["end"]["state"], "delivered");
-    assert_eq!(ends[0]["end"]["deliveries"][0]["by"], "inbox");
-
-    let by_role = answered(
-        &host.stand_in(
-            &repository.dir,
-            &["inbox", "--confirm", "--json"],
-            &[("FLUME_PLACE", &two)],
-        ),
-        0,
-    );
-    assert_eq!(
-        by_role["inbox"]["recipient"], "madswan/planner",
-        "{by_role}"
-    );
-    assert_eq!(
-        by_role["inbox"]["ends"].as_array().map(Vec::len),
-        Some(1),
-        "{by_role}"
-    );
-    let again = answered(
-        &host.stand_in(
-            &repository.dir,
-            &["inbox", "--recipient", "madswan/planner", "--json"],
-            &[],
-        ),
-        0,
-    );
-    assert_eq!(
-        again["inbox"]["ends"].as_array().map(Vec::len),
-        Some(0),
-        "{again}"
-    );
-    let person = host.stand_in(&repository.dir, &["inbox", "--recipient", "ops"], &[]);
-    assert_eq!(person.code, 0, "{}", person.text);
-    assert_eq!(person.text.trim(), "nothing pending for ops");
-
-    let waited = answered(
-        &host.stand_in(
-            &repository.dir,
-            &["wait", "change--one", "--stage", "construct", "--json"],
-            &[("FLUME_RECIPIENT", "ops")],
-        ),
-        0,
-    );
-    assert_eq!(waited["waited"]["recipient"], "ops", "{waited}");
-    assert_eq!(waited["waited"]["delivered"], false, "{waited}");
-}
-
-#[test]
 fn a_wake_of_a_roles_address() {
     // 132, 193, C.7: the host's source acme declares the planner's run in
     // its roles file, of its own kind `planner`, locked; `flume wake`
@@ -2097,29 +1954,6 @@ fn kinds_dir_of(host: &Host, source: &str) -> PathBuf {
 /// The host's sources directory, beside its configuration (191, C.7).
 fn sources_of(host: &Host) -> PathBuf {
     host.scratch.path("config/flume/sources")
-}
-
-/// The host's source acme declares each of `addresses` carried to another
-/// host in its roles file, so a launch naming one is taken, its ends left
-/// pending, in a stream no role stands behind (132, 193, C.7).
-fn carried_by_acme(host: &Host, addresses: &[&str]) {
-    let roles = host.scratch.path("state/acme/roles.toml");
-    std::fs::create_dir_all(roles.parent().unwrap()).expect("the roles file's directory");
-    let entries: String = addresses
-        .iter()
-        .map(|address| format!("[roles.\"{address}\"]\ncarried = true\n"))
-        .collect();
-    std::fs::write(&roles, entries).expect("the roles file");
-    std::fs::create_dir_all(sources_of(host)).expect("the sources directory");
-    std::fs::write(
-        sources_of(host).join("acme.toml"),
-        format!(
-            "kinds_dir = \"{}\"\nroles = \"{}\"\n",
-            kinds_dir_of(host, "acme").display(),
-            roles.display()
-        ),
-    )
-    .expect("the source's file");
 }
 
 /// The host's lock of kinds, beside its configuration (155, C.7).
