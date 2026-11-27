@@ -347,3 +347,70 @@ pub fn serve(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_acts_tool_gives_the_command_lines_words() {
+        // Section 9, design 12: a tool's arguments become the command
+        // line's words, each switch by its long name and its words after
+        // `--`, so none is read as a switch; a tool of no act's gives none.
+        let launch = words(
+            "launch",
+            &json!({
+                "kind": "acme/planner",
+                "name": "tidy",
+                "brief": "--tidy the notes",
+                "recipient": ["east/planner", "ops"],
+                "hold": ["verify=after review"],
+                "agent": ["model=opus"],
+                "hold_submission": true,
+                "priority": -2,
+            }),
+        );
+        assert_eq!(
+            launch,
+            Some(
+                [
+                    "launch",
+                    "--kind",
+                    "acme/planner",
+                    "--name",
+                    "tidy",
+                    "--brief",
+                    "--tidy the notes",
+                    "--recipient",
+                    "east/planner",
+                    "--recipient",
+                    "ops",
+                    "--hold",
+                    "verify=after review",
+                    "--agent",
+                    "model=opus",
+                    "--hold-submission",
+                    "--priority=-2",
+                ]
+                .map(str::to_string)
+                .to_vec()
+            )
+        );
+        assert_eq!(
+            words("wake", &json!({"address": "-east/planner"})),
+            Some(["wake", "--", "-east/planner"].map(str::to_string).to_vec())
+        );
+        assert_eq!(
+            words(
+                "message",
+                &json!({"target": "east/planner", "words": "--look", "within": "5m"})
+            ),
+            Some(
+                ["message", "--within", "5m", "--", "east/planner", "--look"]
+                    .map(str::to_string)
+                    .to_vec()
+            )
+        );
+        assert_eq!(words("status", &json!({})), None);
+    }
+}

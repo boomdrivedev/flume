@@ -822,3 +822,172 @@ fn the_recipient_an_inbox_defaults_to() {
     assert_eq!(code, 0, "{text}");
     assert_eq!(text.trim(), "nothing pending for ops");
 }
+
+/// The replies of flume's MCP server to `requests`, each given an id in
+/// turn, served over a core built over `world` in the environment `env`.
+fn mcp(world: &World, env: &[(&str, &str)], requests: &[Value]) -> Vec<Value> {
+    let input: String = requests
+        .iter()
+        .enumerate()
+        .map(|(id, request)| {
+            let mut request = request.clone();
+            request["jsonrpc"] = "2.0".into();
+            request["id"] = id.into();
+            format!("{request}\n")
+        })
+        .collect();
+    let mut output = Vec::new();
+    commands::mcp::serve(
+        input.as_bytes(),
+        &mut output,
+        &|name| {
+            env.iter()
+                .find(|(given, _)| *given == name)
+                .map(|(_, value)| value.to_string())
+        },
+        &|| Ok(world.engine()),
+        None,
+    );
+    String::from_utf8(output)
+        .expect("the replies")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a reply's JSON"))
+        .collect()
+}
+
+/// A tool's result as its JSON answer, and whether it is marked an error.
+fn over_mcp(world: &World, tool: &str, arguments: Value) -> (Value, bool) {
+    let replies = mcp(
+        world,
+        &[],
+        &[serde_json::json!({
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": arguments },
+        })],
+    );
+    let result = &replies[0]["result"];
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("the result's text");
+    (
+        serde_json::from_str(text).expect("the result's JSON"),
+        result["isError"] == true,
+    )
+}
+
+#[test]
+fn the_mcp_tools_listed() {
+    // The agent program's plugin spec's "The tools listed" (section 9;
+    // design 12): status, message, launch, wake, hibernate and resume,
+    // each with its input schema, status alone read-only (212, 213).
+    let replies = mcp(
+        &World::new(),
+        &[],
+        &[serde_json::json!({"method": "tools/list"})],
+    );
+    let tools = replies[0]["result"]["tools"].as_array().expect("the tools");
+    let names: Vec<&str> = tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["status", "message", "launch", "wake", "hibernate", "resume"]
+    );
+    for tool in tools {
+        assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
+        assert_eq!(
+            tool["annotations"]["readOnlyHint"],
+            tool["name"] == "status",
+            "{tool}"
+        );
+    }
+    let required = |name: &str| {
+        tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .map(|tool| tool["inputSchema"]["required"].clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(required("message"), serde_json::json!(["target", "words"]));
+    assert_eq!(required("launch"), serde_json::json!(["kind", "name"]));
+    assert_eq!(required("wake"), serde_json::json!(["address"]));
+    assert_eq!(required("hibernate"), serde_json::json!(["place"]));
+    assert_eq!(required("resume"), serde_json::json!(["place"]));
+}
+
+#[test]
+fn an_act_over_mcp_answers_as_the_command_line_answers() {
+    // The agent program's plugin spec's "A hibernate refused as the
+    // command line refuses it", "A resume of nothing hibernating" and
+    // "message over MCP" (53, 60, 212, 213, 214, C.2): each tool's result
+    // is the JSON the command line gives for the same words, a refusal
+    // marked an error, and a refused resume starts nothing.
+    let world = World::new();
+    launched(&world.engine.launch(&launch("fix", "one", Some("x")))).expect("the fix");
+    let id = World::id("fix", "one");
+    world.settle(&id);
+    let starts = |world: &World| world.held(&id).expect("the fix").stages[0].starts;
+    let before = starts(&world);
+    for (tool, arguments, words) in [
+        (
+            "hibernate",
+            serde_json::json!({"place": id.0, "force": true}),
+            vec!["hibernate", "--force", "--json", "--", &id.0],
+        ),
+        (
+            "resume",
+            serde_json::json!({"place": id.0}),
+            vec!["resume", "--json", "--", &id.0],
+        ),
+    ] {
+        let (answer, error) = over_mcp(&world, tool, arguments);
+        assert!(error, "{tool}: {answer}");
+        let (text, code) = run(&world, &words);
+        assert_eq!(code, 1, "{text}");
+        let by_hand: Value = serde_json::from_str(text.trim()).expect("the JSON");
+        assert_eq!(answer, by_hand, "{tool}");
+        let reason = answer["refused"]["refusal"]["reason"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(reason.contains(&id.0), "{tool}: {reason}");
+    }
+    assert_eq!(starts(&world), before, "a refused act started a stage");
+
+    configure_at(
+        &world,
+        PLANNER,
+        "Read what is pending for you.",
+        planner_run(None, None),
+    );
+    let (answer, error) = over_mcp(
+        &world,
+        "message",
+        serde_json::json!({"target": PLANNER, "words": "--look at the nightly job"}),
+    );
+    assert!(!error, "{answer}");
+    let (text, code) = run(
+        &world,
+        &["message", PLANNER, "and the weekly one", "--json"],
+    );
+    assert_eq!(code, 0, "{text}");
+    let by_hand: Value = serde_json::from_str(text.trim()).expect("the JSON");
+    for answer in [&answer, &by_hand] {
+        let messaged = &answer["messaged"];
+        assert_eq!(messaged["address"], PLANNER, "{answer}");
+        assert!(
+            messaged["key"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("message/east/planner/")),
+            "{answer}"
+        );
+    }
+    assert_eq!(
+        answer
+            .as_object()
+            .map(|answer| answer.keys().collect::<Vec<_>>()),
+        by_hand
+            .as_object()
+            .map(|answer| answer.keys().collect::<Vec<_>>()),
+    );
+}
