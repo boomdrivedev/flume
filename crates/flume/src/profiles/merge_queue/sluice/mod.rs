@@ -185,11 +185,72 @@ fn a_session(name: &str) -> bool {
         || name == "TMUX_PANE"
 }
 
+/// One call of sluice's: the program, the folder it runs in, its
+/// arguments, and each variable set over the command's own environment,
+/// or left out where none.
+#[derive(Clone, Copy, Debug)]
+pub struct SluiceCall<'a> {
+    pub program: &'a Path,
+    pub dir: &'a Path,
+    pub args: &'a [&'a str],
+    pub env: &'a [(String, Option<String>)],
+}
+
+/// How the profile runs a call of sluice's: as a process of its program
+/// for flume's binary ([`Process`]), or as a test's recorded answers; its
+/// exit code, none where a signal ended it, its output and its errors, or
+/// why it could not run.
+pub trait SluiceRuns: Send + Sync + std::fmt::Debug {
+    fn run(&self, call: &SluiceCall<'_>) -> Result<(Option<i32>, String, String), String>;
+}
+
+/// sluice run as a process of its program in the call's folder, asking
+/// for no credential, with the call's variables over the command's own
+/// environment and no terminal session's (C.6).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Process;
+
+impl SluiceRuns for Process {
+    fn run(&self, call: &SluiceCall<'_>) -> Result<(Option<i32>, String, String), String> {
+        let mut command = Command::new(call.program);
+        command
+            .args(call.args)
+            .current_dir(call.dir)
+            .stdin(Stdio::null())
+            .env("GIT_TERMINAL_PROMPT", "0");
+        for (name, value) in call.env {
+            match value {
+                Some(value) => command.env(name, value),
+                None => command.env_remove(name),
+            };
+        }
+        for (name, _) in std::env::vars_os() {
+            if a_session(&name.to_string_lossy()) {
+                command.env_remove(&name);
+            }
+        }
+        for (name, _) in call.env {
+            if a_session(name) {
+                command.env_remove(name);
+            }
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("sluice could not be run: {error}"))?;
+        Ok((
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ))
+    }
+}
+
 /// The merge queue through sluice.
 #[derive(Clone, Debug)]
 pub struct Sluice {
     program: PathBuf,
     env: Vec<(String, Option<String>)>,
+    runs: std::sync::Arc<dyn SluiceRuns>,
 }
 
 impl Default for Sluice {
@@ -204,7 +265,15 @@ impl Sluice {
         Sluice {
             program: "sluice".into(),
             env: vec![],
+            runs: std::sync::Arc::new(Process),
         }
+    }
+
+    /// Its calls of sluice run by `runs`, in place of a process of its
+    /// program.
+    pub fn with_runs(mut self, runs: std::sync::Arc<dyn SluiceRuns>) -> Sluice {
+        self.runs = runs;
+        self
     }
 
     /// sluice run with `name` set to `value`, or left out where none,
@@ -225,36 +294,12 @@ impl Sluice {
     /// signal ended it, its output and its errors, or why it could not
     /// run.
     fn exited(&self, dir: &Path, args: &[&str]) -> Result<(Option<i32>, String, String), String> {
-        let mut command = Command::new(&self.program);
-        command
-            .args(args)
-            .current_dir(dir)
-            .stdin(Stdio::null())
-            .env("GIT_TERMINAL_PROMPT", "0");
-        for (name, value) in &self.env {
-            match value {
-                Some(value) => command.env(name, value),
-                None => command.env_remove(name),
-            };
-        }
-        for (name, _) in std::env::vars_os() {
-            if a_session(&name.to_string_lossy()) {
-                command.env_remove(&name);
-            }
-        }
-        for (name, _) in &self.env {
-            if a_session(name) {
-                command.env_remove(name);
-            }
-        }
-        let output = command
-            .output()
-            .map_err(|error| format!("sluice could not be run: {error}"))?;
-        Ok((
-            output.status.code(),
-            String::from_utf8_lossy(&output.stdout).into_owned(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ))
+        self.runs.run(&SluiceCall {
+            program: &self.program,
+            dir,
+            args,
+            env: &self.env,
+        })
     }
 
     /// Whether the sluice run in `dir` merges work by itself: where
@@ -1201,36 +1246,45 @@ mod tests {
             );
         }
     }
-    use std::os::unix::fs::PermissionsExt;
+
+    /// sluice's recorded answers: `--version` with the line `says`,
+    /// nothing where it is empty, exiting `code`; a submit with the entry
+    /// 7; anything else refused, exiting 1; each call but `--version`
+    /// logged as its words.
+    #[derive(Debug, Default)]
+    struct Answers {
+        says: String,
+        code: i32,
+        ran: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl SluiceRuns for Answers {
+        fn run(&self, call: &SluiceCall<'_>) -> Result<(Option<i32>, String, String), String> {
+            if call.args.first() == Some(&"--version") {
+                let line = match self.says.is_empty() {
+                    true => String::new(),
+                    false => format!("{}\n", self.says),
+                };
+                return Ok((Some(self.code), line, String::new()));
+            }
+            self.ran.lock().expect("the log").push(call.args.join(" "));
+            if call.args.first() == Some(&"submit") {
+                return Ok((
+                    Some(0),
+                    "{\"id\":7,\"branch\":\"main\",\"ahead\":[]}\n".into(),
+                    String::new(),
+                ));
+            }
+            Ok((Some(1), String::new(), String::new()))
+        }
+    }
 
     #[test]
     fn a_step_runs_no_sluice_and_says_the_queue_moves_on_its_own() {
-        // 125, C.6: step is nothing; a stand-in `sluice` first on the
-        // seam's PATH leaves a mark whenever it runs, and none is left.
-        let scratch = std::env::temp_dir().join(format!("fsl-step-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&scratch);
-        let bin = scratch.join("bin");
-        std::fs::create_dir_all(&bin).expect("a scratch folder");
-        let ran = scratch.join("ran");
-        let program = bin.join("sluice");
-        std::fs::write(
-            &program,
-            format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 1\n", ran.display()),
-        )
-        .expect("the stand-in sluice");
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
-            .expect("executable");
-        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
-            &std::env::var_os("PATH").unwrap_or_default(),
-        )))
-        .expect("a PATH");
-        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
-        assert_eq!(
-            seam.step(&scratch.to_string_lossy(), "main"),
-            Stepped::MovesOnItsOwn
-        );
-        assert!(!ran.exists(), "a sluice command was run");
-        let _ = std::fs::remove_dir_all(scratch);
+        // 125, C.6: step is nothing, and no call of sluice's is made.
+        let (seam, ran) = stand_in("sluice 0.112.0", 0);
+        assert_eq!(seam.step("/r", "main"), Stepped::MovesOnItsOwn);
+        assert!(ran_lines(&ran).is_empty(), "a sluice command was run");
     }
 
     /// A scratch folder of the test's own, named for it and the process.
@@ -1238,37 +1292,16 @@ mod tests {
         std::env::temp_dir().join(format!("fsl-{test}-{}", std::process::id()))
     }
 
-    /// A stand-in `sluice` made afresh in `scratch` and put first on the
-    /// seam's `PATH`: it answers `--version` with the line `says`, nothing
-    /// where it is empty, exiting `code`, and appends any other command to
-    /// the `ran` file beside it, answering a submit with the entry 7. The
-    /// seam over it and the `ran` file.
-    fn stand_in(scratch: &Path, says: &str, code: i32) -> (Sluice, PathBuf) {
-        let _ = std::fs::remove_dir_all(scratch);
-        let bin = scratch.join("bin");
-        std::fs::create_dir_all(&bin).expect("a scratch folder");
-        let ran = scratch.join("ran");
-        let version = match says.is_empty() {
-            true => String::new(),
-            false => format!("echo '{says}'\n"),
-        };
-        let program = bin.join("sluice");
-        std::fs::write(
-            &program,
-            format!(
-                "#!/bin/sh\nif [ \"$1\" = --version ]; then\n{version}exit {code}\nfi\necho \"$*\" >> '{}'\nif [ \"$1\" = submit ]; then\necho '{{\"id\":7,\"branch\":\"main\",\"ahead\":[]}}'\nexit 0\nfi\nexit 1\n",
-                ran.display()
-            ),
-        )
-        .expect("the stand-in sluice");
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
-            .expect("executable");
-        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
-            &std::env::var_os("PATH").unwrap_or_default(),
-        )))
-        .expect("a PATH");
-        let seam = Sluice::new().with_env("PATH", Some(&path.to_string_lossy()));
-        (seam, ran)
+    /// The seam over sluice's recorded answers, answering `--version`
+    /// with the line `says` exiting `code`, and those answers.
+    fn stand_in(says: &str, code: i32) -> (Sluice, std::sync::Arc<Answers>) {
+        let answers = std::sync::Arc::new(Answers {
+            says: says.into(),
+            code,
+            ..Answers::default()
+        });
+        let seam = Sluice::new().with_runs(answers.clone());
+        (seam, answers)
     }
 
     /// The place `fix/one` onto main, its repository and its worktree
@@ -1283,13 +1316,9 @@ mod tests {
         }
     }
 
-    /// The commands the stand-in was asked but `--version`, in order.
-    fn ran_lines(ran: &Path) -> Vec<String> {
-        std::fs::read_to_string(ran)
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_string)
-            .collect()
+    /// The commands sluice was asked but `--version`, in order.
+    fn ran_lines(ran: &Answers) -> Vec<String> {
+        ran.ran.lock().expect("the log").clone()
     }
 
     /// A place's head from its worktree.
@@ -1305,7 +1334,7 @@ mod tests {
         // process to move its queues, so neither a place's submit nor a
         // base place's by name is handed to it.
         let scratch = scratch("too-old");
-        let (seam, ran) = stand_in(&scratch, "sluice 0.95.1", 0);
+        let (seam, ran) = stand_in("sluice 0.95.1", 0);
         let place = a_place(&scratch);
         let by_name = SubmitHead::Branch {
             branch: "train/a".into(),
@@ -1341,7 +1370,7 @@ mod tests {
         ];
         for (n, (line, code, named)) in says.into_iter().enumerate() {
             let at = scratch.join(n.to_string());
-            let (seam, ran) = stand_in(&at, line, code);
+            let (seam, ran) = stand_in(line, code);
             let Submitted::Refused { reason } = seam.submit(&a_place(&at), &from_its_worktree())
             else {
                 panic!("{line:?} exiting {code} was handed the work");
@@ -1369,7 +1398,7 @@ mod tests {
             .enumerate()
         {
             let at = scratch.join(n.to_string());
-            let (seam, ran) = stand_in(&at, line, 0);
+            let (seam, ran) = stand_in(line, 0);
             let Submitted::Submitted { submission } =
                 seam.submit(&a_place(&at), &from_its_worktree())
             else {
