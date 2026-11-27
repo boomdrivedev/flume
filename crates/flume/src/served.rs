@@ -15,7 +15,9 @@
 //! host closes the connection; or `{"ask":"subscribe"}`, answered by a
 //! `document` line at once and another each time the answer differs from
 //! the last one sent, until the client closes it. Each ask may name a
-//! `place`, by its location, and ask each place's `line`. A line flume
+//! `place`, by its location, and ask each place's `line`; and, asking no
+//! line, may name `repositories` by their folders, each read beside the
+//! places under the answer's `repositories`. A line flume
 //! host cannot read gets `{"error": <words>}`, and the connection closes.
 
 use crate::resident::{Say, GATHER};
@@ -57,13 +59,16 @@ pub enum Ask {
 }
 
 /// What status a client asks: one place's by its location, or every
-/// place's, each place's line alone where `line`.
+/// place's, each place's line alone where `line`; and each repository it
+/// names by its folder, read beside the places, which a line asks none of.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Asked {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub line: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repositories: Vec<String>,
 }
 
 /// The socket flume host answers on for the process whose environment
@@ -218,9 +223,15 @@ impl Reads for CoreReads {
 /// `asked`'s status from the core `build` gives, as its JSON.
 pub fn read_core(build: &dyn Fn() -> Result<Engine, String>, asked: &Asked) -> String {
     let place = asked.place.as_deref().map(PlaceId::new);
+    if asked.line && !asked.repositories.is_empty() {
+        return Answer::refused(
+            "a status of lines names no repository: ask the repositories without line",
+        )
+        .to_json();
+    }
     match build() {
         Ok(core) if asked.line => core.lines(place.as_ref()),
-        Ok(core) => core.status(place.as_ref()),
+        Ok(core) => core.status_of(place.as_ref(), &asked.repositories),
         Err(words) => Answer::refused(words),
     }
     .to_json()
@@ -533,8 +544,40 @@ mod tests {
             ask,
             Ask::Subscribe(Asked {
                 place: Some("/p".into()),
-                line: true
+                line: true,
+                ..Asked::default()
             })
+        );
+        let ask: Ask =
+            serde_json::from_str(r#"{"ask":"subscribe","repositories":["/r","/s"]}"#).unwrap();
+        assert_eq!(
+            ask,
+            Ask::Subscribe(Asked {
+                repositories: vec!["/r".into(), "/s".into()],
+                ..Asked::default()
+            })
+        );
+    }
+
+    #[test]
+    fn a_line_names_no_repository() {
+        let asked = Asked {
+            line: true,
+            repositories: vec!["/r".into()],
+            ..Asked::default()
+        };
+        let built = std::sync::atomic::AtomicBool::new(false);
+        let answer = read_core(
+            &|| {
+                built.store(true, std::sync::atomic::Ordering::SeqCst);
+                Err("no core".into())
+            },
+            &asked,
+        );
+        assert!(answer.contains("names no repository"), "{answer}");
+        assert!(
+            !built.load(std::sync::atomic::Ordering::SeqCst),
+            "no core is built"
         );
     }
 
@@ -554,8 +597,8 @@ mod tests {
         assert_eq!(
             served.held.reads.lock().unwrap().clone(),
             vec![Asked {
-                place: None,
-                line: true
+                line: true,
+                ..Asked::default()
             }]
         );
         served.stop.cancel();

@@ -79,7 +79,11 @@ impl Engine {
     /// source's package is read before its locks are checked, so a package
     /// weir refuses is named with its field whether or not a lock records
     /// it, and the hash checked is the one just read (156, 157).
-    fn resolve_kind(&self, launch: &Launch, revision: &Revision) -> Result<Resolved, String> {
+    pub(crate) fn resolve_kind(
+        &self,
+        launch: &Launch,
+        revision: &Revision,
+    ) -> Result<Resolved, String> {
         let kinds = self.resolver.kinds();
         let named = kinds.read_named(&launch.kind).map_err(|reason| {
             format!(
@@ -1229,8 +1233,8 @@ fn launch_holds(launch: &Launch, now: Seconds) -> Vec<Hold> {
 /// A launch's kind resolved: the kind, the declaration it came from, the
 /// settings the repository gives a kind of its name it does not declare,
 /// and where it came from (19, 21, 32).
-struct Resolved {
-    kind: Kind,
+pub(crate) struct Resolved {
+    pub(crate) kind: Kind,
     declared: Declared,
     settings: KindSettings,
     every_kind: Settings,

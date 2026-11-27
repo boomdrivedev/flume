@@ -5,17 +5,17 @@
 
 use flume_core::{
     group_name, percentage, AgentStatus, Answer, ChartStatus, Found, HostStatus, OwnStatus,
-    PlaceStatus, PoolStatus, Queued, ReadingStatus, RelayEnded, Reserves, SessionAnswer,
-    SessionWait, SourceStatus, StageStatus, StandingFound, StandingStatus, StreamOpened,
-    StreamStatus, Tidied, TitleFrom, WaitingPlace, WindowOutcome, Woke,
+    PlaceStatus, PoolStatus, Queued, ReadingStatus, RelayEnded, RepositoryStatus, Reserves,
+    SessionAnswer, SessionWait, SourceStatus, StageStatus, StandingFound, StandingStatus,
+    StreamOpened, StreamStatus, Tidied, TitleFrom, WaitingPlace, WindowOutcome, Woke,
 };
 use flume_seams::{
-    AccountFrom, Act, AnswerHeld, BaseFrom, CarryCause, ClosedBy, ConfigLayer, ConfigValue,
-    Conversation, EndOf, FixEnded, Forecast, Given, Hold, HoldOn, HostConfiguration, IntentKey,
-    Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made, NamedBy, NamedSession, Phase,
-    PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds, SessionFrom, SessionHeld, StopKind,
-    StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart, UnsettledStart, WaitingOn, Waits,
-    Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
+    AccountFrom, Act, AnswerHeld, BaseFrom, BindingHeld, CarryCause, ClosedBy, ConfigLayer,
+    ConfigValue, Conversation, EndOf, FixEnded, Forecast, Given, HeldFrom, Hold, HoldOn,
+    HostConfiguration, IntentKey, Kept, KindFrom, LabelHeld, LiveProcess, LocalLayer, Made,
+    NamedBy, NamedSession, Phase, PlaceRead, ProfileHeld, Readiness, RecipientsFrom, Seconds,
+    SessionFrom, SessionHeld, StopKind, StreamAnswerer, StreamHeld, SubmissionRead, UncarriedStart,
+    UnsettledStart, WaitingOn, Waits, Watch, LAUNCH_SOURCE, OWN_SOURCE, REPO_SOURCE,
 };
 use serde_json::{json, Value};
 
@@ -23,7 +23,11 @@ use serde_json::{json, Value};
 pub fn person(answer: &Answer) -> String {
     let mut lines = vec![];
     match answer {
-        Answer::Status { places, host } => {
+        Answer::Status {
+            places,
+            host,
+            repositories,
+        } => {
             if places.is_empty() {
                 lines.push("no place stands on this host".to_string());
             }
@@ -31,6 +35,9 @@ pub fn person(answer: &Answer) -> String {
                 lines.extend(place_lines(place));
             }
             lines.extend(host_lines(host));
+            for repository in repositories {
+                lines.extend(repository_lines(repository));
+            }
         }
         Answer::Launched { place } => {
             lines.push(format!("launched {}", place.place));
@@ -1774,6 +1781,59 @@ fn answered_words(answer: &AnswerHeld) -> String {
 
 /// The host's facts, what its terminal's configuration lacks for flume's
 /// plugin under the line naming the watch (72, 122).
+/// A repository's binding, its merge queue and each kind flume would run
+/// there, as status reads them (20, 105).
+fn repository_lines(status: &RepositoryStatus) -> Vec<String> {
+    let mut lines = vec![format!("repository {}", status.repository)];
+    match &status.binding {
+        BindingHeld::Read {
+            branch,
+            revision,
+            from,
+            declaration,
+            binding,
+        } => {
+            let from = match from {
+                HeldFrom::Origin => "origin as last fetched",
+                HeldFrom::Local => "its own branch",
+            };
+            let declaration = declaration.as_deref().unwrap_or("no declaration");
+            lines.push(format!(
+                "  binding: read at {branch} ({revision}, {from}) from {declaration}"
+            ));
+            let named = |seam: &str, profile: &Option<String>| match profile {
+                Some(profile) => format!("    {seam}: {profile}"),
+                None => format!("    {seam}: none"),
+            };
+            lines.push(named("place", &binding.place));
+            lines.push(named("change", &binding.change));
+            lines.push(named("merge_queue", &binding.merge_queue));
+        }
+        BindingHeld::CouldNotRead { reason } => {
+            lines.push(format!("  binding: could not be read: {reason}"));
+        }
+    }
+    let queue = &status.merge_queue;
+    lines.push(match (&queue.profile, queue.ready, &queue.words) {
+        (Some(profile), true, _) => format!("  merge queue: {profile}, ready"),
+        (_, _, Some(words)) => format!("  merge queue: not ready: {words}"),
+        (_, _, None) => "  merge queue: not ready".to_string(),
+    });
+    lines.push("  kinds:".to_string());
+    for kind in &status.kinds {
+        let lands = match kind.lands {
+            Some(true) => "lands",
+            Some(false) => "does not land",
+            None => "unread",
+        };
+        lines.push(match &kind.refused {
+            Some(words) => format!("    {} {lands}; refused: {words}", kind.kind),
+            None => format!("    {} {lands}", kind.kind),
+        });
+    }
+    lines
+}
+
 fn host_lines(host: &HostStatus) -> Vec<String> {
     let mut lines = vec![match (host.bound, host.room) {
         (Some(bound), Some(room)) => format!(
@@ -2212,6 +2272,7 @@ mod tests {
         Listed, ModeStatus, MoveStatus, OwnFileStatus, OwnStatus, Past, PendingEnd, PlaceLine,
         RegionStatus, RoomWanted, StreamListed, StreamStatus, TitleFrom, TitleHeld, WindowStatus,
     };
+    use flume_core::{KindLands, MergeQueueBound};
     use flume_seams::{
         AccountFrom, AccountHeld, AccountMove, AgentState, AnswerGiven, AnswerHeld, BaseFix,
         DecisionHeld, Declared, EndHeld, EndOf, FixCause, FixKind, FixOf, ForecastHeld, Given,
@@ -2219,6 +2280,7 @@ mod tests {
         Reading, ReadyStep, Reserved, SessionClosed, SessionRuns, StageEnd, StageState,
         StopShortWaited, Strategy, StreamFrom, StreamHeld, Unsettled, View, ViewHeld,
     };
+    use flume_seams::{Binding, Revision};
     use std::collections::BTreeMap;
 
     #[test]
@@ -4159,10 +4221,56 @@ mod tests {
         let status = Answer::Status {
             places: vec![],
             host: HostStatus::default(),
+            repositories: vec![],
         };
         assert_eq!(
             person(&status),
             "no place stands on this host\nhost: 0 agents running, no bound\n  no caller keeps watch: the places where something is pending settle at each command of flume's that acts"
+        );
+    }
+
+    #[test]
+    fn a_repositorys_binding_its_merge_queue_and_its_kinds() {
+        let lines = repository_lines(&RepositoryStatus {
+            repository: "/r".into(),
+            binding: BindingHeld::Read {
+                branch: "main".into(),
+                revision: Revision::new("abc123"),
+                from: HeldFrom::Origin,
+                declaration: None,
+                binding: Binding::default(),
+            },
+            merge_queue: MergeQueueBound {
+                profile: None,
+                ready: false,
+                words: Some("main (abc123) holds no .config/flume.toml".into()),
+            },
+            kinds: vec![
+                KindLands {
+                    kind: "flume/fix@1".into(),
+                    lands: Some(true),
+                    refused: Some("the kind flume/fix@1 lands".into()),
+                },
+                KindLands {
+                    kind: "repo/spike@1".into(),
+                    lands: Some(false),
+                    refused: None,
+                },
+            ],
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "repository /r",
+                "  binding: read at main (abc123, origin as last fetched) from no declaration",
+                "    place: none",
+                "    change: none",
+                "    merge_queue: none",
+                "  merge queue: not ready: main (abc123) holds no .config/flume.toml",
+                "  kinds:",
+                "    flume/fix@1 lands; refused: the kind flume/fix@1 lands",
+                "    repo/spike@1 does not land",
+            ]
         );
     }
 

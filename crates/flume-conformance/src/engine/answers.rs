@@ -96,6 +96,34 @@ pub fn missing(answer: &str, json: &Value) -> Vec<String> {
         .collect()
 }
 
+/// A repository a status names, every field present (20, 105).
+fn repository_status() -> RepositoryStatus {
+    RepositoryStatus {
+        repository: "/r".into(),
+        binding: BindingHeld::Read {
+            branch: "main".into(),
+            revision: Revision::new("abc123"),
+            from: HeldFrom::Origin,
+            declaration: Some(".config/flume.toml".into()),
+            binding: Binding {
+                place: Some("git-worktree".into()),
+                change: Some("openspec".into()),
+                merge_queue: Some("queue".into()),
+            },
+        },
+        merge_queue: MergeQueueBound {
+            profile: Some("queue".into()),
+            ready: false,
+            words: Some("queue does not land main: no policy".into()),
+        },
+        kinds: vec![KindLands {
+            kind: "flume/fix@1".into(),
+            lands: Some(true),
+            refused: Some("the kind flume/fix@1 lands, and no merge queue lands it".into()),
+        }],
+    }
+}
+
 /// An answer handed to a session, taken by a retry (42, 54).
 fn answered() -> AnswerHeld {
     AnswerHeld {
@@ -1033,6 +1061,7 @@ pub fn full() -> Vec<(&'static str, Answer)> {
             Answer::Status {
                 places: vec![place_status()],
                 host: host_status(),
+                repositories: vec![repository_status()],
             },
         ),
         (
@@ -1956,6 +1985,26 @@ pub const FIELDS: &[(&str, &[&str])] = &[
             "status.places[].fix_of.place",
             "status.places[].waits_on",
             "status.places[].worktree",
+            "status.repositories",
+            "status.repositories[].repository",
+            "status.repositories[].binding",
+            "status.repositories[].binding.read",
+            "status.repositories[].binding.read.branch",
+            "status.repositories[].binding.read.revision",
+            "status.repositories[].binding.read.from",
+            "status.repositories[].binding.read.declaration",
+            "status.repositories[].binding.read.binding",
+            "status.repositories[].binding.read.binding.place",
+            "status.repositories[].binding.read.binding.change",
+            "status.repositories[].binding.read.binding.merge_queue",
+            "status.repositories[].merge_queue",
+            "status.repositories[].merge_queue.profile",
+            "status.repositories[].merge_queue.ready",
+            "status.repositories[].merge_queue.words",
+            "status.repositories[].kinds",
+            "status.repositories[].kinds[].kind",
+            "status.repositories[].kinds[].lands",
+            "status.repositories[].kinds[].refused",
         ],
     ),
     (

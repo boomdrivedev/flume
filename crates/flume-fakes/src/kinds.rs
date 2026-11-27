@@ -1,7 +1,8 @@
 use crate::{lock, Log};
 use flume_seams::{
-    Binding, BindingRead, Charts, Kind, KindIdentity, KindNamed, KindSettings, KindStatechart,
-    Kinds, KindsRead, LockEntry, LockRead, PackageRead, Packaged, Revision, Settings, SourceRead,
+    Binding, BindingHeld, BindingRead, Charts, HeldFrom, Kind, KindIdentity, KindNamed,
+    KindSettings, KindStatechart, Kinds, KindsRead, LockEntry, LockRead, PackageRead, Packaged,
+    Revision, Settings, SourceRead,
 };
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -43,6 +44,9 @@ struct KindsState {
     every_kind: BTreeMap<(String, Option<Revision>), Settings>,
     own: Vec<Packaged>,
     bindings: BTreeMap<String, BindingRead>,
+    /// Each repository's binding as it holds its default branch, where a
+    /// test sets one apart from its binding (20, 105).
+    held_bindings: BTreeMap<String, BindingHeld>,
     /// The texts read-named refuses, with why.
     unnamed: BTreeMap<String, String>,
     /// Each source's directory, by its path.
@@ -193,6 +197,16 @@ impl FakeKinds {
         lock(&self.state)
             .bindings
             .insert(repository.into(), BindingRead::Read { binding });
+    }
+
+    /// `repository`'s binding as it holds its default branch: read at
+    /// `revision` of `branch`, with or without a declaration; or, with
+    /// none set, its binding as set, read at `main`'s `held` revision
+    /// locally with a declaration where it names any seam (20, 105).
+    pub fn set_binding_held(&self, repository: &str, held: BindingHeld) {
+        lock(&self.state)
+            .held_bindings
+            .insert(repository.into(), held);
     }
 
     pub fn unreadable_binding(&self, repository: &str, reason: &str) {
@@ -372,6 +386,33 @@ impl Kinds for FakeKinds {
             .unwrap_or(BindingRead::Read {
                 binding: Binding::default(),
             })
+    }
+
+    fn read_binding_held(&self, repository: &str) -> BindingHeld {
+        self.log.push(format!("read_binding_held {repository}"));
+        let state = lock(&self.state);
+        if let Some(held) = state.held_bindings.get(repository) {
+            return held.clone();
+        }
+        match state.bindings.get(repository) {
+            Some(BindingRead::CouldNotRead { reason }) => BindingHeld::CouldNotRead {
+                reason: reason.clone(),
+            },
+            read => {
+                let binding = match read {
+                    Some(BindingRead::Read { binding }) => binding.clone(),
+                    _ => Binding::default(),
+                };
+                let declared = binding != Binding::default();
+                BindingHeld::Read {
+                    branch: "main".into(),
+                    revision: Revision::new("held"),
+                    from: HeldFrom::Local,
+                    declaration: declared.then(|| DECLARATION.into()),
+                    binding,
+                }
+            }
+        }
     }
 
     /// The held text and the template's, each read through weir-kinds to

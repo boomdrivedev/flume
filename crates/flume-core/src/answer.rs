@@ -15,6 +15,11 @@ pub enum Answer {
         places: Vec<PlaceStatus>,
         #[serde(default)]
         host: HostStatus,
+        /// Each repository the caller named, its binding, its merge
+        /// queue and the kinds flume would run there; none where it named
+        /// none (20, 105).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        repositories: Vec<crate::RepositoryStatus>,
     },
     /// A launch's place, once its first stage is started, on hold or
     /// waiting (2, 6).

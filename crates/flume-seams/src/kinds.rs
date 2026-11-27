@@ -785,6 +785,40 @@ pub enum BindingRead {
     CouldNotRead { reason: String },
 }
 
+/// Where a binding held by the repository was read: its default branch
+/// as its remote `origin` was last fetched, or its own branch where it has
+/// no `origin` or holds no copy of origin's (20, 105).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HeldFrom {
+    /// `origin/<branch>` as the last fetch left it.
+    Origin,
+    /// The repository's own branch.
+    Local,
+}
+
+/// read-binding-held: the repository's binding as it holds its default
+/// branch, read with no fetch, so a read changes nothing: the branch and
+/// its revision, where it was read, the declaration's path where that
+/// revision holds one, and the binding it names; or why it could not be
+/// read (20, 105; core.3, core.15).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BindingHeld {
+    Read {
+        branch: String,
+        revision: crate::Revision,
+        from: HeldFrom,
+        /// The declaration's path within the tree, none where the
+        /// revision holds no declaration.
+        declaration: Option<String>,
+        binding: Binding,
+    },
+    CouldNotRead {
+        reason: String,
+    },
+}
+
 /// The kinds seam (B.2). The same revision always gives the same kinds,
 /// reading changes nothing, and a launch's declaration is read the same
 /// way (85); the same input gives the same name, source, package and
@@ -807,6 +841,14 @@ pub trait Kinds: Send + Sync {
     /// The repository's binding, read at its default branch's current
     /// revision (20, 105).
     fn read_binding(&self, repository: &str) -> BindingRead;
+
+    /// The repository's binding as it holds its default branch, fetching
+    /// nothing (20, 105; core.15). A profile that reads none refuses.
+    fn read_binding_held(&self, _repository: &str) -> BindingHeld {
+        BindingHeld::CouldNotRead {
+            reason: "its kinds profile reads no binding the repository holds".into(),
+        }
+    }
 
     /// A held statechart kind's text and the stage template's text read back into the engine's statechart and templates, the same texts
     /// always giving the same statechart; refused naming why where either

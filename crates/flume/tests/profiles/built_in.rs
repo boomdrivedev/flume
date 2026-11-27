@@ -73,7 +73,7 @@ fn the_engine_is_built_over_a_scratch_state_and_configuration() {
         core.defaults().settings.program.as_deref(),
         Some(DEFAULT_PROGRAM)
     );
-    let Answer::Status { places, host } = core.status(None) else {
+    let Answer::Status { places, host, .. } = core.status(None) else {
         panic!("status answered otherwise");
     };
     assert!(places.is_empty());
@@ -511,4 +511,83 @@ fn flumes_own_kinds_declare_no_label() {
         read += 1;
     }
     assert_eq!(read, own.len(), "a declaration for each kind built in");
+}
+
+/// The report the walk of 2026-11-26 lacked: a repository with no
+/// declaration, then one naming sluice with no policy, then one whose
+/// policy lands its default branch, each read with no launch and every
+/// one of flume's own kinds landing (20, 105, 126).
+#[test]
+fn a_repositorys_binding_names_what_is_missing_until_its_merge_queue_lands_it() {
+    let repository = Repository::new("bound");
+    repository.write("README", "x\n");
+    repository.commit("no declaration");
+    let scratch = &repository.scratch;
+    let config = scratch.path("config.toml");
+    std::fs::write(&config, "").expect("the host's configuration");
+    let config = HostConfig::read(&config).expect("the configuration read");
+    let core =
+        core_over(&scratch.path("state"), config, None, built_in(scratch)).expect("the core");
+    let read = |words: &str| {
+        let status = core.repository(&repository.name());
+        assert!(!status.kinds.is_empty(), "flume's own kinds");
+        for kind in &status.kinds {
+            assert_eq!(kind.lands, Some(true), "{} lands", kind.kind);
+        }
+        if words.is_empty() {
+            assert!(status.merge_queue.ready, "{:?}", status.merge_queue);
+            assert!(status.kinds.iter().all(|kind| kind.refused.is_none()));
+        } else {
+            let said = status.merge_queue.words.clone().unwrap_or_default();
+            assert!(!status.merge_queue.ready);
+            assert!(said.contains(words), "{said}");
+            assert!(status.kinds.iter().all(|kind| kind
+                .refused
+                .as_deref()
+                .is_some_and(|refused| refused.contains(words))));
+        }
+        status
+    };
+    let status = read("holds no .config/flume.toml");
+    assert_eq!(status.merge_queue.profile, None);
+
+    repository.write(
+        ".config/flume.toml",
+        "[profiles]\nmerge_queue = \"sluice\"\n",
+    );
+    repository.commit("sluice bound");
+    let status = read("no .config/sluice.toml at main");
+    assert_eq!(status.merge_queue.profile.as_deref(), Some("sluice"));
+
+    repository.write(".config/sluice.toml", "[branches.bolt]\n");
+    repository.commit("a policy for another branch");
+    read(".config/sluice.toml names no table for main");
+
+    repository.write(".config/sluice.toml", "[branches.main]\n");
+    repository.commit("a policy for main");
+    let status = core.repository(&repository.name());
+    assert!(status.merge_queue.ready, "{:?}", status.merge_queue);
+    let change = status
+        .kinds
+        .iter()
+        .find(|kind| kind.kind.starts_with("flume/change@"))
+        .expect("flume's change");
+    assert!(
+        change
+            .refused
+            .as_deref()
+            .is_some_and(|words| words.contains("binds no change profile")),
+        "{change:?}"
+    );
+
+    repository.write(
+        ".config/flume.toml",
+        "[profiles]\nmerge_queue = \"sluice\"\nchange = \"openspec\"\n",
+    );
+    repository.commit("openspec bound");
+    let status = read("");
+    let json = serde_json::to_value(&status).expect("its JSON");
+    assert_eq!(json["merge_queue"]["profile"], "sluice");
+    assert_eq!(json["binding"]["read"]["from"], "local");
+    assert_eq!(json["binding"]["read"]["declaration"], ".config/flume.toml");
 }

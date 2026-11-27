@@ -1,7 +1,7 @@
 {
   "name": "flume",
   "version": "0.0.0",
-  "description": "flume's hooks for the agents it starts, /launch to start a place from a session, and flume's status over MCP.",
+  "description": "flume's hooks for the agents it starts, /launch to start a place from a session, the setting-up-flume skill to bind a repository's profiles, and flume's status over MCP.",
   "author": { "name": "agentplot" },
   "repository": "https://github.com/boomdrivedev/flume",
   "license": "MIT",

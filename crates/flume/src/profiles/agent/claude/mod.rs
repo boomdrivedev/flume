@@ -145,8 +145,9 @@ pub const DELIVER: Offered = Offered::Offered;
 /// the plugin: its manifests, its hooks, its one hooks module, which pins
 /// the place's line under the prompt and holds the deliver part (design 4;
 /// 215), and the one it registers, which passes the account's usage
-/// windows to `flume hook usage` (211), and the /launch command.
-pub const PLUGIN: [(&str, &str); 6] = [
+/// windows to `flume hook usage` (211), the /launch command, and the
+/// setting-up-flume skill, which binds a repository's profiles (105).
+pub const PLUGIN: [(&str, &str); 7] = [
     (
         ".claude-plugin/plugin.json",
         include_str!("../../../../../../plugins/claude/.claude-plugin/plugin.json"),
@@ -170,6 +171,10 @@ pub const PLUGIN: [(&str, &str); 6] = [
     (
         "commands/launch.md",
         include_str!("../../../../../../plugins/claude/commands/launch.md"),
+    ),
+    (
+        "skills/setting-up-flume/SKILL.md",
+        include_str!("../../../../../../plugins/claude/skills/setting-up-flume/SKILL.md"),
     ),
 ];
 

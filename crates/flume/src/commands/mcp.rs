@@ -41,7 +41,11 @@ fn tools() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "place": text("A place's location, or `<kind>--<name>` in the repository the server runs in; every place where none is given.")
+                    "place": text("A place's location, or `<kind>--<name>` in the repository the server runs in; every place where none is given."),
+                    "binding": {
+                        "type": "boolean",
+                        "description": "Beside the places, the binding of the repository the server runs in, as it holds its default branch: the merge queue it binds and whether that queue lands the branch, and each kind flume would run there with whether it lands. Fetches and launches nothing."
+                    }
                 },
                 "additionalProperties": false
             },
@@ -234,9 +238,15 @@ fn status(arguments: &Value, repository: Option<&Path>) -> Value {
             .filter(|place| !place.is_empty())
             .map(|place| place::place(place, repository))
             .transpose()?;
+        let repositories = if arguments["binding"].as_bool() == Some(true) {
+            vec![place::repository(repository)?]
+        } else {
+            vec![]
+        };
         Ok(crate::served::status(&crate::served::Asked {
             place: named.map(|place| place.0),
             line: false,
+            repositories,
         }))
     })()
     .unwrap_or_else(Answer::refused);

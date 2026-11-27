@@ -927,7 +927,7 @@ fn clues_in_status(_: &()) -> Outcome {
     world.settle(&two);
     let shown = world.terminal.shown();
     let (_, last) = shown.last().ok_or("nothing shown")?;
-    let Answer::Status { places, host } = world.engine().status(None) else {
+    let Answer::Status { places, host, .. } = world.engine().status(None) else {
         return Err("status refused".into());
     };
     let base = host.bases.first().ok_or("no base")?;
