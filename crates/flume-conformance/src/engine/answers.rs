@@ -106,8 +106,8 @@ fn repository_status() -> RepositoryStatus {
             from: HeldFrom::Origin,
             declaration: Some(".config/flume.toml".into()),
             binding: Binding {
-                place: Some("git-worktree".into()),
-                change: Some("openspec".into()),
+                place: Some("places".into()),
+                change: Some("changes".into()),
                 merge_queue: Some("queue".into()),
             },
         },
