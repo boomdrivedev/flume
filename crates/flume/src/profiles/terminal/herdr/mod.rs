@@ -3405,4 +3405,63 @@ mod tests {
             "a herdr command was run"
         );
     }
+
+    /// The profile over records in a scratch directory of its own, the
+    /// agent `identity()` kept in the pane `pane`, its calls of herdr
+    /// answered in order from the recording `text`, which the pinned
+    /// herdr gave the tools test that recorded it: each answer given once,
+    /// to a call of the same words.
+    fn over_recording(name: &str, pane: &str, text: &'static str) -> (Herdr, PathBuf) {
+        let recorded: Vec<(Vec<String>, Answer)> = text
+            .lines()
+            .map(|line| {
+                let line: Value = serde_json::from_str(line).expect("a recorded call");
+                let args = serde_json::from_value(line["args"].clone()).expect("its words");
+                let answer = serde_json::from_value(line["answer"].clone()).expect("its answer");
+                (args, answer)
+            })
+            .collect();
+        let left = std::sync::Mutex::new(recorded);
+        let (herdr, _, scratch) = over_answers(name, move |call| {
+            let mut left = left.lock().expect("the recording");
+            let at = left
+                .iter()
+                .position(|(args, _)| args == call.args)
+                .unwrap_or_else(|| {
+                    panic!("the recording answers no herdr {}", call.args.join(" "))
+                });
+            left.remove(at).1
+        });
+        keep_pane(&herdr, pane, "/run/h.sock");
+        (herdr, scratch)
+    }
+
+    #[test]
+    fn herdrs_readings_as_the_profile_reads_them() {
+        // 37, 90, 134, S42, C.5: the pinned herdr's own answers, recorded
+        // from it when this test was a tools test of terminal_herdr.rs, its
+        // profile's calls run through a recorder of Process's answers, and
+        // recorded again when the pinned herdr moves: a prompt sent once herdr reads the agent
+        // waiting; then `working` read working, `done`, a finished turn
+        // nobody looked at, waiting, `blocked` asking and `unknown` herdr's
+        // unknown; and once the agent's program ended, its pane listing no
+        // agent and its shell alone running, stopped.
+        let (herdr, scratch) = over_recording(
+            "readings",
+            "w2:p1",
+            include_str!("../../../../tests/profiles/fixtures/herdr/readings.jsonl"),
+        );
+        let who = identity();
+        assert_eq!(herdr.send(&who, "do the work"), Sent::Sent, "the prompt");
+        for state in [
+            AgentState::Working,
+            AgentState::Waiting,
+            AgentState::Asking,
+            AgentState::Unknown,
+        ] {
+            assert_eq!(herdr.state(&who), state);
+        }
+        while herdr.state(&who) != AgentState::Stopped {}
+        let _ = fs::remove_dir_all(scratch);
+    }
 }
