@@ -267,18 +267,11 @@ impl Kinds for Weir {
             }
             Err(reason) => return KindsRead::CouldNotRead { reason },
         };
-        let directory = Path::new(DECLARATION)
-            .parent()
-            .map(|parent| parent.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        read(&text, Whose::Repository, &|path| {
-            let at = tree_path(&directory, path)
-                .ok_or_else(|| format!("{path} lies outside the repository"))?;
-            let text = git
-                .file(&revision.0, &at)?
-                .ok_or_else(|| format!("{at} is not in {revision}"))?;
-            Ok((at, text))
-        })
+        read_in_tree(
+            &text,
+            &|at| git.file(&revision.0, at),
+            &revision.to_string(),
+        )
     }
 
     fn read_declaration(&self, declaration: &str) -> KindsRead {
@@ -797,6 +790,27 @@ enum Whose {
     Launch,
 }
 
+/// A repository's kinds from its declaration's `text`, each file the
+/// declaration names read by `file` from its path in the repository's tree
+/// at the revision `at` names; a path outside the tree, or one the
+/// revision lacks, fails the read naming it (84, 157).
+fn read_in_tree(
+    text: &str,
+    file: &dyn Fn(&str) -> Result<Option<String>, String>,
+    at: &str,
+) -> KindsRead {
+    let directory = Path::new(DECLARATION)
+        .parent()
+        .map(|parent| parent.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    read(text, Whose::Repository, &|path| {
+        let in_tree = tree_path(&directory, path)
+            .ok_or_else(|| format!("{path} lies outside the repository"))?;
+        let text = file(&in_tree)?.ok_or_else(|| format!("{in_tree} is not in {at}"))?;
+        Ok((in_tree, text))
+    })
+}
+
 /// Every kind a declaration's text holds, its prompts and its agents
 /// tables' settings files read by `beside` from their paths, the settings
 /// it gives kinds it does not declare, and, for a repository's, its
@@ -1305,5 +1319,839 @@ fn map_agent(agent: &Table, at: &str, beside: Reader, problems: &mut Vec<String>
         // (158, 198, 212).
         keep_open: None,
         hibernate_after: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flume_seams::{Mode, ModeSetting, NamedFile};
+    use std::cell::RefCell;
+
+    /// A repository's tree for the declaration's reading: files written as a
+    /// working tree holds them, and what each commit took, which a read
+    /// gives.
+    #[derive(Default)]
+    struct Tree {
+        written: RefCell<BTreeMap<String, String>>,
+        committed: RefCell<BTreeMap<String, String>>,
+    }
+
+    impl Tree {
+        fn new(_label: &str) -> Tree {
+            Tree::default()
+        }
+
+        fn write(&self, path: &str, text: &str) {
+            self.written.borrow_mut().insert(path.into(), text.into());
+        }
+
+        /// Takes what is written as the tree's revision, and names it.
+        fn commit(&self, _message: &str) -> String {
+            *self.committed.borrow_mut() = self.written.borrow().clone();
+            "the-revision".into()
+        }
+
+        /// The repository's kinds as its declaration reads at the revision.
+        fn read(&self) -> KindsRead {
+            let tree = self.committed.borrow();
+            let Some(text) = tree.get(DECLARATION) else {
+                return KindsRead::Read {
+                    kinds: vec![],
+                    settings: BTreeMap::new(),
+                    agents: Box::default(),
+                };
+            };
+            read_in_tree(text, &|at| Ok(tree.get(at).cloned()), "the-revision")
+        }
+
+        fn could_not_read(&self) -> String {
+            match self.read() {
+                KindsRead::CouldNotRead { reason } => reason,
+                other => panic!("the declaration read as {other:?}"),
+            }
+        }
+    }
+
+    /// The words a declaration's `keep_open` is refused in (design 1).
+    const KEEP_OPEN_REFUSED: &str =
+        "how long an agent is kept open for an answer is the host's or the launch's to give";
+
+    /// The words a declaration's `hibernate_after` is refused in (212).
+    const HIBERNATE_AFTER_REFUSED: &str =
+    "how long a conversation may idle before it hibernates is the host's or the launch's to give";
+
+    /// weir C.4's persona, its test stage's rule flume's `every-file`, with a
+    /// prompt beside each stage's parameters under `prompts/` (175, S76; weir
+    /// C.4).
+    const PERSONA: &str = r#"[kinds.persona]
+version = 1
+title = "Persona test"
+branch = "persona"
+lands = true
+
+[kinds.persona.regions.stages]
+initial = "build"
+
+[kinds.persona.regions.stages.states.build]
+machine = "stage"
+params = { agents = [{ model = "opus" }], join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["commits"], prompt = "prompts/build.md" }
+transitions = [
+  { when = { final = "passed" }, to = "test" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.test]
+machine = "stage"
+params = { agents = { rule = "every-file", pattern = "personas/*.md" }, join = "all", on_fail = "build", max_send_backs = 2, deliverables = ["committed:tests/personas.md"], prompt = "prompts/test.md" }
+transitions = [
+  { when = { final = "passed" }, to = "passed" },
+  { when = { final = "sent-back" }, to = "build" },
+  { when = { final = "stopped" }, to = "stopped" },
+]
+
+[kinds.persona.regions.stages.states.passed]
+final = true
+
+[kinds.persona.regions.stages.states.stopped]
+decision = { kind = "stalled", answers = ["retry", "drop"] }
+transitions = [
+  { when = { response = "retry" }, to = "build" },
+  { when = { response = "drop" }, to = "dropped" },
+]
+
+[kinds.persona.regions.stages.states.dropped]
+final = true
+"#;
+
+    /// persona beside a simple kind `bump`, in one repository's declaration.
+    fn declaring_persona(name: &str) -> Tree {
+        let repository = Tree::new(name);
+        repository.write(
+        DECLARATION,
+        &format!(
+            "{PERSONA}\n[kinds.bump]\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/build.md\"\ndeliverables = [\"commits\"]\nagents = [{{}}]\n"
+        ),
+    );
+        repository.write(".config/prompts/build.md", "Build the personas. {{brief}}");
+        repository.write(".config/prompts/test.md", "Test {{file}}.");
+        repository.commit("persona beside bump");
+        repository
+    }
+
+    #[test]
+    fn a_declaration_weir_refuses_names_every_field_that_fails() {
+        let repository = Tree::new("refused");
+        repository.write(
+        DECLARATION,
+        "[kinds.bump]\nversion = 0\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"p.md\"\nquiet = \"1h30m\"\n",
+    );
+        repository.commit("refused");
+        match repository.read() {
+            KindsRead::CouldNotRead { reason } => {
+                for field in [
+                    "kinds.bump.version",
+                    "kinds.bump.stages[0].deliverables",
+                    "kinds.bump.stages[0].quiet",
+                ] {
+                    assert!(reason.contains(field), "{field} is not named in {reason}");
+                }
+            }
+            other => panic!("a refused declaration read as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_repositorys_agents_table_naming_a_stage_or_an_environment_refuses_the_launch() {
+        // 4, 32, C.2: `stages`, `streams`, `env` and `beside` in a
+        // repository's `[agents]` each fail the read naming the field, and
+        // the launch is refused with nothing made.
+        for (given, field) in [
+            ("stages = { code = { model = \"opus\" } }", "agents.stages"),
+            (
+                "streams = { work = { model = \"opus\" } }",
+                "agents.streams",
+            ),
+            ("env = { X = \"1\" }", "agents.env"),
+            ("beside = \"pane\"", "agents.beside"),
+        ] {
+            let repository = Tree::new("every-kind-refused");
+            repository.write(DECLARATION, &format!("[agents]\n{given}\n"));
+            repository.commit("a repository's agents flume refuses");
+            let reason = repository.could_not_read();
+            assert!(reason.contains(&format!("{field}:")), "{given}: {reason}");
+        }
+    }
+
+    #[test]
+    fn an_effort_for_every_kind_of_a_repository() {
+        // 32, 197, C.2: the repository's `[agents]` gives an effort for every
+        // kind, apart from its table for fix, which gives its own.
+        let repository = Tree::new("every-kind-effort");
+        repository.write(
+            DECLARATION,
+            r#"[agents]
+effort = "medium"
+
+[kinds.fix.agents]
+effort = "high"
+"#,
+        );
+        repository.commit("the repository's efforts");
+        let KindsRead::Read {
+            settings, agents, ..
+        } = repository.read()
+        else {
+            panic!("the declaration did not read");
+        };
+        assert_eq!(agents.effort.as_deref(), Some("medium"));
+        assert_eq!(settings["fix"].every_stage.effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn an_effort_for_every_stage_and_one_for_a_stage() {
+        // 23, 197, C.2: a kind's agents table gives an effort for every
+        // stage, and a stage's agents another, each its program's own word
+        // kept as written.
+        let repository = Tree::new("declared-effort");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.bump.agents]
+effort = "high"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ effort = "xhigh" }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("an effort for bump and one for its code");
+        let KindsRead::Read { kinds, .. } = repository.read() else {
+            panic!("the declaration did not read");
+        };
+        let bump = &kinds[0];
+        assert_eq!(bump.agents.every_stage.effort.as_deref(), Some("high"));
+        assert_eq!(bump.stages[0].agents[0].effort.as_deref(), Some("xhigh"));
+    }
+
+    #[test]
+    fn a_repositorys_keep_open_refuses_the_launch_naming_the_field() {
+        // 4, 158, 198, C.2: the kinds-profile spec's "A repository's
+        // keep_open": `keep_open` in a repository's table for a kind it does
+        // not declare fails the read naming the field and that the host or the
+        // launch gives it, and a launch of a fix is refused with nothing made;
+        // so does one in its table for every kind, and in a kind's own and a
+        // stage's of a kind it declares.
+        for (given, _, field) in [
+            (
+                "[kinds.fix.agents]\nkeep_open = \"2h\"\n",
+                "fix",
+                "kinds.fix.agents.keep_open",
+            ),
+            ("[agents]\nkeep_open = \"2h\"\n", "fix", "agents.keep_open"),
+            (
+                "[kinds.bump.agents.stages.code]\nkeep_open = \"2h\"\n\n\
+             [[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/bump-code.md\"\n\
+             deliverables = [\"commits\"]\n",
+                "bump",
+                "kinds.bump.agents.stages.code.keep_open",
+            ),
+        ] {
+            let repository = Tree::new("declared-keep-open");
+            repository.write(DECLARATION, given);
+            repository.write(".config/prompts/bump-code.md", "{{brief}}");
+            repository.commit("a keep_open in the declaration");
+            let reason = repository.could_not_read();
+            assert!(
+                reason.contains(&format!("{field}: {KEEP_OPEN_REFUSED}")),
+                "{given}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mode_for_every_stage_and_a_table_for_one() {
+        // 23, 162, C.2: a kind's agents table gives one of flume's four for
+        // every stage, and a stage's a table of programs, kept as written.
+        let repository = Tree::new("declared-mode");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.bump.agents]
+mode = "edits"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ mode = { claude = "auto" } }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("a mode for bump and a table for its code");
+        let KindsRead::Read { kinds, .. } = repository.read() else {
+            panic!("the declaration did not read");
+        };
+        let bump = &kinds[0];
+        assert_eq!(
+            bump.agents.every_stage.mode,
+            Some(ModeSetting::Flume(Mode::Edits))
+        );
+        assert_eq!(
+            bump.stages[0].agents[0].mode,
+            Some(ModeSetting::Programs(BTreeMap::from([(
+                "claude".to_string(),
+                "auto".to_string()
+            )])))
+        );
+    }
+
+    #[test]
+    fn an_entry_flume_cannot_take_refuses_the_launch_naming_the_field() {
+        // 4, 195, C.2: an entry that is no table, and a program's own key
+        // beside its file rather than under `settings`, each fail the read
+        // naming the field, and the launch is refused with nothing made.
+        let repository = Tree::new("own-entry");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.change.agents]
+programs = { claude = "x" }
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ programs = { claude = { tui = "fullscreen" } } }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("entries flume cannot take");
+        let reason = repository.could_not_read();
+        for field in [
+            "kinds.change.agents.programs.claude:",
+            "kinds.bump.stages[0].agents[0].programs.claude.tui:",
+            "go under settings",
+        ] {
+            assert!(
+                reason.contains(field),
+                "the read names not {field}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_effort_that_is_no_word_refuses_the_launch_naming_the_field() {
+        // 4, 197, C.2: a number and a table of programs each fail the read,
+        // naming the table's `effort`, in a repository's table for every kind,
+        // in its table for a kind it does not declare, in a stage's of a
+        // kind's own and in its agents; the launch is refused with nothing
+        // made.
+        let repository = Tree::new("declared-bad-effort");
+        repository.write(
+            DECLARATION,
+            r#"[agents]
+effort = { claude = "high" }
+
+[kinds.change.agents]
+effort = 3
+
+[kinds.bump.agents.stages.code]
+effort = { claude = "high" }
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ effort = 3 }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("efforts that are no word");
+        let reason = repository.could_not_read();
+        for field in [
+            "agents.effort:",
+            "kinds.change.agents.effort",
+            "kinds.bump.agents.stages.code.effort",
+            "kinds.bump.stages[0].agents[0].effort",
+        ] {
+            assert!(
+                reason.contains(field),
+                "the read names not {field}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn hibernate_through_weir_a_conversation_read() {
+        // 23, 212, C.2; weir 53, 58; core.4: the kinds-profile spec's "A
+        // hibernating conversation read": a declaration whose conversation
+        // stage gives `hibernate = true` is read, through weir's `Stage`, with
+        // that stage hibernating, and the stage that writes `false` and the
+        // one that leaves it out not.
+        let repository = Tree::new("declared-hibernate");
+        repository.write(
+            DECLARATION,
+            "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\nhibernate = true\n\n\
+         [[kinds.research.stages]]\nname = \"code\"\n\
+         prompt = \"prompts/code.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\nhibernate = false\n\n\
+         [[kinds.research.stages]]\nname = \"review\"\n\
+         prompt = \"prompts/review.md\"\ndeliverables = [\"commits\"]\n\
+         agents = [{}]\n",
+        );
+        for stage in ["talk", "code", "review"] {
+            repository.write(&format!(".config/prompts/{stage}.md"), "{{brief}}");
+        }
+        repository.commit("a conversation that hibernates");
+        let KindsRead::Read { kinds, .. } = repository.read() else {
+            panic!("the declaration did not read");
+        };
+        let research = kinds
+            .iter()
+            .find(|kind| kind.name == "research")
+            .expect("research declared");
+        let hibernates: Vec<(&str, bool)> = research
+            .stages
+            .iter()
+            .map(|stage| (stage.name.as_str(), stage.hibernates))
+            .collect();
+        assert_eq!(
+            hibernates,
+            vec![("talk", true), ("code", false), ("review", false)],
+            "the conversation that writes hibernate hibernates, and every other stage not"
+        );
+    }
+
+    #[test]
+    fn a_repositorys_hibernate_after_refuses_the_launch_naming_the_field() {
+        // 4, 158, 212, C.2: the kinds-profile spec's "A repository's hibernate
+        // time": `hibernate_after` in a declared kind's own agents table fails
+        // the read naming the field and that the host or the launch gives it,
+        // and a launch of that kind is refused with nothing made; so does one
+        // in a stage's table of a kind it declares, in a repository's table
+        // for a kind it does not declare, and in its table for every kind.
+        let research = "[[kinds.research.stages]]\nname = \"talk\"\n\
+         prompt = \"prompts/talk.md\"\nconversation = true\n";
+        for (given, _, field) in [
+            (
+                format!("[kinds.research.agents]\nhibernate_after = \"2h\"\n\n{research}"),
+                "research",
+                "kinds.research.agents.hibernate_after",
+            ),
+            (
+                format!(
+                    "[kinds.research.agents.stages.talk]\nhibernate_after = \"2h\"\n\n{research}"
+                ),
+                "research",
+                "kinds.research.agents.stages.talk.hibernate_after",
+            ),
+            (
+                "[kinds.fix.agents]\nhibernate_after = \"2h\"\n".to_string(),
+                "fix",
+                "kinds.fix.agents.hibernate_after",
+            ),
+            (
+                "[agents]\nhibernate_after = \"2h\"\n".to_string(),
+                "fix",
+                "agents.hibernate_after",
+            ),
+        ] {
+            let repository = Tree::new("declared-hibernate-after");
+            repository.write(DECLARATION, &given);
+            repository.write(".config/prompts/talk.md", "{{brief}}");
+            repository.commit("a hibernate_after in the declaration");
+            let reason = repository.could_not_read();
+            assert!(
+                reason.contains(&format!("{field}: {HIBERNATE_AFTER_REFUSED}")),
+                "{given}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_kind_that_lands_with_no_stages_beside_one_that_does_not_and_settings() {
+        // The kinds-profile spec's "Three tables over a scratch repository":
+        // weir's crate reads `stages = []` on a kind that lands as a kind with
+        // no stages, refuses it on one that does not, naming its stages, and
+        // reads a table that leaves `stages` out and holds `agents` alone as
+        // settings for a kind declared elsewhere, flume's own fix; a refusal
+        // refuses the declaration whole (18, 23, 57, 202; weir 51, 57; core.4).
+        let repository = Tree::new("no-stages");
+        let declared = "[kinds.train]\nbranch = \"train\"\nlands = true\nstages = []\n\n\
+                    [kinds.fix.agents]\nmodel = \"opus\"\n";
+        repository.write(DECLARATION, declared);
+        repository.commit("a kind that lands with no stages");
+        let KindsRead::Read {
+            kinds, settings, ..
+        } = repository.read()
+        else {
+            panic!("a kind that lands with no stages did not read");
+        };
+        assert_eq!(
+            kinds
+                .iter()
+                .map(|kind| (kind.name.as_str(), kind.lands, kind.stages.len()))
+                .collect::<Vec<_>>(),
+            vec![("train", true, 0)],
+            "train, a kind that lands with no stages"
+        );
+        assert_eq!(kinds[0].branch_prefix, "train");
+        assert_eq!(
+            settings.keys().collect::<Vec<_>>(),
+            vec!["fix"],
+            "fix's table, settings for a kind declared elsewhere"
+        );
+        assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("opus"));
+        repository.write(
+            DECLARATION,
+            &format!("{declared}\n[kinds.idle]\nlands = false\nstages = []\n"),
+        );
+        repository.commit("a kind that does not land with none");
+        match repository.read() {
+            KindsRead::CouldNotRead { reason } => {
+                assert!(reason.contains("kinds.idle.stages"), "{reason}");
+                assert!(
+                    !reason.contains("kinds.train") && !reason.contains("kinds.fix"),
+                    "a table that reads named in {reason}"
+                );
+            }
+            other => panic!("a kind that does not land with no stages read as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_repositorys_agents_for_every_kind() {
+        // S102, 21, 32, 195, C.2: the repository's `[agents]`, beside
+        // `[profiles]` and no part of any kind, gives its settings for every
+        // kind, apart from its settings for one kind; a launch's declaration
+        // is not read for it.
+        let repository = Tree::new("every-kind");
+        let declaration = r#"[profiles]
+place = "git-worktree"
+
+[agents]
+model = "opus"
+mode = "edits"
+instructions = "Mind the tagline."
+
+[agents.programs.claude.settings]
+attribution = { commit = "Assisted-by: Claude Code", pr = "" }
+
+[kinds.fix.agents]
+model = "sonnet"
+"#;
+        repository.write(DECLARATION, declaration);
+        repository.commit("the repository's agents");
+        let KindsRead::Read {
+            kinds,
+            settings,
+            agents,
+        } = repository.read()
+        else {
+            panic!("the declaration did not read");
+        };
+        assert!(kinds.is_empty());
+        assert_eq!(agents.model.as_deref(), Some("opus"));
+        assert_eq!(agents.mode, Some(ModeSetting::Flume(Mode::Edits)));
+        assert_eq!(agents.instructions.as_deref(), Some("Mind the tagline."));
+        assert_eq!(
+            agents.programs["claude"].settings["attribution"],
+            serde_json::json!({ "commit": "Assisted-by: Claude Code", "pr": "" })
+        );
+        assert_eq!(settings["fix"].every_stage.model.as_deref(), Some("sonnet"));
+        assert!(settings["fix"].every_stage.programs.is_empty(), "apart");
+        let launched = read(
+            &format!("{declaration}\n[agents.stages.code]\nmodel = \"x\"\n"),
+            Whose::Launch,
+            &|path| Err(format!("{path} is not read")),
+        );
+        let KindsRead::Read { agents, .. } = launched else {
+            panic!("the launch's declaration did not read");
+        };
+        assert_eq!(
+            *agents,
+            Settings::default(),
+            "a launch's [agents] is not read"
+        );
+    }
+
+    #[test]
+    fn own_settings_for_every_stage_and_for_one() {
+        // 23, 157, 195, C.2: a kind's agents table, a stage's agents and a
+        // repository's table for a kind it does not declare each give
+        // `programs`, kept as JSON values, a stage's file read beside the
+        // declaration at the revision, not as the working tree holds it.
+        let repository = Tree::new("own-settings");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.change.agents.stages.verify.programs.claude.settings]
+statusLine = { type = "command", command = "verify-line" }
+
+[kinds.bump.agents.programs.claude.settings]
+tui = "fullscreen"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ programs = { claude = { file = "claude-bump.json" } } }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.write(
+            ".config/claude-bump.json",
+            r#"{ "statusLine": { "type": "command", "command": "bump-line" } }"#,
+        );
+        repository.commit("own settings for bump and its code");
+        repository.write(".config/claude-bump.json", r#"{ "tui": "default" }"#);
+        let KindsRead::Read {
+            kinds, settings, ..
+        } = repository.read()
+        else {
+            panic!("the declaration did not read");
+        };
+        let bump = &kinds[0];
+        assert_eq!(
+            bump.agents.every_stage.programs["claude"].settings,
+            BTreeMap::from([("tui".to_string(), serde_json::json!("fullscreen"))])
+        );
+        let code = &bump.stages[0].agents[0].programs["claude"];
+        assert!(code.settings.is_empty(), "{code:?}");
+        assert_eq!(
+            code.file,
+            Some(NamedFile {
+                written: "claude-bump.json".into(),
+                read: ".config/claude-bump.json".into(),
+                keys: BTreeMap::from([(
+                    "statusLine".to_string(),
+                    serde_json::json!({ "type": "command", "command": "bump-line" })
+                )]),
+                left_out: vec![],
+            }),
+            "read at the revision"
+        );
+        assert_eq!(
+            settings["change"].for_stage("verify").programs["claude"].settings["statusLine"],
+            serde_json::json!({ "type": "command", "command": "verify-line" })
+        );
+    }
+
+    #[test]
+    fn a_session_in_an_agents_table_gives_no_setting() {
+        // 32, 158, C.2: a kind names nothing a host owns, a session among
+        // it: `session` in an agents table, for every stage and for one, in
+        // a repository's table for a kind it does not declare, in a kind's
+        // own and in a stage's agents, reads as no setting, and the settings
+        // beside it are read.
+        let repository = Tree::new("declared-session");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.change.agents]
+session = "x"
+model = "opus"
+
+[kinds.change.agents.stages.verify]
+session = "y"
+instructions = "Read every task."
+
+[kinds.bump.agents]
+session = "x"
+model = "sonnet"
+
+[kinds.bump.agents.stages.code]
+session = "y"
+model = "haiku"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ session = "z", instructions = "keep it short" }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("a session for every stage and for one");
+        let KindsRead::Read {
+            kinds, settings, ..
+        } = repository.read()
+        else {
+            panic!("the declaration did not read");
+        };
+        let change = &settings["change"];
+        assert_eq!(change.every_stage.session, None, "change's every stage");
+        assert_eq!(change.for_stage("verify").session, None, "change's verify");
+        assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            change.for_stage("verify").instructions.as_deref(),
+            Some("Read every task.")
+        );
+        let bump = &kinds[0];
+        assert_eq!(bump.agents.every_stage.session, None, "bump's every stage");
+        assert_eq!(bump.agents.for_stage("code").session, None, "bump's code");
+        assert_eq!(bump.stages[0].agents[0].session, None, "code's own agent");
+        assert_eq!(bump.agents.every_stage.model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            bump.agents.for_stage("code").model.as_deref(),
+            Some("haiku")
+        );
+        assert_eq!(
+            bump.stages[0].agents[0].instructions.as_deref(),
+            Some("keep it short")
+        );
+    }
+
+    #[test]
+    fn a_repositorys_settings_for_a_kind_it_does_not_declare_and_a_kinds_own() {
+        let repository = Tree::new("settings");
+        repository.write(
+            DECLARATION,
+            r#"[kinds.change.agents]
+model = "opus"
+
+[kinds.change.agents.stages.verify]
+instructions = "Read every task."
+
+[kinds.bump.agents]
+program = "agent"
+model = "sonnet"
+
+[kinds.bump.agents.stages.code]
+model = "haiku"
+
+[[kinds.bump.stages]]
+name = "code"
+prompt = "prompts/bump-code.md"
+deliverables = ["commits"]
+agents = [{ instructions = "keep it short" }]
+"#,
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("settings for change@1, and bump's own");
+        let KindsRead::Read {
+            kinds, settings, ..
+        } = repository.read()
+        else {
+            panic!("the declaration did not read");
+        };
+        assert_eq!(
+            kinds
+                .iter()
+                .map(|kind| kind.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["bump"],
+            "settings declare no kind"
+        );
+        assert_eq!(
+            settings.keys().collect::<Vec<_>>(),
+            vec!["change"],
+            "settings apart from the kinds"
+        );
+        let change = &settings["change"];
+        assert_eq!(change.every_stage.model.as_deref(), Some("opus"));
+        assert_eq!(
+            change.for_stage("verify").instructions.as_deref(),
+            Some("Read every task.")
+        );
+        let bump = &kinds[0];
+        assert_eq!(bump.agents.every_stage.program.as_deref(), Some("agent"));
+        assert_eq!(
+            bump.agents.for_stage("code").model.as_deref(),
+            Some("haiku")
+        );
+        assert_eq!(
+            bump.stages[0].agents[0].instructions.as_deref(),
+            Some("keep it short"),
+            "the stage's own beside the kind's"
+        );
+    }
+
+    #[test]
+    fn a_statechart_kind_is_read_through_weirs_crate() {
+        // The kinds-profile spec's "Persona read" and "A simple kind and a
+        // statechart kind side by side": weir's crate reads persona beside a
+        // simple kind, each in its format, its statechart's text the kind's
+        // table alone, and refuses a table holding both `stages` and
+        // `regions`, naming the field (84, 85, 175, 177; weir 95; core.4).
+        let repository = declaring_persona("persona");
+        let KindsRead::Read { kinds, .. } = repository.read() else {
+            panic!("persona did not read");
+        };
+        assert_eq!(
+            kinds
+                .iter()
+                .map(|kind| (kind.name.as_str(), kind.is_statechart()))
+                .collect::<Vec<_>>(),
+            vec![("bump", false), ("persona", true)],
+            "each kind in its format"
+        );
+        let persona = &kinds[1];
+        assert_eq!(
+            (
+                persona.branch_prefix.as_str(),
+                persona.lands,
+                persona.version
+            ),
+            ("persona", true, 1)
+        );
+        assert!(persona.stages.is_empty(), "{:?}", persona.stages);
+        let chart = persona.statechart.as_ref().expect("persona's statechart");
+        assert_eq!(chart.title, "Persona test");
+        assert!(
+            chart.text.contains("[kinds.persona]") && !chart.text.contains("[kinds.bump"),
+            "{}",
+            chart.text
+        );
+        assert_eq!(
+            chart.stages.keys().collect::<Vec<_>>(),
+            vec!["stages.build", "stages.test"]
+        );
+        let build = &chart.stages["stages.build"];
+        match &build.agents {
+            ChartAgents::Entries(entries) => {
+                assert_eq!(
+                    entries
+                        .iter()
+                        .map(|agent| agent.model.as_deref())
+                        .collect::<Vec<_>>(),
+                    vec![Some("opus")]
+                );
+            }
+            other => panic!("build's agents read as {other:?}"),
+        }
+        assert_eq!(build.deliverables, vec![Deliverable::Commits]);
+        assert_eq!(
+            (build.on_fail.as_deref(), build.send_back_limit),
+            (Some("build"), Some(2))
+        );
+        let test = &chart.stages["stages.test"];
+        assert_eq!(
+            test.agents,
+            ChartAgents::Rule {
+                rule: "every-file".into(),
+                pattern: Some("personas/*.md".into()),
+            }
+        );
+        assert_eq!(test.join, Join::All);
+        assert_eq!(
+            test.deliverables,
+            vec![Deliverable::CommittedReport {
+                path: "tests/personas.md".into()
+            }]
+        );
+        assert_eq!(test.prompt.as_deref(), Some("Test {{file}}."));
+        // A table holding both stages and regions.
+        repository.write(
+        DECLARATION,
+        "[kinds.both]\nstages = []\nlands = true\n\n[kinds.both.regions.r]\ninitial = \"s\"\n\n[kinds.both.regions.r.states.s]\nfinal = true\n",
+    );
+        repository.commit("stages and regions");
+        match repository.read() {
+            KindsRead::CouldNotRead { reason } => {
+                assert!(reason.contains("kinds.both.regions"), "{reason}");
+            }
+            other => panic!("a table of stages and regions read as {other:?}"),
+        }
     }
 }
