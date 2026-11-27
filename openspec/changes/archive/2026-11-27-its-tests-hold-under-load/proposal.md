@@ -31,6 +31,13 @@ tests failed at least once, and each passes alone:
   `window_ghostty::the_words_open_is_given`: the tests held each show
   to two seconds. A shell stand-in took longer to start on the busy
   host. The profile's own bound is ten seconds.
+- `open::s90_a_streams_view_through_the_binary`: herdr answered the
+  agent's start at once. The herdr profile read the pane's foreground
+  one time, before the busy host's shell ran the program. The
+  foreground was empty, and the profile refused the start.
+- `walkthroughs::s93_a_question_for_easts_ops_is_answered_once_by_its_woken_run`
+  failed in another place's gate with the cause of s4. Construct stopped
+  short at once, and the retry of the ops run did not come back.
 - `walkthroughs::a_pull_requests_failure_goes_back_to_code_once_and_its_next_request_lands`
   also failed. Another change fixes its cause, and this change does
   not touch it.
@@ -44,6 +51,10 @@ tests failed at least once, and each passes alone:
 - **A receipt never writes over a newer end.** A settle records a
   receipt, or the word that an agent started, only while the start is
   live and its stage still starts. Another settle's end stays.
+- **herdr reads an empty foreground again.** While herdr shows nothing
+  in the pane's foreground, the profile reads it again until the
+  start's own bound. A pane that runs another program is refused at
+  once, as before.
 - **Rex's stand-in reads a long text in linear time.** It sets its
   terminal before it reports idle. One `cat` drains the terminal into a
   pipe that the loop reads 64 KiB at a time. One field split cuts a

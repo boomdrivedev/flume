@@ -23,3 +23,18 @@ whether the agent received the text (89, 95, C.5, core.11).
 
 - **WHEN** the profile sends a prompt of 150,000 bytes, non-ASCII among them, to an agent that reads its terminal three seconds after it reports idle
 - **THEN** the agent takes the whole prompt in order as one prompt, within a minute on a busy host
+
+## ADDED Requirements
+
+### Requirement: herdr reads an empty foreground again
+
+Once herdr answers the agent's start, the herdr profile SHALL read the
+pane's foreground for the program the settings name. While herdr shows
+nothing in the foreground, the profile SHALL read it again until the
+start's own bound. It SHALL refuse at once a pane that runs another
+program (32, 35, C.5, record 0018).
+
+#### Scenario: A shell slow to run the program
+
+- **WHEN** herdr answers the start, and the pane's foreground stays empty for some seconds before the program runs
+- **THEN** the start opens, and the profile refuses nothing
