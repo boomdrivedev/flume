@@ -3,11 +3,10 @@
 ### Requirement: flume host serves status and a subscription to it
 
 After the hello, `flume host` SHALL answer `status` with one `document`
-line and close the connection. The line holds the answer that `flume
---json status` prints. `flume host` SHALL answer `subscribe` with a
-`document` at once. It SHALL send another each time the answer differs
-from the last one sent, until the client closes the connection. Each
-ask MAY name a place and ask each place's line. A line that flume host
+line, the answer of `flume --json status`, and close the connection. It
+SHALL answer `subscribe` with a `document` at once and another at each
+change of the answer, until the client closes the connection. Each ask
+MAY name a place and ask each place's line. A line that flume host
 cannot read SHALL get one `error` line, and the connection SHALL close
 (flume-host-serves-status-and-its-subscription-on-its-socket).
 

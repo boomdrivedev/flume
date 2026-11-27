@@ -5,13 +5,10 @@
 The profile SHALL offer send-back, the guard and on-quiet through hooks
 (108, 110, 112, 115, 116, 121, C.4). The Stop hook SHALL block a stop
 with the core's stop-check words. When it lets the agent stop, it SHALL
-ask `flume host` on its socket to settle the place once its agent is
-quiet. It SHALL start no process (nothing-detached,
-a-session-in-a-herdr-pane-is-herdrs-child-and-flume-owns-its-place).
-The PreToolUse hook SHALL refuse a shell command that runs `sluice
-submit`, `wt submit`, `wt merge` or `git push`. Its words SHALL say that
-flume submits the place, and it SHALL record the refusal, which status
-reads. It SHALL never refuse `git merge` into the place's branch.
+ask `flume host` to settle the place, and it SHALL start no process
+(nothing-detached). The PreToolUse hook SHALL refuse a shell command
+that submits, merges or pushes the place's branch, and record the
+refusal. It SHALL never refuse `git merge` into the place's branch.
 
 #### Scenario: An agent that would stop with nothing made
 
@@ -42,3 +39,16 @@ reads. It SHALL never refuse `git merge` into the place's branch.
 
 - **WHEN** the Stop hook lets an agent stop, and nothing answers on flume host's socket
 - **THEN** the hook lets the stop through, starts no process and settles nothing
+
+## ADDED Requirements
+
+### Requirement: The guard names the commands it refuses
+
+The PreToolUse hook SHALL refuse a shell command that runs `sluice
+submit`, `wt submit`, `wt merge` or `git push`. Its words SHALL say that
+flume submits the place. Status SHALL list each refusal (116).
+
+#### Scenario: An agent runs wt merge
+
+- **WHEN** the PreToolUse hook gets `wt merge main`
+- **THEN** it refuses the command with words that say that flume submits the place, and status lists the refused act
