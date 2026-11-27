@@ -301,14 +301,18 @@ fn the_pinned_rex_runs_at_api_revision_twelve_or_later() {
 /// every line it took under its log, by its block, and reports
 /// its state to Rex by OSC 7501 as Claude Code does, `app=claude-code`:
 /// `idle` once up, `working` from a line's first moment, `done` once the
-/// line is taken, or after `STAND_IN_WORK` seconds of work. It reads its
+/// line is taken, or after `STAND_IN_WORK` seconds of work. It sets its
+/// terminal before it reports `idle`, and reads it `STAND_IN_SLOW`
+/// seconds after, where its environment names them. It reads its
 /// terminal a chunk at a time, unechoed, ctrl+c no signal and Enter no
 /// line feed: a ctrl+c clears what it held typed, as Claude Code clears
 /// its input, a line feed typed is kept in the line, and Enter ends it.
 /// What it holds typed it shows on its last line, drawn again after each
 /// chunk it reads as Claude Code draws its input, its controls left out,
 /// and rubbed out before it takes a line, so a relay's typing shows on
-/// its screen and a line it takes leaves the screen as it was.
+/// its screen and a line it takes leaves the screen as it was. One `cat`
+/// drains its terminal into a pipe it reads, so a loaded host slows it by
+/// the chunk and not by the kilobyte.
 /// A line `report <state>` reports that state alone, `print <n>` prints
 /// `n` numbered lines, `paint <n>` prints them each in a colour, and
 /// `exit` exits. As its environment asks, it shows the folder-trust
@@ -368,7 +372,13 @@ if [ -n "$STAND_IN_SILENT" ]; then echo "the stand-in says nothing to Rex"; whil
 # Its prompt drawn, as Claude Code draws its own before it waits: the
 # block shows nothing else, its program started under no login.
 echo "the stand-in waits for a prompt"
+# Its terminal set as it reads it before it reports idle, as Claude Code
+# sets its own before it reports: a text typed once it reads idle reaches
+# a terminal past its line discipline, which in its first mode drops
+# what a line holds past its limit.
+stty -icanon -isig -echo -icrnl min 1 time 0 2>/dev/null
 report idle
+if [ -n "$STAND_IN_SLOW" ]; then sleep "$STAND_IN_SLOW"; fi
 if [ -n "$STAND_IN_CAT" ]; then
   # Once the test says go, after open has read the program, a block
   # running `cat` in raw mode, so every key and character a relay types
@@ -379,12 +389,21 @@ if [ -n "$STAND_IN_CAT" ]; then
   stty raw -echo -iexten 2>/dev/null
   exec cat > "$log/cat"
 fi
-stty -icanon -isig -echo -icrnl min 1 time 0 2>/dev/null
 ctrl_c=$(printf '\003')
 cr=$(printf '\r')
+ifs=$IFS
 pending=
 # What it holds typed, on the cursor's line, its controls left out.
 draw() { printf '\r\033[K%s' "$(printf '%s' "$pending" | tr -d '\000-\037\177')"; }
+# One cat drains its terminal into a pipe, which the loop reads up to
+# 64 KiB at a time: a terminal hands a reader about a kilobyte a read,
+# and a loop slowed by a loaded host reads what gathered meanwhile.
+keys="$log/keys"
+mkfifo "$keys"
+cat <&0 > "$keys" &
+drains=$!
+trap 'kill "$drains" 2>/dev/null' EXIT
+exec < "$keys"
 while :; do
   chunk=$(dd bs=65536 count=1 2>/dev/null; printf x)
   chunk=${chunk%x}
@@ -393,8 +412,17 @@ while :; do
   while :; do
     case $pending in
       *"$cr"*)
-        line=${pending%%"$cr"*}
-        pending=${pending#*"$cr"}
+        # The line before its first Enter and what follows, split at the
+        # Enters at once: `#` and `%%` cost the shell a long text's square.
+        set -f
+        IFS=$cr
+        set -- ${pending}x
+        line=$1
+        shift
+        pending="$*"
+        IFS=$ifs
+        set +f
+        pending=${pending%x}
         printf '\r\033[K'
         case $line in
           *"$ctrl_c"*) echo cleared >> "$log/events"; line=${line##*"$ctrl_c"} ;;
@@ -1414,11 +1442,20 @@ fn a_working_agent_is_sent_a_tell_with_no_ctrl_c() {
 #[test]
 fn a_text_past_sixty_thousand_bytes_arrives_whole() {
     // 95, C.5: a prompt of 150,000 bytes, non-ASCII and line feeds among
-    // them, taken whole and in order as one prompt.
+    // them, taken whole and in order as one prompt, though typed before
+    // the agent reads its terminal.
     let fixture = Fixture::new();
     let profile = fixture.profile();
     let who = identity(1);
-    let block = opened(&fixture, &profile, &who, &fixture.command(&[]));
+    // The stand-in reads its terminal three seconds after it reports
+    // idle, as a loaded host may run it: what is typed meanwhile waits for
+    // it in its terminal.
+    let block = opened(
+        &fixture,
+        &profile,
+        &who,
+        &fixture.command(&[("STAND_IN_SLOW", "3")]),
+    );
     let mut text = String::new();
     let mut row = 0;
     while text.len() < 150_000 {
