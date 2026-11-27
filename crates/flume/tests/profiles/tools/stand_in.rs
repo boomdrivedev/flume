@@ -83,14 +83,7 @@ fn the_stand_in_drives_one_stage() {
     );
     // Midway through its stage the agent has started under its start's
     // identity, and the push it tried is refused and reported.
-    let began = std::time::Instant::now();
-    while !started.exists() {
-        assert!(
-            began.elapsed() < std::time::Duration::from_secs(60),
-            "the stand-in never came to its commit"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    until_it("the stand-in at its commit", || started.exists());
     let status = walk.status(&place);
     assert_eq!(status["agent"]["started"], "yes", "{status}");
     assert_eq!(
@@ -187,15 +180,10 @@ fn the_stand_in_drives_one_stage() {
 
     // The stop's settle, once the session ended, ends the stage at its
     // deliverable and starts the next; the test settles nothing.
-    let began = std::time::Instant::now();
-    let status = loop {
-        let status = walk.status(&place);
-        if status["current"] == "check" || began.elapsed() > std::time::Duration::from_secs(90) {
-            break status;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(300));
-    };
-    assert_eq!(status["current"], "check", "{status}");
+    until_it("the check stage current", || {
+        walk.status(&place)["current"] == "check"
+    });
+    let status = walk.status(&place);
     assert_eq!(stage(&status, "code")["state"], "delivered", "{status}");
     assert_eq!(
         status["agent"]["started"], "no",
