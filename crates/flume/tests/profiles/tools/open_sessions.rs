@@ -201,8 +201,9 @@ fn let_go(status: &Value, by: &str) -> bool {
 #[test]
 fn s104_the_time_passing_lets_the_agent_go_and_a_late_answer_starts_a_fresh_one() {
     // S104; 42, 49, 53, 70, 198: the host keeps an asking agent open five
-    // seconds and runs one agent at once. Code stops short, and a second
-    // fix waits for room. Once five seconds have passed, a settle records
+    // seconds and runs one agent at once. While code works, a second fix
+    // waits for room; code then stops short. Once five seconds have
+    // passed, a settle records
     // the agent let go by its time and ends it, its pane closed; status
     // says the place waits on an answer, its agent ended, and the second
     // fix's code starts in the room it freed. A message is refused, naming
@@ -211,11 +212,15 @@ fn s104_the_time_passing_lets_the_agent_go_and_a_late_answer_starts_a_fresh_one(
     // place lands.
     let host = Walk::under_herdr("open-s104");
     host.configure("agents = 1\n", "[agents]\nkeep_open = \"5s\"\n");
-    host.script("code", 1, json!([[needs(WHICH)], []]));
+    // Code stops short once the test says go, so its five seconds kept
+    // open start only after the test read its agent and launched the
+    // second fix, however slowly a loaded host runs the test.
+    let go = host.signal("go");
+    host.script("code", 1, json!([[{ "wait_for": go }, needs(WHICH)], []]));
     host.script("code", 2, commits("notes.md\n"));
     let place = host.launch("fix", "one", &["--brief", "write the notes"]);
-    let status = host.until(&place, "code waiting on its answer", |status| {
-        waits_on(status, WHICH) && status["waiting_on"]["open_until"].is_u64()
+    let status = host.until(&place, "code's agent at work", |status| {
+        status["agent"].is_object() && stage(status, "code")["state"] == "begun"
     });
     assert_eq!(
         status["agent"]["settings"]["from"]["keep_open"],
@@ -229,12 +234,26 @@ fn s104_the_time_passing_lets_the_agent_go_and_a_late_answer_starts_a_fresh_one(
         0,
         "the second fix's code started with no room"
     );
+    std::fs::write(&go, "").expect("the signal");
 
     let status = watching(&host, &place, "its agent let go by its time", |status| {
         let_go(status, "time")
     });
     assert!(waits_on(&status, WHICH), "{status}");
     assert!(status["waiting_on"]["open_until"].is_null(), "{status}");
+    let ended_short = status["ends"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|end| end["state"] == "ended_short")
+        .unwrap_or_else(|| panic!("no end of code's stop-short: {status}"));
+    assert_eq!(
+        ended_short["open_until"]
+            .as_u64()
+            .map(|until| until - ended_short["read_at"].as_u64().unwrap_or_default()),
+        Some(5),
+        "kept open five seconds from the stop-short: {status}"
+    );
     assert!(
         status["agent"].is_null(),
         "an agent of one's stands: {status}"
