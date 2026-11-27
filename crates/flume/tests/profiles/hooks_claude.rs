@@ -1283,8 +1283,8 @@ fn now() -> u64 {
 fn the_stop_check_sends_back_then_the_stop_settles() {
     // S24: the agent tries to stop with nothing made, and the stop is
     // blocked with words naming commits and `flume needs`. It commits; the
-    // next stop is let through and starts `flume settle <place>
-    // --on-quiet`, which settles the place once the agent is quiet (under
+    // next stop is let through and asks flume host to settle the place
+    // on its quiet, which it settles once the agent is quiet (under
     // the printed command, once its session ended): the code stage ends at
     // its deliverable and the next starts, with no settle of the test's
     // (S29, 46, 115, 121).

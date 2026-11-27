@@ -1764,37 +1764,24 @@ fn asked(at: &Path) -> Vec<(i32, String)> {
         .collect()
 }
 
-/// Waits until the process that submitted main, the settle the agent's
-/// Stop hook started detached once the agent was quiet (121), has ended,
-/// so nothing but the test's own commands moves the place after it.
-fn until_the_quiet_settle_ends(log: &Path) {
-    let deadline = Instant::now() + Duration::from_secs(120);
-    let settle = loop {
-        if let Some((by, _)) = asked(log)
-            .into_iter()
-            .find(|(_, command)| command.starts_with("submit main"))
-        {
-            break by;
-        }
-        assert!(Instant::now() < deadline, "nothing submitted main");
-        std::thread::sleep(Duration::from_millis(200));
-    };
+/// Waits until flume host, which the agent's Stop hook asked to settle
+/// the place once its agent was quiet (121), has recorded the merge
+/// queue's answer to its submit of main, with no bound on the time it
+/// waits; so nothing but the test's own commands submits the place after
+/// it (a-session-in-a-herdr-pane-is-herdrs-child-and-flume-owns-its-place).
+fn until_the_quiet_settle_submitted(walk: &Walk, place: &str, log: &Path) {
     loop {
-        // SAFETY: signal 0 to a process of the test's own user only asks
-        // whether it stands.
-        if unsafe { libc::kill(settle, 0) } != 0 {
-            let error = std::io::Error::last_os_error();
-            assert_eq!(
-                error.raw_os_error(),
-                Some(libc::ESRCH),
-                "the settle that submitted main, {settle}: {error}"
+        let status = walk.status(place);
+        let submission = &status["submission"];
+        if submission["submits"] == 1 && submission["submitting"].is_null() {
+            assert!(
+                asked(log)
+                    .iter()
+                    .any(|(_, command)| command.starts_with("submit main")),
+                "flume host submitted no main: {status}"
             );
             return;
         }
-        assert!(
-            Instant::now() < deadline,
-            "the settle that submitted main, {settle}, never ended"
-        );
         std::thread::sleep(Duration::from_millis(200));
     }
 }
@@ -1802,7 +1789,7 @@ fn until_the_quiet_settle_ends(log: &Path) {
 #[test]
 fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
     // S109: a chore's agent commits and ends, and the settle its quiet
-    // starts submits it; from then on the test runs nothing but a
+    // asks of flume host submits it; from then on the test runs nothing but a
     // caller's watch, `flume settle --every 1m`, and no `sluice run` or
     // `sluice daemon` is live. The chore's check is held until the
     // watch's first settle has read its submission open; sluice's host
@@ -1821,7 +1808,7 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
             { "bash": "git add -A && git commit --quiet -m 'tidy the parser'" },
         ]),
     );
-    until_the_quiet_settle_ends(&log);
+    until_the_quiet_settle_submitted(&walk, &place, &log);
     let submitted = walk.status(&place);
     assert_eq!(submitted["submission"]["submits"], 1, "{submitted}");
     let open = |when: &str| {
@@ -1865,7 +1852,7 @@ fn s109_a_submitted_chore_with_no_agent_lands_by_a_watchs_settles_alone() {
         std::thread::sleep(Duration::from_millis(300));
     }
 
-    // No settle, the quiet one or the watch's, ran a round of sluice's
+    // No settle, flume host's or the watch's, ran a round of sluice's
     // queue or waited on it, and the watch submitted nothing.
     let asked = asked(&log);
     let moving: Vec<&(i32, String)> = asked
@@ -1930,7 +1917,7 @@ fn s109_a_host_process_ended_with_work_in_play_is_started_again_by_a_settles_inb
             { "bash": "git add -A && git commit --quiet -m 'tidy the parser'" },
         ]),
     );
-    until_the_quiet_settle_ends(&log);
+    until_the_quiet_settle_submitted(&walk, &place, &log);
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         let entry = walk.submissions();
