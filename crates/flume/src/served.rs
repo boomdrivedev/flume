@@ -21,9 +21,9 @@
 //! `{"ask":"settle","place":<location>}`, with `"on_quiet":true` where the
 //! agent's own quiet asks it, answered by one `{"taken":true}` line, after
 //! which flume host closes the connection and settles the place itself:
-//! a settle a hook asks for is a request to flume host, so a pane that
-//! closes ends only the client (121; nothing-detached; a-session-in-a-
-//! herdr-pane-is-herdrs-child-and-flume-owns-its-place). A line flume
+//! a settle a hook asks for is a request to flume host, so a terminal
+//! that closes the agent's pane ends only the client (121;
+//! nothing-detached; one-resident-per-tool). A line flume
 //! host cannot read gets `{"error": <words>}`, and the connection closes.
 
 use crate::resident::{Say, GATHER};
