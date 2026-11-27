@@ -105,6 +105,16 @@ tasks:
     inputs: ['/try-again.sh', '/check-try-again.sh', '/devenv.nix', '/devenv.lock']
     tags: [check-fast]
     options: {runFromWorkspaceRoot: true}
+  # The next version, computed by next-version.sh on scratch repositories
+  # laid out as the releases lay out flume's: a second push computed once
+  # the first's tag is pushed is the next version, a run its release
+  # already holds releases nothing (check-next-version.sh). git-cliff is
+  # devenv's (core.22).
+  next-version:
+    command: 'sh check-next-version.sh'
+    inputs: ['/next-version.sh', '/check-next-version.sh', '/cliff.toml', '/devenv.nix', '/devenv.lock']
+    tags: [check-fast]
+    options: {runFromWorkspaceRoot: true}
   # Each task that builds a binary of the workspace builds it in a target
   # folder of its own, its CARGO_TARGET_DIR (check-targets.sh): cargo
   # writes `<folder>/debug/<binary>` again at each build, and a gate runs

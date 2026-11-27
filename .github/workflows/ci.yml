@@ -1,8 +1,8 @@
 # flume on GitHub: the fast layer runs in the devenv shell a session uses,
 # on Linux and macOS, so CI and `sluice exec` hold a tree to the same rules
 # (core.22), and each push to main that git-cliff finds a new version in is
-# released (cliff.toml): its tag names a release commit cut from the pushed
-# one with the release's version written into the workspace and each
+# released (cliff.toml), one run at a time: its tag names a release commit
+# cut from the pushed one with the release's version written into the workspace and each
 # plugin's manifest (set-version.sh), and the release branch the
 # marketplace is read at is moved to it. The flake's package is built on
 # each runner's system (nix:build), which the gate's sandbox cannot run.
@@ -17,6 +17,18 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# The runs of pushes to main go one at a time, in the order they were
+# pushed, each waiting for the one before it to end: so a run's version
+# job reads the tags the release before it pushed, and two pushes never
+# compute one tag (next-version.sh). GitHub keeps one run waiting: a push
+# that comes while one waits takes its place, and the run it replaces is
+# cancelled, its commits released by the later run, whose range runs from
+# the newest tag. A pull request's run waits for no other. No job names a
+# group of its own, which would wait on its own run.
+concurrency:
+  group: ${{ github.event_name == 'push' && 'release' || format('pull-request-{0}', github.run_id) }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -92,9 +104,11 @@ jobs:
           nixpkgs="$(jq -r '.nodes.nixpkgs.locked | "github:\(.owner)/\(.repo)/\(.rev)"' devenv.lock)"
           sh try-again.sh nix shell "$nixpkgs#convco" -c convco check --ignore-reverts ${last:+"$last..HEAD"}
 
-  # The next version from the commits since the newest v* tag; empty when
-  # it is already tagged. `--unreleased` starts the range at the newest tag,
-  # which is off main's history.
+  # The next version from the commits since the newest v* tag, the tags
+  # the run holds as it starts; empty when it is already tagged
+  # (next-version.sh). `--unreleased` starts the range at the newest tag,
+  # which is off main's history. git-cliff is the nixpkgs devenv.lock pins,
+  # the one devenv.nix holds to its pin (core.22).
   version:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -107,12 +121,9 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - id: next
         run: |
-          tag="$(nix shell nixpkgs#git-cliff -c git-cliff --unreleased --bumped-version)"
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "$tag is already released"
-          else
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          fi
+          nixpkgs="$(jq -r '.nodes.nixpkgs.locked | "github:\(.owner)/\(.repo)/\(.rev)"' devenv.lock)"
+          tag="$(nix shell "$nixpkgs#git-cliff" -c sh next-version.sh)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   # The binary for each platform, built by the Rust rust-toolchain.toml
   # names from the tree the release commit holds: the pushed commit with
@@ -170,7 +181,6 @@ jobs:
   release:
     needs: [version, binaries]
     runs-on: ubuntu-latest
-    concurrency: release
     permissions:
       contents: write
     steps:
@@ -182,7 +192,8 @@ jobs:
         with:
           merge-multiple: true
       - run: |
-          nix shell nixpkgs#git-cliff -c \
+          nixpkgs="$(jq -r '.nodes.nixpkgs.locked | "github:\(.owner)/\(.repo)/\(.rev)"' devenv.lock)"
+          nix shell "$nixpkgs#git-cliff" -c \
             git-cliff --unreleased --tag "$TAG" --strip all > notes.md
           sh set-version.sh "${TAG#v}"
           # The files set-version.sh wrote are the only tracked ones changed.

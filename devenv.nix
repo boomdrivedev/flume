@@ -303,6 +303,13 @@ let
   statixVersion = "0.5.8-unstable-2026-07-17";
   deadnixVersion = "1.3.2";
 
+  # git-cliff, which reads the next version and the release notes from the
+  # conventional commits (cliff.toml, next-version.sh): nixpkgs' build as
+  # devenv.lock gives it, asserted to be this version on the shell's
+  # packages (core.22). The release workflow adds the same build
+  # (.github/workflows/release.yml), and root:next-version runs it.
+  gitCliffVersion = "2.14.1";
+
   # The flake's inputs as flake.lock locks them, fetched by this shell
   # outside the gate's sandbox (nix/inputs.nix).
   flakeInputs = import ./nix/inputs.nix { };
@@ -470,6 +477,11 @@ in
         pkgs.deadnix.version == deadnixVersion
       ) "devenv.lock's nixpkgs gives deadnix ${pkgs.deadnix.version}, devenv.nix pins ${deadnixVersion}";
       pkgs.deadnix
+    )
+    (
+      assert lib.assertMsg (pkgs.git-cliff.version == gitCliffVersion)
+        "devenv.lock's nixpkgs gives git-cliff ${pkgs.git-cliff.version}, devenv.nix pins ${gitCliffVersion}";
+      pkgs.git-cliff
     )
     proto
     vale
