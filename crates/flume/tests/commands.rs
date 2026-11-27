@@ -1700,3 +1700,35 @@ final = true
         .expect("status gives the place's statechart");
     assert!(chart.answers.is_empty(), "{:?}", chart.answers);
 }
+
+#[test]
+fn a_callers_acts_reach_the_core_through_the_binary() {
+    // 7, 52, 53, 61, 63, 114: a caller's message, priority, stop and done,
+    // each through flume's binary over a change the stand-in flume
+    // launched, each the core's act answered in its JSON and exiting 0.
+    // What each act does is its scenarios' and its words command_line's.
+    let host = Host::new("acts");
+    let repository = repository("acts", None);
+    let kinds = kinds_file(&host, false);
+    let launched = host.stand_in(
+        &repository.dir,
+        &[
+            "launch", "--kind", "change", "--name", "one", "--kinds", &kinds, "--json",
+        ],
+        &[],
+    );
+    assert_eq!(launched.code, 0, "{}", launched.text);
+    let place = host.place_of(&repository, "change--one");
+    let act = |words: &[&str]| answered(&host.flume(&repository.dir, words, &[]), 0);
+    let messaged = act(&["message", &place, "look at the schema", "--json"]);
+    assert!(messaged.get("refused").is_none(), "{messaged}");
+    for (words, done) in [
+        (&["priority", "change--one", "5", "--json"][..], "priority"),
+        (&["stop", "change--one", "--force", "--json"], "stop"),
+        (&["done", "change--one", "--force", "--json"], "done"),
+    ] {
+        let answer = act(words);
+        assert_eq!(answer["acted"]["act"], done, "{words:?}: {answer}");
+        assert_eq!(answer["acted"]["place"], place.as_str(), "{answer}");
+    }
+}
