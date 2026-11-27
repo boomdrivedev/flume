@@ -117,7 +117,7 @@ $(cat "$cwd/$word")" ;;
       folder=${folder#"$root"/}
       for package in $packages; do
         if printf '%s\n' "$text" |
-          grep -Eq "cargo +(build|run|test|nextest +run)( [^&|;]*)? -p +$package( |\$|[\"'])"; then
+          grep -Eq "cargo +(build|run|test|nextest +run)( [^&|;]*)? -p +$package( |\$|[\"')])"; then
           printf '%s %s %s:%s\n' "$folder" "$package" "$id" "$name"
         fi
       done

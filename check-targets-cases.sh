@@ -34,6 +34,7 @@ EOF
   printf '[package]\nname = "app-lib"\nversion = "0.1.0"\nedition = "2021"\n' >"$dir/app-lib/Cargo.toml"
   : >"$dir/app-lib/src/lib.rs"
   echo 'cargo build --quiet -p app --bin app' >"$dir/part/tests/build.sh"
+  echo '(cd .. && cargo build -q -p app)' >"$dir/part/tests/sub.sh"
   mkdir "$dir/.moon"
   printf 'projects:\n  root: "."\n  part: "part"\n' >"$dir/.moon/workspace.yml"
   printf 'tasks:\n%s\n' "$1" >"$dir/moon.yml"
@@ -83,6 +84,13 @@ named="A script that a task runs builds the binary"
 try "  test:
     command: 'cargo test -p app'" "  test:
     script: 'bash tests/build.sh && echo built'"
+expect "$named" "check-targets.sh exits $status: $out" [ "$status" -eq 1 ]
+expect "$named" "it names neither task: $out" says "$out" "root:test part:test"
+
+named="A subshell of a script builds the binary"
+try "  test:
+    command: 'cargo test -p app'" "  test:
+    script: 'bash tests/sub.sh'"
 expect "$named" "check-targets.sh exits $status: $out" [ "$status" -eq 1 ]
 expect "$named" "it names neither task: $out" says "$out" "root:test part:test"
 
