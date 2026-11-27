@@ -2,8 +2,8 @@
 //! (flume-reads-sluices-records-on-sluice-hosts-socket;
 //! residents-ask-each-other-by-socket): one connection for each ask, never
 //! a sluice command. flume says `{"hello":"flume/<version>"}`, reads
-//! sluice host's answer, asks one read, `overview` or `status`, naming the
-//! folder the profile's commands run in, and reads its `output`, whose
+//! sluice host's answer, asks one read, `overview`, `status` or `inbox`,
+//! naming the folder the profile's commands run in, and reads its `output`, whose
 //! `stdout` is what the command prints. An `error` line, no answer within
 //! [`WITHIN`] or no socket gives its words; flume starts no sluice host,
 //! which is the host's service manager's to start
@@ -102,6 +102,18 @@ pub fn ask(socket: &Path, ask: &Value) -> Result<Output, String> {
             .collect::<Vec<_>>()
             .join("\n"),
     })
+}
+
+/// The ask of the inbox of the place at `folder`, as `sluice inbox
+/// --json` run there asks it: its worktree the folder itself, confirming
+/// nothing, and `agent`, the `SLUICE_AGENT` the command would carry, as
+/// its caller where one is set (133; sluice 51).
+pub fn inbox(folder: &str, agent: Option<&str>) -> Value {
+    let mut ask = json!({ "ask": "inbox", "folder": folder, "worktree": folder, "json": true });
+    if let Some(agent) = agent {
+        ask["caller"] = json!({ "SLUICE_AGENT": agent });
+    }
+    ask
 }
 
 /// The ask of a folder's overview.
