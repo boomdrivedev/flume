@@ -18,7 +18,9 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-/// The bound a test's profile states for `open`.
+/// The bound the profile states for an `open` that never answers: every
+/// other show waits on the stand-in for the profile's own bound, which a
+/// shell's start on a loaded host stays within.
 const BOUND: Duration = Duration::from_secs(2);
 
 /// The login environment a test's `ghostty` is started in.
@@ -47,6 +49,10 @@ struct Harness {
     _scratch: Scratch,
     stand_in: StandIn,
     seam: Counted,
+    /// The profile at [`BOUND`], shown through once the next `open` never
+    /// answers.
+    hung: Counted,
+    hangs: std::cell::Cell<bool>,
     system: System,
 }
 
@@ -60,16 +66,17 @@ impl Harness {
         let stand_in = StandIn::new(&scratch.path("stand-in"), name);
         let ghostty = Ghostty::for_system(system)
             .with_programs(&stand_in.path(), &stand_in.path())
-            .with_login(&LOGIN)
-            .with_bound(BOUND);
-        let seam = Counted {
+            .with_login(&LOGIN);
+        let counted = |ghostty: Ghostty| Counted {
             ghostty,
             opened: AtomicUsize::new(0),
         };
         Harness {
             _scratch: scratch,
             stand_in,
-            seam,
+            seam: counted(ghostty.clone()),
+            hung: counted(ghostty.with_bound(BOUND)),
+            hangs: std::cell::Cell::new(false),
             system,
         }
     }
@@ -127,7 +134,11 @@ impl WindowHarness for Harness {
     type Seam = Counted;
 
     fn seam(&self) -> &Counted {
-        &self.seam
+        if self.hangs.get() {
+            &self.hung
+        } else {
+            &self.seam
+        }
     }
 
     fn command(&self) -> ViewCommand {
@@ -141,9 +152,9 @@ impl WindowHarness for Harness {
     fn opened(&self) -> Vec<(ViewCommand, String)> {
         let runs = match self.system {
             System::MacOs => self.stand_in.runs(),
-            System::Other => self
-                .stand_in
-                .runs_at_least(self.seam.opened.load(Ordering::SeqCst)),
+            System::Other => self.stand_in.runs_at_least(
+                self.seam.opened.load(Ordering::SeqCst) + self.hung.opened.load(Ordering::SeqCst),
+            ),
         };
         runs.iter().map(|run| window_of(run, self.system)).collect()
     }
@@ -168,6 +179,7 @@ impl WindowHarness for Harness {
             return None;
         }
         self.stand_in.hang_next();
+        self.hangs.set(true);
         Some(BOUND)
     }
 }
@@ -253,7 +265,7 @@ fn an_open_that_never_answers() {
     let harness = Harness::new(System::MacOs);
     harness.stand_in.hang_next();
     let asked = Instant::now();
-    let answer = harness.seam.show(&command("/h"), "Work Herdr");
+    let answer = harness.hung.show(&command("/h"), "Work Herdr");
     assert!(asked.elapsed() < BOUND + Duration::from_secs(3));
     let WindowShown::Refused { reason } = answer else {
         panic!("an open that never answered gave {answer:?}");

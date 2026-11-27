@@ -723,7 +723,7 @@ fn waiting_on(world: &World, id: &PlaceId) -> Vec<MessageHeld> {
 /// A take at each of the host's sleeps from now, as a deliver part asks
 /// at each turn's end and idle tick, each words it took kept in `took`
 /// and, where `submits`, submitted by the agent's program (215).
-fn take_at_each_sleep(
+pub(super) fn take_at_each_sleep(
     host: Arc<FakeHost>,
     engine: Arc<Engine>,
     taker: (PlaceId, Identity, String),

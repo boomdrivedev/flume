@@ -16,26 +16,35 @@ use flume_seams::*;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-/// The bound a test's profile states for `osascript`.
+/// The bound the profile states for an `osascript` that never answers:
+/// every other show waits on the stand-in for the profile's own bound,
+/// which a shell's start on a loaded host stays within.
 const BOUND: Duration = Duration::from_secs(2);
 
 struct Harness {
     _scratch: Scratch,
     stand_in: StandIn,
     seam: TerminalApp,
+    /// The profile at [`BOUND`], shown through once the next `osascript`
+    /// never answers.
+    hung: TerminalApp,
+    hangs: std::cell::Cell<bool>,
 }
 
 impl Harness {
     fn new(system: System) -> Harness {
         let scratch = Scratch::new("window-terminal");
         let stand_in = StandIn::new(&scratch.path("stand-in"), "osascript");
-        let seam = TerminalApp::for_system(system)
+        let seam = TerminalApp::for_system(system).with_program(&stand_in.path());
+        let hung = TerminalApp::for_system(system)
             .with_program(&stand_in.path())
             .with_bound(BOUND);
         Harness {
             _scratch: scratch,
             stand_in,
             seam,
+            hung,
+            hangs: std::cell::Cell::new(false),
         }
     }
 }
@@ -76,7 +85,11 @@ impl WindowHarness for Harness {
     type Seam = TerminalApp;
 
     fn seam(&self) -> &TerminalApp {
-        &self.seam
+        if self.hangs.get() {
+            &self.hung
+        } else {
+            &self.seam
+        }
     }
 
     fn command(&self) -> ViewCommand {
@@ -103,6 +116,7 @@ impl WindowHarness for Harness {
 
     fn will_hang(&self) -> Option<Duration> {
         self.stand_in.hang_next();
+        self.hangs.set(true);
         Some(BOUND)
     }
 }

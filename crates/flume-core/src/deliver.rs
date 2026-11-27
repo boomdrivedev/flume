@@ -29,6 +29,15 @@ use crate::uncarried::{carries, uncarried, ENDED_FIRST, NOT_BY_THE_LIMIT, NOT_RE
 use crate::{Engine, Step, POLL, QUIET_LIMIT, RECEIVED_WITHIN};
 use flume_seams::*;
 
+/// The start's prompt read received at `now` in the agent's `record`,
+/// and the start begun then, any dialog it showed gone (35, 38).
+pub(crate) fn received_now(start: &mut StartHeld, record: &str, now: Seconds) {
+    start.prompt.received_at = Some(now);
+    start.record = Some(record.to_string());
+    start.begun_at = Some(now);
+    start.dialog = None;
+}
+
 impl Engine {
     /// Moves the prompt of the start of the stage at `at`, else of the
     /// current start, on as far as its agent allows, reading each sending
@@ -92,9 +101,13 @@ impl Engine {
             }
             if stage.state == StageState::Starting || unsettled.is_some() {
                 if unsettled.is_none() && agent.started(&folder, identity) == Reading::Yes {
+                    // Another settle may have ended the start since it was
+                    // read: the word is taken only while it still starts.
                     self.with_start(id, identity, |start, state| {
-                        start.dialog = None;
-                        *state = StageState::Started;
+                        if start.live && *state == StageState::Starting {
+                            start.dialog = None;
+                            *state = StageState::Started;
+                        }
                     });
                     sent = true;
                     continue;
@@ -142,12 +155,15 @@ impl Engine {
             }
             if let Received::Received { record } = agent.received(&folder, identity, &prompt.text) {
                 let now = self.host.now();
+                // Another settle may have ended the start since it was
+                // read, its agent read stopped or lost: the receipt is
+                // recorded only while the start still runs, so it never
+                // writes the stage begun over that end (35, 38, 75).
                 self.with_start(id, identity, |start, state| {
-                    start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
-                    start.begun_at = Some(now);
-                    start.dialog = None;
-                    *state = StageState::Begun;
+                    if start.live && matches!(*state, StageState::Starting | StageState::Started) {
+                        received_now(start, &record, now);
+                        *state = StageState::Begun;
+                    }
                 });
                 return true;
             }
@@ -342,9 +358,7 @@ impl Engine {
             stage.end = None;
             stage.state = match &received {
                 Some(record) => {
-                    start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
-                    start.begun_at = Some(now);
+                    received_now(start, record, now);
                     StageState::Begun
                 }
                 None => StageState::Started,

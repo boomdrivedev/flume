@@ -763,10 +763,11 @@ seconds; it SHALL answer nothing else on a screen (34, C.5; core.12).
 ### Requirement: Rex's send leaves nothing typed
 
 The Rex profile's send SHALL clear held input with one `send-key
-ctrl+c` only where the agent reads waiting, then type the text by `send`
-in pieces of at most 60,000 bytes cut between characters, then press
-Enter by `send-key enter`; it SHALL never interrupt a working agent, and
-received SHALL be read through the agent (89, 95, C.5; core.11).
+ctrl+c`, and only where the agent reads waiting. It SHALL then type the
+text by `send`, in pieces of at most 60,000 bytes cut between
+characters, and then press Enter by `send-key enter`. It SHALL never
+interrupt a working agent. The profile SHALL read through the agent
+whether the agent received the text (89, 95, C.5, core.11).
 
 #### Scenario: A prompt left typed
 
@@ -780,8 +781,8 @@ received SHALL be read through the agent (89, 95, C.5; core.11).
 
 #### Scenario: A text past sixty thousand bytes
 
-- **WHEN** a prompt of 150,000 bytes, non-ASCII among them, is sent
-- **THEN** the agent takes it whole and in order as one prompt
+- **WHEN** the profile sends a prompt of 150,000 bytes, non-ASCII among them, to an agent that reads its terminal three seconds after it reports idle
+- **THEN** the agent takes the whole prompt in order as one prompt, within a minute on a busy host
 
 ### Requirement: What Rex reads of an agent
 
@@ -1280,3 +1281,16 @@ draw at once, SHALL read with those in their place (34, 35, C.5; record
 
 - **WHEN** the herdr tests' profile, given no draw and a settle of four seconds, opens the stand-in, which draws nothing and asks no question
 - **THEN** the open answers once the screen has held still a second, not three seconds after herdr answered (34; record 0018)
+
+### Requirement: herdr reads an empty foreground again
+
+Once herdr answers the agent's start, the herdr profile SHALL read the
+pane's foreground for the program the settings name. While herdr shows
+nothing in the foreground, the profile SHALL read it again until the
+start's own bound. It SHALL refuse at once a pane that runs another
+program (32, 35, C.5, record 0018).
+
+#### Scenario: A shell slow to run the program
+
+- **WHEN** herdr answers the start, and the pane's foreground stays empty for some seconds before the program runs
+- **THEN** the start opens, and the profile refuses nothing
