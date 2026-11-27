@@ -1005,3 +1005,523 @@ fn an_ack_by_hand_with_no_mode() {
         "{words}"
     );
 }
+
+/// The session the fixtures' inputs name.
+const SESSION: &str = "4e3c05c8-51c4-4449-8577-4f7038e394bf";
+
+impl Host {
+    /// `flume hook status-line` in `env`, as the plugin's module runs it.
+    fn status_line(&self, env: &[(String, String)]) -> String {
+        self.hook_given("status-line", "", env)
+    }
+
+    /// The place's line as `flume status <place> --line` gives it.
+    fn line(&self, place: &str) -> String {
+        let asked = flume::served::Asked {
+            place: Some(place.into()),
+            line: true,
+            repositories: vec![],
+        };
+        let answer: Value =
+            serde_json::from_str(&flume::served::read_core(&|| Ok(self.engine()), &asked))
+                .expect("the lines' JSON");
+        answer["lines"]["lines"][0]["full"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no line: {answer}"))
+            .to_string()
+    }
+
+    /// `flume hook usage` in `env` as the plugin's module runs it, its
+    /// input the engine's report `rate_limits`; it prints nothing.
+    fn usage(&self, env: &[(String, String)], rate_limits: Value) {
+        let out = self.hook_given(
+            "usage",
+            &json!({ "rateLimits": rate_limits }).to_string(),
+            env,
+        );
+        assert_eq!(out, "", "hook usage printed");
+    }
+
+    /// work-1's document in the state directory, none where there is none.
+    fn work_1_document(&self) -> Option<Value> {
+        let text =
+            std::fs::read_to_string(self.path("state/flume/accounts/work/work-1.json")).ok()?;
+        let read: Value = serde_json::from_str(&text).expect("the document as JSON");
+        Some(read["document"].clone())
+    }
+}
+
+/// The fix launched on work-1 and its agent started there, with the
+/// environment its hooks run in.
+fn started_under_work_1(host: &Host) -> (Agent, Vec<(String, String)>) {
+    let account = with_an_account(host, &[]);
+    let agent = host.launch("fix");
+    let mut env = agent.env();
+    env.push((
+        "CLAUDE_CONFIG_DIR".into(),
+        account.to_string_lossy().into_owned(),
+    ));
+    host.hook_in(
+        &agent,
+        "session-start",
+        json!({ "source": "startup" }),
+        &env,
+    );
+    assert_eq!(host.agent_status(&agent.place)["started"], "yes");
+    (agent, env)
+}
+
+/// A carried start: its agent, the resumed session's transcript, and its
+/// environment as Claude Code gives its hooks.
+struct Carried {
+    agent: Agent,
+    transcript: PathBuf,
+    env: Vec<(String, String)>,
+}
+
+/// A fill-first pool of two accounts whose configuration homes are
+/// scratch folders, the second's `projects` a link to the first's: the
+/// fix's code agent under work-1 acks in `SESSION`, its transcript in
+/// work-1's home, and takes its prompt; its turn fails at the session
+/// limit and its session ends; a settle reads it spent, and the stage's
+/// start under work-2 resumes that session (146, 179, C.4).
+fn carried(host: &Host) -> Carried {
+    let first = host.path("home-1");
+    let second = host.path("home-2");
+    std::fs::create_dir_all(&second).expect("the second home");
+    let home = |name: &str, folder: &Path| Account {
+        program: "claude".into(),
+        env: BTreeMap::from([(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            folder.to_string_lossy().into_owned(),
+        )]),
+        ..account(name, None)
+    };
+    pool(
+        &host.world,
+        "work",
+        Strategy::FillFirst,
+        vec![home("work-1", &first), home("work-2", &second)],
+    );
+    host.world.host.set_host_pool(Some("work"));
+    let stopped = host.launch("fix");
+    let folder = first.join("projects").join(
+        stopped
+            .place
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect::<String>(),
+    );
+    std::fs::create_dir_all(&folder).expect("the first home's projects");
+    std::os::unix::fs::symlink(first.join("projects"), second.join("projects")).expect("the link");
+    let transcript = folder.join(format!("{SESSION}.jsonl"));
+    std::fs::write(&transcript, fixture("session.jsonl")).expect("the transcript");
+    let mut env = stopped.env();
+    env.push((
+        "CLAUDE_CONFIG_DIR".into(),
+        first.to_string_lossy().into_owned(),
+    ));
+    host.hook_in(
+        &stopped,
+        "session-start",
+        json!({ "source": "startup", "transcript_path": transcript }),
+        &env,
+    );
+    assert_eq!(host.agent_status(&stopped.place)["started"], "yes");
+    host.hook_in(
+        &stopped,
+        "user-prompt-submit",
+        json!({ "prompt": stopped.prompt, "transcript_path": transcript }),
+        &env,
+    );
+    host.hook_in(
+        &stopped,
+        "stop-failure",
+        json!({
+            "error": "rate_limit",
+            "last_assistant_message": "You've hit your session limit · resets 5pm (UTC)",
+            "transcript_path": transcript,
+        }),
+        &env,
+    );
+    host.hook_in(
+        &stopped,
+        "session-end",
+        json!({ "reason": "other", "transcript_path": transcript }),
+        &env,
+    );
+    host.settle(&stopped.place);
+    let status = host.agent_status(&stopped.place);
+    assert_eq!(
+        status["conversation"],
+        json!({ "from": 1, "carried": true }),
+        "{status}"
+    );
+    let agent = host.agent(&stopped.place);
+    assert_ne!(agent.identity, stopped.identity, "{status}");
+    let printed = status["printed"].as_str().unwrap_or_default();
+    assert!(
+        printed.contains(&format!("--resume {SESSION}")),
+        "the carried start resumes no session: {printed}"
+    );
+    let mut env = agent.env();
+    env.push((
+        "CLAUDE_CONFIG_DIR".into(),
+        second.to_string_lossy().into_owned(),
+    ));
+    Carried {
+        agent,
+        transcript,
+        env,
+    }
+}
+
+/// Fills the transcript at `path` to `length` bytes with one record of
+/// the program's own.
+fn fill_to(path: &Path, length: usize) {
+    let mut text = std::fs::read_to_string(path).expect("the transcript");
+    let pad = length - text.len() - r#"{"type":"system","content":""}"#.len() - 1;
+    text.push_str(&format!(
+        "{}\n",
+        json!({ "type": "system", "content": "x".repeat(pad) })
+    ));
+    std::fs::write(path, &text).expect("the transcript");
+    assert_eq!(text.len(), length);
+}
+
+#[test]
+fn the_stop_check_sends_back_then_lets_the_stop_through() {
+    // S24: the agent tries to stop with nothing made, and the stop is
+    // blocked with words naming commits and `flume needs`. It commits; the
+    // next stop is let through, and once its session ended a settle ends
+    // the code stage at its deliverable and starts the next (S29, 46,
+    // 115, 121). That the stop asks flume host to settle is
+    // hooks_claude's the_stop_asks_flume_host_and_leaves_no_process.
+    let host = Host::new("stop");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    host.hook(
+        &agent,
+        "user-prompt-submit",
+        json!({ "prompt": agent.prompt }),
+    );
+    assert!(agent.prompt.contains("flume needs"), "{}", agent.prompt);
+    let ran = host.hook(&agent, "stop", json!({ "stop_hook_active": false }));
+    let answer = decision(&ran).expect("the stop blocked");
+    assert_eq!(answer["decision"], "block");
+    let reason = answer["reason"].as_str().unwrap_or_default();
+    assert!(reason.contains("commits"), "{reason}");
+    assert!(reason.contains("flume needs"), "{reason}");
+
+    host.world.commit("fix/one", &["parser.rs"]);
+    let ran = host.hook(&agent, "stop", json!({ "stop_hook_active": true }));
+    assert_eq!(decision(&ran), None, "a stop with the deliverable made");
+    host.hook(
+        &agent,
+        "session-end",
+        json!({ "reason": "prompt_input_exit" }),
+    );
+    host.settle(&agent.place);
+    let status = host.status(&agent.place);
+    let place = &status["places"][0];
+    assert_eq!(place["current"], "review", "{status}");
+    assert_eq!(place["stages"][0]["state"], "delivered", "{status}");
+}
+
+#[test]
+fn the_status_line_of_a_code_agent() {
+    // In a code agent's session the hook prints the place's line asked
+    // alone, one line, the same as status --line, and a session under an
+    // identity that is not the stage's live start says so (35, 56, 57,
+    // 60; S14; design 5).
+    let host = Host::new("status-line");
+    let agent = host.launch("fix");
+    let line = host.line(&agent.place);
+    assert_eq!(line, "fix--one · fix@1 · code · run 1 · starting");
+    assert_eq!(host.status_line(&agent.env()), line);
+
+    // Working once a settle reads the started ack and the prompt
+    // received.
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    first_prompt(&host, &agent, None);
+    host.settle(&agent.place);
+    assert_eq!(
+        host.status_line(&agent.env()),
+        "fix--one · fix@1 · code · run 1 · working"
+    );
+
+    let mut later = agent.env();
+    later[0].1 = agent.identity.replace(":code:1", ":code:2");
+    assert_ne!(later[0].1, agent.identity, "another start's identity");
+    assert_eq!(
+        host.status_line(&later),
+        "fix--one · fix@1 · code · run 1 · working · this session is not its agent"
+    );
+}
+
+#[test]
+fn the_status_line_outside_an_agent_flume_started() {
+    // Outside an agent flume started, or for a place the core cannot
+    // read, it prints nothing (C.4; design 5).
+    let host = Host::new("status-line-outside");
+    let agent = host.launch("fix");
+    assert_eq!(host.status_line(&[]), "");
+    let env = agent.env();
+    let without = |name: &str| -> Vec<(String, String)> {
+        env.iter()
+            .filter(|(given, _)| given != name)
+            .cloned()
+            .collect()
+    };
+    assert_eq!(host.status_line(&without("FLUME_PLACE")), "");
+    assert_eq!(host.status_line(&without("FLUME_AGENT")), "");
+    let mut gone = agent.env();
+    gone[2].1 = format!("{}-gone", agent.place);
+    assert_eq!(host.status_line(&gone), "");
+    let mut unspelled = agent.env();
+    unspelled[0].1 = "not-an-identity".into();
+    assert_eq!(host.status_line(&unspelled), "");
+}
+
+#[test]
+fn the_status_line_writes_nothing() {
+    // Ten runs in a code agent's environment leave every file under the
+    // scratch state directory as it was, the place's held state at its
+    // version among them (57; core.16).
+    let host = Host::new("status-line-reads");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    let before = host.state();
+    for _ in 0..10 {
+        assert!(host.status_line(&agent.env()).starts_with("fix--one · "));
+    }
+    assert_eq!(host.state(), before, "status-line wrote flume's state");
+}
+
+#[test]
+fn a_carried_start_in_another_session() {
+    // The hook runs for a start whose record names the session it
+    // resumes, its input naming another: no started ack is written, the
+    // agent's word says it came up in another session and names neither,
+    // and a settle of the place reads it. The record keeps the session the
+    // agent runs and its transcript, as every such word does, for reading
+    // its own work (161, 179).
+    let host = Host::new("carried-elsewhere");
+    let carried = carried(&host);
+    let other = "9b1f6a2e-0c4d-4e8f-a1b2-c3d4e5f60718";
+    let transcript = carried.transcript.with_file_name(format!("{other}.jsonl"));
+    std::fs::write(&transcript, fixture("session.jsonl")).expect("its transcript");
+    let ran = host.hook_in(
+        &carried.agent,
+        "session-start",
+        json!({ "source": "resume", "session_id": other, "transcript_path": transcript }),
+        &carried.env,
+    );
+    assert_eq!(decision(&ran), None);
+    let record = host.record(&carried.agent);
+    assert!(record.started().is_none(), "a started ack was written");
+    let word = record
+        .unsettled()
+        .expect("the word that it began otherwise");
+    assert!(word.unsettled.session, "{word:?}");
+    assert!(
+        word.unsettled.missing.is_empty()
+            && word.unsettled.different.is_empty()
+            && !word.unsettled.program
+            && word.unsettled.mode.is_none(),
+        "{word:?}"
+    );
+    let words = word.unsettled.words();
+    assert!(
+        !words.contains(SESSION) && !words.contains(other),
+        "{words}"
+    );
+    let written =
+        std::fs::read_to_string(record.dir().join("unsettled.json")).expect("the word as written");
+    assert!(
+        !written.contains(SESSION),
+        "the resumed session in {written}"
+    );
+    let read = unsettled_read(&host, &carried.agent.place);
+    assert_eq!(read["session"], true, "{read}");
+    assert_eq!(read["start"], 2, "{read}");
+    let read = read.to_string();
+    assert!(!read.contains(SESSION) && !read.contains(other), "{read}");
+}
+
+#[test]
+fn a_start_that_resumes_nothing() {
+    // The hook runs for a start whose record names no session: it compares
+    // none, and acks on the program and the variables as before, whatever
+    // session its input names (161).
+    let host = Host::new("resumes-nothing");
+    let agent = host.launch("fix");
+    host.hook(
+        &agent,
+        "session-start",
+        json!({ "source": "startup", "session_id": "a-session-of-its-own" }),
+    );
+    let record = host.record(&agent);
+    let started = record.started().expect("the started ack");
+    assert_eq!(started.session_id, "a-session-of-its-own");
+    assert!(record.unsettled().is_none());
+}
+
+#[test]
+fn a_carried_starts_length_kept_at_a_compaction() {
+    // The hook acks a carried start whose transcript holds 4,096 bytes,
+    // and the ack records 4,096; the start compacts, its transcript grows
+    // and SessionStart runs again with `source` `compact`: the ack still
+    // records 4,096 (91, 179).
+    let host = Host::new("carried-length");
+    let carried = carried(&host);
+    fill_to(&carried.transcript, 4096);
+    let ran = host.hook_in(
+        &carried.agent,
+        "session-start",
+        json!({ "source": "resume", "transcript_path": carried.transcript }),
+        &carried.env,
+    );
+    assert_eq!(decision(&ran), None);
+    assert_eq!(host.agent_status(&carried.agent.place)["started"], "yes");
+    let record = host.record(&carried.agent);
+    let started = record.started().expect("the started ack");
+    assert_eq!((started.session_id.as_str(), started.from), (SESSION, 4096));
+
+    let mut text = std::fs::read_to_string(&carried.transcript).expect("the transcript");
+    text.push_str(&fixture("session.jsonl"));
+    std::fs::write(&carried.transcript, text).expect("the transcript grown");
+    host.hook_in(
+        &carried.agent,
+        "session-start",
+        json!({ "source": "compact", "transcript_path": carried.transcript }),
+        &carried.env,
+    );
+    let started = record.started().expect("the started ack");
+    assert_eq!(started.source, "compact");
+    assert_eq!(started.from, 4096, "{started:?}");
+}
+
+#[test]
+fn a_report_of_the_windows_is_the_accounts_reading() {
+    // The claude-code-plugin spec's scenario "A report under an account":
+    // the hook keeps the report beside the start's record and the core
+    // takes it as work-1's reading, from the code agent's identity and
+    // the session its started ack names, a use past 100 read as 100,
+    // which status gives fresh (184, 185, 211).
+    let host = Host::new("usage-account");
+    let (agent, env) = started_under_work_1(&host);
+    let seventeen = now() + 3 * 3600;
+    let before = now();
+    host.usage(
+        &env,
+        json!([
+            {"kind": "five_hour", "percentUsed": 42, "resetsAt": rfc3339_of(seventeen)},
+            {"kind": "seven_day", "percentUsed": 107.5},
+        ]),
+    );
+    let after = now();
+    let document = host.work_1_document().expect("work-1's document");
+    let reading = &document["reading"];
+    let taken_at = reading["taken_at"].as_str().expect("taken_at");
+    let taken = rfc3339_read(taken_at).expect("RFC 3339");
+    assert!((before..=after).contains(&taken), "{document}");
+    assert_eq!(reading["agent"], json!(agent.identity), "{document}");
+    assert_eq!(reading["session"], json!(SESSION), "{document}");
+    assert_eq!(
+        reading["windows"],
+        json!([
+            {"name": "five_hour", "used": 42, "resets_at": rfc3339_of(seventeen)},
+            {"name": "seven_day", "used": 100},
+        ]),
+        "{document}"
+    );
+    assert!(
+        host.record(&agent).dir().join("windows.json").is_file(),
+        "the report kept beside the start's record"
+    );
+    let answer: Value =
+        serde_json::from_str(&host.engine().status(None).to_json()).expect("the status's JSON");
+    let account = &answer["status"]["host"]["pools"][0]["accounts"][0];
+    assert_eq!(account["name"], "work-1", "{answer}");
+    assert_eq!(account["reading"]["fresh"], true, "{answer}");
+    assert_eq!(
+        account["reading"]["agent"],
+        json!(agent.identity),
+        "{answer}"
+    );
+    assert_eq!(account["reading"]["read_at"], json!(taken), "{answer}");
+}
+
+#[test]
+fn a_window_in_no_form_keeps_nothing() {
+    // The claude-code-plugin spec's scenario "A window in no such form":
+    // each keeps nothing, and work-1's reading stands (184).
+    let host = Host::new("usage-no-form");
+    let (agent, env) = started_under_work_1(&host);
+    host.usage(&env, json!([{"kind": "five_hour", "percentUsed": 30}]));
+    let standing = host.work_1_document().expect("work-1's document");
+    let windows = host.record(&agent).dir().join("windows.json");
+    let kept = std::fs::read(&windows).expect("the report kept");
+    for window in [
+        json!({"percentUsed": 42}),
+        json!({"kind": "five_hour", "percentUsed": "42%"}),
+        json!({"kind": "five_hour", "percentUsed": 42, "resetsAt": "at five"}),
+    ] {
+        host.usage(
+            &env,
+            json!([{"kind": "seven_day", "percentUsed": 18}, window]),
+        );
+        assert_eq!(
+            host.work_1_document().as_ref(),
+            Some(&standing),
+            "work-1's reading after {window}"
+        );
+        assert_eq!(
+            std::fs::read(&windows).expect("the report kept"),
+            kept,
+            "the report kept after {window}"
+        );
+    }
+}
+
+#[test]
+fn a_report_under_no_account_writes_no_accounts_document() {
+    // The claude-code-plugin spec's scenario "A start under no account":
+    // the report is kept beside the start's record, and no account's
+    // document is written (184).
+    let host = Host::new("usage-no-account");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    host.usage(
+        &agent.env(),
+        json!([{"kind": "five_hour", "percentUsed": 42}]),
+    );
+    assert!(
+        host.record(&agent).dir().join("windows.json").is_file(),
+        "the report kept beside the start's record"
+    );
+    assert!(
+        !host.path("state/flume/accounts").exists(),
+        "an account's document written"
+    );
+}
+
+#[test]
+fn hook_usage_outside_a_session_flume_started_writes_nothing() {
+    // The claude-code-plugin spec's scenario "Outside a session flume
+    // started": with no FLUME_AGENT and no FLUME_SECRET the hook prints
+    // nothing and every file under the state directory is as it was (C.4).
+    let host = Host::new("usage-outside");
+    let agent = host.launch("fix");
+    host.hook(&agent, "session-start", json!({ "source": "startup" }));
+    let before = host.state();
+    let env: Vec<(String, String)> = agent
+        .env()
+        .into_iter()
+        .filter(|(name, _)| name != "FLUME_AGENT" && name != "FLUME_SECRET")
+        .collect();
+    host.usage(&env, json!([{"kind": "five_hour", "percentUsed": 42}]));
+    host.usage(&[], json!([{"kind": "five_hour", "percentUsed": 42}]));
+    assert_eq!(host.state(), before, "hook usage wrote flume's state");
+}
