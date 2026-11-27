@@ -25,6 +25,7 @@
 
 use crate::common::*;
 use flume::host::config::HostConfig;
+use flume::host::process::Listed;
 use flume::profiles::agent::claude::record::{self, Asking, Failure, Record, Started};
 use flume::profiles::agent::claude::{
     as_received, digest, written, Claude, NAME, PLUGIN, STANDING_PROMPT_FLAG, TRUST_CONFIRM,
@@ -168,18 +169,6 @@ impl Harness {
         let pid = child.id();
         self.processes.0.borrow_mut().push(child);
         pid
-    }
-
-    /// Ends the harness's process `pid` and waits for it.
-    fn end_process(&self, pid: u32) {
-        let mut processes = self.processes.0.borrow_mut();
-        let at = processes
-            .iter()
-            .position(|child| child.id() == pid)
-            .expect("a process of the harness");
-        let mut child = processes.remove(at);
-        child.kill().expect("the process ended");
-        child.wait().expect("the process waited on");
     }
 
     /// `<home>/sessions/<pid>.json` as 2.1.322 writes it for the process
@@ -2125,18 +2114,42 @@ fn a_lost_starts_conversation_carried_to_its_own_home() {
     assert_eq!(why, carry::UNREADABLE);
 }
 
-/// The processes live reads, by a listing of the host's.
-fn listed() -> Option<Vec<flume::host::process::Listed>> {
-    live::processes()
+/// When the processes of the recorded process tables started, in the
+/// host's seconds.
+const STARTED: u64 = 1_793_279_400;
+
+/// The host's process table, holding `processes` alone.
+fn table(processes: Vec<Listed>) -> impl FnOnce() -> Option<Vec<Listed>> {
+    move || Some(processes)
+}
+
+/// A process the table lists as `pid`, started at [`STARTED`], running
+/// `args`.
+fn listing(pid: u32, args: &[&str]) -> Listed {
+    Listed {
+        pid,
+        started: STARTED,
+        args: args.iter().map(|arg| arg.to_string()).collect(),
+    }
+}
+
+/// What live answers runs with: `pid`, started at [`STARTED`].
+fn runs(pid: u32) -> Live {
+    Live::Runs(vec![LiveProcess {
+        pid,
+        started: STARTED,
+    }])
 }
 
 #[test]
 fn a_session_record_and_its_process() {
     // work-1's `sessions/<pid>.json` names the start's session with the
-    // `pid` and `procStart` of a process the test runs: live answers runs
-    // with that process, under work-1's home and under the login
-    // environment's `~/.claude` where that is work-1's; once the process
-    // ends, none, the record still on disk (207, C.4).
+    // `pid` and `procStart` of a process the host's table lists: live
+    // answers runs with that process, under work-1's home and under the
+    // login environment's `~/.claude` where that is work-1's; once the
+    // table lists it no more, none, the record still on disk (207, C.4).
+    // That the table is the host's own is the agent scenarios' run against
+    // processes the harness starts.
     let harness = Harness::new();
     let who = identity("talk");
     let folder = harness.folder();
@@ -2144,10 +2157,13 @@ fn a_session_record_and_its_process() {
     let session = new_session();
     harness.name_session(&who, &session);
     let home = harness.home("work-1");
-    let pid = harness.run_process();
-    let record = harness.session_record(&home, pid, &session, Some(&proc_start(pid)));
-    let runs = Live::Runs(vec![live_process(pid)]);
-    assert_eq!(harness.seam.live(&folder, &who, &[at_home(&home)]), runs);
+    let started = live::proc_start(STARTED).expect("the start in words");
+    let record = harness.session_record(&home, 4242, &session, Some(&started));
+    let running = || table(vec![listing(4242, &["sleep", "600"])]);
+    let read = |start: &Identity, envs: &[BTreeMap<String, String>], list| {
+        live::live(&Record::at(&folder, start), envs, None, list)
+    };
+    assert_eq!(read(&who, &[at_home(&home)], running()), runs(4242));
     let login = harness.scratch.path("login");
     std::fs::create_dir_all(&login).expect("the login home");
     std::os::unix::fs::symlink(&home, login.join(".claude")).expect("the link");
@@ -2156,39 +2172,35 @@ fn a_session_record_and_its_process() {
             &Record::at(&folder, &who),
             &[BTreeMap::new()],
             Some(&login),
-            listed
+            running()
         ),
-        runs
+        runs(4242)
     );
     // A home that keeps no `sessions` folder, or another session's record,
     // names nothing.
     assert_eq!(
-        harness
-            .seam
-            .live(&folder, &who, &[at_home(&harness.home("work-2"))]),
+        read(&who, &[at_home(&harness.home("work-2"))], running()),
         Live::None
     );
     let other = identity("code");
     harness.start(&AgentCommand::default(), &other, &folder);
     harness.name_session(&other, &new_session());
-    assert_eq!(
-        harness.seam.live(&folder, &other, &[at_home(&home)]),
-        Live::None
-    );
+    assert_eq!(read(&other, &[at_home(&home)], running()), Live::None);
     // A start that never said it started names no session.
     assert_eq!(
-        harness
-            .seam
-            .live(&folder, &identity("verify"), &[at_home(&home)]),
+        read(&identity("verify"), &[at_home(&home)], running()),
         Live::None
     );
-
-    harness.end_process(pid);
-    assert_eq!(
-        harness.seam.live(&folder, &who, &[at_home(&home)]),
-        Live::None
-    );
+    assert_eq!(read(&who, &[at_home(&home)], table(vec![])), Live::None);
     assert!(record.is_file(), "the record was removed");
+    // A table that cannot be read is unknown.
+    assert!(
+        matches!(
+            live::live(&Record::at(&folder, &who), &[at_home(&home)], None, || None),
+            Live::Unknown { .. }
+        ),
+        "an unread table"
+    );
 }
 
 #[test]
@@ -2204,17 +2216,18 @@ fn a_reused_process_id() {
     let session = new_session();
     harness.name_session(&who, &session);
     let home = harness.home("work-1");
-    let pid = harness.run_process();
-    harness.session_record(&home, pid, &session, Some("Thu Jan  1 00:00:00 1970"));
-    assert_eq!(
-        harness.seam.live(&folder, &who, &[at_home(&home)]),
-        Live::None
-    );
-    harness.session_record(&home, pid, &session, None);
-    assert_eq!(
-        harness.seam.live(&folder, &who, &[at_home(&home)]),
-        Live::Runs(vec![live_process(pid)])
-    );
+    let read = || {
+        live::live(
+            &Record::at(&folder, &who),
+            &[at_home(&home)],
+            None,
+            table(vec![listing(4242, &["sleep", "600"])]),
+        )
+    };
+    harness.session_record(&home, 4242, &session, Some("Thu Jan  1 00:00:00 1970"));
+    assert_eq!(read(), Live::None);
+    harness.session_record(&home, 4242, &session, None);
+    assert_eq!(read(), runs(4242));
 }
 
 #[test]
@@ -2228,19 +2241,25 @@ fn a_resume_under_a_home_not_given() {
     harness.start(&AgentCommand::default(), &who, &folder);
     let session = new_session();
     harness.name_session(&who, &session);
-    harness.run_resume(&new_session());
-    assert_eq!(harness.seam.live(&folder, &who, &[]), Live::None);
-    let pid = harness.run_resume(&session);
-    let runs = Live::Runs(vec![live_process(pid)]);
-    assert_eq!(harness.seam.live(&folder, &who, &[]), runs);
+    let other = new_session();
+    let read = |envs: &[BTreeMap<String, String>], list| {
+        live::live(&Record::at(&folder, &who), envs, None, list)
+    };
+    let elsewhere = listing(4241, &["claude", "--resume", &other]);
+    assert_eq!(read(&[], table(vec![elsewhere.clone()])), Live::None);
+    let resuming = listing(4242, &["claude", "--resume", &session]);
     assert_eq!(
-        harness
-            .seam
-            .live(&folder, &who, &[at_home(&harness.home("work-1"))]),
-        runs
+        read(&[], table(vec![elsewhere.clone(), resuming.clone()])),
+        runs(4242)
     );
-    harness.end_process(pid);
-    assert_eq!(harness.seam.live(&folder, &who, &[]), Live::None);
+    assert_eq!(
+        read(
+            &[at_home(&harness.home("work-1"))],
+            table(vec![elsewhere.clone(), resuming])
+        ),
+        runs(4242)
+    );
+    assert_eq!(read(&[], table(vec![elsewhere])), Live::None);
 }
 
 #[test]
