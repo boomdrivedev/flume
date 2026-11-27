@@ -303,12 +303,12 @@ pub fn scenarios<H: TerminalHarness>() -> Vec<Scenario<H>> {
         },
         Scenario {
             name: "terminal: relay (221, 222) gives what the terminal shows of an open agent, types a person's text onto what it holds typed with nothing cleared and enter submits both together, shows what was typed on a screen read within ten seconds, ends nothing when dropped, and reads a closed agent gone",
-            cites: &["107", "136", "95"],
+            cites: &["221", "222", "107", "136", "95"],
             run: relay_reads_and_types::<H>,
         },
         Scenario {
             name: "terminal: a terminal that offers no relay (221, 222) refuses the relay of an open agent with words",
-            cites: &["4"],
+            cites: &["221", "222", "4"],
             run: relay_refused::<H>,
         },
     ]

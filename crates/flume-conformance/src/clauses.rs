@@ -99,17 +99,6 @@ pub const MCP_SERVERS: &str =
 pub const ORIGIN: &str =
     "a-place-is-cut-from-origins-copy-of-its-base, record 0041, landed before the list held S92";
 
-/// The changes that built record 0069's standing role and an agent
-/// program's own deliver part, which landed before the list held S126
-/// and S128: no scenario cites them as data yet.
-pub const HIBERNATE: &str =
-    "record 0069's changes, a standing role and an agent program's own deliver part, landed before the list held S126 and S128";
-
-/// What builds clauses 221 and 222: a caller's relay of a place's live
-/// agent to a person elsewhere, which no record of flume's holds yet.
-pub const RELAY: &str =
-    "the change that builds the relay of a place's live agent, which no record of flume's holds yet";
-
 /// What builds clauses 223 and 224 and S130: a statechart kind's command
 /// stage and a launch's parameters, from the update-ladder talk of
 /// 2026-11-12, after statechart kinds.
@@ -151,8 +140,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .map(|clause| (clause, PROFILES));
     let mcp_servers = std::iter::once(("183".to_string(), MCP_SERVERS));
     let origin = std::iter::once(("S92".to_string(), ORIGIN));
-    let hibernate = ["S126", "S128"].map(|clause| (clause.to_string(), HIBERNATE));
-    let relay = [221, 222].map(|clause| (clause.to_string(), RELAY));
     let command_stages = [223, 224]
         .map(|clause| clause.to_string())
         .into_iter()
@@ -166,8 +153,6 @@ pub fn unbuilt() -> Vec<(String, &'static str)> {
         .chain(profiles)
         .chain(mcp_servers)
         .chain(origin)
-        .chain(hibernate)
-        .chain(relay)
         .chain(command_stages)
         .chain(made_since)
         .chain(deliveries)
@@ -234,10 +219,7 @@ mod tests {
     #[test]
     fn the_clauses_unbuilt_are_named_by_the_changes_that_build_them() {
         let unbuilt = unbuilt();
-        assert_eq!(
-            unbuilt.len(),
-            3 + 2 + 3 + 6 + 10 + 1 + 1 + 2 + 2 + 3 + 1 + 3
-        );
+        assert_eq!(unbuilt.len(), 3 + 2 + 3 + 6 + 10 + 1 + 1 + 3 + 1 + 3);
         assert!(unbuilt.iter().all(|(clause, _)| all().contains(clause)));
         for built in [
             "140", "141", "142", "143", "144", "145", "146", "147", "151", "153", "154", "157",
@@ -250,7 +232,8 @@ mod tests {
             "197", "S103", "198", "S104", "S105", "202", "203", "204", "205", "206", "208", "S109",
             "S110", "S111", "S112", "S118", "193", "S93", "S94", "S98", "S99", "210", "S120",
             "S119", "211", "216", "217", "218", "219", "220", "S129", "175", "176", "177", "178",
-            "S76", "S77", "212", "213", "S124", "S125", "S127", "214", "215",
+            "S76", "S77", "212", "213", "S124", "S125", "S127", "214", "215", "S126", "S128",
+            "221", "222",
         ] {
             assert!(
                 unbuilt.iter().all(|(clause, _)| clause != built),

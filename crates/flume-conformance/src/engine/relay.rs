@@ -22,7 +22,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
         Scenario {
             name: "place relay: the relay (221) of a fix whose code agent is live gives the link the agent's screen first and answers relayed, naming the place and the agent of code's first start, ended by the caller",
-            cites: &["107", "190"],
+            cites: &["221", "107", "190"],
             run: the_current_stages_agent,
         },
         Scenario {
@@ -52,7 +52,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "place relay: a person's text typed by the relay (221, 222) goes onto what the agent holds typed with nothing cleared, enter submits both, and the terminal's send is asked nothing",
-            cites: &["95", "107"],
+            cites: &["221", "222", "95", "107"],
             run: text_onto_what_was_left_typed,
         },
         Scenario {
@@ -77,7 +77,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
         },
         Scenario {
             name: "place relay: a relay (221) writes and keeps nothing: the held state stands at its version, status answers as before, and no document holds what was typed or shown",
-            cites: &["56", "120"],
+            cites: &["221", "222", "56", "120"],
             run: nothing_written,
         },
     ]

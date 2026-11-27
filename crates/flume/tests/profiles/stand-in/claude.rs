@@ -136,10 +136,6 @@
 //! takes a prompt, and `done` at its turn's end, kept until the next, in the
 //! states the pinned Rex, 0.1.0-preview.14, names (C.5; core.29).
 //!
-//! The prompt is submitted as given, or, where `STAND_IN_PASTE_TAG` names
-//! a four-hex-digit id, inside the paste tags that release wraps a pasted
-//! prompt in where the account's features turn them on.
-//!
 //! Where its session's environment names `FLUME_PLACE`, `FLUME_AGENT` and
 //! `FLUME_DELIVER` and its plugin holds the hooks module, it runs the
 //! module's deliver part as that release runs the module: `flume hook
@@ -555,19 +551,6 @@ impl Pane {
     }
 }
 
-/// The prompt as the session submits it: as given, or where
-/// `STAND_IN_PASTE_TAG` names a tag's id, inside the tags Claude Code
-/// 2.1.322 wraps a pasted prompt in where the account's features turn them
-/// on, newlines around them.
-fn submitted(prompt: &str) -> String {
-    match std::env::var("STAND_IN_PASTE_TAG") {
-        Ok(id) if !id.is_empty() => {
-            format!("\n\n<pasted_content id=\"{id}\">\n{prompt}\n</pasted_content id=\"{id}\">\n")
-        }
-        _ => prompt.to_string(),
-    }
-}
-
 /// Where that release keeps the transcript of the session `session` run
 /// in `cwd`: `<home>/projects/<folder>/<session>.jsonl`, `<home>` its
 /// configuration home, `CLAUDE_CONFIG_DIR` or else `~/.claude`, `<folder>`
@@ -684,9 +667,6 @@ struct Session {
     /// deliveries itself: its environment names the three [`DELIVERS`] and
     /// its plugin holds the module.
     deliver: Option<PathBuf>,
-    /// Whether the prompt the turn takes was submitted by the plugin's
-    /// module, as the person's own words and no paste.
-    from_module: bool,
 }
 
 /// The binary the module's text names as its `FLUME`, the JSON string
@@ -768,7 +748,6 @@ impl Session {
             records: calls,
             reporter: Reporter::here(),
             deliver,
-            from_module: false,
         }
     }
 
@@ -828,7 +807,7 @@ impl Session {
             say(&format!("given at its start: {}", json!(context)));
         }
         let mut failed = false;
-        let mut given = prompt.map(|prompt| (prompt, false));
+        let mut given = prompt;
         if given.is_none() && !runs.is_empty() {
             given = self.take(typed);
         }
@@ -845,8 +824,7 @@ impl Session {
             if prompt.is_none() && at > 0 {
                 break;
             }
-            self.from_module = prompt.as_ref().is_some_and(|(_, from_module)| *from_module);
-            match self.turn(prompt.as_ref().map(|(prompt, _)| prompt.as_str()), acts) {
+            match self.turn(prompt.as_deref(), acts) {
                 Turn::Ended(acted) => {
                     failed |= !acted;
                     if at + 1 < runs.len() {
@@ -864,15 +842,14 @@ impl Session {
     /// The next prompt, typed into `typed`; or, where the session takes its
     /// deliveries itself, the words the plugin's module submits at one of
     /// its idle ticks, every [`DELIVER_EVERY`] while nothing is submitted,
-    /// what is typed kept in the input; with whether the module submitted
-    /// it; none once the input ends.
-    fn next_prompt(&self, typed: &Typed) -> Option<(String, bool)> {
+    /// what is typed kept in the input; none once the input ends.
+    fn next_prompt(&self, typed: &Typed) -> Option<String> {
         if self.deliver.is_none() {
-            return typed.next().map(|prompt| (prompt, false));
+            return typed.next();
         }
         loop {
             match typed.within(Some(DELIVER_EVERY)) {
-                Keys::Submitted(prompt) => return Some((prompt, false)),
+                Keys::Submitted(prompt) => return Some(prompt),
                 Keys::Ended => return None,
                 Keys::Waiting => {
                     if let Some(taken) = self.take(Some(typed)) {
@@ -891,7 +868,7 @@ impl Session {
     /// newlines taken off, is submitted as the person's own words, and a
     /// run that fails, or prints nothing, submits nothing. What is typed
     /// into `typed` and not yet submitted stays there.
-    fn take(&self, typed: Option<&Typed>) -> Option<(String, bool)> {
+    fn take(&self, typed: Option<&Typed>) -> Option<String> {
         let flume = self.deliver.as_ref()?;
         let mut command = Command::new(flume);
         command.args(["hook", "deliver"]);
@@ -937,7 +914,7 @@ impl Session {
         if let Some(draft) = typed.map(Typed::draft).filter(|draft| !draft.is_empty()) {
             say(&format!("its input still holds: {}", json!(draft)));
         }
-        Some((words.to_string(), true))
+        Some(words.to_string())
     }
 
     /// The state reported to herdr or Rex where the stand-in runs in a
@@ -956,20 +933,15 @@ impl Session {
             self.report("working");
             say(&format!("took the prompt: {}", json!(prompt)));
             self.prompt = prompt.to_string();
-            let submitted = if self.from_module {
-                prompt.to_string()
-            } else {
-                submitted(prompt)
-            };
-            self.queued(&submitted);
-            let answer = self.hook("UserPromptSubmit", json!({ "prompt": submitted }), None);
+            self.queued(prompt);
+            let answer = self.hook("UserPromptSubmit", json!({ "prompt": prompt }), None);
             if let Some(reason) = answer.blocked {
                 say(&format!("prompt blocked: {reason}"));
                 self.hook("SessionEnd", json!({ "reason": "prompt_input_exit" }), None);
                 say("session ended");
                 return Turn::Over;
             }
-            self.user(json!(submitted));
+            self.user(json!(prompt));
             for act in acts {
                 if let Some(failure) = act.get("fail") {
                     self.fail(failure);

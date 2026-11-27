@@ -37,6 +37,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: s37_nine_units_on_a_host_of_four,
         },
         Scenario {
+            name: "host queue: under a caller's watch, a stage waiting for room stays waiting through status and a launch once the host's configuration raises its bound, and the next settle starts it before the stage launched after it",
+            cites: &["70", "46", "57", "208"],
+            run: room_given_by_the_configuration,
+        },
+        Scenario {
             name: "host queue: the room a landing frees is taken by the stage waiting, at that settle",
             cites: &["70", "46", "31", "113"],
             run: room_freed_by_a_settle,
@@ -264,6 +269,53 @@ fn s37_nine_units_on_a_host_of_four(_: &()) -> Outcome {
         .chain([(places[0].clone(), "code".to_string())])
         .collect();
     ensure_eq!(order, due, "the queue after the room was taken");
+    Ok(())
+}
+
+fn room_given_by_the_configuration(_: &()) -> Outcome {
+    let world = World::new();
+    world.keep_watch();
+    world.host.set_bound(Some(1));
+    let places = fixes(&world, &["first", "waiting"], 0)?;
+    ensure!(runs(&world, &places[0], "code"), "the first does not run");
+    ensure!(
+        waits(&world, &places[1], "code"),
+        "the second does not wait"
+    );
+
+    world.host.set_bound(Some(2));
+    let given = host(&world)?;
+    ensure_eq!(
+        (given.running, given.room),
+        (1, Some(1)),
+        "running and room"
+    );
+    ensure!(
+        waits(&world, &places[1], "code"),
+        "status started the waiting stage"
+    );
+    launched(&world.engine.launch(&launch("fix", "third", Some("x"))))?;
+    let third = World::id("fix", "third");
+    ensure!(
+        waits(&world, &places[1], "code"),
+        "the launch settled under the caller's watch"
+    );
+
+    world.engine().settle(None);
+    ensure!(
+        runs(&world, &places[1], "code"),
+        "the settle did not start the waiting stage"
+    );
+    ensure!(
+        waits(&world, &third, "code"),
+        "the third launch's stage took the room"
+    );
+    let queue: Vec<PlaceId> = host(&world)?
+        .queue
+        .into_iter()
+        .map(|queued| queued.place)
+        .collect();
+    ensure_eq!(queue, vec![third], "the queue");
     Ok(())
 }
 
