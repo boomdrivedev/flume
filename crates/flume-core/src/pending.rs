@@ -9,8 +9,11 @@
 //! Each reason mirrors the step of the settle that acts on it, and tests
 //! what that step tests before it acts: `step` for the phases, a live
 //! start and the submission, `forecast_base` for a base place, the stall's
-//! reading for the times, and the delivering of ends, the recording of a
-//! notice's claim and the waking of roles for the hand-overs. A live place
+//! reading for the times, and the recording of an end's delivery and of a
+//! notice's claim for the hand-overs. Handing a recipient its batch, and
+//! waking a role's address an end stands pending for, are the settle's
+//! own steps for the host, taken whether or not a place is pending, so a
+//! place whose end waits only on its recipient is not read. A live place
 //! whose move, read again, waits on no caller, with no stage waiting for
 //! room, is pending too, so a state no reason foresaw is settled as before
 //! rather than left (design 1).
@@ -19,7 +22,7 @@ use crate::base::{base_place, submission_open};
 use crate::held::read_stall;
 use crate::start::Starts;
 use crate::status::waiting_on;
-use flume_seams::{EndHeld, EndOf, HeldState, Owing, Phase, Seconds, StageState};
+use flume_seams::{is_address, EndHeld, EndOf, HeldState, Owing, Phase, Seconds, StageState};
 
 /// Why something is pending on a place, one of a closed set (225; design
 /// 1).
@@ -47,11 +50,9 @@ pub(crate) enum Pending {
     /// waited its stall's bound, a hold on that move passed its bound, or
     /// a stall an earlier flume recorded has its answerer unread (130).
     Time,
-    /// An end of it, or a wake for it, waits to be handed on: an end with
-    /// recipients whose delivery the host's deliveries do not hold yet, a
-    /// notice answered sent whose hand-over they lack, or an end a notice
-    /// carries pending for a recipient nothing handed it to, a role's
-    /// address among them (43, 132).
+    /// An end of it waits to be handed on by its place's settle: an end
+    /// with recipients whose delivery the host's deliveries do not hold
+    /// yet, or a notice answered sent whose hand-over they lack (43, 75).
     Handing,
     /// It waits on nothing: a live place whose move, read again, waits on
     /// no caller and no room, so a step is the settle's to take.
@@ -113,13 +114,17 @@ pub(crate) fn pending(held: &HeldState, owing: &Owing, now: Seconds) -> Option<P
     None
 }
 
-/// Whether `end` of `held` waits to be handed on, as `owing` reads the
-/// host's deliveries: its delivery not yet recorded though it has
-/// recipients, a stall an earlier flume recorded aside, which is recorded
-/// once its answerer is read; a notice of it answered sent whose hand-over
-/// is not recorded, to a recipient it is still owed to; or, for an end a
-/// notice carries, a recipient it stands pending for that nothing handed
-/// it to (43, 75, 130, 132; weir 103).
+/// Whether `end` of `held` waits to be handed on by a settle of its
+/// place, as `owing` reads the host's deliveries: its delivery not yet
+/// recorded though it has recipients, a stall an earlier flume recorded
+/// aside, which is recorded once its answerer is read; or a notice of it
+/// answered sent whose hand-over is not recorded, to a recipient it is
+/// still owed to (43, 75, 130; weir 103). An end recorded and pending for
+/// a recipient nothing handed it to is no reason to read its place: the
+/// settle of the pending places hands every recipient's batch, and wakes
+/// each role's address such an end stands pending for, host-wide, once
+/// the places are settled, so it moves no later than a settle of every
+/// place would and reads no seam of the place (43, 132, 225; core.62).
 fn handing(held: &HeldState, end: &EndHeld, owing: &Owing) -> bool {
     let place = &held.place;
     let earlier = matches!(
@@ -132,7 +137,7 @@ fn handing(held: &HeldState, end: &EndHeld, owing: &Owing) -> bool {
     let Some(delivery) = end.delivery(place, owing) else {
         return !earlier && !end.recipients(&place.recipients).is_empty();
     };
-    let unrecorded = end.noticing.iter().any(|claim| {
+    end.noticing.iter().any(|claim| {
         !claim.sending
             && !delivery
                 .handovers
@@ -142,13 +147,20 @@ fn handing(held: &HeldState, end: &EndHeld, owing: &Owing) -> bool {
                 .owed
                 .iter()
                 .any(|owed| owed.recipient == claim.recipient)
-    });
-    unrecorded
-        || (end.noticed()
-            && end
-                .pending(place, owing)
+    })
+}
+
+/// Whether a role's address an end of `held` stands pending for waits on
+/// a wake, as the settle's wake step reads it: an address nothing handed
+/// that end to, of a place not being made (43, 132; core.28). The settle
+/// of the pending places wakes these for the places it did not read.
+pub(crate) fn waits_on_a_wake(held: &HeldState, owing: &Owing) -> bool {
+    !matches!(held.phase, Phase::Making { .. })
+        && held.ends.iter().any(|end| {
+            end.pending(&held.place, owing)
                 .iter()
-                .any(|recipient| !end.handed_to(place, owing, recipient)))
+                .any(|address| is_address(address) && !end.handed_to(&held.place, owing, address))
+        })
 }
 
 /// Whether the agent of the place's current stage, ended short needing an

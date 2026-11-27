@@ -15,7 +15,7 @@
 
 use crate::held::read_stall;
 use crate::hibernate::hibernation_claimed;
-use crate::pending::pending;
+use crate::pending::{pending, waits_on_a_wake};
 use crate::{Answer, Engine, Step, Tidied};
 use flume_seams::*;
 
@@ -209,18 +209,24 @@ impl Engine {
     /// host now has started, whether or not a place was pending, every
     /// done delivery whose place has no document let go of, and the host's
     /// own steps of [`Engine::settle_host`], which read only the host's
-    /// deliveries and the recipients a delivery is pending for. Gives the
-    /// places it settled and what its tidies did (43, 62, 70, 119, 132,
-    /// 208, 214, 225; core.62).
+    /// deliveries and the recipients a delivery is pending for; and last
+    /// the wake step of each place it did not read whose end stands
+    /// pending for a role's address nothing handed it to, which reads the
+    /// host's roles and none of the place's seams. Gives the places it
+    /// settled and what its tidies did (43, 62, 70, 119, 132, 208, 214,
+    /// 225; core.62).
     pub(crate) fn settle_pending(&self) -> (Vec<PlaceId>, Tidied) {
         let documents = self.store.read_every();
         let owing = self.owing();
         let now = self.host.now();
-        let places: Vec<PlaceId> = documents
-            .into_iter()
-            .filter(|read| pending(&read.state, &owing, now).is_some())
-            .map(|read| read.state.place.id)
-            .collect();
+        let (mut places, mut unread) = (vec![], vec![]);
+        for read in documents {
+            if pending(&read.state, &owing, now).is_some() {
+                places.push(read.state.place.id);
+            } else if waits_on_a_wake(&read.state, &owing) {
+                unread.push(read.state.place.id);
+            }
+        }
         let mut tidy = Tidied::default();
         for id in &places {
             tidy.add(self.settle_place(id));
@@ -228,6 +234,13 @@ impl Engine {
         self.start_waiting();
         self.let_go_of_the_gone();
         self.settle_host();
+        // The wake step of each place not read whose end stands pending
+        // for a role's address nothing handed it to, after the host's
+        // batches were handed, as a place's settle wakes after it hands
+        // (43, 132, 225; core.28).
+        for id in &unread {
+            self.wake_roles(id);
+        }
         (places, tidy)
     }
 

@@ -1559,7 +1559,7 @@ fn fix_waiting_on_an_answer(world: &World, name: &str) -> Result<PlaceId, String
 }
 
 /// Every call the fake merge queue, terminal and agent program logged.
-fn seams_asked(world: &World) -> Vec<String> {
+pub fn seams_asked(world: &World) -> Vec<String> {
     [
         world.queue.log.calls(),
         world.terminal.log.calls(),
@@ -1569,7 +1569,7 @@ fn seams_asked(world: &World) -> Vec<String> {
 }
 
 /// Clears the fake merge queue's, terminal's and agent program's logs.
-fn clear_seams(world: &World) {
+pub fn clear_seams(world: &World) {
     world.queue.log.clear();
     world.terminal.log.clear();
     world.agent.log.clear();

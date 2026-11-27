@@ -21,7 +21,7 @@
 use super::caller_waits::{asks_in_east, construct_asks};
 use super::carried_conversations::{talk, talking};
 use super::role_waking::answerer_behind;
-use super::settling::{deliver_fix, write_change};
+use super::settling::{clear_seams, deliver_fix, seams_asked, write_change};
 use super::stage_runs::east_and_west;
 use super::world::*;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
@@ -59,7 +59,7 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_recipient_asking,
         },
         Scenario {
-            name: "end delivery: an end its recipient's pane was asking at keeps its place pending, the watch's next settle once the pane waits hands it over by notice, and the settle after it reads nothing of the place in the terminal",
+            name: "end delivery: an end its recipient's pane is asking at leaves its place unread by the watch's settle, its merge queue, terminal and agent program asked nothing of it, the watch's next settle once the pane waits hands it over by notice, and the settle after it reads nothing of the place in the terminal",
             cites: &["43", "225"],
             run: an_end_handed_on_once_its_recipient_waits,
         },
@@ -598,10 +598,13 @@ fn a_recipient_asking(_: &()) -> Outcome {
 
 /// The settling spec's "An end handed on once its recipient waits": a
 /// fix's code stage delivers while its recipient's pane asks a question,
-/// so no notice is sent, its submission held, and the pane then waits;
+/// so no notice is sent, its submission held; the watch's settle while
+/// the pane asks names nothing of the fix in the fake merge queue's,
+/// terminal's or agent program's log, handing the end over being the
+/// host's own step; the pane then waits,
 /// the watch's next settle hands the end to the recipient by notice, and
-/// the settle after it names nothing of the fix in the fake terminal's log
-/// (43, 225).
+/// the settle after it names nothing of the fix either (43, 225;
+/// core.62).
 fn an_end_handed_on_once_its_recipient_waits(_: &()) -> Outcome {
     let world = World::new();
     world.terminal.add_session("ops", AgentState::Asking);
@@ -621,6 +624,19 @@ fn an_end_handed_on_once_its_recipient_waits(_: &()) -> Outcome {
     ensure!(
         world.terminal.notices("ops").is_empty(),
         "a notice sent into a question"
+    );
+    clear_seams(&world);
+    world.engine.settle_every(60);
+    let asked = seams_asked(&world);
+    ensure!(
+        !asked
+            .iter()
+            .any(|call| call.contains("fix--one") || call.contains("fix/one")),
+        "the watch's settle while ops asks read the fix: {asked:?}"
+    );
+    ensure!(
+        world.terminal.notices("ops").is_empty(),
+        "a notice sent into a question at the watch's settle"
     );
     world.terminal.set_session_state("ops", AgentState::Waiting);
     world.engine.settle_every(60);
