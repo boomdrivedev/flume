@@ -1579,10 +1579,18 @@ impl Herdr {
 
 /// The pane the calling command runs in, as herdr's environment names it.
 pub fn caller() -> Option<Pane> {
-    let id = std::env::var("HERDR_PANE_ID").ok()?;
-    let socket = std::env::var("HERDR_SOCKET_PATH").ok()?;
+    caller_of(
+        std::env::var("HERDR_PANE_ID").ok().as_deref(),
+        std::env::var("HERDR_SOCKET_PATH").ok().as_deref(),
+    )
+}
+
+/// The pane `HERDR_PANE_ID` names on the server `HERDR_SOCKET_PATH`, both
+/// set; none otherwise (7, C.5).
+fn caller_of(id: Option<&str>, socket: Option<&str>) -> Option<Pane> {
+    let (id, socket) = (id?, socket?);
     (!id.is_empty() && !socket.is_empty()).then(|| Pane {
-        id,
+        id: id.into(),
         socket: socket.into(),
     })
 }
@@ -2693,6 +2701,27 @@ impl Herdr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_callers_pane_is_named_by_herdrs_environment() {
+        // 7, 43, C.5: a command run in a herdr pane takes its session as
+        // `herdr:<pane>@<socket>`, both variables set and neither empty;
+        // a session flume did not start collects as that name.
+        let pane = caller_of(Some("w1-p2"), Some("/tmp/herdr.sock")).expect("the pane");
+        assert_eq!(pane.session(), "herdr:w1-p2@/tmp/herdr.sock");
+        assert_eq!(
+            Pane::named(&pane.session()).map(|named| named.session()),
+            Some(pane.session())
+        );
+        for (id, socket) in [
+            (None, Some("/tmp/herdr.sock")),
+            (Some("w1-p2"), None),
+            (Some(""), Some("/tmp/herdr.sock")),
+            (Some("w1-p2"), Some("")),
+        ] {
+            assert!(caller_of(id, socket).is_none(), "{id:?} {socket:?}");
+        }
+    }
 
     /// The profile over records in a scratch directory of its own.
     fn over_records(name: &str) -> (Herdr, PathBuf) {
