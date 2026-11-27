@@ -479,3 +479,18 @@ input and not submitted SHALL stay there, the person's to submit (54,
 
 - **WHEN** under the pinned herdr and the stand-in, whose session runs the deliver part as the pinned release runs the plugin's module, the standing role `w/ops` of a scratch source is woken, its talk takes its first prompt and waits, words are typed into its pane and not submitted, and `flume message w/ops` gives it a message
 - **THEN** the talk's next prompt holds the message with its confirm and not the words typed, the stand-in logs that the plugin's module submitted it and that its input still holds the words, status gives the message handed to `w/ops` by `message` alone, and the enter typed after it submits the words as typed (54, 214, 215)
+
+### Requirement: The setting-up-flume skill
+
+The plugin SHALL carry the skill `setting-up-flume`, which reads
+`flume status --binding`, writes the `[profiles]` table of
+`.config/flume.toml`, and hands the merge queue's own setup to sluice's
+skill `setting-up-sluice`. The binary SHALL write the skill into the
+plugin of the agents that it starts. The MCP tool `status` SHALL take
+`binding`, which asks for the binding of the repository that the server
+runs in.
+
+#### Scenario: The plugin validates with the skill
+
+- **WHEN** the pinned Claude Code validates the plugin strictly
+- **THEN** it passes, and the plugin that the binary writes holds each file of `plugins/claude`, the skill among them
