@@ -247,14 +247,13 @@ fn transcript_under(home: &std::path::Path) -> Vec<Value> {
         .collect()
 }
 
-/// Waits up to a minute until `holds` holds, failing naming `what`.
-fn until_it(what: &str, holds: impl Fn() -> bool) {
-    let began = std::time::Instant::now();
+/// Waits until `holds` holds, read again each tenth of a second, with no
+/// bound on the time it waits: the host's load decides how long the
+/// stand-in and herdr take, never whether the test passes
+/// (a-gate-test-asserts-no-real-time-bound). The first word names the
+/// state awaited, for the reader.
+fn until_it(_state: &str, holds: impl Fn() -> bool) {
     while !holds() {
-        assert!(
-            began.elapsed() < std::time::Duration::from_secs(60),
-            "never came to {what}"
-        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
