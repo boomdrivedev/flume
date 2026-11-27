@@ -1703,11 +1703,12 @@ final = true
 
 #[test]
 fn a_callers_acts_reach_the_core_through_the_binary() {
-    // 7, 52, 53, 61, 63, 114: a caller's message, priority, stop and done,
-    // each a command of its own process, the stand-in flume whose core
-    // runs the stand-in's agents, over a change it launched, each the
-    // core's act answered in its JSON and exiting 0.
-    // What each act does is its scenarios' and its words command_line's.
+    // 7, 52, 61, 63: a caller's priority, and a done refused, each a
+    // command of its own process, the stand-in flume whose core runs the
+    // stand-in's agents, over a change it launched: the priority acted in
+    // its JSON, exiting 0, and the done refused naming the place, exiting
+    // 1, as the printed command ends no agent a person runs. What each act
+    // does is its scenarios' and its words command_line's.
     let host = Host::new("acts");
     let repository = repository("acts", None);
     let kinds = kinds_file(&host, false);
@@ -1720,16 +1721,26 @@ fn a_callers_acts_reach_the_core_through_the_binary() {
     );
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "change--one");
-    let act = |words: &[&str]| answered(&host.stand_in(&repository.dir, words, &[]), 0);
-    let messaged = act(&["message", &place, "look at the schema", "--json"]);
-    assert!(messaged.get("refused").is_none(), "{messaged}");
-    for (words, done) in [
-        (&["priority", "change--one", "5", "--json"][..], "priority"),
-        (&["stop", "change--one", "--force", "--json"], "stop"),
-        (&["done", "change--one", "--force", "--json"], "done"),
-    ] {
-        let answer = act(words);
-        assert_eq!(answer["acted"]["act"], done, "{words:?}: {answer}");
-        assert_eq!(answer["acted"]["place"], place.as_str(), "{answer}");
-    }
+    let raised = answered(
+        &host.stand_in(
+            &repository.dir,
+            &["priority", "change--one", "5", "--json"],
+            &[],
+        ),
+        0,
+    );
+    assert_eq!(raised["acted"]["act"], "priority", "{raised}");
+    assert_eq!(raised["acted"]["place"], place.as_str(), "{raised}");
+    let refused = answered(
+        &host.stand_in(
+            &repository.dir,
+            &["done", "change--one", "--force", "--json"],
+            &[],
+        ),
+        1,
+    );
+    let reason = refused["refused"]["refusal"]["reason"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(reason.contains("ends where a person ran it"), "{refused}");
 }
