@@ -115,6 +115,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_retrys_answer,
         },
         Scenario {
+            name: "answer: under a caller's watch, a code agent whose profile offers deliver takes its prompt and stops short needing an answer before any settle read the prompt received; a retry of code with the words notes.md is taken by its deliver part and read received in the same session, the stop-short reading the receipt from the agent",
+            cites: &["S4", "38", "42", "53", "198", "215"],
+            run: a_stop_short_before_its_prompt_was_read_received,
+        },
+        Scenario {
             name: "answer: a message of notes.md to a place whose code waits on an answer, its agent kept open, hands the same agent the question then the answer, code begun again under its first start, and the stop-short's end holds the answer by message",
             cites: &["42", "53", "55", "198"],
             run: a_messages_answer,
@@ -1079,6 +1084,64 @@ fn a_retrys_answer(_: &()) -> Outcome {
         false,
     ))?;
     answered_in_session(&world, &id, &code("one", 1), Act::Retry, at)
+}
+
+fn a_stop_short_before_its_prompt_was_read_received(_: &()) -> Outcome {
+    let world = World::new();
+    world.keep_watch();
+    world.agent.offer_deliver();
+    let who = code("one", 1);
+    world.agent.receives_at(&who, Some(2));
+    launched(&world.engine.launch(&launch("fix", "one", Some("x"))))?;
+    let id = World::id("fix", "one");
+    // The launch sent the prompt, which the agent takes only after the
+    // launch read it, and no settle reads it again before the agent stops
+    // short, as a loaded host may order them.
+    world.agent.receives_at(&who, Some(1));
+    ensure_eq!(
+        world
+            .held(&id)
+            .and_then(|held| held.stages[0].start.clone())
+            .map(|start| (start.prompt.sendings.len(), start.prompt.received_at)),
+        Some((1, None)),
+        "code's sendings and its receipt once launched"
+    );
+    stops_short(&world, &id, 0, &who, QUESTION, StopKind::NeedsAnswer)?;
+    ensure!(
+        world
+            .held(&id)
+            .and_then(|held| held.stages[0].start.clone())
+            .is_some_and(|start| start.prompt.received_at.is_some()),
+        "the stop-short did not read code's prompt received"
+    );
+    let took: Arc<Mutex<Vec<String>>> = Arc::default();
+    let secret = secret(&world, &id, 0)?;
+    super::batches::take_at_each_sleep(
+        world.host.clone(),
+        Arc::new(world.engine()),
+        (id.clone(), who.clone(), secret),
+        took.clone(),
+        Some(world.agent.clone()),
+    );
+    taken(&world.engine.retry(
+        &id,
+        Retry::Stage("code".into()),
+        Some("notes.md".into()),
+        false,
+    ))?;
+    ensure_eq!(
+        took.lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone(),
+        vec![asked("notes.md")],
+        "what code's deliver part took"
+    );
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Begun),
+        "code once its answer was received"
+    );
+    Ok(())
 }
 
 fn a_messages_answer(_: &()) -> Outcome {

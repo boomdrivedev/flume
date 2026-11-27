@@ -121,6 +121,20 @@ impl Engine {
             || (held.chart.is_none() && !crate::submit::found_goes_back(&held, index));
         let open_until = (answers && self.sends(&start))
             .then(|| self.host.now().saturating_add(keep_open(&start)));
+        // The agent stops short with words its prompt gave it, which no
+        // settle may yet have read received: its receipt is read from the
+        // agent now and recorded with the end, so its deliver part takes
+        // the answer it is kept open for (38, 42, 215).
+        let receipt = agent
+            .as_deref()
+            .filter(|_| start.prompt.received_at.is_none())
+            .and_then(
+                |agent| match agent.received(&folder, &start.identity, &start.prompt.text) {
+                    Received::Received { record } => Some(record),
+                    _ => None,
+                },
+            );
+        let now = self.host.now();
         let taken = self
             .update(&id, |held| {
                 let Some(index) = held.index_of(&start.identity) else {
@@ -129,6 +143,11 @@ impl Engine {
                 let stage = &mut held.stages[index];
                 if !stage.state.running() {
                     return Step::Keep(false);
+                }
+                if let (Some(record), Some(start)) = (&receipt, stage.start.as_mut()) {
+                    if start.prompt.received_at.is_none() {
+                        crate::deliver::received_now(start, record, now);
+                    }
                 }
                 stage.state = StageState::EndedShort;
                 stage.end = Some(StageEnd {

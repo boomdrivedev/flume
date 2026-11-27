@@ -29,6 +29,15 @@ use crate::uncarried::{carries, uncarried, ENDED_FIRST, NOT_BY_THE_LIMIT, NOT_RE
 use crate::{Engine, Step, POLL, QUIET_LIMIT, RECEIVED_WITHIN};
 use flume_seams::*;
 
+/// The start's prompt read received at `now` in the agent's `record`,
+/// and the start begun then, any dialog it showed gone (35, 38).
+pub(crate) fn received_now(start: &mut StartHeld, record: &str, now: Seconds) {
+    start.prompt.received_at = Some(now);
+    start.record = Some(record.to_string());
+    start.begun_at = Some(now);
+    start.dialog = None;
+}
+
 impl Engine {
     /// Moves the prompt of the start of the stage at `at`, else of the
     /// current start, on as far as its agent allows, reading each sending
@@ -143,10 +152,7 @@ impl Engine {
             if let Received::Received { record } = agent.received(&folder, identity, &prompt.text) {
                 let now = self.host.now();
                 self.with_start(id, identity, |start, state| {
-                    start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
-                    start.begun_at = Some(now);
-                    start.dialog = None;
+                    received_now(start, &record, now);
                     *state = StageState::Begun;
                 });
                 return true;
@@ -342,9 +348,7 @@ impl Engine {
             stage.end = None;
             stage.state = match &received {
                 Some(record) => {
-                    start.prompt.received_at = Some(now);
-                    start.record = Some(record.clone());
-                    start.begun_at = Some(now);
+                    received_now(start, record, now);
                     StageState::Begun
                 }
                 None => StageState::Started,
