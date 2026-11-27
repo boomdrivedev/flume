@@ -10,7 +10,7 @@
     {
       "name": "flume",
       "source": "./plugins/claude",
-      "version": "0.0.0",
+      "version": "0.38.0",
       "description": "flume's hooks for the agents it starts, /launch to start a place from a session, the setting-up-flume skill to bind a repository's profiles, and flume's status over MCP."
     }
   ]
