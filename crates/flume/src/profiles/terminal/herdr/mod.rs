@@ -3274,31 +3274,27 @@ mod tests {
     }
 
     /// The profile over a scratch state directory of flume's herdr
-    /// plugin, its herdr a script that marks it was run; and the plugin's
-    /// directory and that mark.
-    fn over_plugin(name: &str) -> (Herdr, PathBuf, PathBuf) {
+    /// plugin, its calls of herdr logged and answered with nothing, its
+    /// program one that is not there; and the plugin's directory and the
+    /// log.
+    fn over_plugin(name: &str) -> (Herdr, PathBuf, Arc<Answers>) {
         let scratch =
             std::env::temp_dir().join(format!("flume-herdr-plugin-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&scratch);
         fs::create_dir_all(&scratch).unwrap();
-        let program = scratch.join("herdr");
-        let ran = scratch.join("ran");
-        fs::write(
-            &program,
-            format!("#!/bin/sh\necho \"$@\" >> '{}'\n", ran.display()),
-        )
-        .unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let answers = Arc::new(Answers {
+            log: std::sync::Mutex::default(),
+            answer: Box::new(|_| printed(json!({ "result": {} }))),
+        });
         let plugin = scratch.join("plugin");
-        let herdr = Herdr {
-            program,
-            ..Herdr::new(
-                Server::Socket("/run/h.sock".into()),
-                scratch.join("records"),
-            )
-            .with_plugin(Some(plugin.clone()))
-        };
-        (herdr, plugin, ran)
+        let herdr = Herdr::new(
+            Server::Socket("/run/h.sock".into()),
+            scratch.join("records"),
+        )
+        .with_plugin(Some(plugin.clone()))
+        .with_program(scratch.join("no-herdr"))
+        .with_runs(answers.clone());
+        (herdr, plugin, answers)
     }
 
     /// A server of the plugin's whose startup wrote `lacking` into its
@@ -3325,7 +3321,10 @@ mod tests {
         // 95, 198, C.5).
         let (herdr, _, ran) = over_plugin("sends");
         assert!(herdr.sends());
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     const KEY: &str = "herdr's configuration, /h/config.toml, binds no key to flume's places";
@@ -3353,7 +3352,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(herdr.setup(), vec![KEY.to_string()]);
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     #[test]
@@ -3378,7 +3380,10 @@ mod tests {
                 "herdr's configuration, /other.toml, binds no key".to_string(),
             ]
         );
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     #[test]
@@ -3395,6 +3400,9 @@ mod tests {
         fs::create_dir_all(&earlier).unwrap();
         write_json(&earlier.join("setup.json"), &json!([KEY])).unwrap();
         assert_eq!(herdr.setup(), Vec::<String>::new());
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 }
