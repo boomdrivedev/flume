@@ -1704,8 +1704,9 @@ final = true
 #[test]
 fn a_callers_acts_reach_the_core_through_the_binary() {
     // 7, 52, 53, 61, 63, 114: a caller's message, priority, stop and done,
-    // each through flume's binary over a change the stand-in flume
-    // launched, each the core's act answered in its JSON and exiting 0.
+    // each a command of its own process, the stand-in flume whose core
+    // runs the stand-in's agents, over a change it launched, each the
+    // core's act answered in its JSON and exiting 0.
     // What each act does is its scenarios' and its words command_line's.
     let host = Host::new("acts");
     let repository = repository("acts", None);
@@ -1719,7 +1720,7 @@ fn a_callers_acts_reach_the_core_through_the_binary() {
     );
     assert_eq!(launched.code, 0, "{}", launched.text);
     let place = host.place_of(&repository, "change--one");
-    let act = |words: &[&str]| answered(&host.flume(&repository.dir, words, &[]), 0);
+    let act = |words: &[&str]| answered(&host.stand_in(&repository.dir, words, &[]), 0);
     let messaged = act(&["message", &place, "look at the schema", "--json"]);
     assert!(messaged.get("refused").is_none(), "{messaged}");
     for (words, done) in [
