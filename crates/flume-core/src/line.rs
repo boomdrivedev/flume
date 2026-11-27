@@ -324,7 +324,7 @@ pub(crate) fn state_words(
         .into();
     }
     let submission = &held.submission;
-    if submission.submits > 0
+    if submission.made()
         && !submission.due
         && !held.stages.iter().any(|stage| stage.state.running())
     {

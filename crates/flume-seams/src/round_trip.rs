@@ -507,6 +507,7 @@ fn held() -> HeldState {
         submission: SubmissionHeld {
             due: true,
             submits: 2,
+            submitting: true,
             send_backs: 1,
             id: Some("7".into()),
             request: Some("56".into()),

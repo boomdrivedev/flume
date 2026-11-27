@@ -1752,7 +1752,14 @@ pub struct SubmissionStatus {
     /// read-submission reads (124, C.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request: Option<String>,
+    /// How many times flume submitted the place, each counted once the
+    /// merge queue's answer to it is recorded (48).
     pub submits: u32,
+    /// flume is submitting the place now: it called the merge queue and
+    /// has not yet recorded its answer, which comes with the submit's
+    /// count (48).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub submitting: bool,
     pub send_backs: u32,
     /// The last outcome flume collected, or its refusal at submit, with
     /// the merge queue's words (133).

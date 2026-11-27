@@ -383,6 +383,7 @@ impl Engine {
                     read,
                     request: held.submission.request.clone(),
                     submits: held.submission.submits,
+                    submitting: held.submission.submitting,
                     send_backs: held.submission.send_backs,
                     verdict: held.submission.verdict.clone(),
                     waiting: held.submission.waiting.clone(),
