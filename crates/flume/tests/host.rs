@@ -1182,18 +1182,7 @@ fn a_roles_table_in_the_hosts_configuration_is_unreadable() {
         reason.contains("[roles]") && reason.contains("a source declares each role"),
         "{reason}"
     );
-    let answer = scratch.path("answer.json");
-    let status = Command::new(std::env::current_exe().unwrap())
-        .args([READER, "--exact", "--nocapture", "--test-threads=1"])
-        .env("XDG_CONFIG_HOME", scratch.path("config"))
-        .env("XDG_STATE_HOME", scratch.path("state"))
-        .env(CHILD_ANSWER, &answer)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .expect("a child process");
-    assert!(status.success());
-    let answer: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&answer).unwrap()).unwrap();
+    let answer = read_host(&scratch);
     let refused = answer["refused"].as_str().unwrap_or_default();
     assert!(
         refused.contains("[roles]") && refused.contains("a source declares each role"),
@@ -1201,28 +1190,23 @@ fn a_roles_table_in_the_hosts_configuration_is_unreadable() {
     );
 }
 
-const CHILD_ANSWER: &str = "FLUME_TEST_LAYERS_ANSWER";
-const READER: &str = "a_child_process_reads_the_hosts_layers";
-
-/// The child's half of the layers test: the host as a command finds it,
-/// under the `XDG_CONFIG_HOME` its parent gave it, its configuration and
-/// its streams and a fix's label written as JSON. Run by the test below as a process of its
-/// own; it does nothing otherwise.
-#[test]
-fn a_child_process_reads_the_hosts_layers() {
-    let Some(answer) = std::env::var_os(CHILD_ANSWER) else {
-        return;
-    };
-    let read = match RealHost::of_host() {
-        Ok(host) => serde_json::json!({
-            "configuration": host.configuration(),
-            "bound": host.bound(),
-            "streams": host.streams(),
-            "label": host.label_for(&RepositoryName::of_folder("/r"), "fix"),
-        }),
+/// The host over the two layers in `scratch`'s `config/flume`, as a
+/// command reads them, its state in `state/flume`: its configuration, its
+/// bound, its streams and a fix's label, as JSON; or its refusal.
+fn read_host(scratch: &Scratch) -> serde_json::Value {
+    let dir = scratch.path("config/flume");
+    match HostConfig::read_layers(&dir.join("config.toml"), &dir.join("config.local.toml")) {
+        Ok(config) => {
+            let host = RealHost::new(scratch.path("state/flume"), config, None);
+            serde_json::json!({
+                "configuration": host.configuration(),
+                "bound": host.bound(),
+                "streams": host.streams(),
+                "label": host.label_for(&RepositoryName::of_folder("/r"), "fix"),
+            })
+        }
         Err(refused) => serde_json::json!({ "refused": refused }),
-    };
-    std::fs::write(answer, read.to_string()).unwrap();
+    }
 }
 
 /// A file's content and write time.
@@ -1234,7 +1218,7 @@ fn as_it_stands(path: &Path) -> (String, std::time::SystemTime) {
 }
 
 /// `RealHost` over `config.toml` and `config.local.toml` in a scratch
-/// `XDG_CONFIG_HOME`, as a command of its own reads them: the local layer
+/// configuration folder, as a command reads them: the local layer
 /// taken key by key, a kind's label among it, a pinned key passed over,
 /// an account's variables `<set>`, a local layer setting a pool not
 /// taken, and no local file; and neither file's content or write time
@@ -1256,19 +1240,7 @@ fn the_host_reads_both_layers_and_writes_neither() {
     )
     .unwrap();
     let read = || {
-        let answer = scratch.path("answer.json");
-        let _ = std::fs::remove_file(&answer);
-        let status = Command::new(std::env::current_exe().unwrap())
-            .args([READER, "--exact", "--nocapture", "--test-threads=1"])
-            .env("XDG_CONFIG_HOME", scratch.path("config"))
-            .env("XDG_STATE_HOME", scratch.path("state"))
-            .env(CHILD_ANSWER, &answer)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .expect("a child process");
-        assert!(status.success());
-        let answer: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&answer).unwrap()).unwrap();
+        let answer = read_host(&scratch);
         assert_eq!(answer.get("refused"), None, "{answer}");
         answer
     };
