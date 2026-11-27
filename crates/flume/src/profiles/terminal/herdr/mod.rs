@@ -308,10 +308,37 @@ pub enum Call {
     Unanswered(String),
 }
 
+/// One call of herdr's: the program, its arguments, the server's socket
+/// where one is named, the home its sessions are read under where the
+/// profile names one, and the bound it answers within.
+#[derive(Clone, Copy, Debug)]
+pub struct HerdrCall<'a> {
+    pub program: &'a Path,
+    pub args: &'a [&'a str],
+    pub socket: Option<&'a Path>,
+    pub session_home: Option<&'a Path>,
+    pub bound: Duration,
+}
+
+/// How the profile runs a call of herdr's: as a process of its program
+/// for flume's binary ([`Process`]), or as a test's recorded answers.
+/// Whether it succeeded, and its output and its errors; or why it gave no
+/// answer.
+pub trait Runs: Send + Sync + std::fmt::Debug {
+    fn run(&self, call: &HerdrCall<'_>) -> Result<(bool, String, String), String>;
+}
+
+/// herdr run as a process of its program, every `HERDR_*` of the
+/// caller's stripped and the socket passed where one is named, ended once
+/// its bound has passed (core.29).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Process;
+
 /// The terminal over herdr.
 #[derive(Clone, Debug)]
 pub struct Herdr {
     program: PathBuf,
+    runs: Arc<dyn Runs>,
     server: Server,
     records: PathBuf,
     bound: Duration,
@@ -393,6 +420,7 @@ impl Herdr {
     pub fn new(server: Server, records: impl Into<PathBuf>) -> Herdr {
         Herdr {
             program: "herdr".into(),
+            runs: Arc::new(Process),
             server,
             records: records.into(),
             bound: BOUND,
@@ -474,6 +502,13 @@ impl Herdr {
     /// tests, which stand a herdr of their own in for it.
     pub fn with_program(mut self, program: impl Into<PathBuf>) -> Herdr {
         self.program = program.into();
+        self
+    }
+
+    /// Its calls of herdr run by `runs`, in place of a process of its
+    /// program.
+    pub fn with_runs(mut self, runs: Arc<dyn Runs>) -> Herdr {
+        self.runs = runs;
         self
     }
 
@@ -577,61 +612,13 @@ impl Herdr {
         args: &[&str],
         bound: Duration,
     ) -> Result<(bool, String, String), String> {
-        let mut command = Command::new(&self.program);
-        command
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (name, _) in std::env::vars_os() {
-            if name.to_string_lossy().starts_with("HERDR_") {
-                command.env_remove(name);
-            }
-        }
-        if let Some(home) = &self.session_home {
-            command.env(SESSION_HOME, home);
-        }
-        if let Some(socket) = socket {
-            command.env("HERDR_SOCKET_PATH", socket);
-        }
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("herdr could not be run: {error}"))?;
-        let read = |pipe: Option<Box<dyn Read + Send>>| {
-            std::thread::spawn(move || {
-                let mut text = String::new();
-                if let Some(mut pipe) = pipe {
-                    let _ = pipe.read_to_string(&mut text);
-                }
-                text
-            })
-        };
-        let stdout = read(child.stdout.take().map(|pipe| Box::new(pipe) as _));
-        let stderr = read(child.stderr.take().map(|pipe| Box::new(pipe) as _));
-        let deadline = Instant::now() + bound;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(10))
-                }
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "herdr {} did not answer within {} seconds",
-                        args.first().copied().unwrap_or_default(),
-                        bound.as_secs_f32()
-                    ));
-                }
-                Err(error) => return Err(format!("herdr could not be waited on: {error}")),
-            }
-        };
-        Ok((
-            status.success(),
-            stdout.join().unwrap_or_default(),
-            stderr.join().unwrap_or_default(),
-        ))
+        self.runs.run(&HerdrCall {
+            program: &self.program,
+            args,
+            socket,
+            session_home: self.session_home.as_deref(),
+            bound,
+        })
     }
 
     /// herdr's answer under the profile's bound.
@@ -2698,6 +2685,66 @@ impl Herdr {
     }
 }
 
+impl Runs for Process {
+    fn run(&self, call: &HerdrCall<'_>) -> Result<(bool, String, String), String> {
+        let mut command = Command::new(call.program);
+        command
+            .args(call.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("HERDR_") {
+                command.env_remove(name);
+            }
+        }
+        if let Some(home) = call.session_home {
+            command.env(SESSION_HOME, home);
+        }
+        if let Some(socket) = call.socket {
+            command.env("HERDR_SOCKET_PATH", socket);
+        }
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("herdr could not be run: {error}"))?;
+        let read = |pipe: Option<Box<dyn Read + Send>>| {
+            std::thread::spawn(move || {
+                let mut text = String::new();
+                if let Some(mut pipe) = pipe {
+                    let _ = pipe.read_to_string(&mut text);
+                }
+                text
+            })
+        };
+        let stdout = read(child.stdout.take().map(|pipe| Box::new(pipe) as _));
+        let stderr = read(child.stderr.take().map(|pipe| Box::new(pipe) as _));
+        let deadline = Instant::now() + call.bound;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "herdr {} did not answer within {} seconds",
+                        call.args.first().copied().unwrap_or_default(),
+                        call.bound.as_secs_f32()
+                    ));
+                }
+                Err(error) => return Err(format!("herdr could not be waited on: {error}")),
+            }
+        };
+        Ok((
+            status.success(),
+            stdout.join().unwrap_or_default(),
+            stderr.join().unwrap_or_default(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2771,59 +2818,98 @@ mod tests {
         }
     }
 
+    /// What a test's herdr answers a call: success, output and errors, or
+    /// why no answer came.
+    type Answer = Result<(bool, String, String), String>;
+
+    /// herdr's recorded answers to the profile's calls, each call logged
+    /// first as its words and the socket it was passed.
+    struct Answers {
+        log: std::sync::Mutex<Vec<String>>,
+        answer: Box<dyn Fn(&HerdrCall<'_>) -> Answer + Send + Sync>,
+    }
+
+    impl std::fmt::Debug for Answers {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Answers").finish_non_exhaustive()
+        }
+    }
+
+    impl Runs for Answers {
+        fn run(&self, call: &HerdrCall<'_>) -> Answer {
+            self.log.lock().expect("the log").push(format!(
+                "{} HERDR_SOCKET_PATH={}",
+                call.args.join(" "),
+                call.socket
+                    .map(|socket| socket.display().to_string())
+                    .unwrap_or_default()
+            ));
+            (self.answer)(call)
+        }
+    }
+
+    impl Answers {
+        /// Each call logged but its `pane get`s and `agent get`s, which
+        /// find the pane.
+        fn relay_calls(&self) -> Vec<String> {
+            self.log
+                .lock()
+                .expect("the log")
+                .iter()
+                .filter(|line| !line.starts_with("pane get") && !line.starts_with("agent get"))
+                .cloned()
+                .collect()
+        }
+    }
+
+    /// herdr's printing of `value` as its answer.
+    fn printed(value: Value) -> Answer {
+        Ok((true, format!("{value}\n"), String::new()))
+    }
+
+    /// herdr's answer to `pane get <id>`: the pane, by the id asked.
+    fn pane_got(call: &HerdrCall<'_>) -> Answer {
+        printed(json!({ "result": { "pane": { "pane_id": call.args[2] } } }))
+    }
+
     /// The profile over records in a scratch directory of its own, its
-    /// herdr a stand-in script whose body is `body`, run by `/bin/sh` with
-    /// `$LOG` the file it logs to, each call logged first as its words
-    /// and the socket it was passed; the agent `identity()` recorded in
-    /// the pane `w1:p2` at `/run/h.sock`. The profile, the scratch and the
-    /// log.
-    fn over_stand_in(name: &str, body: &str) -> (Herdr, PathBuf, PathBuf) {
+    /// calls of herdr answered by `answer`; the agent `identity()` recorded
+    /// in the pane `w1:p2` at `/run/h.sock`. The profile, its answers and
+    /// the scratch.
+    fn over_answers(
+        name: &str,
+        answer: impl Fn(&HerdrCall<'_>) -> Answer + Send + Sync + 'static,
+    ) -> (Herdr, Arc<Answers>, PathBuf) {
         let scratch =
             std::env::temp_dir().join(format!("flume-herdr-relay-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&scratch);
         fs::create_dir_all(&scratch).expect("a scratch folder");
-        let log = scratch.join("log");
-        let program = scratch.join("herdr");
-        fs::write(
-            &program,
-            format!(
-                "#!/bin/sh\nLOG='{}'\nMARK='{}'\necho \"$* HERDR_SOCKET_PATH=$HERDR_SOCKET_PATH\" >> \"$LOG\"\n{body}\n",
-                log.display(),
-                scratch.join("mark").display()
-            ),
-        )
-        .expect("the stand-in herdr");
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
+        let answers = Arc::new(Answers {
+            log: std::sync::Mutex::default(),
+            answer: Box::new(answer),
+        });
         let herdr = Herdr::new(
             Server::Socket("/run/h.sock".into()),
             scratch.join("records"),
         )
-        .with_program(&program);
+        .with_runs(answers.clone());
         keep_pane(&herdr, "w1:p2", "/run/h.sock");
-        (herdr, scratch, log)
+        (herdr, answers, scratch)
     }
-
-    /// Each call the stand-in logged, but its `pane get`s and `agent
-    /// get`s, which find the pane.
-    fn relay_calls(log: &Path) -> Vec<String> {
-        fs::read_to_string(log)
-            .unwrap_or_default()
-            .lines()
-            .filter(|line| !line.starts_with("pane get") && !line.starts_with("agent get"))
-            .map(str::to_string)
-            .collect()
-    }
-
-    const PANE_GET: &str = r#"pane\ get) echo "{\"result\":{\"pane\":{\"pane_id\":\"$3\"}}}" ;;"#;
 
     #[test]
     fn relay_reads_the_pane_as_ansi_and_types_by_send_text_and_send_keys() {
         // The terminal-profiles scenario "Reads and types over a stand-in
         // herdr" (222, C.5's relay row).
-        let body = format!(
-            "case \"$1 $2\" in\n{PANE_GET}\npane\\ read) printf 'the screen of %s' \"$3\" ;;\n*) echo '{{\"result\":{{}}}}' ;;\nesac"
-        );
-        let (herdr, scratch, log) = over_stand_in("reads", &body);
+        let (herdr, answers, scratch) = over_answers("reads", |call| match &call.args[..2] {
+            ["pane", "get"] => pane_got(call),
+            ["pane", "read"] => Ok((
+                true,
+                format!("the screen of {}", call.args[2]),
+                String::new(),
+            )),
+            _ => printed(json!({ "result": {} })),
+        });
         let mut relay = herdr.relay(&identity()).expect("the pane is found");
         assert_eq!(relay.every(), Duration::from_millis(250));
         for _ in 0..2 {
@@ -2839,7 +2925,7 @@ mod tests {
         assert_eq!(relay.typed(&keys), Ok(()));
         let read = "pane read w1:p2 --source visible --format ansi HERDR_SOCKET_PATH=/run/h.sock";
         assert_eq!(
-            relay_calls(&log),
+            answers.relay_calls(),
             vec![
                 read.to_string(),
                 read.to_string(),
@@ -2849,9 +2935,9 @@ mod tests {
         );
         drop(relay);
         assert!(
-            relay_calls(&log).len() == 4,
+            answers.relay_calls().len() == 4,
             "dropping the relay called herdr: {:?}",
-            relay_calls(&log)
+            answers.relay_calls()
         );
         let _ = fs::remove_dir_all(scratch);
     }
@@ -2860,17 +2946,30 @@ mod tests {
     fn relay_finds_a_moved_pane_again_and_reads_a_gone_one_gone() {
         // The terminal-profiles scenarios "A pane moved, then gone" and "A
         // server not running" (222; record 0018).
-        let not_found = r#"echo '{"error":{"code":"pane_not_found","message":"no such pane"}}'"#;
-        let body = format!(
-            "case \"$1 $2 $3\" in\n\
-             'pane get w1:p2') if [ -e \"$MARK.moved\" ]; then {not_found}; else echo '{{\"result\":{{\"pane\":{{\"pane_id\":\"w1:p2\"}}}}}}'; fi ;;\n\
-             'pane get '*) {not_found} ;;\n\
-             'pane read w1:p2') touch \"$MARK.moved\"; {not_found} ;;\n\
-             'pane read w3:p1') if [ -e \"$MARK\" ]; then {not_found}; else touch \"$MARK\"; printf 'moved'; fi ;;\n\
-             'agent get '*) if [ -e \"$MARK\" ]; then echo '{{\"error\":{{\"code\":\"agent_not_found\",\"message\":\"none\"}}}}'; else echo \"{{\\\"result\\\":{{\\\"agent\\\":{{\\\"name\\\":\\\"$3\\\",\\\"pane_id\\\":\\\"w3:p1\\\"}}}}}}\"; fi ;;\n\
-             esac"
-        );
-        let (herdr, scratch, log) = over_stand_in("moved", &body);
+        use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+        let not_found =
+            || printed(json!({ "error": { "code": "pane_not_found", "message": "no such pane" } }));
+        let moved = AtomicBool::new(false);
+        let read_once = AtomicBool::new(false);
+        let (herdr, answers, scratch) = over_answers("moved", move |call| match call.args {
+            ["pane", "get", "w1:p2"] if !moved.load(SeqCst) => pane_got(call),
+            ["pane", "get", ..] => not_found(),
+            ["pane", "read", "w1:p2", ..] => {
+                moved.store(true, SeqCst);
+                not_found()
+            }
+            ["pane", "read", "w3:p1", ..] if !read_once.swap(true, SeqCst) => {
+                Ok((true, "moved".into(), String::new()))
+            }
+            ["pane", "read", ..] => not_found(),
+            ["agent", "get", name, ..] if !read_once.load(SeqCst) => {
+                printed(json!({ "result": { "agent": { "name": name, "pane_id": "w3:p1" } } }))
+            }
+            ["agent", "get", ..] => {
+                printed(json!({ "error": { "code": "agent_not_found", "message": "none" } }))
+            }
+            _ => printed(json!({ "result": {} })),
+        });
         let mut relay = herdr
             .relay(&identity())
             .expect("the pane is found at the ask");
@@ -2879,25 +2978,21 @@ mod tests {
             RelayScreen::Shows {
                 screen: "moved".into()
             },
-            "{:?}",
-            fs::read_to_string(&log)
+            "{answers:?}"
         );
         assert_eq!(
             herdr.pane(&identity()).map(|pane| pane.id),
             Some("w3:p1".to_string()),
             "the new id recorded"
         );
-        assert_eq!(
-            relay.screen(),
-            RelayScreen::Gone,
-            "{:?}",
-            fs::read_to_string(&log)
-        );
+        assert_eq!(relay.screen(), RelayScreen::Gone);
         let _ = fs::remove_dir_all(scratch);
-        let body = format!(
-            "case \"$1 $2\" in\n{PANE_GET}\n*) echo '{{\"error\":{{\"code\":\"server_not_running\",\"message\":\"no server\"}}}}' ;;\nesac"
-        );
-        let (herdr, scratch, _) = over_stand_in("server", &body);
+        let (herdr, _, scratch) = over_answers("server", |call| match &call.args[..2] {
+            ["pane", "get"] => pane_got(call),
+            _ => printed(
+                json!({ "error": { "code": "server_not_running", "message": "no server" } }),
+            ),
+        });
         let mut relay = herdr
             .relay(&identity())
             .expect("the pane is found at the ask");
@@ -2909,8 +3004,16 @@ mod tests {
     fn a_relay_read_that_does_not_answer_is_unread_naming_one_second() {
         // 98, core.29: a read past one second unread, an input past it
         // refused, each naming the bound.
-        let body = format!("case \"$1 $2\" in\n{PANE_GET}\n*) exec sleep 5 ;;\nesac");
-        let (herdr, scratch, _) = over_stand_in("slow", &body);
+        // herdr answers no read or input within the profile's bound, as
+        // Process words a call it ended at its bound.
+        let (herdr, _, scratch) = over_answers("slow", |call| match &call.args[..2] {
+            ["pane", "get"] => pane_got(call),
+            _ => Err(format!(
+                "herdr {} did not answer within {} seconds",
+                call.args[0],
+                call.bound.as_secs_f32()
+            )),
+        });
         let mut relay = herdr.relay(&identity()).expect("the pane is found");
         match relay.screen() {
             RelayScreen::Unread { reason } => {
@@ -2932,8 +3035,10 @@ mod tests {
     fn relay_refuses_a_key_herdr_cannot_type_and_types_the_keys_after_it() {
         // The terminal-profiles scenario "A key herdr cannot type among
         // keys it can" (222, C.5's relay row at blueprints cb114fd).
-        let body = format!("case \"$1 $2\" in\n{PANE_GET}\n*) echo '{{\"result\":{{}}}}' ;;\nesac");
-        let (herdr, scratch, log) = over_stand_in("cannot", &body);
+        let (herdr, answers, scratch) = over_answers("cannot", |call| match &call.args[..2] {
+            ["pane", "get"] => pane_got(call),
+            _ => printed(json!({ "result": {} })),
+        });
         let mut relay = herdr.relay(&identity()).expect("the pane is found");
         let keys =
             |names: &[&str]| Typed::Keys(names.iter().map(|name| name.parse().unwrap()).collect());
@@ -2945,7 +3050,7 @@ mod tests {
             "home is a key herdr 0.9.5 cannot type; nothing was sent for it, and the keys around it were typed"
         );
         assert_eq!(
-            relay_calls(&log),
+            answers.relay_calls(),
             vec![
                 "pane send-keys w1:p2 ctrl+c HERDR_SOCKET_PATH=/run/h.sock".to_string(),
                 "pane send-keys w1:p2 enter HERDR_SOCKET_PATH=/run/h.sock".to_string(),
@@ -2967,7 +3072,7 @@ mod tests {
             );
         }
         assert!(refused.ends_with("nothing was sent for them, and the keys around them were typed"));
-        assert_eq!(relay_calls(&log).len(), 2, "a herdr call for the six");
+        assert_eq!(answers.relay_calls().len(), 2, "a herdr call for the six");
         for name in ["delete", "insert", "home", "end", "pageup", "pagedown"] {
             assert!(herdr_key(&name.parse().unwrap()).is_err(), "{name}");
         }
@@ -3169,31 +3274,27 @@ mod tests {
     }
 
     /// The profile over a scratch state directory of flume's herdr
-    /// plugin, its herdr a script that marks it was run; and the plugin's
-    /// directory and that mark.
-    fn over_plugin(name: &str) -> (Herdr, PathBuf, PathBuf) {
+    /// plugin, its calls of herdr logged and answered with nothing, its
+    /// program one that is not there; and the plugin's directory and the
+    /// log.
+    fn over_plugin(name: &str) -> (Herdr, PathBuf, Arc<Answers>) {
         let scratch =
             std::env::temp_dir().join(format!("flume-herdr-plugin-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&scratch);
         fs::create_dir_all(&scratch).unwrap();
-        let program = scratch.join("herdr");
-        let ran = scratch.join("ran");
-        fs::write(
-            &program,
-            format!("#!/bin/sh\necho \"$@\" >> '{}'\n", ran.display()),
-        )
-        .unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let answers = Arc::new(Answers {
+            log: std::sync::Mutex::default(),
+            answer: Box::new(|_| printed(json!({ "result": {} }))),
+        });
         let plugin = scratch.join("plugin");
-        let herdr = Herdr {
-            program,
-            ..Herdr::new(
-                Server::Socket("/run/h.sock".into()),
-                scratch.join("records"),
-            )
-            .with_plugin(Some(plugin.clone()))
-        };
-        (herdr, plugin, ran)
+        let herdr = Herdr::new(
+            Server::Socket("/run/h.sock".into()),
+            scratch.join("records"),
+        )
+        .with_plugin(Some(plugin.clone()))
+        .with_program(scratch.join("no-herdr"))
+        .with_runs(answers.clone());
+        (herdr, plugin, answers)
     }
 
     /// A server of the plugin's whose startup wrote `lacking` into its
@@ -3220,7 +3321,10 @@ mod tests {
         // 95, 198, C.5).
         let (herdr, _, ran) = over_plugin("sends");
         assert!(herdr.sends());
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     const KEY: &str = "herdr's configuration, /h/config.toml, binds no key to flume's places";
@@ -3248,7 +3352,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(herdr.setup(), vec![KEY.to_string()]);
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     #[test]
@@ -3273,7 +3380,10 @@ mod tests {
                 "herdr's configuration, /other.toml, binds no key".to_string(),
             ]
         );
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
     }
 
     #[test]
@@ -3290,6 +3400,68 @@ mod tests {
         fs::create_dir_all(&earlier).unwrap();
         write_json(&earlier.join("setup.json"), &json!([KEY])).unwrap();
         assert_eq!(herdr.setup(), Vec::<String>::new());
-        assert!(!ran.exists(), "a herdr command was run");
+        assert!(
+            ran.log.lock().expect("the log").is_empty(),
+            "a herdr command was run"
+        );
+    }
+
+    /// The profile over records in a scratch directory of its own, the
+    /// agent `identity()` kept in the pane `pane`, its calls of herdr
+    /// answered in order from the recording `text`, which the pinned
+    /// herdr gave the tools test that recorded it: each answer given once,
+    /// to a call of the same words.
+    fn over_recording(name: &str, pane: &str, text: &'static str) -> (Herdr, PathBuf) {
+        let recorded: Vec<(Vec<String>, Answer)> = text
+            .lines()
+            .map(|line| {
+                let line: Value = serde_json::from_str(line).expect("a recorded call");
+                let args = serde_json::from_value(line["args"].clone()).expect("its words");
+                let answer = serde_json::from_value(line["answer"].clone()).expect("its answer");
+                (args, answer)
+            })
+            .collect();
+        let left = std::sync::Mutex::new(recorded);
+        let (herdr, _, scratch) = over_answers(name, move |call| {
+            let mut left = left.lock().expect("the recording");
+            let at = left
+                .iter()
+                .position(|(args, _)| args == call.args)
+                .unwrap_or_else(|| {
+                    panic!("the recording answers no herdr {}", call.args.join(" "))
+                });
+            left.remove(at).1
+        });
+        keep_pane(&herdr, pane, "/run/h.sock");
+        (herdr, scratch)
+    }
+
+    #[test]
+    fn herdrs_readings_as_the_profile_reads_them() {
+        // 37, 90, 134, S42, C.5: the pinned herdr's own answers, recorded
+        // from it when this test was a tools test of terminal_herdr.rs, its
+        // profile's calls run through a recorder of Process's answers, and
+        // recorded again when the pinned herdr moves: a prompt sent once herdr reads the agent
+        // waiting; then `working` read working, `done`, a finished turn
+        // nobody looked at, waiting, `blocked` asking and `unknown` herdr's
+        // unknown; and once the agent's program ended, its pane listing no
+        // agent and its shell alone running, stopped.
+        let (herdr, scratch) = over_recording(
+            "readings",
+            "w2:p1",
+            include_str!("../../../../tests/profiles/fixtures/herdr/readings.jsonl"),
+        );
+        let who = identity();
+        assert_eq!(herdr.send(&who, "do the work"), Sent::Sent, "the prompt");
+        for state in [
+            AgentState::Working,
+            AgentState::Waiting,
+            AgentState::Asking,
+            AgentState::Unknown,
+        ] {
+            assert_eq!(herdr.state(&who), state);
+        }
+        while herdr.state(&who) != AgentState::Stopped {}
+        let _ = fs::remove_dir_all(scratch);
     }
 }

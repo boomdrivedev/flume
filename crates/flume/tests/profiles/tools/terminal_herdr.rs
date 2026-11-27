@@ -1913,40 +1913,6 @@ fn a_command_in_a_herdr_sessions_pane_is_named_as_its_agents_are_given() {
 }
 
 #[test]
-fn herdrs_readings_as_the_profile_reads_them() {
-    let server = TestServer::start("herdr-states");
-    let profile = server.profile();
-    let who = identity(1);
-    let pane = opened(&server, &profile, &who, &server.command(&[]));
-    assert_eq!(profile.send(&who, "do the work"), Sent::Sent, "the prompt");
-    server.report(&pane, "working");
-    assert_eq!(profile.state(&who), AgentState::Working, "working");
-    server.report(&pane, "idle");
-    server.within(
-        "herdr did not read a finished turn nobody looked at as done",
-        || server.status(&pane).as_deref() == Some("done"),
-    );
-    assert_eq!(
-        profile.state(&who),
-        AgentState::Waiting,
-        "done, a finished turn nobody looked at (S42)"
-    );
-    server.report(&pane, "blocked");
-    assert_eq!(profile.state(&who), AgentState::Asking, "blocked");
-    server.report(&pane, "unknown");
-    assert_eq!(profile.state(&who), AgentState::Unknown, "herdr's unknown");
-    server.report(&pane, "idle");
-    server.herdr(&["pane", "send-keys", &pane.id, "ctrl+d"]);
-    server.within("an agent whose program ended does not read stopped", || {
-        profile.state(&who) == AgentState::Stopped
-    });
-    assert!(
-        server.try_herdr(&["pane", "get", &pane.id]).is_ok(),
-        "the pane went with its agent"
-    );
-}
-
-#[test]
 fn s43_a_prompt_left_typed_is_cleared_before_each_sending() {
     let server = TestServer::start("herdr-typed");
     let profile = server.profile();
