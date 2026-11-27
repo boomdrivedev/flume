@@ -241,7 +241,7 @@ pub(crate) fn waits_of(held: &HeldState) -> Vec<WaitRead> {
         }
     }
     let submission = &held.submission;
-    if submission.submits > 0
+    if submission.made()
         && !submission.due
         && submission.verdict.is_none()
         && !submission.landing_refused

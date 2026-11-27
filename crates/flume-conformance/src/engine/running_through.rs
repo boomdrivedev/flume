@@ -17,11 +17,12 @@ use super::world::*;
 use crate::seams::kinds::entry;
 use crate::{ensure, ensure_eq, Outcome, Scenario};
 use flume_core::{Act, Retry, Waits};
+use flume_fakes::FakeStore;
 use flume_fakes::Plan;
 use flume_seams::*;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub fn scenarios() -> Vec<Scenario<()>> {
     vec![
@@ -79,6 +80,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             name: "run through: a submission the merge queue holds as a request with no entry is open and undecided, never refused, its base driven each command, and the entry an intake takes it in as is followed to its landing, read from the merge queue's record where no inbox gives it",
             cites: &["124", "125", "99", "117", "113", "111"],
             run: a_request_followed_to_its_landing,
+        },
+        Scenario {
+            name: "run through: a submit is counted in the write that records the merge queue's answer, a request, an entry or a refusal, and a reader between flume's writes finds the place submitting and never a submit counted without its answer",
+            cites: &["48", "111", "124", "49"],
+            run: a_submit_counted_with_its_answer,
         },
         Scenario {
             name: "fix round: a request's entry that failed sends the place back once, whether the record or the inbox gives the failure first, and its next request is never read as the failed entry",
@@ -615,6 +621,59 @@ fn request(then: Plan, to_place: bool) -> Plan {
         then: Box::new(then),
         to_place,
     }
+}
+
+/// Each submission a reader finds of `id` between two writes of the
+/// store: read just before each write, as another command reading the
+/// place at that moment reads it.
+fn read_between_writes(world: &World, id: &PlaceId) -> Arc<Mutex<Vec<SubmissionHeld>>> {
+    fn arm(store: Arc<FakeStore>, id: PlaceId, seen: Arc<Mutex<Vec<SubmissionHeld>>>) {
+        let hook = store.clone();
+        hook.before_next_write(move || {
+            if let Some(read) = store.read(&id) {
+                seen.lock().unwrap().push(read.state.submission);
+            }
+            arm(store, id, seen);
+        });
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    arm(world.store.clone(), id.clone(), seen.clone());
+    seen
+}
+
+fn a_submit_counted_with_its_answer(_: &()) -> Outcome {
+    for (plan, answer) in [
+        (request(Plan::Hold, false), "a request"),
+        (Plan::Hold, "an entry"),
+        (Plan::Refuse("the queue is closed".into()), "a refusal"),
+    ] {
+        let world = World::new();
+        let id = fix_begun(&world, "one")?;
+        world.queue.plan_submits(vec![plan]);
+        let seen = read_between_writes(&world, &id);
+        deliver_fix(&world, &id);
+        world.settle(&id);
+        ensure_eq!(world.queue.log.count("submit"), 1, "{answer}: submissions");
+        let last = world.held(&id).ok_or("the place is gone")?.submission;
+        ensure_eq!(last.submits, 1, "{answer}: the submits counted");
+        ensure!(!last.submitting, "{answer}: still submitting: {last:?}");
+        let mut seen = seen.lock().unwrap().clone();
+        seen.push(last);
+        for read in &seen {
+            ensure!(
+                read.submits == 0
+                    || read.request.is_some()
+                    || read.id.is_some()
+                    || read.verdict.is_some(),
+                "{answer}: a reader found a submit counted without its answer: {read:?}"
+            );
+        }
+        ensure!(
+            seen.iter().any(|read| read.submitting && read.submits == 0),
+            "{answer}: no reader found the place submitting: {seen:?}"
+        );
+    }
+    Ok(())
 }
 
 fn a_request_followed_to_its_landing(_: &()) -> Outcome {

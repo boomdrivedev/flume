@@ -297,7 +297,10 @@ impl Engine {
     /// name, at the revision where the merge queue says the branch
     /// lives, from the repository, and any other's from its worktree's
     /// head (203). A retry naming the submission submits whether or not
-    /// one is due (49).
+    /// one is due (49). The place is marked submitting, with no count,
+    /// before the merge queue is called, and the submit is counted in the
+    /// one write that records the merge queue's answer, its refusal among
+    /// them, so no reader finds it counted without its answer (48).
     pub(crate) fn submit(&self, id: &PlaceId, retried: bool) -> bool {
         self.collect_before(id, retried);
         let claimed = self.update(id, |held| {
@@ -305,7 +308,7 @@ impl Engine {
                 return Step::Keep(None);
             }
             held.submission.due = false;
-            held.submission.submits += 1;
+            held.submission.submitting = true;
             if let Some(previous) = held.submission.id.take() {
                 held.submission.before = Some(previous);
             }
@@ -338,16 +341,9 @@ impl Engine {
                     revision,
                 },
                 Err(reason) => {
-                    self.submitted(id, None, None, before);
-                    self.verdict(
-                        id,
-                        Verdict::Refused {
-                            reason: format!(
-                                "the head of {} could not be read: {reason}",
-                                place.branch
-                            ),
-                        },
-                    );
+                    let reason =
+                        format!("the head of {} could not be read: {reason}", place.branch);
+                    self.submitted(id, None, None, before, Some(reason));
                     return true;
                 }
             }
@@ -361,23 +357,22 @@ impl Engine {
         };
         match queue.submit(&place.place_ref(), &head) {
             Submitted::Submitted { submission } => {
-                self.submitted(id, Some(&submission), None, before)
+                self.submitted(id, Some(&submission), None, before, None)
             }
-            Submitted::Requested { request } => self.submitted(id, None, Some(request), before),
+            Submitted::Requested { request } => {
+                self.submitted(id, None, Some(request), before, None)
+            }
             Submitted::Decided {
                 submission,
                 outcome,
                 key,
             } => {
-                self.submitted(id, Some(&submission), None, before);
+                self.submitted(id, Some(&submission), None, before, None);
                 if let (true, Some(key)) = (self.outcome(id, outcome), key) {
                     let _ = queue.confirm(&place.place_ref(), &key);
                 }
             }
-            Submitted::Refused { reason } => {
-                self.submitted(id, None, None, before);
-                self.verdict(id, Verdict::Refused { reason });
-            }
+            Submitted::Refused { reason } => self.submitted(id, None, None, before, Some(reason)),
         }
         true
     }
@@ -409,18 +404,25 @@ impl Engine {
         }
     }
 
-    /// What the merge queue holds of flume's submit recorded as the
-    /// place's own: the entry it made, or the request it opened, the
-    /// branch's newest entry before it never read as the place's (99,
-    /// 124).
+    /// The merge queue's answer to flume's submit recorded as the place's
+    /// own, in one write with the submit's count: the entry it made, or
+    /// the request it opened, the branch's newest entry before it never
+    /// read as the place's, or its refusal, the place then waiting on its
+    /// caller with the merge queue's words (48, 99, 124).
     fn submitted(
         &self,
         id: &PlaceId,
         submission: Option<&Submission>,
         request: Option<String>,
         before: Option<String>,
+        refused: Option<String>,
     ) {
         self.update(id, |held| {
+            held.submission.submitting = false;
+            held.submission.submits += 1;
+            if let Some(reason) = &refused {
+                refuse(&mut held.submission, reason);
+            }
             held.submission.id = submission.map(|submission| submission.id.clone());
             held.submission.request = submission
                 .and_then(|submission| submission.request.clone())
@@ -508,8 +510,7 @@ impl Engine {
                     return Step::Write(None);
                 }
                 Verdict::Refused { reason } => {
-                    held.submission.waiting =
-                        Some(format!("the merge queue refused the submission: {reason}"));
+                    refuse(&mut held.submission, reason);
                     return Step::Write(None);
                 }
                 Verdict::Failed { words } => ("the submission failed", words),
@@ -664,6 +665,17 @@ pub(crate) fn own_read(held: &HeldState, across: ReadAcross) -> SubmissionRead {
     }
 }
 
+/// The merge queue's refusal of the place's submission held as its
+/// verdict, the place waiting on its caller with the merge queue's words
+/// (49, 112).
+fn refuse(ours: &mut SubmissionHeld, reason: &str) {
+    end_held_wait(ours);
+    ours.verdict = Some(Verdict::Refused {
+        reason: reason.into(),
+    });
+    ours.waiting = Some(format!("the merge queue refused the submission: {reason}"));
+}
+
 /// Ends the wait on a held landing, where the place waits on one, its
 /// words with it; true where it did (112, 113, 124; core.58).
 fn end_held_wait(ours: &mut SubmissionHeld) -> bool {
@@ -683,7 +695,7 @@ fn end_held_wait(ours: &mut SubmissionHeld) -> bool {
 fn waits_on_its_submission(held: &HeldState) -> bool {
     let ours = &held.submission;
     held.phase == Phase::Live
-        && ours.submits > 0
+        && ours.made()
         && !ours.due
         && ours.verdict.is_none()
         && held.live_start().is_none()

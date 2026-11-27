@@ -2406,8 +2406,16 @@ pub struct GroupHeld {
 pub struct SubmissionHeld {
     /// The last stage delivered and its submission is to be made.
     pub due: bool,
-    /// How many times flume submitted the place (48).
+    /// How many times flume submitted the place (48), each counted in the
+    /// write that records the merge queue's answer to it, so no reader
+    /// finds a submit counted without its answer.
     pub submits: u32,
+    /// flume called the merge queue to submit the place and has not yet
+    /// recorded its answer: marked, with no count, before the call, so a
+    /// command stopped during the call leaves it known, and cleared in
+    /// the write that counts the submit with its answer (48, 111).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub submitting: bool,
     /// How many send-backs the place has taken (112).
     pub send_backs: u32,
     /// The submission flume last made, by the merge queue's id, so a
@@ -2450,4 +2458,11 @@ pub struct SubmissionHeld {
     /// before (112, 130; core.58).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub landing_refused: bool,
+}
+
+impl SubmissionHeld {
+    /// Whether flume submitted the place or is submitting it now (48).
+    pub fn made(&self) -> bool {
+        self.submits > 0 || self.submitting
+    }
 }
