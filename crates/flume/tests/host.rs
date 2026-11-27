@@ -1667,3 +1667,51 @@ fn the_modules_sources_read_whole() {
         }
     );
 }
+
+/// The repository a command runs in, read through git with no process of
+/// flume's: from a worktree of a clone, a place's among them, it is the
+/// main worktree; from a bare repository's worktree, the folder beside
+/// the bare repository; and `--repository` names a folder, flume finding
+/// no clone by an address and making nothing (C.1, 143; record 0027,
+/// record 0055).
+#[test]
+fn a_command_finds_its_repository_from_any_worktree_and_no_clone_by_an_address() {
+    use flume::commands::place::repository;
+    let clone = Repository::new("repository-of");
+    let place = clone.scratch.path("places/fix--one");
+    clone.git(&[
+        "worktree",
+        "add",
+        "--quiet",
+        "-b",
+        "fix/one",
+        &place.to_string_lossy(),
+    ]);
+    let main = clone.dir.canonicalize().expect("the clone");
+    for from in [&clone.dir, &place] {
+        assert_eq!(
+            repository(Some(from)),
+            Ok(main.to_string_lossy().into_owned()),
+            "from {}",
+            from.display()
+        );
+    }
+
+    let origin = Repository::new("repository-of-origin");
+    let container = Container::of(&origin.bare_remote(), Scratch::new("repository-of-bare"));
+    let beside = container.dir.canonicalize().expect("the container");
+    assert_eq!(
+        repository(Some(&container.dir.join("main"))),
+        Ok(beside.to_string_lossy().into_owned())
+    );
+
+    let empty = clone.scratch.path("empty");
+    std::fs::create_dir_all(&empty).expect("the empty folder");
+    let address = empty.join("acme/acme");
+    let reason = repository(Some(&address)).expect_err("a clone found by its address");
+    assert!(
+        reason.contains(&*address.to_string_lossy()),
+        "the folder it was given: {reason}"
+    );
+    assert!(!address.exists(), "the folder made");
+}

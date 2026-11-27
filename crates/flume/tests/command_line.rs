@@ -991,3 +991,42 @@ fn an_act_over_mcp_answers_as_the_command_line_answers() {
             .map(|answer| answer.keys().collect::<Vec<_>>()),
     );
 }
+
+#[test]
+fn flume_host_reads_a_repositorys_binding_beside_the_places_and_no_line() {
+    // 20, 105: the status flume host serves gives each repository asked
+    // by its folder beside the places, its binding read; one asked with
+    // no repository gives none; and a status of lines naming one is
+    // refused. What the binding gives is the core's repository report's
+    // own tests'.
+    use flume::served::{read_core, Asked};
+    use flume_conformance::engine::world::REPOSITORY;
+    let world = World::new();
+    let build = || Ok(world.engine());
+    let read = |asked: Asked| -> Value {
+        serde_json::from_str(&read_core(&build, &asked)).expect("the answer's JSON")
+    };
+    let binding = read(Asked {
+        repositories: vec![REPOSITORY.into()],
+        ..Asked::default()
+    });
+    let repositories = binding["status"]["repositories"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no repositories: {binding}"));
+    assert_eq!(repositories.len(), 1, "{binding}");
+    assert_eq!(repositories[0]["repository"], REPOSITORY, "{binding}");
+    assert!(repositories[0]["binding"].is_object(), "{binding}");
+    let plain = read(Asked::default());
+    assert!(plain["status"].get("repositories").is_none(), "{plain}");
+    let lines = read(Asked {
+        line: true,
+        repositories: vec![REPOSITORY.into()],
+        ..Asked::default()
+    });
+    assert!(
+        lines["refused"]["refusal"]["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("names no repository")),
+        "{lines}"
+    );
+}
