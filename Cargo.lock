@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "flume"
-version = "0.0.0"
+version = "0.38.2"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "flume-conformance"
-version = "0.0.0"
+version = "0.38.2"
 dependencies = [
  "flume-core",
  "flume-fakes",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "flume-core"
-version = "0.0.0"
+version = "0.38.2"
 dependencies = [
  "chrono",
  "flume-fakes",
@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "flume-fakes"
-version = "0.0.0"
+version = "0.38.2"
 dependencies = [
  "flume-seams",
  "serde_json",
@@ -553,7 +553,7 @@ dependencies = [
 
 [[package]]
 name = "flume-seams"
-version = "0.0.0"
+version = "0.38.2"
 dependencies = [
  "chrono",
  "serde",
