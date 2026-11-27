@@ -2154,4 +2154,190 @@ agents = [{ instructions = "keep it short" }]
             other => panic!("a table of stages and regions read as {other:?}"),
         }
     }
+
+    /// The kind `train`, landing with no stages, `more` its further
+    /// fields, beside its landing fix `mend`, a one-stage kind.
+    fn trained(more: &str) -> String {
+        format!(
+            "[kinds.train]\nbranch = \"train\"\nlands = true\nstages = []\n{more}\n\n\
+             [kinds.mend]\nversion = 1\nbranch = \"mend\"\nlands = true\n\n\
+             [[kinds.mend.stages]]\nname = \"code\"\nprompt = \"prompts/code.md\"\n\
+             deliverables = [\"commits\"]\nagents = [{{}}]\n"
+        )
+    }
+
+    /// A tree whose declaration is `declaration`, its stages' prompt
+    /// beside it, committed.
+    fn declaring_trained(declaration: &str) -> Tree {
+        let repository = Tree::new("trained");
+        repository.write(DECLARATION, declaration);
+        repository.write(".config/prompts/code.md", "{{brief}}");
+        repository.commit("the declaration");
+        repository
+    }
+
+    /// Each kind's landing fix and its bound, by the kind's name.
+    fn landing_fixes(repository: &Tree) -> BTreeMap<String, (Option<String>, Option<u32>)> {
+        match repository.read() {
+            KindsRead::Read { kinds, .. } => kinds
+                .into_iter()
+                .map(|kind| (kind.name, (kind.fix, kind.fix_limit)))
+                .collect(),
+            other => panic!("the declaration read as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_kind_with_no_stages_names_its_landing_fix_and_its_bound() {
+        // The kinds-profile spec's "A landing fix and its bound": weir's
+        // crate reads a kind's `landing_fix` and `max_landing_fixes`, and
+        // the profile maps them onto the kind of its fixes, spelled as weir
+        // spells the identity, and its bound; a kind that gives neither
+        // names neither (23; weir 52; weir record 0005; core.4).
+        let declared = format!(
+            "{}\n[kinds.yard]\nbranch = \"yard\"\nlands = true\nstages = []\n",
+            trained("landing_fix = \"repo/mend@1\"\nmax_landing_fixes = 2")
+        );
+        let none = (None, None);
+        assert_eq!(
+            landing_fixes(&declaring_trained(&declared)),
+            BTreeMap::from([
+                ("mend".to_string(), none.clone()),
+                (
+                    "train".to_string(),
+                    (Some("repo/mend@1".to_string()), Some(2))
+                ),
+                ("yard".to_string(), none),
+            ]),
+            "each kind's landing fix and its bound"
+        );
+    }
+
+    #[test]
+    fn a_landing_fix_weir_refuses_is_named_in_weirs_words() {
+        // The kinds-profile spec's "A landing fix weir refuses": a bare
+        // name, a name with no version, and either field on a kind with
+        // stages are answered as could not be read in weir's words, naming
+        // the field (57; weir record 0005).
+        for named in ["mend", "repo/mend"] {
+            let reason =
+                declaring_trained(&trained(&format!("landing_fix = \"{named}\""))).could_not_read();
+            assert!(
+                reason.contains("kinds.train.landing_fix") && reason.contains("is no identity"),
+                "{named} not refused as no identity: {reason}"
+            );
+        }
+        let reason = declaring_trained(&format!(
+            "{}\n[kinds.bump]\nbranch = \"bump\"\n\
+             landing_fix = \"flume/fix@1\"\nmax_landing_fixes = 1\n\n\
+             [[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/code.md\"\n\
+             deliverables = [\"commits\"]\nagents = [{{}}]\n",
+            trained("")
+        ))
+        .could_not_read();
+        for field in ["kinds.bump.landing_fix", "kinds.bump.max_landing_fixes"] {
+            assert!(
+                reason.contains(&format!("{field}: is on a kind with stages")),
+                "{field} not refused as on a kind with stages: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_landing_fix_bound_past_what_flume_counts_is_refused() {
+        // The kinds-profile spec's "A bound past what flume counts": weir
+        // reads the count, and the profile refuses the declaration naming
+        // the field (4, 84).
+        let reason = declaring_trained(&trained(
+            "landing_fix = \"repo/mend@1\"\nmax_landing_fixes = 4294967296",
+        ))
+        .could_not_read();
+        assert!(
+            reason.contains("kinds.train.max_landing_fixes: is more than flume counts"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn fix_and_max_fixes_are_sections_naming_no_landing_fix() {
+        // The kinds-profile spec's "The fields' old spellings": weir returns
+        // `fix` and `max_fixes` as sections, and flume reads no fix and no
+        // bound from them (23; weir record 0005; core.4).
+        assert_eq!(
+            landing_fixes(&declaring_trained(&trained(
+                "fix = \"repo/mend@1\"\nmax_fixes = 2"
+            )))
+            .get("train"),
+            Some(&(None, None)),
+            "train's landing fix and its bound"
+        );
+    }
+
+    #[test]
+    fn a_mode_that_is_neither_refuses_the_read_naming_the_field() {
+        // 4, 169, C.2: a program's own value given bare, a list and a table
+        // naming no program each fail the read, naming the table's `mode`,
+        // in a repository's table for a kind it does not declare, in a
+        // stage's of a kind's own and in its agents table.
+        let repository = Tree::new("declared-bad-mode");
+        repository.write(
+            DECLARATION,
+            "[kinds.change.agents]\nmode = \"auto\"\n\n[kinds.bump.agents.stages.code]\nmode = {}\n\n\
+             [[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/bump-code.md\"\n\
+             deliverables = [\"commits\"]\nagents = [{ mode = [\"edits\"] }]\n",
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("modes that are neither");
+        let reason = repository.could_not_read();
+        for field in [
+            "kinds.change.agents.mode",
+            "kinds.bump.agents.stages.code.mode",
+            "kinds.bump.stages[0].agents[0].mode",
+            "`auto`",
+        ] {
+            assert!(
+                reason.contains(field),
+                "the read names not {field}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_environment_in_any_declaration_refuses_the_read_naming_the_field() {
+        // C.2, 158: an agent's environment is its account's alone (144), so
+        // an `env` in a repository's agents table for a kind it does not
+        // declare, in a kind's own, or in a launch's declaration fails the
+        // read, naming the field.
+        let repository = Tree::new("declared-env");
+        repository.write(
+            DECLARATION,
+            "[kinds.change.agents]\nenv = { A = \"b\" }\n\n\
+             [[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/bump-code.md\"\n\
+             deliverables = [\"commits\"]\nagents = [{ env = { B = \"c\" } }]\n",
+        );
+        repository.write(".config/prompts/bump-code.md", "{{brief}}");
+        repository.commit("environments in the declaration");
+        let reason = repository.could_not_read();
+        for field in [
+            "kinds.change.agents.env",
+            "kinds.bump.stages[0].agents[0].env",
+        ] {
+            assert!(
+                reason.contains(field),
+                "the read names not {field}: {reason}"
+            );
+        }
+        let launched = read(
+            "[kinds.bump.agents.stages.code]\nenv = { C = \"d\" }\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/bump-code.md\"\ndeliverables = [\"commits\"]\n",
+            Whose::Launch,
+            &|path| Ok((path.to_string(), "{{brief}}".to_string())),
+        );
+        match launched {
+            KindsRead::CouldNotRead { reason } => assert!(
+                reason.contains("kinds.bump.agents.stages.code.env"),
+                "the launch's declaration's read names not the field: {reason}"
+            ),
+            other => panic!("a launch's declaration giving an environment read as {other:?}"),
+        }
+    }
 }
