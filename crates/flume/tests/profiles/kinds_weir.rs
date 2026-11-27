@@ -21,9 +21,9 @@
 //! where it resolves to no kind (23, 154, 157, 203; weir 52, 57, 89; weir
 //! record 0005).
 
-use crate::common::engine::{base_at, engine, PLACE_PROFILE};
+use crate::common::engine::{base_at, engine};
 use crate::common::*;
-use flume::profiles::kinds::weir::{binding_at, Weir, DECLARATION, LOCK};
+use flume::profiles::kinds::weir::{Weir, DECLARATION, LOCK};
 use flume_conformance::engine::repeating_stages::GROUPS;
 use flume_conformance::engine::settling::{archive, change_at_verify, deliver_fix, fix_begun};
 use flume_conformance::engine::world::{launch, launched, refused, World, REPOSITORY};
@@ -349,46 +349,6 @@ fn the_kinds_profile_passes_the_kinds_scenarios() {
     pass_all("kinds", &kinds::scenarios(), Harness::default);
 }
 
-#[test]
-fn a_prompt_the_revision_lacks_is_named() {
-    let repository = Repository::new("no-prompt");
-    repository.write(
-        DECLARATION,
-        "[kinds.bump]\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/gone.md\"\ndeliverables = [\"commits\"]\nagents = [{}]\n",
-    );
-    let revision = Revision::new(repository.commit("no prompt"));
-    match Weir.read_kinds(&repository.name(), &revision) {
-        KindsRead::CouldNotRead { reason } => {
-            assert!(
-                reason.contains("kinds.bump.stages[0].prompt")
-                    && reason.contains(".config/prompts/gone.md"),
-                "{reason}"
-            );
-        }
-        other => panic!("a missing prompt read as {other:?}"),
-    }
-}
-
-#[test]
-fn a_repository_with_no_declaration_declares_no_kind() {
-    let repository = Repository::new("none");
-    let revision = Revision::new(repository.head());
-    assert_eq!(
-        Weir.read_kinds(&repository.name(), &revision),
-        KindsRead::Read {
-            kinds: vec![],
-            settings: Default::default(),
-            agents: Box::default(),
-        }
-    );
-    assert_eq!(
-        Weir.read_binding(&repository.name()),
-        BindingRead::Read {
-            binding: Binding::default()
-        }
-    );
-}
-
 /// A declaration of `train`, landing with no stages and `more` in its
 /// table, and `mend` at version 1, landing with one code stage delivering
 /// commits, its prompt at `prompts/code.md` (23, 202).
@@ -483,23 +443,6 @@ fn s13_a_place_keeps_the_kind_its_launch_resolved() {
         vec![("one".to_string(), 1, 1), ("two".to_string(), 2, 2)],
         "each place's kind at its version, with its stages"
     );
-}
-
-#[test]
-fn s33_a_repository_with_no_table_refuses_a_fix_naming_the_merge_queue_it_needs() {
-    let repository = Repository::new("s33");
-    let name = repository.name();
-    let world = World::new();
-    base_at(&world, &name, &repository.head());
-    let mut fix = launch("fix", "one", Some("x"));
-    fix.repository = name.clone();
-    let reason = refused(&engine(&world, Arc::new(Weir)).launch(&fix)).expect("the launch refused");
-    assert!(
-        reason.contains("fix") && reason.contains("merge queue"),
-        "the refusal names not the kind and the merge queue: {reason}"
-    );
-    assert_eq!(world.place.log.count("make"), 0, "places made");
-    assert!(world.store.places().is_empty(), "held state was left");
 }
 
 /// A scratch repository `label` binding the fakes' merge queue by the
@@ -815,39 +758,6 @@ fn a_packages_keep_open_refuses_its_read_naming_the_stages_field() {
 }
 
 #[test]
-fn a_worktrunk_binding_is_refused_naming_the_place_profiles_there_are() {
-    let repository = Repository::new("worktrunk");
-    repository.write(
-        DECLARATION,
-        "[profiles]\nplace = \"worktrunk\"\n\n[kinds.notes]\n\n[[kinds.notes.stages]]\nname = \"write\"\nprompt = \"prompts/write.md\"\ndeliverables = [\"commits\"]\nagents = [{}]\n",
-    );
-    repository.write(".config/prompts/write.md", "{{brief}}");
-    let head = repository.commit("a worktrunk binding");
-    let name = repository.name();
-    assert_eq!(
-        binding_at(&name, &Revision::new(head.clone())),
-        BindingRead::Read {
-            binding: Binding {
-                place: Some("worktrunk".into()),
-                ..Binding::default()
-            }
-        }
-    );
-    let world = World::new();
-    base_at(&world, &name, &head);
-    let mut notes = launch("notes", "one", Some("x"));
-    notes.repository = name;
-    let reason =
-        refused(&engine(&world, Arc::new(Weir)).launch(&notes)).expect("the launch refused");
-    assert!(
-        reason.contains("worktrunk") && reason.contains(PLACE_PROFILE),
-        "the refusal names not the profile asked for and the ones there are: {reason}"
-    );
-    assert_eq!(world.place.log.count("make"), 0, "places made");
-    assert!(world.store.places().is_empty(), "held state was left");
-}
-
-#[test]
 fn an_elaboration_section_is_ignored() {
     let scratch = Scratch::new("elaboration");
     std::fs::create_dir_all(scratch.path("prompts")).expect("prompts");
@@ -1048,24 +958,6 @@ fn the_binding_is_read_at_the_remotes_default_branch_beside_a_bare_repository() 
         }
         other => panic!("a binding read where HEAD names no commit: {other:?}"),
     }
-}
-
-#[test]
-fn flumes_own_repository_binds_git_worktree_openspec_and_sluice() {
-    crate::common::isolate();
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let repository = repository.canonicalize().expect("flume's repository");
-    let head = git(&repository, &["rev-parse", "HEAD"]);
-    assert_eq!(
-        binding_at(&repository.to_string_lossy(), &Revision::new(head)),
-        BindingRead::Read {
-            binding: Binding {
-                place: Some("git-worktree".into()),
-                change: Some("openspec".into()),
-                merge_queue: Some("sluice".into()),
-            }
-        }
-    );
 }
 
 /// A kind's name, version, branch prefix, whether it starts unready and

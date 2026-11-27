@@ -2340,4 +2340,65 @@ agents = [{ instructions = "keep it short" }]
             other => panic!("a launch's declaration giving an environment read as {other:?}"),
         }
     }
+
+    #[test]
+    fn a_prompt_the_revision_lacks_is_named() {
+        // 84, 157: a stage's prompt the declaration's revision lacks fails
+        // the read, naming the field and the prompt's path in the tree.
+        let repository = Tree::new("no-prompt");
+        repository.write(
+            DECLARATION,
+            "[kinds.bump]\n\n[[kinds.bump.stages]]\nname = \"code\"\nprompt = \"prompts/gone.md\"\ndeliverables = [\"commits\"]\nagents = [{}]\n",
+        );
+        repository.commit("no prompt");
+        let reason = repository.could_not_read();
+        assert!(
+            reason.contains("kinds.bump.stages[0].prompt")
+                && reason.contains(".config/prompts/gone.md"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_repository_with_no_declaration_declares_no_kind() {
+        let repository = Tree::new("none");
+        repository.commit("nothing declared");
+        assert_eq!(
+            repository.read(),
+            KindsRead::Read {
+                kinds: vec![],
+                settings: Default::default(),
+                agents: Box::default(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_binding_names_each_seams_profile_as_written() {
+        // C.2: `[profiles]` names each seam's profile as written, a profile
+        // flume does not hold among them, which the core refuses at the
+        // launch naming those there are; a declaration with no `[profiles]`
+        // binds none; and flume's own repository binds git-worktree,
+        // openspec and sluice.
+        assert_eq!(
+            profiles("[profiles]\nplace = \"worktrunk\"\n\n[kinds.notes]\n"),
+            Ok(Binding {
+                place: Some("worktrunk".into()),
+                ..Binding::default()
+            })
+        );
+        assert_eq!(profiles("[kinds.notes]\n"), Ok(Binding::default()));
+        assert_eq!(
+            profiles("[profiles]\nplace = 3\n"),
+            Err("profiles.place: must be a profile's name".into())
+        );
+        assert_eq!(
+            profiles(include_str!("../../../../../../.config/flume.toml")),
+            Ok(Binding {
+                place: Some("git-worktree".into()),
+                change: Some("openspec".into()),
+                merge_queue: Some("sluice".into()),
+            })
+        );
+    }
 }
