@@ -642,15 +642,11 @@ pub fn hook_reads_input(event: &str) -> bool {
 /// SessionStart's, what waits on the session the terminal names (43, C.4;
 /// design 14).
 pub fn hook(event: &str, input: &str, build: &dyn Fn() -> Result<Engine, String>) -> String {
-    let binary = std::env::current_exe()
-        .and_then(std::fs::canonicalize)
-        .unwrap_or_else(|_| "flume".into());
     agent::claude::hook::hook(
         event,
         input,
         &agent::claude::hook::Start::of_process(),
         build,
-        &binary,
     )
 }
 
@@ -665,9 +661,6 @@ pub fn ack_started(
     plugin_version: &str,
     build: &dyn Fn() -> Result<Engine, String>,
 ) -> Result<String, String> {
-    let binary = std::env::current_exe()
-        .and_then(std::fs::canonicalize)
-        .unwrap_or_else(|_| "flume".into());
     agent::claude::hook::ack_started(
         &agent::claude::hook::Start::of_process(),
         &agent::claude::record::Started {
@@ -678,7 +671,6 @@ pub fn ack_started(
             from: 0,
         },
         build,
-        &binary,
     )
 }
 
@@ -691,9 +683,6 @@ pub fn ack_received(
     mode: Option<&str>,
     build: &dyn Fn() -> Result<Engine, String>,
 ) -> Result<String, String> {
-    let binary = std::env::current_exe()
-        .and_then(std::fs::canonicalize)
-        .unwrap_or_else(|_| "flume".into());
     agent::claude::hook::ack_received(
         &agent::claude::hook::Start::of_process(),
         digest,
@@ -701,7 +690,6 @@ pub fn ack_received(
         "",
         "",
         build,
-        &binary,
     )
     .map_err(agent::claude::hook::Unacked::words)
 }

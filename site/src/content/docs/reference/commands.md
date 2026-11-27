@@ -627,7 +627,8 @@ submits. It collects the merge queue's outcomes, delivers pending
 ends, wakes roles and tidies. Safe to repeat. `--on-quiet` first reads the place's
 agent until it is quiet, for up to sixty seconds, and starts again the
 idle time of a conversation whose kind hibernates it, since a turn
-ended; the Stop hook runs it.
+ended. The Stop hook asks `flume host` for the same settle on its
+socket, and runs no command.
 No multiplexer and no plugin of one runs it.
 
 Naming no place and no `--every`, it settles every place on the host,
