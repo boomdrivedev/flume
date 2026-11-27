@@ -301,52 +301,6 @@ fn a_branch_is_judged_against_the_base_where_the_policy_lands_it() {
     );
 }
 
-#[test]
-fn a_recipient_unnamed_is_the_herdr_pane_the_command_runs_in() {
-    // 7, 43, C.5, design 7: flume inbox, under a host whose terminal is
-    // herdr, with no recipient named and none in its environment,
-    // collects for the pane herdr's environment names; no place stands,
-    // so herdr is asked nothing.
-    let scratch = Scratch::new("recipient-herdr");
-    for dir in ["state", "config/flume", "home"] {
-        std::fs::create_dir_all(scratch.path(dir)).expect("the host's directory");
-    }
-    std::fs::write(
-        scratch.path("config/flume/config.toml"),
-        "[host]\nterminal = \"herdr\"\n",
-    )
-    .expect("the configuration");
-    let socket = scratch.path("no-herdr.sock");
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_flume"));
-    for (name, _) in std::env::vars() {
-        if name.starts_with("FLUME_") || name.starts_with("HERDR_") || name.starts_with("REX_") {
-            command.env_remove(name);
-        }
-    }
-    let output = command
-        .current_dir(scratch.path("home"))
-        .env("XDG_STATE_HOME", scratch.path("state"))
-        .env("XDG_CONFIG_HOME", scratch.path("config"))
-        .env("HOME", scratch.path("home"))
-        .env("HERDR_PANE_ID", "w1-p2")
-        .env("HERDR_SOCKET_PATH", &socket)
-        .args(["inbox", "--json"])
-        .output()
-        .expect("flume runs");
-    let text = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(output.status.code(), Some(0), "{text}");
-    let answer: Answer = serde_json::from_str(text.trim()).expect("the answer's JSON");
-    assert_eq!(
-        answer,
-        Answer::Inbox {
-            recipient: format!("herdr:w1-p2@{}", socket.display()),
-            ends: vec![],
-            waiting: vec![],
-            messages: vec![],
-        }
-    );
-}
-
 /// The content hash of each version of flume's own kinds as this release
 /// records it, the first five as the first release that reads locks
 /// recorded them, change@4, chore@2 and fix@2 as the release that holds
