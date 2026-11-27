@@ -101,9 +101,13 @@ impl Engine {
             }
             if stage.state == StageState::Starting || unsettled.is_some() {
                 if unsettled.is_none() && agent.started(&folder, identity) == Reading::Yes {
+                    // Another settle may have ended the start since it was
+                    // read: the word is taken only while it still starts.
                     self.with_start(id, identity, |start, state| {
-                        start.dialog = None;
-                        *state = StageState::Started;
+                        if start.live && *state == StageState::Starting {
+                            start.dialog = None;
+                            *state = StageState::Started;
+                        }
                     });
                     sent = true;
                     continue;
@@ -151,9 +155,15 @@ impl Engine {
             }
             if let Received::Received { record } = agent.received(&folder, identity, &prompt.text) {
                 let now = self.host.now();
+                // Another settle may have ended the start since it was
+                // read, its agent read stopped or lost: the receipt is
+                // recorded only while the start still runs, so it never
+                // writes the stage begun over that end (35, 38, 75).
                 self.with_start(id, identity, |start, state| {
-                    received_now(start, &record, now);
-                    *state = StageState::Begun;
+                    if start.live && matches!(*state, StageState::Starting | StageState::Started) {
+                        received_now(start, &record, now);
+                        *state = StageState::Begun;
+                    }
                 });
                 return true;
             }

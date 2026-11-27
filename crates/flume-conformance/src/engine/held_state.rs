@@ -19,6 +19,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_refused_write_is_decided_again,
         },
         Scenario {
+            name: "held state: a settle reads code's prompt received while another, run before its write, reads code begun and its agent stopped with nothing made and ends it lost; the first settle's receipt then writes nothing, and code stays lost",
+            cites: &["35", "38", "75", "103"],
+            run: a_receipt_read_before_another_settle_ended_the_start,
+        },
+        Scenario {
             name: "held state: a first write over a place's held state is refused",
             cites: &["75", "103", "3"],
             run: a_second_first_write,
@@ -63,6 +68,43 @@ fn a_refused_write_is_decided_again(_: &()) -> Outcome {
         world.held(&id).and_then(|held| held.place.mark),
         Some("ba".to_string()),
         "the mark the two acts left"
+    );
+    Ok(())
+}
+
+fn a_receipt_read_before_another_settle_ended_the_start(_: &()) -> Outcome {
+    let world = World::new();
+    world.keep_watch();
+    let code = World::identity("fix", "one", "code", 1);
+    world.agent.receives_at(&code, Some(2));
+    launched(&world.engine.launch(&launch("fix", "one", Some("x"))))?;
+    let id = World::id("fix", "one");
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Started),
+        "code once launched, its prompt sent and not read received"
+    );
+    // The agent takes its prompt and its session ends with nothing made;
+    // a second settle, run just before the first writes the receipt it
+    // read, reads code begun, then its agent stopped, and ends it lost.
+    world.agent.receives_at(&code, Some(1));
+    world.terminal.kill(&code);
+    let (other, place) = (world.engine(), id.clone());
+    world.store.before_next_write(move || {
+        other.settle(Some(&place));
+    });
+    world.settle(&id);
+    ensure_eq!(
+        world.stage_state(&id, "code"),
+        Some(StageState::Lost),
+        "code once both settles read it"
+    );
+    ensure!(
+        world
+            .held(&id)
+            .and_then(|held| held.stages[0].start.clone())
+            .is_some_and(|start| !start.live),
+        "code's start reads live"
     );
     Ok(())
 }
