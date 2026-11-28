@@ -77,6 +77,11 @@ pub fn scenarios() -> Vec<Scenario<()>> {
             run: a_conflict_at_submit,
         },
         Scenario {
+            name: "fix round: a conflict the merge queue answers at submit, and one its inbox gives, is confirmed once the place's state holds it and before code starts again, so no reader between flume's writes finds code begun again while the merge queue still owes the outcome",
+            cites: &["133", "112", "75", "131"],
+            run: a_conflict_is_confirmed_before_code_starts_again,
+        },
+        Scenario {
             name: "run through: a submission the merge queue holds as a request with no entry is open and undecided, never refused, its base driven each command, and the entry an intake takes it in as is followed to its landing, read from the merge queue's record where no inbox gives it",
             cites: &["124", "125", "99", "117", "113", "111"],
             run: a_request_followed_to_its_landing,
@@ -613,6 +618,90 @@ fn a_conflict_at_submit(_: &()) -> Outcome {
         "goings-back once the next settle read the queue"
     );
     Ok(())
+}
+
+fn a_conflict_is_confirmed_before_code_starts_again(_: &()) -> Outcome {
+    for (plan, given) in [
+        (
+            Plan::ConflictAtSubmit(
+                vec!["src/lib.rs".into()],
+                "conflict on main: src/lib.rs".into(),
+            ),
+            "at submit",
+        ),
+        (
+            Plan::Conflict(
+                vec!["src/lib.rs".into()],
+                "conflict on main: src/lib.rs".into(),
+            ),
+            "by the inbox",
+        ),
+    ] {
+        let world = World::new();
+        let id = fix_begun(&world, "one")?;
+        let location = world.held(&id).ok_or("no place")?.place.location;
+        world.commit("main", &["src/lib.rs"]);
+        world.queue.plan_submits(vec![plan]);
+        deliver_fix(&world, &id);
+        world.queue.log.clear();
+        let seen = owed_once_begun_again(&world, &id, &location);
+        world.settle(&id);
+        let code = World::identity("fix", "one", "code", 2);
+        ensure!(
+            world.prompt(&id, &code).is_some(),
+            "{given}: code did not start again"
+        );
+        ensure_eq!(world.queue.log.count("confirm"), 1, "{given}: the confirms");
+        ensure_eq!(
+            world.queue.pending(&location),
+            vec![],
+            "{given}: the outcomes the merge queue still owes"
+        );
+        let seen = seen.lock().unwrap().clone();
+        ensure!(
+            seen.is_empty(),
+            "{given}: a reader found code begun again while the merge queue owed {seen:?}"
+        );
+    }
+    Ok(())
+}
+
+/// What the merge queue still owes the place at `location`, read just
+/// before each write of the store once code has begun again: another
+/// command reads the place and the merge queue at that moment, as a
+/// caller's status does beside the settle that acts on the outcome.
+fn owed_once_begun_again(
+    world: &World,
+    id: &PlaceId,
+    location: &str,
+) -> Arc<Mutex<Vec<SubmissionOutcome>>> {
+    fn arm(
+        store: Arc<FakeStore>,
+        queue: Arc<flume_fakes::FakeMergeQueue>,
+        id: PlaceId,
+        location: String,
+        seen: Arc<Mutex<Vec<SubmissionOutcome>>>,
+    ) {
+        let hook = store.clone();
+        hook.before_next_write(move || {
+            let begun_again = store
+                .read(&id)
+                .is_some_and(|read| read.state.stages[0].starts >= 2);
+            if begun_again {
+                seen.lock().unwrap().extend(queue.pending(&location));
+            }
+            arm(store, queue, id, location, seen);
+        });
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    arm(
+        world.store.clone(),
+        world.queue.clone(),
+        id.clone(),
+        location.to_string(),
+        seen.clone(),
+    );
+    seen
 }
 
 /// A request the fake answers submit with, its entry coming to `then`.

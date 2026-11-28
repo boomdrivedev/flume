@@ -121,7 +121,7 @@ impl Engine {
                 {
                     match recorded(queue.as_ref(), place, &submission.state) {
                         Some(outcome) => {
-                            self.outcome(id, outcome);
+                            self.outcome(id, outcome, || {});
                             true
                         }
                         None => false,
@@ -135,7 +135,7 @@ impl Engine {
                     self.taken_in(id, &submission);
                     match recorded(queue.as_ref(), place, &submission.state) {
                         Some(outcome) => {
-                            self.outcome(id, outcome);
+                            self.outcome(id, outcome, || {});
                             true
                         }
                         None => false,
@@ -159,7 +159,8 @@ impl Engine {
 
     /// Collects the place's pending outcomes and acts on each once, in
     /// the order given, confirming each to the merge queue once the
-    /// place's state holds what it decided, so a later settle is given
+    /// place's state holds what it decided and before the stage it sends
+    /// the place back to starts, so a later settle is given
     /// only what is new; an outcome of a submission before the one flume
     /// last made decides nothing and is confirmed with no act, and one
     /// whose act was not written is left unconfirmed for the next settle
@@ -199,11 +200,15 @@ impl Engine {
                     };
                     let ours = &read.state.submission;
                     let acted = ours.request.is_some() && ours.verdict.is_some();
-                    let held = !decides(ours, &handed.submission)
-                        || acted
-                        || self.outcome(id, handed.outcome);
-                    if let (true, Some(key)) = (held, &handed.key) {
-                        let _ = queue.confirm(place, key);
+                    let confirm = || {
+                        if let Some(key) = &handed.key {
+                            let _ = queue.confirm(place, key);
+                        }
+                    };
+                    if !decides(ours, &handed.submission) || acted {
+                        confirm();
+                    } else {
+                        self.outcome(id, handed.outcome, confirm);
                     }
                     changed = true;
                 }
@@ -368,9 +373,11 @@ impl Engine {
                 key,
             } => {
                 self.submitted(id, Some(&submission), None, before, None);
-                if let (true, Some(key)) = (self.outcome(id, outcome), key) {
-                    let _ = queue.confirm(&place.place_ref(), &key);
-                }
+                self.outcome(id, outcome, || {
+                    if let Some(key) = &key {
+                        let _ = queue.confirm(&place.place_ref(), key);
+                    }
+                });
             }
             Submitted::Refused { reason } => self.submitted(id, None, None, before, Some(reason)),
         }
@@ -445,7 +452,7 @@ impl Engine {
     /// held and change nothing, so it is counted once toward the kind's
     /// bound and never sends back over the fix round's agent (74, 75).
     pub(crate) fn verdict(&self, id: &PlaceId, verdict: Verdict) {
-        self.verdict_at(id, verdict, None);
+        self.verdict_at(id, verdict, None, || {});
     }
 
     /// Acts on an outcome of the place's submission as [`Engine::verdict`]
@@ -456,16 +463,30 @@ impl Engine {
     /// (133). A held landing decides nothing, and the merge queue's record
     /// gives it again at each settle that reads the submission, so it is
     /// confirmed once the place's state is read and written for it.
-    pub(crate) fn outcome(&self, id: &PlaceId, outcome: SubmissionOutcome) -> bool {
+    /// `confirm` runs once the place's state holds what the outcome
+    /// decided, and before anything that write starts: see
+    /// [`Engine::verdict_at`].
+    pub(crate) fn outcome(
+        &self,
+        id: &PlaceId,
+        outcome: SubmissionOutcome,
+        confirm: impl FnOnce(),
+    ) -> bool {
         let onto = match &outcome {
             SubmissionOutcome::Conflict { base, .. } => Some(base.clone()),
-            SubmissionOutcome::Held { words } => return self.hold_landing(id, words).is_some(),
+            SubmissionOutcome::Held { words } => {
+                let held = self.hold_landing(id, words).is_some();
+                if held {
+                    confirm();
+                }
+                return held;
+            }
             _ => None,
         };
         let Some(verdict) = verdict_of(outcome) else {
             return false;
         };
-        self.verdict_at(id, verdict, onto)
+        self.verdict_at(id, verdict, onto, confirm)
     }
 
     /// Acts on a verdict, a conflict's at `onto` where it is known; a base
@@ -474,7 +495,22 @@ impl Engine {
     /// holds the verdict, so it is acted on once (112, 203). True once
     /// the place's state holds it, written now or before; false where the
     /// place is gone or its state could not be written.
-    fn verdict_at(&self, id: &PlaceId, verdict: Verdict, onto: Option<Revision>) -> bool {
+    ///
+    /// `confirm` runs once that write holds the verdict, and before the
+    /// fix round's stage starts or the base place's fix launches. A start
+    /// writes the stage begun again and then opens its agent and sends its
+    /// prompt, which can take long. A reader in that time, another settle
+    /// or status among them, so never finds the stage begun again while
+    /// the merge queue still owes the outcome. A settle beside this one
+    /// reads the verdict held and collects no inbox, so the confirm here
+    /// is the one the outcome gets.
+    fn verdict_at(
+        &self,
+        id: &PlaceId,
+        verdict: Verdict,
+        onto: Option<Revision>,
+        confirm: impl FnOnce(),
+    ) -> bool {
         let limit = self.defaults.send_backs;
         let now = self.host.now();
         let Some(read) = self.store.read(id) else {
@@ -547,6 +583,7 @@ impl Engine {
         let Some(back) = back else {
             return false;
         };
+        confirm();
         match back {
             Some(After::Back(target, words)) => {
                 self.start_stage(id, target, Some(words));
