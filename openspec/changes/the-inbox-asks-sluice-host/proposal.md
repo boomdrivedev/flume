@@ -47,8 +47,11 @@ None.
 
 ### Modified Capabilities
 
-- `merge-queue-profile`: the inbox is asked of sluice host's socket,
-  and is `sluice inbox --json` only where no sluice host answers.
+- `merge-queue-profile`: a new requirement, "The inbox asked of sluice
+  host": the inbox is asked of sluice host's socket, and is `sluice
+  inbox --json` only where no sluice host answers. The requirements
+  that named the inbox a sluice command now name it as that one
+  reads it.
 
 ## Impact
 
