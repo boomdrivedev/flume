@@ -7,9 +7,9 @@
 
 ## 2. The stand-ins
 
-- [ ] 2.1 Have the documents' stand-in sluice host answer `inbox` from its fixture. True when `sluice exec <base> -- moon run flume:test` passes.
-- [ ] 2.2 Have the stand-in host of a base that takes pull requests answer `inbox` with no outcomes, and the walk of a sluice host started again by a settle's inbox hold. True when `sluice exec <base> -- moon run flume:tools` passes.
+- [x] 2.1 Have the documents' stand-in sluice host answer `inbox` from its fixture. True when `sluice exec <base> -- moon run flume:test` passes.
+- [x] 2.2 Have the stand-in host of a base that takes pull requests answer `inbox` with no outcomes, and the walk of a sluice host started again by a settle's inbox hold. True when `sluice exec <base> -- moon run flume:tools` passes.
 
 ## 3. The specs
 
-- [ ] 3.1 Archive this change so the specs reconcile (core.19). True when `sluice exec <base> -- moon run root:specs` passes.
+- [x] 3.1 Archive this change so the specs reconcile (core.19). True when `sluice exec <base> -- moon run root:specs` passes.

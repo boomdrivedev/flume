@@ -117,8 +117,8 @@ land by sluice's host process and SHALL be read and tidied by the
 settles of a caller keeping watch, with no other caller's act, no
 `sluice wait` and no sluice command that moves a queue. Where that
 host process ended before the submission was decided, the settle's
-inbox, a sluice command, SHALL start it again, and the place SHALL land
-the same (46, 124, 125, 208, C.6, S109; sluice 135).
+inbox SHALL start it again, and the place SHALL land the same (46, 124,
+125, 208, C.6, S109; sluice 135).
 
 #### Scenario: Settled by a watch, no agent
 
@@ -128,7 +128,7 @@ the same (46, 124, 125, 208, C.6, S109; sluice 135).
 #### Scenario: A host process started again by a settle's read
 
 - **WHEN** a chore is submitted to the pinned sluice with its check held, sluice's host process is ended while the check waits, and the test then releases the check and runs `flume settle --every 1m` until the chore lands
-- **THEN** the settle's inbox started a host process with another pid, the chore landed and was tidied, and no settle ran a `sluice step` (124, 208, S109; sluice 135)
+- **THEN** the settle's inbox, finding no sluice host on its socket, ran `sluice inbox --json`, which started a host process with another pid where no service manager owns it, the chore landed and was tidied, and no settle ran a `sluice step` (124, 208, S109; sluice 135; the-service-manager-starts-each-resident)
 
 ### Requirement: sluice forecasts a base place's branch
 
@@ -174,12 +174,13 @@ once it has acted on it, and until then an inbox gives it too (101, 112,
 
 ### Requirement: Outcomes collected from sluice's inbox until confirmed
 
-The profile SHALL collect a place's pending outcomes by `sluice inbox
---json` in the place, never with `--confirm`, each with its entry's `id`
-and its `delivery`'s key where owed, given again until confirmed:
-landed with its commit, or failed or in conflict with sluice's `notice`
-as its words, a conflict's base revision its `tested.on`; and SHALL read
-a withdrawal from read-submission (99, 101, 133, C.6; sluice 51).
+The profile SHALL collect a place's pending outcomes from sluice's
+inbox, asked as the requirement "The inbox asked of sluice host" says,
+never with `--confirm`, each with its entry's `id` and its `delivery`'s
+key where owed, given again until confirmed: landed with its commit, or
+failed or in conflict with sluice's `notice` as its words, a conflict's
+base revision its `tested.on`; and SHALL read a withdrawal from
+read-submission (99, 101, 133, C.6; sluice 51).
 
 #### Scenario: A conflict's base revision
 
@@ -219,8 +220,8 @@ any outcome is (112, 133, C.6 at boomdrivedev/blueprints `8b73d11` and
 
 #### Scenario: A refused outcome
 
-- **WHEN** a stand-in `sluice` answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome of #7 under `7:refused` beside a `landed` one of #6 under `6:landed`, and `7:refused` is then confirmed
-- **THEN** the inbox gives the landing and the outcome held with its `notice` whole, each with its entry's id and key, runs `sluice inbox --json` with no `--confirm` and confirms nothing, and the confirm runs `sluice confirm 7:refused --json` (112, 133, C.6)
+- **WHEN** a stand-in sluice host answers the inbox with sluice `44e33d4`'s documents, a `refused` outcome of #7 under `7:refused` beside a `landed` one of #6 under `6:landed`, and `7:refused` is then confirmed
+- **THEN** the inbox gives the landing and the outcome held with its `notice` whole, each with its entry's id and key, asks the inbox with no `--confirm` and confirms nothing, and the confirm runs `sluice confirm 7:refused --json` (112, 133, C.6)
 
 ### Requirement: An outcome the profile cannot read is left owed
 
@@ -276,11 +277,11 @@ through a wait (99, C.6 at `04e5a1a`; core.6, core.13, core.58).
 
 The sluice profile's step SHALL run no sluice command and SHALL answer
 that the base's queue moves on its own, whichever of sluice's ways runs
-it. The profile SHALL ask sluice of an open submission only its reads:
-the inbox, a sluice command, which starts sluice's host process where
-work waits and none runs, and read-submission, which asks its socket and
-starts none (124, 125, C.6; sluice 135; sluice record 0093 as amended;
-core.6; flume-reads-sluices-records-on-sluice-hosts-socket).
+it. Of an open submission the profile SHALL ask sluice only its reads,
+the inbox and read-submission, on sluice host's socket; only the
+inbox's `sluice inbox --json`, run where no sluice host answers, starts
+sluice's host process (124, 125, C.6; sluice 135; sluice record 0093 as
+amended; core.6).
 
 #### Scenario: A step over a stand-in sluice
 
@@ -334,3 +335,23 @@ for the base under `[branches]`, its words SHALL say so (126, core.15).
 
 - **WHEN** status names a repository that binds sluice, first with no `.config/sluice.toml`, then with one for another branch only, then with one for `main`
 - **THEN** the merge queue's words name `.config/sluice.toml` at `main`, then say that it names no table for `main`, and then the merge queue is ready
+
+### Requirement: The inbox asked of sluice host
+
+The profile SHALL read a place's inbox by asking sluice host's socket
+the `inbox` read that `sluice inbox --json` in the place asks, its
+folder and worktree the place's and its caller the `SLUICE_AGENT` the
+command would carry, starting no sluice process; and SHALL run `sluice
+inbox --json` in the place only where no sluice host answers the ask
+(133, S109; sluice 135;
+flume-reads-sluices-records-on-sluice-hosts-socket).
+
+#### Scenario: The inbox asked of sluice host
+
+- **WHEN** a stand-in sluice host on the profile's socket answers the inbox with a `landed` outcome of #6 under `6:landed`, and the seam's `sluice` is no program
+- **THEN** the inbox gives the landing under `6:landed`, and the host was asked `inbox` with the place's folder as its folder and worktree, the JSON answer and the caller's `SLUICE_AGENT`, confirming nothing (133)
+
+#### Scenario: No sluice host answers
+
+- **WHEN** no sluice host answers on the profile's socket, and the seam's `sluice` is no program
+- **THEN** the inbox is unread in the words of `sluice inbox --json`, which could not be run, and not of the socket: the command is what starts sluice host on a bare install (133, S109; the-service-manager-starts-each-resident)
