@@ -28,7 +28,11 @@
 //! and the branch the request was opened from as its `from.head`, and
 //! sluice delivers its outcome to the request, so read-submission reads
 //! it, and the inbox only where it is still pending for the place (133).
-//! inbox is `sluice inbox --json` in the place, which hands over each
+//! inbox is sluice host's `inbox` read on its socket, as `sluice inbox
+//! --json` in the place asks it, starting no sluice command while sluice
+//! host answers (flume-reads-sluices-records-on-sluice-hosts-socket), and
+//! `sluice inbox --json` in the place where it gives no answer, which
+//! starts sluice host on a bare install (S109); it hands over each
 //! outcome owed to it again until it is confirmed, never `--confirm`,
 //! which would confirm it before flume acted on it, or confirm one the
 //! profile then drops (C.6's inbox row at boomdrivedev/blueprints
@@ -382,14 +386,22 @@ impl Sluice {
     /// read (flume-reads-sluices-records-on-sluice-hosts-socket).
     fn host_json(&self, ask: &Value) -> Result<Value, String> {
         let read = ask["ask"].as_str().unwrap_or_default().to_string();
-        let socket = subscription::socket_from(|name| self.var(name))
-            .map_err(|reason| format!("sluice {read}: {reason}"))?;
-        let output = ask::ask(&socket, ask).map_err(|reason| format!("sluice {read}: {reason}"))?;
+        let output = self.host_output(ask)?;
         let answer: Option<Value> = serde_json::from_str(output.stdout.trim()).ok();
         match answer {
             Some(answer) if output.code == 0 && answer.get("error").is_none() => Ok(answer),
             _ => Err(words(&[&read], &output.stdout, &output.stderr)),
         }
+    }
+
+    /// sluice host's output for `ask`, a read asked on its socket, or the
+    /// words saying why it gave none
+    /// (flume-reads-sluices-records-on-sluice-hosts-socket).
+    fn host_output(&self, ask: &Value) -> Result<ask::Output, String> {
+        let read = ask["ask"].as_str().unwrap_or_default().to_string();
+        let socket = subscription::socket_from(|name| self.var(name))
+            .map_err(|reason| format!("sluice {read}: {reason}"))?;
+        ask::ask(&socket, ask).map_err(|reason| format!("sluice {read}: {reason}"))
     }
 
     /// Each branch sluice keeps a queue for in the repository, with the
@@ -975,9 +987,23 @@ impl MergeQueue for Sluice {
         // once it has acted on it, so one a settle could not act on comes
         // to the next; never `--confirm`, which would confirm on receipt
         // one the profile then drops (124, 133; sluice 51; sluice record
-        // 0102; core.58).
+        // 0102; core.58). It is asked of sluice host on its socket, as
+        // `sluice inbox --json` in the place asks it, starting no sluice
+        // command while sluice host answers
+        // (flume-reads-sluices-records-on-sluice-hosts-socket;
+        // residents-ask-each-other-by-socket). Where it gives no answer,
+        // `sluice inbox --json` runs in the place, which starts sluice host
+        // on a bare install, as sluice's commands do, and refuses where a
+        // service manager owns it (S109; sluice 135;
+        // the-service-manager-starts-each-resident).
         let args = ["inbox", "--json"];
-        let (success, stdout, stderr) = match self.run(Path::new(&place.location), &args) {
+        let agent = self.var("SLUICE_AGENT");
+        let ask = ask::inbox(&place.location, agent.as_deref().and_then(|a| a.to_str()));
+        let read = match self.host_output(&ask) {
+            Ok(output) => Ok((output.code == 0, output.stdout, output.stderr)),
+            Err(_) => self.run(Path::new(&place.location), &args),
+        };
+        let (success, stdout, stderr) = match read {
             Ok(output) => output,
             Err(reason) => return Inbox::CouldNotRead { reason },
         };
@@ -1610,5 +1636,117 @@ mod tests {
             steps[1].words,
             "sluice: the run directory could not be removed"
         );
+    }
+
+    #[test]
+    fn the_inbox_is_asked_of_sluice_host_on_its_socket_and_starts_no_sluice() {
+        // 133; flume-reads-sluices-records-on-sluice-hosts-socket: a
+        // stand-in sluice host on a socket of the test's own answers the
+        // inbox, and the seam's `sluice` is no program at all, so a command
+        // started for the inbox would leave it unread.
+        use std::io::{BufRead, BufReader, Write};
+        let dir = std::env::temp_dir().join(format!("fsl-inbox-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = dir.join("state");
+        std::fs::create_dir_all(state.join("sluice")).expect("sluice's state folder");
+        let socket = subscription::socket_from(|name| match name {
+            "XDG_STATE_HOME" => Some(state.clone().into()),
+            subscription::USER_SCRATCH => Some(dir.clone().into()),
+            _ => None,
+        })
+        .expect("the stand-in's socket");
+        let listener = std::os::unix::net::UnixListener::bind(&socket)
+            .unwrap_or_else(|error| panic!("no room for {}: {error}", socket.display()));
+        let record = serde_json::json!({
+            "id": 6,
+            "branch": "main",
+            "state": "landed",
+            "landed_as": "1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d",
+            "delivery": {"key": "6:landed", "state": "owed"},
+        });
+        let answer = serde_json::json!({ "outcomes": [record] }).to_string();
+        let host = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("a connection");
+            let mut writer = stream.try_clone().expect("the connection");
+            let mut lines = BufReader::new(stream).lines();
+            let _hello = lines.next();
+            writeln!(writer, r#"{{"version":"0.110.0","pid":1,"since":"now"}}"#).unwrap();
+            let ask: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            let output = serde_json::json!({"output": {"stdout": answer, "code": 0}});
+            writeln!(writer, "{output}").unwrap();
+            ask
+        });
+        let seam = Sluice {
+            program: dir.join("no-sluice"),
+            ..Sluice::new()
+        }
+        .with_env("XDG_STATE_HOME", Some(&state.to_string_lossy()))
+        .with_env(subscription::USER_SCRATCH, Some(&dir.to_string_lossy()))
+        .with_env("SLUICE_AGENT", Some("fix--one"));
+        let location = dir.join("places/fix--one").to_string_lossy().into_owned();
+        let place = PlaceRef {
+            repository: dir.join("repository").to_string_lossy().into_owned(),
+            location: location.clone(),
+            branch: "fix/one".into(),
+            base: "main".into(),
+        };
+        assert_eq!(
+            seam.inbox(&place),
+            Inbox::Outcomes {
+                outcomes: vec![Owed {
+                    submission: "6".into(),
+                    outcome: SubmissionOutcome::Landed {
+                        commit: Revision::new("1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d"),
+                    },
+                    key: Some("6:landed".into()),
+                }],
+                passed_over: vec![],
+            }
+        );
+        assert_eq!(
+            host.join().expect("the stand-in host"),
+            serde_json::json!({
+                "ask": "inbox",
+                "folder": location,
+                "worktree": location,
+                "json": true,
+                "caller": {"SLUICE_AGENT": "fix--one"},
+            }),
+            "the ask `sluice inbox --json` in the place makes, confirming nothing"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_inbox_runs_sluice_inbox_where_no_sluice_host_answers() {
+        // S109; sluice 135; the-service-manager-starts-each-resident:
+        // with no sluice host on its socket, the inbox is `sluice inbox
+        // --json` in the place, which starts one on a bare install. The
+        // seam's `sluice` is no program at all, so the words are of the
+        // command that could not run, not of the socket.
+        let dir = std::env::temp_dir().join(format!("fsl-no-host-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = dir.join("state");
+        std::fs::create_dir_all(state.join("sluice")).expect("sluice's state folder");
+        let seam = Sluice {
+            program: dir.join("no-sluice"),
+            ..Sluice::new()
+        }
+        .with_env("XDG_STATE_HOME", Some(&state.to_string_lossy()))
+        .with_env(subscription::USER_SCRATCH, Some(&dir.to_string_lossy()));
+        let place = PlaceRef {
+            repository: dir.join("repository").to_string_lossy().into_owned(),
+            location: dir.to_string_lossy().into_owned(),
+            branch: "fix/one".into(),
+            base: "main".into(),
+        };
+        let Inbox::CouldNotRead { reason } = seam.inbox(&place) else {
+            panic!("an inbox read with no sluice host and no sluice");
+        };
+        assert!(
+            reason.starts_with("sluice could not be run"),
+            "the command was run: {reason}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

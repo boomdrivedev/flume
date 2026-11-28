@@ -37,8 +37,9 @@ impl StandIn {
     /// The stand-in answering each command by the fixture named for it:
     /// each `(answer, fixture)` copies `fixture` as the answer the
     /// stand-in gives under `answer`, `overview.json`, `status-<branch
-    /// with / as ->.json`, `inbox.json` or `confirm.json`; any other
-    /// command is refused in sluice's error document.
+    /// with / as ->.json`, `inbox.json` or `confirm.json`, the stand-in
+    /// host answering the reads and the stand-in `sluice` the commands;
+    /// any other command is refused in sluice's error document.
     fn new(answers: &[(&str, &str)]) -> StandIn {
         let repository = Repository::new("sluice-documents");
         let folder = repository.scratch.path("stand-in");
@@ -60,7 +61,6 @@ answers='{answers}'
 case "$*" in
   "overview --json") file=overview.json ;;
   "status "*" --all --json") file="status-$(printf '%s' "$2" | tr / -).json" ;;
-  "inbox --json") file=inbox.json ;;
   "confirm "*" --json") file=confirm.json ;;
   *) file= ;;
 esac
@@ -139,8 +139,8 @@ exit 2
 /// A stand-in sluice host for the folder `folder`'s tests, its socket in
 /// a short folder of its own, which it gives: at each connection it reads
 /// the hello, answers with a version, then answers one read, `overview`
-/// from `overview.json` and `status` of a target from
-/// `status-<target with / as ->.json` in `answers`, logging it to `log`
+/// from `overview.json`, `status` of a target from `status-<target with /
+/// as ->.json` and `inbox` from `inbox.json` in `answers`, logging it to `log`
 /// as the command it stands for; any other ask is an `error` line. Its
 /// thread ends with the test's process.
 fn host_of(folder: &std::path::Path, answers: &std::path::Path, log: &std::path::Path) -> PathBuf {
@@ -170,6 +170,7 @@ fn host_of(folder: &std::path::Path, answers: &std::path::Path, log: &std::path:
             let ask: serde_json::Value = serde_json::from_str(&line).expect("an ask");
             let (said, file) = match ask["ask"].as_str() {
                 Some("overview") => ("overview --json".to_string(), "overview.json".to_string()),
+                Some("inbox") => ("inbox --json".to_string(), "inbox.json".to_string()),
                 Some("status") => {
                     let target = ask["target"].as_str().unwrap_or_default();
                     (
