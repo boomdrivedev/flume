@@ -1678,7 +1678,7 @@ mod tests {
         });
         let seam = Sluice {
             program: dir.join("no-sluice"),
-            env: vec![],
+            ..Sluice::new()
         }
         .with_env("XDG_STATE_HOME", Some(&state.to_string_lossy()))
         .with_env(subscription::USER_SCRATCH, Some(&dir.to_string_lossy()))
@@ -1730,7 +1730,7 @@ mod tests {
         std::fs::create_dir_all(state.join("sluice")).expect("sluice's state folder");
         let seam = Sluice {
             program: dir.join("no-sluice"),
-            env: vec![],
+            ..Sluice::new()
         }
         .with_env("XDG_STATE_HOME", Some(&state.to_string_lossy()))
         .with_env(subscription::USER_SCRATCH, Some(&dir.to_string_lossy()));
