@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 181,
+  "branch": "main",
+  "head": "091204c6b393c163e06e1119eb930a73ca934934",
+  "from": {
+    "agent": "fix/flume-host-settles-only-pending-places",
+    "worktree": "pull/192",
+    "head": "fix/flume-host-settles-only-pending-places"
+  },
+  "submitted": "2026-11-27T21:05:47Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 3,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "81b3ec6ee0da19f7f29452bc79d0039875bb570e",
+    "on": "90aa45c838af96eb2bd18fd46625e68e74a8903d",
+    "submissions": [
+      181
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "hash": "3da4f05fc097164fc6335937e1e4f21c07a24bc5e05a9916452c5ff2958e8ceb",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c47/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-27T22:27:41Z"
+  },
+  "subject": "fix/flume-host-settles-only-pending-places",
+  "under_test_ms": 4735000
+}

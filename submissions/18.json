@@ -1,0 +1,31 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 18,
+  "branch": "main",
+  "head": "2e78a769555d336c32712c8754a8fd0e8fdbfabe",
+  "from": {
+    "agent": "takeover/format-tracked-only",
+    "worktree": "pull/176",
+    "head": "takeover/format-tracked-only"
+  },
+  "submitted": "2026-11-19T19:57:26Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "failed",
+  "tested": {
+    "combination": "53873bab2af7e59d91c5b53683525cb6289adc73",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      18
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c15/flume:tools.log"
+    }
+  ],
+  "subject": "fix/main--format-hashes-only-tracked-files"
+}

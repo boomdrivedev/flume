@@ -1,0 +1,40 @@
+{"format": "weir-known/1", "reader": "pull/169", "known_at": "2026-11-19T12:24:38Z"}
+{"format": "weir-delivery/1", "key": "4:failed", "readers": ["pull/171"], "message": "[sluice] #4 failed on main: timed out. sluice wait 4 shows why.", "recorded_at": "2026-11-19T15:06:11Z", "expires_at": "2026-11-26T15:06:11Z"}
+{"format": "weir-handover/1", "key": "4:failed", "reader": "pull/171", "by": "pull-request", "at": "2026-11-19T15:07:41Z"}
+{"format": "weir-confirmation/1", "key": "4:failed", "reader": "pull/171", "at": "2026-11-19T15:07:41Z"}
+{"format": "weir-known/1", "reader": "pull/171", "known_at": "2026-11-19T15:07:41Z"}
+{"format": "weir-known/1", "reader": "pull/172", "known_at": "2026-11-19T15:20:51Z"}
+{"format": "weir-known/1", "reader": "pull/173", "known_at": "2026-11-19T17:56:31Z"}
+{"format": "weir-known/1", "reader": "pull/174", "known_at": "2026-11-19T18:08:47Z"}
+{"format": "weir-known/1", "reader": "pull/175", "known_at": "2026-11-19T18:21:29Z"}
+{"format": "weir-delivery/1", "key": "14:conflict", "readers": ["pull/173"], "message": "[sluice] #14 conflicts on main with #13 in crates/flume/tests/profiles/main.rs. sluice wait 14 shows it.", "recorded_at": "2026-11-19T18:59:22Z", "expires_at": "2026-11-26T18:59:22Z"}
+{"format": "weir-delivery/1", "key": "15:conflict", "readers": ["pull/174"], "message": "[sluice] #15 conflicts on main with #13 in crates/flume-conformance/src/engine/place_status.rs, crates/flume-core/src/acts.rs, crates/flume-seams/src/held.rs, crates/flume-seams/src/round_trip.rs, crates/flume/tests/profiles/main.rs. sluice wait 15 shows it.", "recorded_at": "2026-11-19T18:59:22Z", "expires_at": "2026-11-26T18:59:22Z"}
+{"format": "weir-delivery/1", "key": "16:conflict", "readers": ["pull/175"], "message": "[sluice] #16 conflicts on main with #13 in crates/flume-conformance/src/engine/place_status.rs, crates/flume-core/src/acts.rs, crates/flume-seams/src/held.rs, crates/flume-seams/src/round_trip.rs, crates/flume/tests/profiles/main.rs, docs/architecture/core-details.md. sluice wait 16 shows it.", "recorded_at": "2026-11-19T18:59:22Z", "expires_at": "2026-11-26T18:59:22Z"}
+{"format": "weir-delivery/1", "key": "18:failed", "readers": ["pull/176"], "message": "[sluice] #18 failed on main: timed out. sluice wait 18 shows why.", "recorded_at": "2026-11-19T20:08:12Z", "expires_at": "2026-11-26T20:08:12Z"}
+{"format": "weir-handover/1", "key": "18:failed", "reader": "pull/176", "by": "pull-request", "at": "2026-11-19T20:09:56Z"}
+{"format": "weir-confirmation/1", "key": "18:failed", "reader": "pull/176", "at": "2026-11-19T20:09:56Z"}
+{"format": "weir-known/1", "reader": "pull/176", "known_at": "2026-11-19T20:09:56Z"}
+{"format": "weir-known/1", "reader": "pull/177", "known_at": "2026-11-19T20:25:34Z"}
+{"format": "weir-known/1", "reader": "pull/178", "known_at": "2026-11-19T21:13:52Z"}
+{"format": "weir-delivery/1", "key": "25:failed", "readers": ["pull/178"], "message": "[sluice] #25 failed on main: timed out. sluice wait 25 shows why.", "recorded_at": "2026-11-19T22:26:25Z", "expires_at": "2026-11-26T22:26:25Z"}
+{"format": "weir-handover/1", "key": "25:failed", "reader": "pull/178", "by": "wait", "at": "2026-11-19T22:27:07Z"}
+{"format": "weir-known/1", "reader": "pull/180", "known_at": "2026-11-19T23:11:24Z"}
+{"format": "weir-known/1", "reader": "pull/181", "known_at": "2026-11-20T01:08:55Z"}
+{"format": "weir-known/1", "reader": "pull/182", "known_at": "2026-11-20T20:28:10Z"}
+{"format": "weir-known/1", "reader": "pull/179", "known_at": "2026-11-20T23:58:24Z"}
+{"format": "weir-known/1", "reader": "pull/183", "known_at": "2026-11-21T00:15:16Z"}
+{"format": "weir-delivery/1", "key": "165:failed", "readers": ["pull/172"], "message": "[sluice] #165 failed on main: flume:tools. sluice wait 165 shows why.", "recorded_at": "2026-11-21T00:48:50Z", "expires_at": "2026-11-28T00:48:50Z"}
+{"format": "weir-confirmation/1", "key": "165:failed", "reader": "pull/172", "at": "2026-11-21T00:49:58Z"}
+{"format": "weir-known/1", "reader": "pull/184", "known_at": "2026-11-24T01:41:37Z"}
+{"format": "weir-known/1", "reader": "pull/185", "known_at": "2026-11-24T16:38:08Z"}
+{"format": "weir-known/1", "reader": "pull/186", "known_at": "2026-11-24T20:55:01Z"}
+{"format": "weir-known/1", "reader": "pull/187", "known_at": "2026-11-27T09:45:46Z"}
+{"format": "weir-known/1", "reader": "pull/188", "known_at": "2026-11-27T10:18:38Z"}
+{"format": "weir-known/1", "reader": "pull/189", "known_at": "2026-11-27T12:10:06Z"}
+{"format": "weir-known/1", "reader": "pull/190", "known_at": "2026-11-27T14:50:35Z"}
+{"format": "weir-known/1", "reader": "pull/191", "known_at": "2026-11-27T17:24:24Z"}
+{"format": "weir-known/1", "reader": "pull/192", "known_at": "2026-11-27T20:50:05Z"}
+{"format": "weir-known/1", "reader": "pull/193", "known_at": "2026-11-27T21:43:43Z"}
+{"format": "weir-known/1", "reader": "pull/194", "known_at": "2026-11-27T22:59:19Z"}
+{"format": "weir-known/1", "reader": "pull/195", "known_at": "2026-11-28T01:32:51Z"}
+{"format": "weir-known/1", "reader": "pull/196", "known_at": "2026-11-28T08:00:58Z"}

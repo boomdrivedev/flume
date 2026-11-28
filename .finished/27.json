@@ -1,0 +1,42 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 27,
+  "branch": "main",
+  "head": "63e05fc518b392f42c1c812df6b3a434e6c8fd5d",
+  "from": {
+    "agent": "fix/main--tools-suite-runs-fast",
+    "worktree": "pull/180",
+    "head": "fix/main--tools-suite-runs-fast"
+  },
+  "submitted": "2026-11-20T00:12:35Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "87fac4b5427359be3b419e3b269bf2bae669f20d",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      27
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "d70b5a210462f730b9f8d1d981ba3ea9f13fe5b997768da44a39373ce14cf645",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c24/root:format.log",
+      "unsigned": "root:format: .claude/settings.json is not in the tree"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c24/flume:tools.log",
+      "not_run": "sluice's sandbox refused the run file-write-create /Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/moon-outputs/8df8408f5d24e3837bc93bc161ab994e2c2e1d576a7aa375812a1a138dfa792e.tar.gz (by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo), file-write-xattr path:/Users/chuck/.cargo/registry xattr:com.apple.fileprovider.ignore#P (by cargo) and 48 more"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-20T00:57:36Z"
+  },
+  "subject": "fix/main--tools-suite-runs-fast"
+}

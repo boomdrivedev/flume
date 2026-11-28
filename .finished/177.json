@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 177,
+  "branch": "main",
+  "head": "8de683e6f0abbd1b5e89407bf1ccbcfd71078afc",
+  "from": {
+    "agent": "change/a-hook-asks-flume-host-to-settle",
+    "worktree": "pull/191",
+    "head": "change/a-hook-asks-flume-host-to-settle"
+  },
+  "submitted": "2026-11-27T17:17:24Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "fbd424ef19e517010ded3e37883c357ce09039c1",
+    "on": "429eafd7d78ba6fd1b24a87fd915e08009feb098",
+    "submissions": [
+      177
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "conformance:test",
+      "hash": "d8cc9f0c8a22e10d539653bcea0ca83241c43d8ff3f7028eb97ca79e53fad6e7",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c43/conformance:test.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-27T17:29:36Z"
+  },
+  "subject": "change/a-hook-asks-flume-host-to-settle",
+  "under_test_ms": 381000
+}

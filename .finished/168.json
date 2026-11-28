@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 168,
+  "branch": "main",
+  "head": "2012df029b9cb34409a8d8a1115857dcd1f36ace",
+  "from": {
+    "agent": "change/flume-hears-sluice-by-subscription",
+    "worktree": "pull/185",
+    "head": "change/flume-hears-sluice-by-subscription"
+  },
+  "submitted": "2026-11-24T16:18:40Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "db7d5dd1edd71fb5f24fe39899ed276ef7aa5e7d",
+    "on": "1b6ec9b6618f12bfa874ca754577e7b86ba29638",
+    "submissions": [
+      168
+    ]
+  },
+  "result": "passed",
+  "landed_as": "ea032d73e788692eb6b5c23a957538e5c8c5be0c",
+  "subject": "change/flume-hears-sluice-by-subscription",
+  "under_test_ms": 1112000
+}

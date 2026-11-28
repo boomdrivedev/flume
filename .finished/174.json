@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 174,
+  "branch": "main",
+  "head": "d45d55e200609851f96a135a7ff8946aee761f06",
+  "from": {
+    "agent": "change/flume-reports-a-repositorys-binding",
+    "worktree": "pull/187",
+    "head": "change/flume-reports-a-repositorys-binding"
+  },
+  "submitted": "2026-11-27T12:15:33Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "f54199680c70dc1b59c931861820b61e7cc90d2a",
+    "on": "8db8451cb06252da4b80e4e8e9b525e7166a96a3",
+    "submissions": [
+      174
+    ]
+  },
+  "result": "passed",
+  "landed_as": "f4a6765ec64b9485cb4d542143cfca88b2f9f14b",
+  "subject": "change/flume-reports-a-repositorys-binding",
+  "under_test_ms": 472000
+}

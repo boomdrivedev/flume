@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 187,
+  "branch": "main",
+  "head": "d33721ba78616318ccdf3fa2a44222548b7b016f",
+  "from": {
+    "agent": "fix/the-submits-verdict-survives-a-concurrent-settle",
+    "worktree": "pull/196",
+    "head": "fix/the-submits-verdict-survives-a-concurrent-settle"
+  },
+  "submitted": "2026-11-28T07:55:51Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "274abb23033dcc75343776582da05b5c29b5f5fa",
+    "on": "33f507ae4c5294e49025817f993daac613c54de1",
+    "submissions": [
+      187
+    ]
+  },
+  "result": "passed",
+  "landed_as": "ccf0a487e0f4042e28b776dec6025c476b55b5a4",
+  "subject": "fix/the-submits-verdict-survives-a-concurrent-settle",
+  "under_test_ms": 264000
+}

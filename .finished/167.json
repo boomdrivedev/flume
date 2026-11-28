@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 167,
+  "branch": "main",
+  "head": "cc6383c247ba42c787b2c3bbf9d9f42a8a6d79e0",
+  "from": {
+    "agent": "chore/flume-keeps-its-seam-model",
+    "worktree": "pull/184",
+    "head": "chore/flume-keeps-its-seam-model"
+  },
+  "submitted": "2026-11-24T01:42:50Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "ee8fa3d3fa4843f2f7040254e13cc8706f74b87e",
+    "on": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+    "submissions": [
+      167
+    ]
+  },
+  "result": "passed",
+  "landed_as": "1b6ec9b6618f12bfa874ca754577e7b86ba29638",
+  "subject": "flume keeps its side of the tools' seams in Allium, checked in the fast tier",
+  "under_test_ms": 820000
+}

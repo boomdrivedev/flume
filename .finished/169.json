@@ -1,0 +1,48 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 169,
+  "branch": "main",
+  "head": "237cc0a726e6bc74f76bfe9a0344002c93d2f253",
+  "from": {
+    "agent": "change/flume-status-reads-flume-host",
+    "worktree": "pull/186",
+    "head": "change/flume-status-reads-flume-host"
+  },
+  "submitted": "2026-11-24T20:45:28Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "3d6d905904537db38342b58e2e374934dd31c221",
+    "on": "ea032d73e788692eb6b5c23a957538e5c8c5be0c",
+    "submissions": [
+      169
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "conformance:test",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c35/conformance:test.log",
+      "not_run": "sluice's sandbox refused the run network-outbound remote:*:53 (by moon), network-outbound /private/var/run/mDNSResponder (a name lookup, by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo) and 4 more"
+    },
+    {
+      "task": "flume:test",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c35/flume:test.log",
+      "not_run": "sluice's sandbox refused the run network-outbound remote:*:53 (by moon), network-outbound /private/var/run/mDNSResponder (a name lookup, by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo) and 4 more"
+    },
+    {
+      "task": "plugin-claude:test",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c35/plugin-claude:test.log",
+      "not_run": "sluice's sandbox refused the run network-outbound remote:*:53 (by moon), network-outbound /private/var/run/mDNSResponder (a name lookup, by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo) and 4 more"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-24T20:59:26Z"
+  },
+  "subject": "change/flume-status-reads-flume-host",
+  "under_test_ms": 540000,
+  "runs_with_no_outcome": 1
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 178,
+  "branch": "main",
+  "head": "954b62d0dcd0a03f7c831b918e319053fba3455c",
+  "from": {
+    "agent": "change/a-hook-asks-flume-host-to-settle",
+    "worktree": "pull/191",
+    "head": "change/a-hook-asks-flume-host-to-settle"
+  },
+  "submitted": "2026-11-27T17:29:36Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "e9ea2dab75c12c64a584b17836a66251885ff8c8",
+    "on": "429eafd7d78ba6fd1b24a87fd915e08009feb098",
+    "submissions": [
+      178
+    ]
+  },
+  "result": "passed",
+  "landed_as": "90aa45c838af96eb2bd18fd46625e68e74a8903d",
+  "subject": "change/a-hook-asks-flume-host-to-settle",
+  "under_test_ms": 508000
+}

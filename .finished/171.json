@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 171,
+  "branch": "main",
+  "head": "00a53ce67b11ba3b65cb4535b5e18d650e58a2a3",
+  "from": {
+    "agent": "change/flume-reports-a-repositorys-binding",
+    "worktree": "pull/187",
+    "head": "change/flume-reports-a-repositorys-binding"
+  },
+  "submitted": "2026-11-27T09:30:16Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "d9c667f9f6f80a49d93f6cda6f1873aff0284830",
+    "on": "b91952e9af9683bf1ac2a4b5157f69bbe8069e36",
+    "submissions": [
+      171
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "hash": "bc63304c67861c59b4af1940a8b231a0522429ea69e26a1f3d8ea6fb3dfebe1d",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c37/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-27T12:15:33Z"
+  },
+  "subject": "change/flume-reports-a-repositorys-binding",
+  "under_test_ms": 880000
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 35,
+  "branch": "main",
+  "head": "9d42128744e63b8504fb52aa31fb0c03c378bd18",
+  "from": {
+    "agent": "bolt/flume-hands-in-checked-work",
+    "worktree": "pull/179",
+    "head": "bolt/flume-hands-in-checked-work"
+  },
+  "submitted": "2026-11-20T23:58:24Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "landed",
+  "tested": {
+    "combination": "767a4fd1f9a5f07a08619473e6932aceb26280b9",
+    "on": "87dbdfb706aae00356028bd9dac7ea3df924d3cf",
+    "submissions": [
+      35
+    ]
+  },
+  "result": "passed",
+  "landed_as": "8ca12fc0d899376cabbdf359f6cd5bffbb9aab65",
+  "subject": "flume hands in checked work",
+  "under_test_ms": 281000
+}

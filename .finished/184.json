@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 184,
+  "branch": "main",
+  "head": "091204c6b393c163e06e1119eb930a73ca934934",
+  "from": {
+    "agent": "fix/flume-host-settles-only-pending-places",
+    "worktree": "pull/192",
+    "head": "fix/flume-host-settles-only-pending-places"
+  },
+  "submitted": "2026-11-27T22:27:41Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 4,
+  "state": "landed",
+  "tested": {
+    "combination": "06e68e8482c86b785b8d6927e13a7fc7d8da5be6",
+    "on": "40a9a7412ade6d876c90ce38812982d16b2429dd",
+    "submissions": [
+      184
+    ]
+  },
+  "result": "passed",
+  "landed_as": "84cbec97d744d01f6475240330070f5e545a4c66",
+  "subject": "fix/flume-host-settles-only-pending-places",
+  "under_test_ms": 267000
+}

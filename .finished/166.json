@@ -1,0 +1,38 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 166,
+  "branch": "main",
+  "head": "cc6383c247ba42c787b2c3bbf9d9f42a8a6d79e0",
+  "from": {
+    "agent": "chore/flume-keeps-its-seam-model",
+    "worktree": "pull/184",
+    "head": "chore/flume-keeps-its-seam-model"
+  },
+  "submitted": "2026-11-24T01:22:14Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "ee8fa3d3fa4843f2f7040254e13cc8706f74b87e",
+    "on": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+    "submissions": [
+      166
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c32/flume:tools.log",
+      "not_run": "sluice's sandbox refused the run network-outbound remote:*:53 (by moon), network-outbound /private/var/run/mDNSResponder (a name lookup, by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo) and 15 more"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-24T01:42:50Z"
+  },
+  "subject": "flume keeps its side of the tools' seams in Allium, checked in the fast tier",
+  "under_test_ms": 1122000,
+  "runs_with_no_outcome": 1
+}

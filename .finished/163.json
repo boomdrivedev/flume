@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 163,
+  "branch": "main",
+  "head": "3bbecd36392fb841ec1b681d8babb86be4ca4f1e",
+  "from": {
+    "agent": "bolt/flume-leaves-the-merge-queue-to-sluice",
+    "worktree": "pull/169",
+    "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+  },
+  "submitted": "2026-11-21T00:20:59Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 3,
+  "state": "landed",
+  "tested": {
+    "combination": "5f8b6d37d34bb547df6bbaf17e5085942043f07c",
+    "on": "306f89dae03a104c1f81ec88b01ee5765b6981b3",
+    "submissions": [
+      163
+    ]
+  },
+  "result": "passed",
+  "landed_as": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+  "subject": "flume leaves the merge queue to sluice",
+  "under_test_ms": 296000
+}

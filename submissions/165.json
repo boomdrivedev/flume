@@ -1,0 +1,34 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 165,
+  "branch": "main",
+  "head": "9aa0dff40ccf82d25f8b9c25fbbbd18cae061e9a",
+  "from": {
+    "agent": "bolt/flume-runs-every-agent-its-terminal-can-start",
+    "worktree": "pull/172",
+    "head": "bolt/flume-runs-every-agent-its-terminal-can-start"
+  },
+  "submitted": "2026-11-21T00:35:40Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 2,
+  "state": "failed",
+  "tested": {
+    "combination": "7d85ea787c3569fcad602918d5dd467705de0c48",
+    "on": "967b4fc5b5ebaac7ee07b5031f142c47babfc0b4",
+    "submissions": [
+      165
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c31/flume:tools.log",
+      "not_run": "sluice's sandbox refused the run network-outbound remote:*:53 (by moon), network-outbound /private/var/run/mDNSResponder (a name lookup, by moon), file-write-data /Users/chuck/.cargo/.package-cache (by cargo) and 15 more"
+    }
+  ],
+  "subject": "flume runs every agent its terminal can start",
+  "under_test_ms": 774000,
+  "runs_with_no_outcome": 1
+}

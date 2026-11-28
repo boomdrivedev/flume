@@ -1,0 +1,41 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 5,
+  "branch": "main",
+  "head": "90d51b08692f8856645c77492e66f840843a6d8f",
+  "from": {
+    "agent": "bolt/flume-runs-every-agent-its-terminal-can-start",
+    "worktree": "pull/172",
+    "head": "bolt/flume-runs-every-agent-its-terminal-can-start"
+  },
+  "submitted": "2026-11-19T14:58:25Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "2740521e124fa0293351049a7f341c1cb8987db4",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      5
+    ]
+  },
+  "result": "timed out",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "17888195cf87d8fd6a23fa18ff04a98dfd8ae49e5db4279932bae88f732ac3d5",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c4/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    },
+    {
+      "task": "flume:tools",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c4/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-21T00:35:40Z"
+  },
+  "subject": "bolt/flume-runs-every-agent-its-terminal-can-start"
+}

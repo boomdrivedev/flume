@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 162,
+  "branch": "main",
+  "head": "a2fc447b415bc99fbc87106b80cbfcebe16d6f94",
+  "from": {
+    "agent": "bolt/flume-runs-kinds-on-weirs-engine",
+    "worktree": "pull/183",
+    "head": "bolt/flume-runs-kinds-on-weirs-engine"
+  },
+  "submitted": "2026-11-21T00:10:11Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "9466074d1d2bd094a04059c754d93445f9a915d9",
+    "on": "8ca12fc0d899376cabbdf359f6cd5bffbb9aab65",
+    "submissions": [
+      162
+    ]
+  },
+  "result": "passed",
+  "landed_as": "306f89dae03a104c1f81ec88b01ee5765b6981b3",
+  "subject": "flume runs kinds on weir's engine",
+  "under_test_ms": 262000
+}

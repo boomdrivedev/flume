@@ -1,0 +1,39 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 23,
+  "branch": "main",
+  "head": "7bc023d3a0fb2e746465c6ffc3ee5fb195c5e98d",
+  "from": {
+    "agent": "bolt/flume-hands-in-checked-work",
+    "worktree": "pull/179",
+    "head": "bolt/flume-hands-in-checked-work"
+  },
+  "submitted": "2026-11-19T21:05:04Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "6ae5903eb8cc49ceaa5f8b6202b5088db1cd9133",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      23
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "#check-fast",
+      "not_run": "its executor stopped before it reported"
+    },
+    {
+      "task": "#check-tools",
+      "not_run": "its executor stopped before it reported"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-20T23:58:24Z"
+  },
+  "subject": "bolt/flume-hands-in-checked-work"
+}

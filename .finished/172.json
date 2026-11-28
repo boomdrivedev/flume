@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 172,
+  "branch": "main",
+  "head": "6f26ce3a541ab8ccb4167fde24fda715d255ec3d",
+  "from": {
+    "agent": "fix/each-gate-task-builds-in-its-own-folder",
+    "worktree": "pull/188",
+    "head": "fix/each-gate-task-builds-in-its-own-folder"
+  },
+  "submitted": "2026-11-27T09:59:27Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "552769adc2469f6c2870d1f3ddf687dfa58428f6",
+    "on": "b91952e9af9683bf1ac2a4b5157f69bbe8069e36",
+    "submissions": [
+      172
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:tools",
+      "hash": "3fbb4f57811459529421c65648f50ae30f95dd4c514f6c73f1d335c9076ea0a6",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c38/flume:tools.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-27T12:17:15Z"
+  },
+  "subject": "fix/each-gate-task-builds-in-its-own-folder",
+  "under_test_ms": 1031000
+}

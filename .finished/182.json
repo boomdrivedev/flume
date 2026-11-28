@@ -1,0 +1,38 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 182,
+  "branch": "main",
+  "head": "1a330398eb28e118e07231f445e6ddd75554b837",
+  "from": {
+    "agent": "change/flume-tests-its-logic-as-units",
+    "worktree": "pull/193",
+    "head": "change/flume-tests-its-logic-as-units"
+  },
+  "submitted": "2026-11-27T21:36:52Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "7f4dec05880a7059fa310359c22798dd158d170c",
+    "on": "90aa45c838af96eb2bd18fd46625e68e74a8903d",
+    "submissions": [
+      181,
+      182
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "flume:test",
+      "hash": "e592392c4e92892b74c392e5f9d5bca5d1a5c14a299d379eccf302188f63cf24",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c48/flume:test.log"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-27T22:06:46Z"
+  },
+  "subject": "change/flume-tests-its-logic-as-units",
+  "under_test_ms": 355000
+}

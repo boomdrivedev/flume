@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 185,
+  "branch": "main",
+  "head": "901061faa28042214d31633337e77bdfbe121594",
+  "from": {
+    "agent": "change/flume-tests-its-logic-as-units",
+    "worktree": "pull/194",
+    "head": "change/flume-tests-its-logic-as-units"
+  },
+  "submitted": "2026-11-27T22:54:43Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "3a8e8930d93d62d991b675ddf07507d45505fa0a",
+    "on": "84cbec97d744d01f6475240330070f5e545a4c66",
+    "submissions": [
+      185
+    ]
+  },
+  "result": "passed",
+  "landed_as": "a65d796997e807c07e380546a1a6b8fc3983385d",
+  "subject": "change/flume-tests-its-logic-as-units",
+  "under_test_ms": 243000
+}

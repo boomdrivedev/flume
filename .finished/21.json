@@ -1,0 +1,28 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 21,
+  "branch": "main",
+  "head": "e3c951556b0ad6de0765afb31e770bf1f17cfb6f",
+  "from": {
+    "agent": "afterthought",
+    "worktree": "pull/178",
+    "head": "chore/main--gate-limit-25m"
+  },
+  "submitted": "2026-11-19T20:56:33Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "951ed5e454aa8454e96a3a0ef6d84408452c06d3",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      21
+    ]
+  },
+  "withdrawn": {
+    "by": "afterthought",
+    "at": "2026-11-19T21:00:39Z"
+  },
+  "subject": "ci(sluice): main's and every bolt's runs have 25 minutes"
+}

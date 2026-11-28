@@ -1,0 +1,37 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 3,
+  "branch": "main",
+  "head": "9e40705059b8c0c19def5a96d7e33f93f57aa749",
+  "from": {
+    "agent": "bolt/flume-leaves-the-merge-queue-to-sluice",
+    "worktree": "pull/169",
+    "head": "bolt/flume-leaves-the-merge-queue-to-sluice"
+  },
+  "submitted": "2026-11-19T12:04:05Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "withdrawn",
+  "tested": {
+    "combination": "6b0e048c4635f638ed6119500fbdc970bff748cf",
+    "on": "ccb715e9327a9752400fb36dd590be78b7d5e31f",
+    "submissions": [
+      3
+    ]
+  },
+  "result": "failed",
+  "failed": [
+    {
+      "task": "root:format",
+      "hash": "b0af7e75a80af8ba65681fa2271b667eb465ed8891734732998188ef67b85a9d",
+      "log": "/Users/chuck/.local/share/boomdrive/repositories/boomdrivedev/flume/flume.git/sluice-remote/origin/.logs/main/c1/root:format.log",
+      "unsigned": "root:format: .claude/rules/core-details.md is not what the tree holds"
+    }
+  ],
+  "withdrawn": {
+    "by": "resubmission",
+    "at": "2026-11-19T18:57:44Z"
+  },
+  "subject": "bolt/flume-leaves-the-merge-queue-to-sluice"
+}

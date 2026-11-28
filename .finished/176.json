@@ -1,0 +1,27 @@
+{
+  "schema": "sluice/submission@1",
+  "id": 176,
+  "branch": "main",
+  "head": "363fd592159910cf18442ade2d6a5ca0e258ef25",
+  "from": {
+    "agent": "fix/releases-never-share-a-tag",
+    "worktree": "pull/190",
+    "head": "fix/releases-never-share-a-tag"
+  },
+  "submitted": "2026-11-27T14:43:31Z",
+  "after": [],
+  "priority": 0,
+  "attempt": 1,
+  "state": "landed",
+  "tested": {
+    "combination": "f43206eb8236c542f1dc4706e262ece11ffbbbac",
+    "on": "80913d57251a66a570830345edcbb28165c5c06b",
+    "submissions": [
+      176
+    ]
+  },
+  "result": "passed",
+  "landed_as": "429eafd7d78ba6fd1b24a87fd915e08009feb098",
+  "subject": "fix/releases-never-share-a-tag",
+  "under_test_ms": 367000
+}
